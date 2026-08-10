@@ -68,7 +68,7 @@ pages — and none of them can work around a rule.
 | `db/003_views_and_access.sql` | What each screen reads, and the row-level security under it |
 | `db/004_hosting.sql` | Extra hardening for a hosted database (see below) |
 | `db/900_demo_data.sql` | Optional demo shop, built by calling the rules above |
-| `api/[[...route]].js` | The whole API, as one serverless function |
+| `api/[...route].js` | The whole API, as one serverless function |
 | `lib/` | Router, database access, sessions, plain-language errors |
 | `public/` | The pages — three files, no build step |
 | `tests/acceptance.test.js` | 29 tests against a real Postgres over real HTTP |
