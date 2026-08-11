@@ -1787,7 +1787,7 @@ SCREENS.people = async (page) => {
         <div><label>Display name</label><input id="u_disp" type="text"></div>
         <div><label>Password</label><input id="u_pass" type="password"></div>
         <div><label>Can do</label><select id="u_role">
-          <option value="admin">Everything (owner)</option>
+          <option value="admin">Everything (admin)</option>
           <option value="warehouse">Warehouse</option>
           <option value="cashier">Till</option>
           <option value="reseller">Reseller portal</option></select></div>
