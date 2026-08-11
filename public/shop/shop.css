@@ -145,3 +145,23 @@ body {
 }
 .sh-nav button.on { color: var(--rose-deep); font-weight: 700; }
 .sh-nav i { font-style: normal; font-size: 1.15rem; }
+
+/* ---------- the middle of the frame ---------- */
+.sh-page { flex: 1; display: flex; flex-direction: column; }
+.sh-title { color: #fff; font-size: 1.05rem; font-family: Georgia, "Times New Roman", serif; }
+.sh-count {
+  background: var(--rose-blush); color: var(--rose-deep); border-radius: 999px;
+  padding: 1px 9px; font-size: .72rem; margin-left: 6px;
+}
+
+/* Visit and Me are prose, not goods — plain cards, generous spacing, nothing
+   pretending to be a control. */
+.sh-panel {
+  background: #fff; border: 1px solid var(--rose-blush); border-radius: 12px;
+  padding: 14px 16px; margin: 12px 12px 0;
+}
+.sh-panel h4 { color: var(--rose-deep); font-size: .92rem; margin-bottom: 4px; }
+.sh-panel p { font-size: .85rem; color: var(--ink); }
+.sh-panel.quiet { background: var(--rose-blush); border-color: var(--rose-soft); }
+.sh-panel.quiet p { color: var(--muted); }
+.sh-page > .sh-panel:last-child { margin-bottom: 16px; }
