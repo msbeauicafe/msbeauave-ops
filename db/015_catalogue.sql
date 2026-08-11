@@ -17,6 +17,14 @@
 -- product on the shelf at nothing, which is money gone before anybody notices.
 -- ============================================================================
 
+-- Why a product is off the shelf matters, and "active = false" cannot say.
+-- It means three different things: not priced yet, hidden by hand, and no
+-- longer stocked. Only the last of those is disposable, so it gets its own
+-- mark rather than being guessed at from the other two.
+alter table products add column retired_at timestamptz;
+comment on column products.retired_at is
+  'when a price list dropped this product; null means it is still stocked';
+
 -- ---------------------------------------------------------------------------
 -- Loading a price list
 --
@@ -104,7 +112,8 @@ begin
         retail_price    = coalesce((item->>'retail_price')::numeric, p.retail_price),
         shelf_life_months = coalesce((item->>'shelf_life_months')::int, p.shelf_life_months),
         shelf_min       = coalesce((item->>'shelf_min')::int, p.shelf_min),
-        active          = (coalesce((item->>'retail_price')::numeric, p.retail_price) > 0)
+        active          = (coalesce((item->>'retail_price')::numeric, p.retail_price) > 0),
+        retired_at      = null          -- back on the list, whatever it was before
       where p.sku = v_sku;
       v_updated := v_updated + 1;
     else
@@ -134,7 +143,9 @@ begin
     or exists (select 1 from restock_tasks where sku = r.sku)
     or exists (select 1 from reorder_points where sku = r.sku)
     or exists (select 1 from promos        where sku = r.sku) then
-      update products set active = false where sku = r.sku;
+      update products
+         set active = false, retired_at = coalesce(retired_at, now())
+       where sku = r.sku;
       v_hidden := v_hidden || r.name;
     else
       delete from products where sku = r.sku;   -- takes its photograph with it
@@ -225,13 +236,17 @@ begin
   -- Receipts start at one again. Numbering that carries on from the practice
   -- run would put the first real sale at receipt fifty-something, and every
   -- book that gets checked afterwards would have a gap nobody can explain.
-  -- A hidden product with nothing left against it is not a product, it is a
-  -- leftover. This matters because the two jobs can be done in either order:
-  -- load the real list first and the practice products are hidden rather than
-  -- deleted, because at that moment they still have deliveries against them.
-  -- Once those are gone there is nothing to preserve, so they go too.
+  -- A product dropped from the price list, with nothing left against it, is
+  -- not a product — it is a leftover. This matters because the two jobs can be
+  -- done in either order: load the real list first and the practice products
+  -- are only hidden, because at that moment they still have deliveries against
+  -- them. Once those are gone there is nothing to preserve, so they go too.
+  --
+  -- Retired, specifically. Not merely off the shelf: a product on the real
+  -- list that nobody has priced yet is also off the shelf, and it is waiting
+  -- for a price, not for deletion.
   delete from products p
-   where not p.active
+   where p.retired_at is not null
      and not exists (select 1 from batches       where sku = p.sku)
      and not exists (select 1 from order_lines   where sku = p.sku)
      and not exists (select 1 from returns       where sku = p.sku)

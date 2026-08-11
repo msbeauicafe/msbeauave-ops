@@ -184,6 +184,10 @@ test('erasing clears the trading, keeps the people and the catalogue, and restar
     await load(admin, [
       { sku: 'LIVE-01', name: 'Real Product', category: 'Soaps',
         unit_cost: 40, wholesale_price: 60, srp: 90, retail_price: 100 },
+      // On the real list, but nobody has priced it yet. It is off the shelf
+      // for the same reason a retired product is, and must survive anyway:
+      // it is waiting for a price, not for deletion.
+      { sku: 'LIVE-02', name: 'Priced Later', category: 'Soaps' },
     ]);
     await POST(store, '/api/receive',
       { sku: 'LIVE-01', batch_no: unique('B'), expiry: monthsOut(24), qty: 50 });
@@ -216,8 +220,12 @@ test('erasing clears the trading, keeps the people and the catalogue, and restar
     // Practice products that were only hidden — because they had deliveries
     // against them at the time the real list was loaded — have nothing left
     // against them now, so they go rather than lingering as empty rows.
-    assert.equal((await GET(admin, '/api/products')).data.some((p) => !p.active), false,
-      'no hidden leftovers survive the erase');
+    const after = (await GET(admin, '/api/products')).data;
+    assert.equal(after.some((p) => p.sku === 'TRADED-01'), false,
+      'a product dropped from the list leaves nothing behind once its history has gone');
+    assert.ok(after.some((p) => p.sku === 'LIVE-02' && !p.active),
+      'a product on the list that nobody has priced yet is waiting for a price, '
+      + 'not for deletion — erasing must not take it');
 
     // The first real sale has to be receipt one. A gap in the numbering is a
     // question somebody has to answer later and nobody will be able to.
