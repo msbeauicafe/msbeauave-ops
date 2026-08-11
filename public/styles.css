@@ -319,3 +319,6 @@ label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3
 }
 .loyalty label { margin-top: 0; }
 .loyalty .hit { display: block; width: 100%; text-align: left; margin-top: 6px; }
+
+label.inline { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: .8rem; }
+label.inline input { width: auto; }

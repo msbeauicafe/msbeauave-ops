@@ -1164,3 +1164,98 @@ test('a cashier may register and attribute, but not read the whole list', async 
   assert.equal((await GET(till, '/api/customers/find?q=09')).status, 200,
     'but the counter must be able to find whoever is standing there');
 });
+
+// ===========================================================================
+// The money
+//
+// The promise: margin is worked out from what the goods cost when they were
+// sold, expenses come off it, and nothing on the books can be made to vanish.
+// ===========================================================================
+const period = () => {
+  const to = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
+  return `from=${from}&to=${to}`;
+};
+
+test('margin uses what the goods cost when they were sold', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin,
+    { unit_cost: 100, wholesale_price: 150, srp: 180, retail_price: 200 });
+  await receive(store, sku, 24, 100);
+
+  const before = (await GET(admin, `/api/finance?${period()}`)).data;
+  const sale = await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 3 }], method: 'cash', tendered: 1000 });
+  assert.equal(sale.status, 200, JSON.stringify(sale.data));
+
+  const after = (await GET(admin, `/api/finance?${period()}`)).data;
+  assert.equal(Number(after.counter.revenue) - Number(before.counter.revenue), 600);
+  assert.equal(Number(after.counter.cost) - Number(before.counter.cost), 300,
+    'three at a cost of 100');
+
+  // The supplier puts the price up. Last week's margin must not move.
+  await PUT(admin, `/api/products/${sku}`, { unit_cost: 175 });
+  const later = (await GET(admin, `/api/finance?${period()}`)).data;
+  assert.equal(Number(later.counter.cost), Number(after.counter.cost),
+    'a cost change today cannot rewrite what a past sale earned');
+});
+
+test('expenses come off the margin, and voiding one keeps it on the books', async () => {
+  const admin = await signIn('admin');
+  const before = (await GET(admin, `/api/finance?${period()}`)).data;
+
+  const made = await POST(admin, '/api/expenses',
+    { kind: 'rent', description: 'Stall rent', amount: 5000, method: 'bank' });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+
+  const after = (await GET(admin, `/api/finance?${period()}`)).data;
+  assert.equal(Number(after.expenses.total) - Number(before.expenses.total), 5000);
+  assert.equal(Number(before.net) - Number(after.net), 5000, 'and it reduces what is left');
+
+  const noReason = await POST(admin, `/api/expenses/${made.data.id}/void`, { reason: '' });
+  assert.equal(noReason.status, 400, 'voiding has to say why');
+
+  await POST(admin, `/api/expenses/${made.data.id}/void`, { reason: 'Entered twice' });
+  const ended = (await GET(admin, `/api/finance?${period()}`)).data;
+  assert.equal(Number(ended.expenses.total), Number(before.expenses.total),
+    'a voided expense stops counting');
+
+  const row = ended.entries.find((e) => Number(e.id) === made.data.id);
+  assert.ok(row, 'but the entry is still there');
+  assert.equal(row.voided, true);
+  assert.equal(row.void_reason, 'Entered twice');
+});
+
+test('the books are the owner\'s alone', async () => {
+  const till = await signIn('cashier');
+  const store = await signIn('warehouse');
+  const buyer = await signIn('reseller', await newReseller(await signIn('admin')));
+
+  for (const who of [till, store, buyer]) {
+    assert.equal((await GET(who, '/api/finance')).status, 403);
+    assert.equal((await POST(who, '/api/expenses',
+      { kind: 'other', description: 'x', amount: 1 })).status, 403);
+  }
+});
+
+test('counter takings and wholesale invoices are never added together', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin,
+    { unit_cost: 100, wholesale_price: 150, srp: 180, retail_price: 200 });
+  await receive(store, sku, 24, 200);
+
+  const resellerId = await newReseller(admin);
+  const buyer = await signIn('reseller', resellerId);
+  const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });
+  await POST(store, `/api/orders/${order.data.orderId}/dispatch`);
+
+  const d = (await GET(admin, `/api/finance?${period()}`)).data;
+  assert.ok(Number(d.wholesale.invoiced) >= 1500, 'the invoice is counted as wholesale');
+  assert.ok('outstanding' in d.wholesale,
+    'and what is still owed is shown separately from money actually in hand');
+  assert.notEqual(d.counter.revenue, d.wholesale.invoiced,
+    'the two are reported apart, because they are paid at different times');
+});

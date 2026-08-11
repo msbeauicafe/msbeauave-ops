@@ -184,6 +184,7 @@ const TABS = {
     ['promos', '🏷️', 'Promos'],
     ['team', '🧑‍💼', 'Team'],
     ['crm', '💗', 'Customers'],
+    ['finance', '💰', 'Finance'],
     ['products', '🧴', 'Products'],
     ['receive', '📦', 'Receive'],
     ['orders', '🚚', 'Wholesale'],
@@ -207,6 +208,7 @@ const TABS = {
     ['pickups', '📦', 'Pickups'],
     ['team', '🧑‍💼', 'Team'],
     ['crm', '💗', 'Customers'],
+    ['finance', '💰', 'Finance'],
     ['workspace', '🗂️', 'Workspace'],
     ['tillreturns', '↩️', 'Returns'],
     ['closeday', '🌙', 'Close of day'],
@@ -2549,6 +2551,168 @@ SCREENS.crm = async (page) => {
 
   await load();
   repeat(load, 30000);
+};
+
+// ===========================================================================
+// Finance — what came in, what it cost, what went out
+// ===========================================================================
+const EXPENSE_KINDS = ['stock', 'rent', 'wages', 'utilities', 'supplies',
+                       'transport', 'marketing', 'fees', 'other'];
+
+SCREENS.finance = async (page) => {
+  const today = new Date().toISOString().slice(0, 10);
+  let from = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+  let to = today;
+
+  page.innerHTML = `
+    <div class="head"><h2>Finance</h2>
+      <span class="hint">Counter and wholesale kept apart, because they pay differently</span></div>
+    <div class="tools">
+      <label class="inline">From <input type="date" id="f_from" value="${from}"></label>
+      <label class="inline">To <input type="date" id="f_to" value="${to}"></label>
+      <button class="btn sm quiet" data-span="7">Last 7 days</button>
+      <button class="btn sm quiet" data-span="30">Last 30</button>
+      <button class="btn sm quiet" data-span="90">Last 90</button>
+      <button class="btn" id="spend">＋ Record an expense</button>
+    </div>
+    <div id="body"></div>`;
+
+  const load = async () => {
+    const d = await GET(`/api/finance?from=${from}&to=${to}`);
+    const money = (v) => peso(v || 0);
+
+    $('#body', page).innerHTML = `
+      <div class="tiles">
+        <div class="tile good"><div class="big">${money(d.counter.revenue)}</div>
+          <div class="label">Taken at the counter · ${count(d.counter.sales)} sale${
+            Number(d.counter.sales) === 1 ? '' : 's'}</div></div>
+        <div class="tile"><div class="big">${money(d.wholesale.invoiced)}</div>
+          <div class="label">Invoiced to resellers</div></div>
+        <div class="tile"><div class="big">${money(d.wholesale.received)}</div>
+          <div class="label">Paid by resellers in this period</div></div>
+        <div class="tile bad"><div class="big">${money(d.wholesale.outstanding)}</div>
+          <div class="label">Still owed to you</div></div>
+      </div>
+
+      <div class="split">
+        <div class="panel">
+          <h3>What it left you</h3>
+          <table>
+            <tbody>
+              <tr><td>Counter takings</td><td class="n">${money(d.counter.revenue)}</td></tr>
+              <tr><td>Cost of what was sold</td><td class="n">−${money(d.counter.cost)}</td></tr>
+              <tr><td>Wholesale invoiced</td><td class="n">${money(d.wholesale.invoiced)}</td></tr>
+              <tr><td>Cost of what was shipped</td><td class="n">−${money(d.wholesale.cost)}</td></tr>
+              <tr><td><b>Gross margin</b></td>
+                  <td class="n"><b>${money(d.gross_margin)}</b></td></tr>
+              <tr><td>Expenses recorded</td><td class="n">−${money(d.expenses.total)}</td></tr>
+              <tr><td><b>Left over</b></td>
+                  <td class="n"><b>${money(d.net)}</b></td></tr>
+            </tbody>
+          </table>
+          ${d.counter.fully_costed ? '' : `
+            <div class="banner warn mt">Some sales in this period were rung up before
+              the system started keeping the cost of each line, so their margin uses
+              today's cost price rather than the one at the time.</div>`}
+        </div>
+
+        <div class="panel">
+          <h3>How the counter was paid</h3>
+          ${Object.keys(d.counter.by_method || {}).length ? `
+            <table><tbody>${Object.entries(d.counter.by_method).map(([m, v]) => `
+              <tr><td>${esc(m === 'gcash' ? 'GCash' : m[0].toUpperCase() + m.slice(1))}</td>
+                  <td class="n">${money(v)}</td></tr>`).join('')}
+            </tbody></table>` : '<div class="none">Nothing taken in this period</div>'}
+
+          <h3 class="mt">Where the money went</h3>
+          ${Object.keys(d.expenses.by_kind || {}).length ? `
+            <table><tbody>${Object.entries(d.expenses.by_kind)
+              .sort((a, b) => Number(b[1]) - Number(a[1])).map(([k, v]) => `
+              <tr><td>${esc(k[0].toUpperCase() + k.slice(1))}</td>
+                  <td class="n">${money(v)}</td></tr>`).join('')}
+            </tbody></table>` : '<div class="none">No expenses recorded yet</div>'}
+
+          <div class="dim mt">Stock on the shelves is worth ${money(d.stock_at_cost)} at cost.</div>
+        </div>
+      </div>
+
+      <div class="panel"><h3>Expenses</h3><div id="ex"></div></div>`;
+
+    $('#ex', page).innerHTML = table(d.entries, [
+      { head: 'Date', cell: (e) => onDay(e.spent_on) },
+      { head: 'Kind', cell: (e) => tag(e.kind, e.voided ? 'grey' : 'pink') },
+      { head: 'What for', cell: (e) => e.voided
+          ? `<s class="dim">${esc(e.description)}</s>
+             <span class="dim">— voided: ${esc(e.void_reason || '')}</span>`
+          : esc(e.description) },
+      { head: 'Paid by', cell: (e) => esc(e.method) },
+      { head: 'Amount', n: true, cell: (e) => e.voided
+          ? `<s class="dim">${peso(e.amount)}</s>` : peso(e.amount) },
+      { head: '', cell: (e) => e.voided ? ''
+          : `<button class="btn sm quiet" data-void="${e.id}">Void</button>` },
+    ], 'Nothing recorded in this period');
+
+    $$('[data-void]', page).forEach((b) => b.addEventListener('click', async () => {
+      const reason = prompt('Why is this being voided?');
+      if (!reason) return;
+      try {
+        await POST(`/api/expenses/${b.dataset.void}/void`, { reason });
+        notice('Voided — the entry stays on the books', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    }));
+  };
+
+  $$('[data-span]', page).forEach((b) => b.addEventListener('click', () => {
+    from = new Date(Date.now() - (Number(b.dataset.span) - 1) * 864e5).toISOString().slice(0, 10);
+    to = today;
+    $('#f_from', page).value = from;
+    $('#f_to', page).value = to;
+    load().catch(whoops);
+  }));
+  $('#f_from', page).addEventListener('change', (e) => { from = e.target.value; load().catch(whoops); });
+  $('#f_to', page).addEventListener('change', (e) => { to = e.target.value; load().catch(whoops); });
+
+  $('#spend', page).addEventListener('click', () => {
+    dialog(`
+      <h3>Record an expense</h3>
+      <div class="row">
+        <div><label>Kind</label>
+          <select id="e_kind">
+            ${EXPENSE_KINDS.map((k) => `<option value="${k}">${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}
+          </select></div>
+        <div style="flex:2"><label>What for</label>
+          <input id="e_what" type="text" placeholder="Stall rent for August"></div>
+      </div>
+      <div class="row">
+        <div><label>Amount</label><input id="e_amt" type="number" step="0.01" min="0.01"></div>
+        <div><label>Paid by</label>
+          <select id="e_method">
+            <option value="cash">Cash</option><option value="gcash">GCash</option>
+            <option value="card">Card</option><option value="bank">Bank transfer</option>
+          </select></div>
+        <div><label>Date</label><input id="e_on" type="date" value="${today}"></div>
+      </div>
+      <div class="dim mt">Nothing is ever deleted here. A mistake is voided with a
+        reason, so the books can be relied on.</div>
+      <div class="mt right"><button class="btn" id="e_go">Record it</button></div>`);
+
+    $('#e_go').addEventListener('click', async () => {
+      try {
+        await POST('/api/expenses', {
+          kind: $('#e_kind').value, description: $('#e_what').value,
+          amount: Number($('#e_amt').value), method: $('#e_method').value,
+          on: $('#e_on').value || null,
+        });
+        closeDialog();
+        notice('Recorded 🌸', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    });
+  });
+
+  await load();
+  repeat(load, 60000);
 };
 
 start();
