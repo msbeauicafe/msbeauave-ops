@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F9E9F0">
+  <meta name="description" content="Install the MS BEAU AVE apps for Android">
+  <title>MS BEAU AVE — Install the apps</title>
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <style>
+    :root {
+      --rose-primary: #C98DA4; --rose-deep: #A2647E; --rose-soft: #EFCCDA;
+      --rose-blush: #F9E9F0; --rose-dust: #DDAEC2; --ink: #45303C;
+      --bg: #FBF6F8; --muted: #92707F;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      background: var(--bg); color: var(--ink);
+      font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-text-size-adjust: 100%;
+    }
+    .wrap { max-width: 620px; margin: 0 auto; padding: 32px 18px 64px; }
+    header { text-align: center; margin-bottom: 26px; }
+    header img {
+      width: 92px; height: 92px; border-radius: 50%; object-fit: cover;
+      border: 2px solid var(--rose-dust); background: #fff;
+    }
+    h1 {
+      font-family: Georgia, "Times New Roman", serif; font-size: 1.5rem;
+      letter-spacing: .1em; color: var(--rose-deep); margin: 12px 0 2px;
+    }
+    .sub { color: var(--muted); font-size: .9rem; }
+
+    .card {
+      background: #fff; border: 1px solid var(--rose-soft); border-radius: 14px;
+      padding: 20px; margin-bottom: 14px;
+    }
+    .card h2 { font-size: 1.05rem; color: var(--rose-deep); margin-bottom: 4px; }
+    .card p { font-size: .9rem; color: var(--muted); margin-bottom: 14px; }
+    .btn {
+      display: inline-block; background: var(--rose-primary); color: #fff;
+      text-decoration: none; border-radius: 10px; padding: 11px 20px;
+      font-weight: 700; font-size: .93rem;
+    }
+    .btn.ghost {
+      background: none; color: var(--rose-deep);
+      border: 1px solid var(--rose-dust); margin-left: 6px;
+    }
+    .meta { font-size: .78rem; color: var(--muted); margin-top: 12px; }
+
+    .note {
+      background: var(--rose-blush); border: 1px solid var(--rose-soft);
+      border-radius: 12px; padding: 16px 18px; font-size: .88rem; margin-bottom: 20px;
+    }
+    ol { padding-left: 1.2rem; font-size: .88rem; color: var(--muted); }
+    ol li { margin-bottom: 6px; }
+    code {
+      background: var(--rose-blush); border-radius: 5px; padding: 1px 6px;
+      font-size: .85rem; color: var(--rose-deep);
+    }
+    footer { text-align: center; color: var(--muted); font-size: .78rem; margin-top: 28px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="/logo.jpg" alt="MS BEAU AVE">
+    <h1>MS BEAU AVE</h1>
+    <div class="sub">Install the Android apps</div>
+  </header>
+
+  <div class="note">
+    <b>Version 7.0.</b> If you already have version 4, 5 or 6, this installs
+    straight over it — nothing to uninstall, and you stay signed in. Only a
+    build older than version 4 has to be removed first, because the signing key
+    changed then and Android will not replace an app whose signature has
+    changed.
+  </div>
+
+  <div class="card">
+    <h2>🛍️ MS BEAU AVE</h2>
+    <p>The shop. Our live catalogue — every product, price and photograph as it
+      is right now — with a basket you can reserve from and collect at the
+      counter.</p>
+    <a class="btn" href="/get/msbeauave-shop.apk" download>Download</a>
+    <a class="btn ghost" href="/shop/">Open in browser</a>
+    <div class="meta">com.msbeauave.shop · about 0.5 MB</div>
+  </div>
+
+  <div class="card">
+    <h2>⚙️ MBA back office</h2>
+    <p>The operations system: dashboard, workspace, pickups, promos, team,
+      customers, finance, stock and batches, receiving, the till, reseller
+      orders and credit, and reports.</p>
+    <a class="btn" href="/get/mba-back-office.apk" download>Download</a>
+    <a class="btn ghost" href="/">Open in browser</a>
+    <div class="meta">com.msbeauave.backoffice · about 0.5 MB</div>
+  </div>
+
+  <div class="card">
+    <h2>Installing on Android</h2>
+    <ol>
+      <li>Tap a download above <b>on the phone itself</b>.</li>
+      <li>Android will warn about installing outside the Play Store — choose
+        <code>Settings</code> and allow this browser to install apps.</li>
+      <li>Open the downloaded file and tap <code>Install</code>.</li>
+    </ol>
+    <p class="meta">Both apps are thin shells around this website, so everything
+      we add reaches your phone without reinstalling. A new download is only
+      needed when the app itself changes — a new name, a new icon, a new
+      address.</p>
+  </div>
+
+  <footer>msbeauave-ops.vercel.app/get</footer>
+</div>
+</body>
+</html>
