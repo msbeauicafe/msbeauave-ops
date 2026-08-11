@@ -541,3 +541,52 @@ test('the counter cannot remove sign-ins', async () => {
   const r = await DELETE(till, `/api/users/${target.id}`);
   assert.equal(r.status, 403);
 });
+
+// ===========================================================================
+// Creating a sign-in
+// ===========================================================================
+
+test('a reseller sign-in with no reseller named is refused in words, not in constraints',
+  async () => {
+    const admin = await signIn('admin');
+    const r = await POST(admin, '/api/users', {
+      username: unique('portal'), password: 'secret123', role: 'reseller',
+    });
+    assert.equal(r.status, 400);
+    assert.match(r.data.error, /has to belong to a reseller/);
+    assert.doesNotMatch(r.data.error, /constraint|relation/i,
+      'the message is for whoever is standing at the counter');
+  });
+
+test('a username already taken is refused by name', async () => {
+  const admin = await signIn('admin');
+  const taken = admin.username;
+  const r = await POST(admin, '/api/users', {
+    username: taken.toUpperCase(), password: 'secret123', role: 'cashier',
+  });
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /already a sign-in called/);
+});
+
+test('only a reseller sign-in may belong to a reseller', async () => {
+  const admin = await signIn('admin');
+  const seller = await POST(admin, '/api/resellers',
+    { name: unique('Company'), email: 'buyer@example.ph', tier: 2, credit_limit: 1000 });
+  const r = await POST(admin, '/api/users', {
+    username: unique('mixed'), password: 'secret123', role: 'cashier',
+    reseller_id: seller.data.id,
+  });
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /Only a reseller sign-in/);
+});
+
+test('a reseller sign-in works once the company exists', async () => {
+  const admin = await signIn('admin');
+  const seller = await POST(admin, '/api/resellers',
+    { name: unique('Company'), email: 'buyer@example.ph', tier: 2, credit_limit: 1000 });
+  const r = await POST(admin, '/api/users', {
+    username: unique('portal'), password: 'secret123', role: 'reseller',
+    reseller_id: seller.data.id,
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+});

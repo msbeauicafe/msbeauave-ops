@@ -1794,9 +1794,13 @@ SCREENS.people = async (page) => {
           <option value="warehouse">Warehouse</option>
           <option value="cashier">Cashier (the till)</option>
           <option value="reseller">Reseller (their own portal)</option></select></div>
-        <div id="u_link" style="display:none"><label>Which reseller</label><select id="u_res">
-          ${resellers.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}
-        </select></div>
+        <div id="u_link" style="display:none"><label>Which reseller</label>
+          ${resellers.length
+            ? `<select id="u_res">${resellers.map((r) =>
+                `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>`
+            : `<div class="banner warn">No resellers yet. Add the company under
+                 <b>Resellers</b> first — a portal sign-in has to belong to one.</div>`}
+        </div>
         <div style="flex:0 0 auto"><button class="btn" id="u_go">Create</button></div>
       </div>
       <div class="dim mt">At least 8 characters for the password.</div>
@@ -1872,7 +1876,9 @@ SCREENS.people = async (page) => {
         display_name: $('#u_disp', page).value,
         password: $('#u_pass', page).value,
         role: $('#u_role', page).value,
-        reseller_id: $('#u_role', page).value === 'reseller' ? +$('#u_res', page).value : null,
+        // No reseller chosen means none exists yet; the server says so plainly.
+        reseller_id: $('#u_role', page).value === 'reseller'
+          ? Number($('#u_res', page)?.value) || null : null,
       });
       notice('Sign-in created 🌸', 'good');
       $('#u_pass', page).value = '';
