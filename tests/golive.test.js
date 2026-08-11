@@ -341,3 +341,52 @@ test('the counter cannot book stock in', async () => {
   });
   assert.equal(r.status, 403);
 });
+
+// ===========================================================================
+// A shop with no resellers yet
+//
+// The house split holds 70% of every delivery back for wholesale. A shop that
+// has no resellers wants none of that, and the case that catches people out is
+// the small one: under 70/20/10 a delivery of a single unit puts nothing on
+// the shelf at all, because 20% of one rounds down to none.
+// ===========================================================================
+
+test('with the split set to shop-only, even one unit reaches the shelf', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+
+  await load(admin, [{ sku: 'SHOPONLY-01', name: 'Shop Only', category: 'Soaps',
+    unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100 }]);
+  const set = await request(admin, 'PUT', '/api/products/SHOPONLY-01',
+    { alloc_b2b: 0, alloc_shop: 1, alloc_reserve: 0 });
+  assert.equal(set.status, 200, JSON.stringify(set.data));
+
+  for (const qty of [1, 3, 100]) {
+    const r = await POST(store, '/api/deliveries', {
+      lines: [{ sku: 'SHOPONLY-01', batch_no: unique('S'), expiry: monthsOut(24), qty }],
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.deepEqual(r.data.received[0].split, { shop: qty },
+      `a delivery of ${qty} should land entirely on the shelf`);
+  }
+
+  const p = (await GET(admin, '/api/products')).data.find((x) => x.sku === 'SHOPONLY-01');
+  assert.equal(Number(p.free_shop), 104);
+  assert.equal(Number(p.free_b2b), 0, 'nothing is held back for resellers who do not exist');
+  assert.equal(Number(p.free_reserve), 0);
+});
+
+test('under the house split a delivery of one unit reaches nobody, which is why the above matters',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+
+    await load(admin, [{ sku: 'HOUSE-01', name: 'House Split', category: 'Soaps',
+      unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100 }]);
+
+    const r = await POST(store, '/api/deliveries', {
+      lines: [{ sku: 'HOUSE-01', batch_no: unique('H'), expiry: monthsOut(24), qty: 1 }],
+    });
+    assert.deepEqual(r.data.received[0].split, { b2b: 1 },
+      'the single unit goes to wholesale, and the shop still reads as sold out');
+  });
