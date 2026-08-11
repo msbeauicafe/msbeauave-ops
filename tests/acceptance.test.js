@@ -1259,3 +1259,73 @@ test('counter takings and wholesale invoices are never added together', async ()
   assert.notEqual(d.counter.revenue, d.wholesale.invoiced,
     'the two are reported apart, because they are paid at different times');
 });
+
+// ===========================================================================
+// Paying for stock
+//
+// The promise: a delivery is recorded as money out, without being subtracted
+// twice — once as an expense and again as the cost of what was sold.
+// ===========================================================================
+test('receiving records what it cost, as cash out and not as a trading cost', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin,
+    { unit_cost: 100, wholesale_price: 150, srp: 180, retail_price: 200 });
+
+  const before = (await GET(admin, `/api/finance?${period()}`)).data;
+
+  const got = await POST(store, '/api/receive',
+    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 50, unit_cost: 120, method: 'bank' });
+  assert.equal(got.status, 200, JSON.stringify(got.data));
+
+  const after = (await GET(admin, `/api/finance?${period()}`)).data;
+
+  assert.equal(Number(after.stock_bought) - Number(before.stock_bought), 6000,
+    'fifty at ₱120 is money out');
+  assert.equal(Number(after.expenses.total), Number(before.expenses.total),
+    'but it is not a running cost — cost of goods sold already accounts for it');
+  assert.equal(Number(after.net), Number(before.net),
+    'so buying stock cannot move the profit figure');
+  assert.equal(Number(before.cash.movement) - Number(after.cash.movement), 6000,
+    'it comes off the cash instead');
+});
+
+test('what a delivery cost becomes the product\'s cost, and a blank leaves it alone', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin,
+    { unit_cost: 100, wholesale_price: 150, srp: 180, retail_price: 200 });
+
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 20, unit_cost: 130 });
+  let product = (await GET(admin, `/api/products?q=${sku}`)).data[0];
+  assert.equal(Number(product.unit_cost), 130, 'the supplier\'s price today is the best guess');
+
+  // A repeat delivery with the box left empty must not reset the cost to zero.
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 20, unit_cost: '' });
+  product = (await GET(admin, `/api/products?q=${sku}`)).data[0];
+  assert.equal(Number(product.unit_cost), 130, 'blank means unchanged, not free');
+
+  // And a sale is costed at the new figure.
+  const before = (await GET(admin, `/api/finance?${period()}`)).data;
+  await POST(till, '/api/till/sell', { lines: [{ sku, qty: 2 }], method: 'cash', tendered: 500 });
+  const after = (await GET(admin, `/api/finance?${period()}`)).data;
+  assert.equal(Number(after.counter.cost) - Number(before.counter.cost), 260);
+});
+
+test('a delivery of something with no cost recorded does not invent one', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin,
+    { unit_cost: 0, wholesale_price: 150, srp: 180, retail_price: 200 });
+
+  const before = (await GET(admin, `/api/finance?${period()}`)).data;
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 10 });
+  const after = (await GET(admin, `/api/finance?${period()}`)).data;
+
+  assert.equal(Number(after.stock_bought), Number(before.stock_bought),
+    'nothing is recorded rather than a zero-peso entry cluttering the books');
+});

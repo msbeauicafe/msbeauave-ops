@@ -548,8 +548,20 @@ SCREENS.receive = async (page) => {
         <div><label>Batch number</label><input type="text" id="r_batch"></div>
         <div><label>Expiry date</label><input type="date" id="r_exp"></div>
         <div><label>How many</label><input type="number" id="r_qty" min="1"></div>
+        <div><label>Cost each</label>
+          <input type="number" id="r_cost" step="0.01" min="0" placeholder="unchanged"></div>
+        <div><label>Paid by</label>
+          <select id="r_method">
+            <option value="bank">Bank transfer</option>
+            <option value="cash">Cash</option>
+            <option value="gcash">GCash</option>
+            <option value="card">Card</option>
+          </select></div>
         <div style="flex:0 0 auto"><button class="btn" id="r_go">Receive</button></div>
       </div>
+      <div class="dim">What this delivery cost is recorded against the money going
+        out, and becomes the product's cost from now on. Leave it blank to keep
+        the cost you already have.</div>
       <datalist id="skus"></datalist>
       <div id="r_out" class="mt"></div>
     </div>
@@ -580,12 +592,15 @@ SCREENS.receive = async (page) => {
         batch_no: $('#r_batch', page).value.trim(),
         expiry: $('#r_exp', page).value,
         qty: +$('#r_qty', page).value,
+        unit_cost: $('#r_cost', page).value,
+        method: $('#r_method', page).value,
       });
       const label = { b2b: 'Wholesale', shop: 'Shop', reserve: 'Reserve' };
       $('#r_out', page).innerHTML = `<div class="banner good">✅ Received and split —
         ${r.allocation.map((a) => `<b>${esc(label[a.pool] || a.pool)}</b> ${a.on_hand}`).join(' · ')}</div>`;
       $('#r_batch', page).value = '';
       $('#r_qty', page).value = '';
+      $('#r_cost', page).value = '';
       recent();
     } catch (e) { whoops(e); }
   });
@@ -2605,11 +2620,29 @@ SCREENS.finance = async (page) => {
               <tr><td>Cost of what was shipped</td><td class="n">−${money(d.wholesale.cost)}</td></tr>
               <tr><td><b>Gross margin</b></td>
                   <td class="n"><b>${money(d.gross_margin)}</b></td></tr>
-              <tr><td>Expenses recorded</td><td class="n">−${money(d.expenses.total)}</td></tr>
-              <tr><td><b>Left over</b></td>
+              <tr><td>Running costs</td><td class="n">−${money(d.expenses.total)}</td></tr>
+              <tr><td><b>Profit</b></td>
                   <td class="n"><b>${money(d.net)}</b></td></tr>
             </tbody>
           </table>
+          <div class="dim mt">Stock bought does not appear here on purpose: its cost
+            already comes off as “cost of what was sold”, and counting it twice
+            would make every figure wrong. It is in the cash column instead.</div>
+
+          <h3 class="mt">Cash</h3>
+          <table>
+            <tbody>
+              <tr><td>Taken at the counter</td><td class="n">${money(d.counter.revenue)}</td></tr>
+              <tr><td>Paid by resellers</td><td class="n">${money(d.wholesale.received)}</td></tr>
+              <tr><td>Stock bought</td><td class="n">−${money(d.stock_bought)}</td></tr>
+              <tr><td>Running costs</td><td class="n">−${money(d.expenses.total)}</td></tr>
+              <tr><td><b>${Number(d.cash.movement) < 0 ? 'Down by' : 'Up by'}</b></td>
+                  <td class="n"><b>${money(Math.abs(Number(d.cash.movement)))}</b></td></tr>
+            </tbody>
+          </table>
+          <div class="dim mt">A shop can be profitable and still short of cash — buy a
+            quarter's stock in one week and this column says so while the one above
+            looks fine.</div>
           ${d.counter.fully_costed ? '' : `
             <div class="banner warn mt">Some sales in this period were rung up before
               the system started keeping the cost of each line, so their margin uses
