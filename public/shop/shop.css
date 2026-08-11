@@ -165,3 +165,69 @@ body {
 .sh-panel.quiet { background: var(--rose-blush); border-color: var(--rose-soft); }
 .sh-panel.quiet p { color: var(--muted); }
 .sh-page > .sh-panel:last-child { margin-bottom: 16px; }
+
+/* ---------- Me ---------- */
+.me-band {
+  background: linear-gradient(120deg, var(--rose-deep), var(--rose-primary));
+  color: #fff; padding: 20px 16px; display: flex; align-items: center; gap: 14px;
+}
+.me-band.signed-out { opacity: .95; }
+.me-avatar {
+  width: 62px; height: 62px; border-radius: 50%; flex: none; display: grid;
+  place-items: center; font-size: 1.6rem; font-weight: 700;
+  background: rgba(255, 255, 255, .22); border: 3px solid rgba(255, 255, 255, .7);
+}
+.me-who h3 { font-size: 1.1rem; }
+.me-tier {
+  background: rgba(255, 255, 255, .24); border-radius: 999px;
+  padding: 2px 10px; font-size: .72rem; display: inline-block; margin-top: 4px;
+}
+
+.me-strip { display: flex; background: #fff; border-bottom: 8px solid var(--rose-blush); }
+.me-strip div {
+  flex: 1; padding: 12px 6px; text-align: center; border-right: 1px solid var(--rose-blush);
+}
+.me-strip div:last-child { border-right: none; }
+.me-strip b { display: block; color: var(--rose-deep); font-size: 1.1rem; }
+.me-strip span { font-size: .68rem; color: var(--muted); }
+
+.me-card {
+  background: #fff; border: 1px solid var(--rose-blush); border-radius: 12px;
+  margin: 12px 12px 0; padding: 14px;
+}
+.me-card h4 {
+  color: var(--rose-deep); font-size: .92rem; margin-bottom: 10px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.me-card h4 a { font-size: .74rem; font-weight: 400; color: var(--muted); cursor: pointer; }
+.me-icons { display: flex; }
+.me-icons button {
+  flex: 1; border: none; background: none; cursor: pointer; position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  font: inherit; font-size: .68rem; color: var(--ink); padding: 4px 2px;
+}
+.me-icons button i { font-style: normal; font-size: 1.4rem; }
+.me-badge {
+  position: absolute; top: -2px; right: calc(50% - 22px); background: var(--rose-deep);
+  color: #fff; font-size: .6rem; border-radius: 999px; padding: 1px 6px; font-weight: 700;
+}
+
+.me-card label { display: block; font-size: .74rem; color: var(--muted); margin: 10px 0 3px; }
+.me-card input {
+  width: 100%; font: inherit; font-size: .9rem; padding: 9px 11px;
+  border: 1px solid var(--rose-dust); border-radius: 9px; background: #fff; outline: none;
+}
+.me-card input:focus { border-color: var(--rose-deep); }
+.me-go {
+  width: 100%; margin-top: 14px; border: none; background: var(--rose-primary); color: #fff;
+  border-radius: 9px; padding: 11px; font: inherit; font-weight: 700; cursor: pointer;
+}
+.me-swap {
+  width: 100%; margin-top: 10px; border: none; background: none; color: var(--rose-deep);
+  font: inherit; font-size: .8rem; cursor: pointer; padding: 6px;
+}
+.me-err {
+  background: #f3dddd; color: var(--danger); border-radius: 8px;
+  padding: 8px 10px; font-size: .8rem; margin-top: 10px;
+}
+.me-out { padding: 16px 12px 20px; }
