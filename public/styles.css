@@ -274,3 +274,25 @@ label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3
   #dialog .dialog { border: 0; max-width: none; max-height: none; padding: 0; overflow: visible; }
   .receipt { border: 0; padding: 0; }
 }
+
+/* ---------- the workspace ---------- */
+.post { padding: 10px 0; border-bottom: 1px solid var(--rose-blush); font-size: .87rem; }
+.post:last-child { border-bottom: none; }
+.post-by { font-weight: 600; color: var(--rose-deep); font-size: .82rem; margin-bottom: 2px; }
+.post-by .dim { font-weight: 400; margin-left: 6px; }
+
+/* Three lanes side by side, scrolling sideways on a phone rather than
+   stacking — a board that stacks is a list, and loses the point of a board. */
+.kanban { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; align-items: start; }
+.klane { min-width: 172px; flex: 1; background: var(--rose-blush); border-radius: 12px; padding: 8px; }
+.klane h5 {
+  margin: 0 0 8px; font-size: .72rem; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--rose-deep); display: flex; justify-content: space-between;
+}
+.kcard {
+  background: #fff; border: 1px solid var(--rose-soft); border-radius: 10px;
+  padding: 8px; margin-bottom: 8px; font-size: .78rem;
+}
+.kcard b { font-size: .8rem; display: block; }
+.kcard .dim { font-size: .72rem; }
+.kmove { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; }

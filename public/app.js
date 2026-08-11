@@ -145,6 +145,7 @@ function drawSignIn() {
 const TABS = {
   admin: [
     ['dashboard', '🏠', 'Dashboard'],
+    ['workspace', '🗂️', 'Workspace'],
     ['products', '🧴', 'Products'],
     ['receive', '📦', 'Receive'],
     ['orders', '🚚', 'Wholesale'],
@@ -156,6 +157,7 @@ const TABS = {
     ['people', '👥', 'Sign-ins'],
   ],
   warehouse: [
+    ['workspace', '🗂️', 'Workspace'],
     ['orders', '📋', 'Pick & send'],
     ['receive', '📦', 'Receive'],
     ['stockroom', '🔀', 'Stockroom'],
@@ -164,6 +166,7 @@ const TABS = {
   ],
   cashier: [
     ['till', '🛍️', 'Till'],
+    ['workspace', '🗂️', 'Workspace'],
     ['tillreturns', '↩️', 'Returns'],
     ['closeday', '🌙', 'Close of day'],
   ],
@@ -1764,6 +1767,125 @@ SCREENS.account = async (page) => {
         <div class="dim mt">💡 Pay a 30-day invoice within 10 days and 2% comes off by itself.</div>
       </div>`;
   };
+  await load();
+  repeat(load, 15000);
+};
+
+// ===========================================================================
+// Workspace — the team's feed and its task board
+// ===========================================================================
+SCREENS.workspace = async (page) => {
+  page.innerHTML = `
+    <div class="head"><h2>Workspace</h2>
+      <span class="hint">What the team is saying, and what the team has to do</span></div>
+    <div class="split">
+      <div class="panel">
+        <h3>Team feed</h3>
+        <div class="row">
+          <div style="flex:3"><input id="say" type="text"
+            placeholder="Share an update with the team…" maxlength="500"></div>
+          <div style="flex:0 0 auto"><button class="btn" id="post">Post</button></div>
+        </div>
+        <div id="feed" class="mt"></div>
+      </div>
+      <div class="panel">
+        <h3>Tasks</h3>
+        <div class="row">
+          <div style="flex:2"><input id="t_title" type="text" placeholder="What needs doing"></div>
+          <div><select id="t_who"></select></div>
+          <div><input id="t_due" type="date"></div>
+          <div><select id="t_prio">
+            <option value="normal">Normal</option><option value="high">Urgent</option>
+          </select></div>
+          <div style="flex:0 0 auto"><button class="btn" id="add">Add</button></div>
+        </div>
+        <div class="kanban mt" id="board"></div>
+      </div>
+    </div>`;
+
+  const LANES = [['todo', 'To do'], ['doing', 'In progress'], ['done', 'Done']];
+
+  const load = async () => {
+    const w = await GET('/api/workspace');
+
+    // Only rebuild the assignee list when it changes: rewriting it every few
+    // seconds would throw away whatever the person had chosen mid-sentence.
+    const who = $('#t_who', page);
+    const names = w.team.map((m) => m.username).join(',');
+    if (who.dataset.names !== names) {
+      who.dataset.names = names;
+      who.innerHTML = '<option value="">Anyone</option>'
+        + w.team.map((m) => `<option value="${esc(m.username)}">${esc(m.display_name)}</option>`).join('');
+    }
+
+    $('#feed', page).innerHTML = w.feed.length
+      ? w.feed.map((p) => `
+          <div class="post">
+            <div class="post-by">${esc(p.author_name)}
+              <span class="dim">${when(p.posted_at)}</span></div>
+            <div>${esc(p.body)}</div>
+          </div>`).join('')
+      : '<div class="none">Nobody has said anything yet 🌸</div>';
+
+    $('#board', page).innerHTML = LANES.map(([id, label]) => {
+      const cards = w.tasks.filter((t) => t.status === id);
+      return `
+        <div class="klane">
+          <h5>${label} <span>${cards.length}</span></h5>
+          ${cards.map((t) => `
+            <div class="kcard">
+              <b>${esc(t.title)}</b>
+              ${t.priority === 'high' ? tag('urgent', 'red') : ''}
+              <div class="dim">${esc(t.assignee_name || 'unassigned')}${
+                t.due_on ? ' · due ' + onDay(t.due_on) : ''}</div>
+              ${t.overdue ? tag('overdue', 'amber') : ''}
+              <div class="kmove">
+                ${id !== 'todo' ? `<button class="btn sm quiet" data-move="${t.id}" data-to="${
+                  id === 'done' ? 'doing' : 'todo'}">←</button>` : ''}
+                ${id !== 'done' ? `<button class="btn sm" data-move="${t.id}" data-to="${
+                  id === 'todo' ? 'doing' : 'done'}">→</button>` : ''}
+              </div>
+            </div>`).join('')
+          || '<div class="dim" style="padding:6px">Nothing here</div>'}
+        </div>`;
+    }).join('');
+
+    $$('[data-move]', page).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await POST(`/api/workspace/tasks/${b.dataset.move}/status`, { status: b.dataset.to });
+        load();
+      } catch (e) { whoops(e); }
+    }));
+  };
+
+  $('#post', page).addEventListener('click', async () => {
+    const body = $('#say', page).value.trim();
+    if (!body) return;
+    try {
+      await POST('/api/workspace/posts', { body });
+      $('#say', page).value = '';
+      notice('Posted 🌸', 'good');
+      load();
+    } catch (e) { whoops(e); }
+  });
+
+  $('#add', page).addEventListener('click', async () => {
+    const title = $('#t_title', page).value.trim();
+    if (!title) return;
+    try {
+      await POST('/api/workspace/tasks', {
+        title,
+        assignee: $('#t_who', page).value || null,
+        due: $('#t_due', page).value || null,
+        priority: $('#t_prio', page).value,
+      });
+      $('#t_title', page).value = '';
+      $('#t_due', page).value = '';
+      notice('Task added 🌸', 'good');
+      load();
+    } catch (e) { whoops(e); }
+  });
+
   await load();
   repeat(load, 15000);
 };
