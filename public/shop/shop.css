@@ -231,3 +231,53 @@ body {
   padding: 8px 10px; font-size: .8rem; margin-top: 10px;
 }
 .me-out { padding: 16px 12px 20px; }
+
+/* ---------- basket ---------- */
+.sh-cart {
+  position: relative; border: none; background: rgba(255, 255, 255, .22);
+  color: #fff; border-radius: 10px; padding: 8px 10px; font-size: 1.05rem;
+  cursor: pointer; flex: none;
+}
+.sh-cart-n {
+  position: absolute; top: -5px; right: -5px; background: #fff; color: var(--rose-deep);
+  border-radius: 999px; font-size: .62rem; font-weight: 700; padding: 1px 5px;
+  border: 1px solid var(--rose-deep);
+}
+.bk-line {
+  display: flex; align-items: center; gap: 10px; padding: 10px 0;
+  border-bottom: 1px solid var(--rose-blush);
+}
+.bk-name { flex: 1; font-size: .86rem; }
+.bk-name span { display: block; color: var(--rose-deep); font-weight: 700; font-size: .8rem; }
+.bk-qty { display: flex; align-items: center; gap: 10px; }
+.bk-qty button {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--rose-dust);
+  background: #fff; color: var(--rose-deep); font-size: 1.1rem; cursor: pointer;
+}
+.bk-total {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 12px 0 2px; font-size: .9rem;
+}
+.bk-total b { color: var(--rose-deep); font-size: 1.3rem; }
+
+/* ---------- a reservation ---------- */
+.pu-card {
+  border: 1px solid var(--rose-soft); border-radius: 12px; padding: 12px; margin-top: 10px;
+}
+.pu-head { display: flex; justify-content: space-between; align-items: center; }
+.pu-head b { color: var(--rose-deep); }
+.pu-state { font-size: .68rem; border-radius: 999px; padding: 2px 9px; font-weight: 700; }
+.pu-state.reserved { background: #f6ecd8; color: var(--warning); }
+.pu-state.collected { background: #e3efe6; color: var(--success); }
+.pu-state.cancelled { background: #eee9ea; color: var(--muted); }
+.pu-items { font-size: .8rem; margin: 8px 0; line-height: 1.5; }
+.pu-foot {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: .74rem; color: var(--muted);
+}
+.pu-foot b { color: var(--ink); font-size: .95rem; }
+.pu-drop {
+  width: 100%; margin-top: 10px; border: 1px solid var(--rose-dust); background: none;
+  color: var(--rose-deep); border-radius: 9px; padding: 8px; font: inherit;
+  font-size: .8rem; cursor: pointer;
+}

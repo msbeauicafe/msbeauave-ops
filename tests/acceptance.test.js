@@ -483,15 +483,22 @@ test('the dusty pink palette and a layout that works on a tablet', () => {
   const css = fs.readFileSync(path.join(here, '..', 'public', 'styles.css'), 'utf8');
   const html = fs.readFileSync(path.join(here, '..', 'public', 'index.html'), 'utf8');
 
-  for (const colour of ['#D8A7B1', '#B4838D', '#FAF6F4', '#F4E4E8',
-                        '#4A3B40', '#A8B8A0', '#E0A458', '#C46A6A']) {
+  // The house palette, shared with the storefront and the marketing site.
+  for (const colour of ['#C98DA4', '#A2647E', '#EFCCDA', '#F9E9F0',
+                        '#DDAEC2', '#45303C', '#FBF6F8']) {
     assert.ok(css.includes(colour), `the palette must define ${colour}`);
   }
   assert.match(html, /name="viewport"[^>]*width=device-width/);
-  assert.ok(/@media \(max-width: 900px\)/.test(css) && /@media \(max-width: 950px\)/.test(css),
-    'the frame and the till both need to fold down for a tablet');
-  assert.ok(css.includes('--round') && css.includes('box-shadow'),
-    'soft cards rather than hard borders');
+
+  // Wide: the tabs stand in a column beside the work. Narrow: they slide in
+  // over it, because a phone cannot spare 236px. Both arrangements have to
+  // exist, or one of the two shapes is broken.
+  assert.ok(/@media \(min-width: 1000px\)/.test(css), 'the standing column of tabs');
+  assert.ok(/@media \(max-width: 999px\)/.test(css), 'the tabs as a drawer');
+  assert.ok(/@media \(max-width: 950px\)/.test(css), 'the till folds to one column');
+
+  assert.ok(css.includes('--round') && css.includes('border-radius'),
+    'soft cards rather than hard corners');
 });
 
 // ===========================================================================
@@ -733,4 +740,139 @@ test('the demand figures can be rebuilt from what actually sold', async () => {
   assert.equal(status, 200, JSON.stringify(data));
   assert.equal(Number(data.avg_daily), 1, '90 units over 90 days is 1 a day');
   assert.equal(Number(data.max_daily), 90, 'and the busiest day was 90');
+});
+
+// ===========================================================================
+// Reserving from the customer app
+//
+// The promise: what the app holds, the counter cannot sell — and what the
+// counter hands over reaches the day's takings like any other sale.
+// ===========================================================================
+
+/** A signed-in shopper, with the cookie the app would carry. */
+async function joinShop() {
+  const phone = `0917${String(Date.now()).slice(-7)}${++seq % 10}`;
+  const res = await fetch(`${base}/api/shop/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Test Shopper', phone, password: 'shopper123' }),
+  });
+  assert.equal(res.status, 200, 'could not join the shop');
+  const raw = res.headers.getSetCookie?.()[0] ?? res.headers.get('set-cookie');
+  return raw.split(';')[0];
+}
+
+const shelfFree = async (till, sku) =>
+  (await GET(till, `/api/till/products?q=${sku}`)).data[0]?.on_shelf ?? 0;
+
+test('a reservation holds stock the counter can no longer sell', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin);
+  await receive(store, sku, 24, 100);          // 20 of them land on the shelf
+
+  const before = await shelfFree(till, sku);
+  const shopper = await joinShop();
+
+  const made = await POST(shopper, '/api/shop/reserve', { lines: [{ sku, qty: 3 }] });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+  assert.match(made.data.code, /^MB-\d+$/);
+
+  assert.equal(await shelfFree(till, sku), before - 3,
+    'the three reserved units must leave the sellable shelf immediately');
+
+  // And the counter can see who is coming for what.
+  const waiting = (await GET(till, '/api/pickups')).data;
+  assert.ok(waiting.some((p) => p.code === made.data.code), 'the counter must see the hold');
+});
+
+test('collecting a reservation sells it, and points follow the money', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  // Priced so the arithmetic below is obvious: two at ₱200 is ₱400, which is
+  // twenty points. The reseller price moves with it, because the shop may
+  // never undercut what resellers sell at.
+  const sku = await newProduct(admin, { unit_cost: 50, wholesale_price: 100, srp: 180, retail_price: 200 });
+  await receive(store, sku, 24, 100);
+
+  const shopper = await joinShop();
+  const made = await POST(shopper, '/api/shop/reserve', { lines: [{ sku, qty: 2 }] });
+  const takingsBefore = Number((await GET(admin, '/api/dashboard')).data.takings.total);
+
+  const done = await POST(till, `/api/pickups/${made.data.code}/collect`, { method: 'gcash' });
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+  assert.match(done.data.receipt_no, /^OR-\d{8}-\d{5}$/, 'a collection is a sale, so it gets a receipt');
+  assert.equal(Number(done.data.total), 400);
+  assert.equal(done.data.points, 20, 'one point per ₱20');
+
+  const takingsAfter = Number((await GET(admin, '/api/dashboard')).data.takings.total);
+  assert.equal(takingsAfter - takingsBefore, 400,
+    'a collected reservation has to reach the takings, or the close of day will not balance');
+
+  const me = (await GET(shopper, '/api/shop/me')).data;
+  assert.equal(me.customer.points, 20);
+  assert.equal(me.purchases.collected, 1);
+  assert.equal(me.purchases.toCollect, 0);
+
+  // Handed over once. A second attempt must not sell the same goods twice.
+  const again = await POST(till, `/api/pickups/${made.data.code}/collect`, { method: 'cash' });
+  assert.equal(again.status, 400);
+  assert.match(again.data.error, /already collected/i);
+});
+
+test('cancelling a reservation puts the stock back', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin);
+  await receive(store, sku, 24, 100);
+
+  const shopper = await joinShop();
+  const before = await shelfFree(till, sku);
+  const made = await POST(shopper, '/api/shop/reserve', { lines: [{ sku, qty: 4 }] });
+  assert.equal(await shelfFree(till, sku), before - 4);
+
+  const dropped = await POST(shopper, `/api/shop/purchases/${made.data.pickup_id}/cancel`);
+  assert.equal(dropped.status, 200);
+  assert.equal(await shelfFree(till, sku), before, 'cancelling has to release the hold');
+});
+
+test('a reservation belongs to the shopper who made it', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+  await receive(store, sku, 24, 100);
+
+  const mine = await joinShop();
+  const theirs = await joinShop();
+  const made = await POST(mine, '/api/shop/reserve', { lines: [{ sku, qty: 1 }] });
+
+  const meddling = await POST(theirs, `/api/shop/purchases/${made.data.pickup_id}/cancel`);
+  assert.equal(meddling.status, 400);
+  assert.match(meddling.data.error, /not your reservation/i);
+
+  assert.equal((await GET(theirs, '/api/shop/purchases')).data.length, 0,
+    'one shopper must never see another shopper\'s reservations');
+
+  const stranger = await POST(null, '/api/shop/reserve', { lines: [{ sku, qty: 1 }] });
+  assert.equal(stranger.status, 401, 'reserving requires signing in');
+});
+
+test('the app cannot reserve stock the shelf does not have', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin);
+  await receive(store, sku, 24, 100);
+
+  const shopper = await joinShop();
+  const free = await shelfFree(till, sku);
+  const greedy = await POST(shopper, '/api/shop/reserve', { lines: [{ sku, qty: free + 1 }] });
+
+  assert.equal(greedy.status, 400);
+  assert.match(greedy.data.error, /short/i);
+  assert.equal(await shelfFree(till, sku), free,
+    'a refused reservation must not leave anything held');
 });

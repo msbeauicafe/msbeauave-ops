@@ -180,6 +180,7 @@ const TABS = {
   admin: [
     ['dashboard', '🏠', 'Dashboard'],
     ['workspace', '🗂️', 'Workspace'],
+    ['pickups', '📦', 'Pickups'],
     ['products', '🧴', 'Products'],
     ['receive', '📦', 'Receive'],
     ['orders', '🚚', 'Wholesale'],
@@ -200,6 +201,7 @@ const TABS = {
   ],
   cashier: [
     ['till', '🛍️', 'Till'],
+    ['pickups', '📦', 'Pickups'],
     ['workspace', '🗂️', 'Workspace'],
     ['tillreturns', '↩️', 'Returns'],
     ['closeday', '🌙', 'Close of day'],
@@ -1969,6 +1971,68 @@ SCREENS.workspace = async (page) => {
       load();
     } catch (e) { whoops(e); }
   });
+
+  await load();
+  repeat(load, 15000);
+};
+
+// ===========================================================================
+// Pickups — what the app reserved, waiting at the counter
+// ===========================================================================
+SCREENS.pickups = async (page) => {
+  page.innerHTML = `
+    <div class="head"><h2>Pickups</h2>
+      <span class="hint">Reserved in the customer app, held off the shelf</span></div>
+    <div class="panel" id="list"></div>`;
+
+  const load = async () => {
+    const rows = await GET('/api/pickups');
+    $('#list', page).innerHTML = table(rows, [
+      { head: 'Code', cell: (r) => `<b>${esc(r.code)}</b>` },
+      { head: 'Customer', cell: (r) => `${esc(r.customer)}<br><span class="dim">${esc(r.phone)}</span>` },
+      { head: 'Items', cell: (r) => esc(r.items || '') },
+      { head: 'Total', n: true, cell: (r) => peso(r.total) },
+      { head: 'Hold until', cell: (r) => when(r.hold_until) },
+      { head: '', cell: (r) => `
+          <button class="btn sm go" data-collect="${esc(r.code)}">Collected</button>
+          <button class="btn sm quiet" data-drop="${r.id}">Cancel</button>` },
+    ], 'Nothing reserved right now 🌸');
+
+    $$('[data-collect]', page).forEach((b) => b.addEventListener('click', () => {
+      const code = b.dataset.collect;
+      dialog(`
+        <h3>Handing over ${esc(code)}</h3>
+        <div class="dim">Take the money, then record it. This goes through the till,
+          so it lands in today's takings and the close of day.</div>
+        <div class="row mt">
+          <div><label>Paid by</label>
+            <select id="p_method">
+              <option value="cash">Cash</option>
+              <option value="gcash">GCash</option>
+              <option value="card">Card</option>
+            </select></div>
+        </div>
+        <div class="mt right"><button class="btn go" id="p_go">Collected</button></div>`);
+
+      $('#p_go').addEventListener('click', async () => {
+        try {
+          const out = await POST(`/api/pickups/${encodeURIComponent(code)}/collect`,
+            { method: $('#p_method').value });
+          closeDialog();
+          notice(`${out.receipt_no} · ${peso(out.total)} · +${out.points} points 🌸`, 'good');
+          load();
+        } catch (e) { whoops(e); }
+      });
+    }));
+
+    $$('[data-drop]', page).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await POST(`/api/pickups/${b.dataset.drop}/cancel`);
+        notice('Released back to the shelf', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    }));
+  };
 
   await load();
   repeat(load, 15000);

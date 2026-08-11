@@ -42,6 +42,12 @@ let view = 'home';
 let goods = [];
 let categories = [];
 let me = null;          // the signed-in shopper, or null
+// The basket lives in the browser until it is reserved: a shopper who is only
+// browsing should not need an account, and a half-filled basket surviving a
+// closed tab is the least surprising behaviour.
+let basket = JSON.parse(localStorage.getItem('basket') || '{}');
+const saveBasket = () => localStorage.setItem('basket', JSON.stringify(basket));
+const basketCount = () => Object.values(basket).reduce((n, q) => n + q, 0);
 let meNumbers = null;   // their purchase counts and vouchers
 
 // ---------------------------------------------------------------------------
@@ -60,6 +66,8 @@ function draw() {
             placeholder="Search skincare…" autocomplete="off">
         </label>`
       : `<h1 class="sh-title">${view === 'visit' ? 'Find us' : 'Me'}</h1>`}
+      <button class="sh-cart" id="cart" aria-label="Basket">🛒${
+        basketCount() ? `<span class="sh-cart-n">${basketCount()}</span>` : ''}</button>
     </header>
 
     <div class="sh-page" id="page">${
@@ -102,6 +110,8 @@ function wire() {
   $$('[data-sku]').forEach((b) => b.addEventListener('click', () => {
     openProduct(goods.find((p) => p.sku === b.dataset.sku));
   }));
+
+  $('#cart').addEventListener('click', openBasket);
 
   if (view === 'me') wireMe();
 
@@ -229,8 +239,8 @@ function meView() {
     <div class="me-card">
       <h4>My purchases <a data-purchases="all">See all ›</a></h4>
       <div class="me-icons">
-        ${[['toPay', '🧾', 'To pay'], ['toCollect', '📦', 'To collect'],
-           ['toReceive', '🚚', 'To receive'], ['toRate', '⭐', 'To rate']].map(([k, icon, label]) => `
+        ${[['toCollect', '📦', 'To collect'], ['collected', '✅', 'Collected'],
+           ['cancelled', '↩️', 'Cancelled']].map(([k, icon, label]) => `
           <button data-purchases="${k}">
             <i>${icon}</i>${label}
             ${n.purchases[k] ? `<span class="me-badge">${n.purchases[k]}</span>` : ''}
@@ -248,10 +258,10 @@ function meView() {
     </div>
 
     <div class="sh-panel quiet">
-      <h4>Buying in the app</h4>
-      <p>Not switched on yet — that is why every count above is zero. Browse
-         here, then buy at the counter or message us to reserve, and points will
-         start landing on this account once ordering goes live.</p>
+      <h4>How reserving works</h4>
+      <p>Add what you want to the basket and reserve it. We hold it off the
+         shelf until the end of the next day, and you pay at the counter when
+         you collect — cash, GCash or card. One point for every ₱20 you spend.</p>
     </div>
 
     <div class="me-out"><button class="sh-close" id="signout">Sign out</button></div>`;
@@ -336,11 +346,81 @@ function wireMe() {
     });
   }
 
-  $$('[data-purchases], [data-wallet]').forEach((b) => b.addEventListener('click', () => {
-    note('Nothing here yet',
-      'Buying in the app is not switched on. Once it is, your orders and points '
-      + 'will appear here on their own.');
+  $$('[data-purchases]').forEach((b) => b.addEventListener('click', () => {
+    openPurchases(b.dataset.purchases);
   }));
+
+  $$('[data-wallet]').forEach((b) => b.addEventListener('click', () => {
+    const what = b.dataset.wallet;
+    if (what === 'points') {
+      note('Points', `You have ${me.points}. One point for every ₱20 spent, added `
+        + 'when you collect. 500 points makes Silver, 2,000 makes Gold.');
+    } else if (what === 'vouchers') {
+      note('Vouchers', 'None yet. When we run one, it will appear here.');
+    } else {
+      note('How to pay', 'Cash, GCash, Maya or card — all at the counter when you '
+        + 'collect. Nothing is charged in the app.');
+    }
+  }));
+}
+
+async function openPurchases(which) {
+  let rows = [];
+  try {
+    rows = await GET('/api/shop/purchases');
+  } catch (e) {
+    return note('Could not load your purchases', e.message);
+  }
+
+  const want = { toCollect: 'reserved', collected: 'collected', cancelled: 'cancelled' }[which];
+  const list = want ? rows.filter((r) => r.status === want) : rows;
+  const label = { reserved: 'Waiting for you', collected: 'Collected', cancelled: 'Cancelled' };
+
+  const sheet = document.createElement('div');
+  sheet.className = 'sh-sheet';
+  sheet.innerHTML = `
+    <div class="sh-sheet-inner">
+      <h2>${which === 'toCollect' ? 'To collect'
+           : which === 'collected' ? 'Collected' : 'Cancelled'}</h2>
+      ${list.length ? list.map((r) => `
+        <div class="pu-card">
+          <div class="pu-head"><b>${esc(r.code)}</b>
+            <span class="pu-state ${esc(r.status)}">${esc(label[r.status])}</span></div>
+          <div class="pu-items">${(r.lines || []).map((l) =>
+            `${esc(l.name)} ×${l.qty}`).join('<br>')}</div>
+          <div class="pu-foot">
+            <b>${peso(r.total)}</b>
+            ${r.status === 'reserved'
+              ? `<span>hold until ${new Date(r.hold_until).toLocaleString('en-PH',
+                  { dateStyle: 'medium', timeStyle: 'short' })}</span>`
+              : r.status === 'collected'
+                ? `<span>+${r.points_given} points</span>` : '<span></span>'}
+          </div>
+          ${r.status === 'reserved'
+            ? `<button class="pu-drop" data-drop="${r.id}">Cancel this reservation</button>` : ''}
+        </div>`).join('')
+      : '<div class="sh-note">Nothing here.</div>'}
+      <button class="sh-close">Close</button>
+    </div>`;
+
+  sheet.addEventListener('click', async (e) => {
+    const t = e.target;
+    if (t === sheet || t.classList.contains('sh-close')) return sheet.remove();
+    if (t.dataset.drop) {
+      t.disabled = true;
+      try {
+        await POST(`/api/shop/purchases/${t.dataset.drop}/cancel`, {});
+        sheet.remove();
+        await loadMe();
+        await load();
+        note('Cancelled', 'That reservation is dropped and the stock is back on the shelf.');
+      } catch (err) {
+        t.disabled = false;
+        note('Could not cancel that', err.message);
+      }
+    }
+  });
+  document.body.appendChild(sheet);
 }
 
 // A plain sheet for saying one thing, so a tap never lands on silence.
@@ -374,12 +454,90 @@ function openProduct(p) {
       ${p.in_stock
         ? '<div class="sh-note">In stock at the counter today.</div>'
         : '<div class="sh-note">Sold out for now — message us and we will tell you when it lands.</div>'}
-      <div class="sh-note">Ordering in the app is not switched on yet. Reserve this in store
-        or send us a message, and we will hold it for you.</div>
+      ${p.in_stock
+        ? `<button class="me-go" data-add="${esc(p.sku)}">Add to basket</button>`
+        : ''}
       <button class="sh-close">Close</button>
     </div>`;
   sheet.addEventListener('click', (e) => {
     if (e.target === sheet || e.target.classList.contains('sh-close')) sheet.remove();
+    if (e.target.dataset && e.target.dataset.add) {
+      basket[e.target.dataset.add] = (basket[e.target.dataset.add] || 0) + 1;
+      saveBasket();
+      sheet.remove();
+      draw();
+    }
+  });
+  document.body.appendChild(sheet);
+}
+
+// ---------------------------------------------------------------------------
+// The basket
+// ---------------------------------------------------------------------------
+function openBasket() {
+  const lines = Object.entries(basket)
+    .map(([sku, qty]) => ({ ...goods.find((g) => g.sku === sku), sku, qty }))
+    .filter((l) => l.name);
+  const total = lines.reduce((sum, l) => sum + Number(l.price) * l.qty, 0);
+
+  const sheet = document.createElement('div');
+  sheet.className = 'sh-sheet';
+  sheet.innerHTML = `
+    <div class="sh-sheet-inner">
+      <h2>Your basket</h2>
+      ${lines.length ? lines.map((l) => `
+        <div class="bk-line">
+          <div class="bk-name">${esc(l.name)}<span>${peso(l.price)}</span></div>
+          <div class="bk-qty">
+            <button data-less="${esc(l.sku)}">−</button>
+            <b>${l.qty}</b>
+            <button data-more="${esc(l.sku)}">+</button>
+          </div>
+        </div>`).join('')
+      : '<div class="sh-note">Nothing in it yet. Tap a product to add one.</div>'}
+
+      ${lines.length ? `
+        <div class="bk-total"><span>Total</span><b>${peso(total)}</b></div>
+        ${me ? `
+          <button class="me-go" id="reserve">Reserve for collection</button>
+          <div class="sh-note">We hold these until the end of tomorrow. Pay at the
+            counter when you collect — cash, GCash or card.</div>`
+        : `<div class="sh-note">Sign in on the Me tab to reserve these.</div>`}`
+      : ''}
+      <button class="sh-close">Close</button>
+    </div>`;
+
+  sheet.addEventListener('click', async (e) => {
+    const t = e.target;
+    if (t === sheet || t.classList.contains('sh-close')) return sheet.remove();
+
+    if (t.dataset.more) { basket[t.dataset.more] += 1; saveBasket(); sheet.remove(); draw(); openBasket(); }
+    if (t.dataset.less) {
+      basket[t.dataset.less] -= 1;
+      if (basket[t.dataset.less] <= 0) delete basket[t.dataset.less];
+      saveBasket(); sheet.remove(); draw(); openBasket();
+    }
+
+    if (t.id === 'reserve') {
+      t.disabled = true;
+      try {
+        const out = await POST('/api/shop/reserve', {
+          lines: Object.entries(basket).map(([sku, qty]) => ({ sku, qty })),
+        });
+        basket = {};
+        saveBasket();
+        sheet.remove();
+        await loadMe();
+        await load();
+        note(`Reserved · ${out.code}`,
+          `We are holding ${peso(out.total)} of stock for you until `
+          + `${new Date(out.hold_until).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}. `
+          + `Show this code at the counter.`);
+      } catch (err) {
+        t.disabled = false;
+        note('Could not reserve that', err.message);
+      }
+    }
   });
   document.body.appendChild(sheet);
 }
