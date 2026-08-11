@@ -1792,8 +1792,8 @@ SCREENS.people = async (page) => {
         <div><label>Can do</label><select id="u_role">
           <option value="admin">Everything (admin)</option>
           <option value="warehouse">Warehouse</option>
-          <option value="cashier">Till</option>
-          <option value="reseller">Reseller portal</option></select></div>
+          <option value="cashier">Cashier (the till)</option>
+          <option value="reseller">Reseller (their own portal)</option></select></div>
         <div id="u_link" style="display:none"><label>Which reseller</label><select id="u_res">
           ${resellers.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}
         </select></div>
