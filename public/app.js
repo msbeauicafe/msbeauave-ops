@@ -116,10 +116,9 @@ function drawSignIn() {
   clearInterval(refreshTimer);
   $('#app').innerHTML = `
     <div class="signin-page"><form class="signin" id="signin">
-      <div class="mark">MB</div>
-      <h1>MS BEAU AVE</h1>
-      <div class="tag-line dim tag" style="all:unset"></div>
-      <p class="dim" style="margin:.1rem 0 1.3rem">Stock, till and reseller orders</p>
+      <span class="logo-mark"><img src="/logo.jpg" alt="MS BEAU AVE"></span>
+      <h1 class="wordmark">MS BEAU AVE</h1>
+      <p class="tag-line" style="margin:.2rem 0 1.4rem">Stock, till and reseller orders</p>
       <label for="who">Username</label>
       <input id="who" type="text" autocomplete="username" autocapitalize="none" autofocus>
       <label for="secret">Password</label>
@@ -183,18 +182,34 @@ function drawFrame() {
   const tabs = TABS[user.role] ?? [];
   tab = tabs.some(([id]) => id === tab) ? tab : tabs[0][0];
   $('#app').innerHTML = `
-    <div class="frame">
-      <nav class="side">
-        <div class="brand"><span class="mark">MB</span><span>MS BEAU AVE</span></div>
+    <div class="shell">
+      <header class="app">
+        <button id="navToggle" aria-label="Show the menu" aria-expanded="false">☰</button>
+        <span class="logo-mark"><img src="/logo.jpg" alt=""></span>
+        <h1 class="wordmark">MS BEAU AVE</h1>
+        <span class="badge">${esc(roleName(user.role))}</span>
+        <div class="spacer"></div>
+        <div class="who"><b>${esc(user.name)}</b></div>
+        <button class="btn line" id="signout">Sign out</button>
+      </header>
+      <nav class="tabs" id="tabs">
         ${tabs.map(([id, icon, label]) => `
-          <button class="tab ${id === tab ? 'on' : ''}" data-tab="${esc(id)}">
-            ${icon} ${esc(label)}</button>`).join('')}
-        <div class="fill"></div>
-        <div class="who">${esc(user.name)}<br>${tag(roleName(user.role), 'pink')}</div>
-        <button class="tab" id="signout">🚪 Sign out</button>
+          <button class="${id === tab ? 'on' : ''}" data-tab="${esc(id)}">
+            <span aria-hidden="true">${icon}</span> ${esc(label)}</button>`).join('')}
       </nav>
       <main class="page" id="page"></main>
-    </div>`;
+    </div>
+    <div id="navBackdrop"></div>`;
+
+  // Below 1000px the tabs are a drawer over the page rather than a column of
+  // it, so anything that changes what the page shows has to close them again.
+  const drawer = (open) => {
+    $('#tabs').classList.toggle('open', open);
+    $('#navBackdrop').classList.toggle('show', open);
+    $('#navToggle').setAttribute('aria-expanded', String(open));
+  };
+  $('#navToggle').addEventListener('click', () => drawer(!$('#tabs').classList.contains('open')));
+  $('#navBackdrop').addEventListener('click', () => drawer(false));
 
   $$('[data-tab]').forEach((b) => b.addEventListener('click', () => {
     tab = b.dataset.tab;
