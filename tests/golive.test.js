@@ -236,3 +236,108 @@ test('erasing clears the trading, keeps the people and the catalogue, and restar
     assert.equal(first.status, 200, JSON.stringify(first.data));
     assert.match(first.data.receipt_no, /-00001$/, first.data.receipt_no);
   });
+
+// ===========================================================================
+// A whole delivery note at once
+// ===========================================================================
+
+const priced = (admin, items) => load(admin, items);
+
+test('a delivery note goes in as one thing, split across the pools line by line',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    await priced(admin, [
+      { sku: 'DEL-01', name: 'First Delivered', category: 'Soaps',
+        unit_cost: 40, wholesale_price: 60, srp: 90, retail_price: 100 },
+      { sku: 'DEL-02', name: 'Second Delivered', category: 'Soaps',
+        unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100 },
+    ]);
+
+    const r = await POST(store, '/api/deliveries', {
+      lines: [
+        { sku: 'DEL-01', batch_no: 'A1', expiry: monthsOut(24), qty: 100, unit_cost: 50 },
+        { sku: 'DEL-02', batch_no: 'B1', expiry: monthsOut(24), qty: 10 },
+      ],
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.lines, 2);
+    assert.equal(r.data.units, 110);
+    // 100 at the cost given, plus 10 at the cost the product already had.
+    assert.equal(Number(r.data.value), 100 * 50 + 10 * 10);
+
+    const rows = (await GET(admin, '/api/products')).data;
+    const first = rows.find((p) => p.sku === 'DEL-01');
+    assert.equal(Number(first.free_b2b), 70, 'the house split still applies per line');
+    assert.equal(Number(first.free_shop), 20);
+    assert.equal(Number(first.free_reserve), 10);
+    assert.equal(Number(first.unit_cost), 50, 'a cost on the note becomes the cost');
+  });
+
+test('one bad line and none of the delivery lands', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  await priced(admin, [
+    { sku: 'DEL-01', name: 'First Delivered', category: 'Soaps',
+      unit_cost: 50, wholesale_price: 60, srp: 90, retail_price: 100 },
+    { sku: 'DEL-03', name: 'Third Delivered', category: 'Soaps',
+      unit_cost: 20, wholesale_price: 60, srp: 90, retail_price: 100 },
+  ]);
+  const before = (await GET(admin, '/api/products')).data
+    .find((p) => p.sku === 'DEL-03');
+
+  const r = await POST(store, '/api/deliveries', {
+    lines: [
+      { sku: 'DEL-03', batch_no: 'GOOD', expiry: monthsOut(24), qty: 50 },
+      { sku: 'DEL-01', batch_no: 'PAST', expiry: monthsOut(-2), qty: 10 },
+    ],
+  });
+
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /already passed/);
+  const after = (await GET(admin, '/api/products')).data.find((p) => p.sku === 'DEL-03');
+  assert.equal(Number(after.free_shop), Number(before.free_shop),
+    'the good line before the bad one must not have been booked in');
+});
+
+test('a delivery naming a product that is not on sale is refused by name', async () => {
+  const store = await signIn('warehouse');
+  const r = await POST(store, '/api/deliveries', {
+    lines: [{ sku: 'NOT-A-THING', batch_no: 'X1', expiry: monthsOut(24), qty: 5 }],
+  });
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /NOT-A-THING/);
+});
+
+test('the same batch cannot be received twice, on one note or across two', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  await priced(admin, [{ sku: 'DEL-04', name: 'Fourth Delivered', category: 'Soaps',
+    unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100 }]);
+
+  const twice = await POST(store, '/api/deliveries', {
+    lines: [
+      { sku: 'DEL-04', batch_no: 'SAME', expiry: monthsOut(24), qty: 5 },
+      { sku: 'DEL-04', batch_no: 'SAME', expiry: monthsOut(24), qty: 5 },
+    ],
+  });
+  assert.equal(twice.status, 400);
+  assert.match(twice.data.error, /twice/);
+
+  await POST(store, '/api/deliveries', {
+    lines: [{ sku: 'DEL-04', batch_no: 'ONCE', expiry: monthsOut(24), qty: 5 }],
+  });
+  const again = await POST(store, '/api/deliveries', {
+    lines: [{ sku: 'DEL-04', batch_no: 'ONCE', expiry: monthsOut(24), qty: 5 }],
+  });
+  assert.equal(again.status, 400);
+  assert.match(again.data.error, /already been received/);
+});
+
+test('the counter cannot book stock in', async () => {
+  const till = await signIn('cashier');
+  const r = await POST(till, '/api/deliveries', {
+    lines: [{ sku: 'DEL-04', batch_no: 'Z9', expiry: monthsOut(24), qty: 1 }],
+  });
+  assert.equal(r.status, 403);
+});

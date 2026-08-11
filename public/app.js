@@ -801,6 +801,7 @@ SCREENS.receive = async (page) => {
             <option value="card">Card</option>
           </select></div>
         <div style="flex:0 0 auto"><button class="btn" id="r_go">Receive</button></div>
+        <div style="flex:0 0 auto"><button class="btn line" id="r_note">📦 Whole delivery</button></div>
       </div>
       <div class="dim">What this delivery cost is recorded against the money going
         out, and becomes the product's cost from now on. Leave it blank to keep
@@ -848,9 +849,197 @@ SCREENS.receive = async (page) => {
     } catch (e) { whoops(e); }
   });
 
+  $('#r_note', page).addEventListener('click',
+    () => deliveryDialog(GET('/api/products?q=').catch(() => []), recent));
+
   await recent();
   repeat(recent, 15000);
 };
+
+// ===========================================================================
+// A whole delivery note
+//
+// Suppliers send a box with a list, not twenty separate errands. The list goes
+// in as a list. Everything is checked before anything is booked in, and the
+// server takes the lot in one transaction — so a delivery either landed or it
+// did not, and there is no third state where the totals look about right.
+// ===========================================================================
+
+// Expiry dates on cosmetics are printed every which way. A bare month means
+// the end of that month, which is what "EXP 08/2027" means on a box.
+function parseExpiry(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun',
+    'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const endOf = (y, m) => new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const pad = (y) => (y < 100 ? 2000 + y : y);
+  let m;
+
+  if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s))) {
+    return `${m[1]}-${String(+m[2]).padStart(2, '0')}-${String(+m[3]).padStart(2, '0')}`;
+  }
+  if ((m = /^(\d{4})[-/](\d{1,2})$/.exec(s))) return endOf(+m[1], +m[2]);
+  if ((m = /^(\d{1,2})[-/](\d{4})$/.exec(s))) return endOf(+m[2], +m[1]);
+  if ((m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/.exec(s))) {
+    return `${pad(+m[3])}-${String(+m[2]).padStart(2, '0')}-${String(+m[1]).padStart(2, '0')}`;
+  }
+  if ((m = /^([a-z]{3,})\s+(\d{2,4})$/i.exec(s))) {
+    const i = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase());
+    if (i >= 0) return endOf(pad(+m[2]), i + 1);
+  }
+  if ((m = /^(\d{1,2})\s+([a-z]{3,})\s+(\d{2,4})$/i.exec(s))) {
+    const i = MONTHS.indexOf(m[2].slice(0, 3).toLowerCase());
+    if (i >= 0) {
+      return `${pad(+m[3])}-${String(i + 1).padStart(2, '0')}-${String(+m[1]).padStart(2, '0')}`;
+    }
+  }
+  return undefined;               // understood as "given, but not a date"
+}
+
+function parseDelivery(text, known) {
+  const lines = [];
+  const problems = [];
+  const seen = new Set();
+  const today = new Date().toISOString().slice(0, 10);
+
+  text.split('\n').forEach((raw, index) => {
+    const s = raw.trim();
+    if (!s || s.startsWith('#')) return;
+    const at = `Line ${index + 1}`;
+
+    const sep = s.includes('\t') ? '\t' : s.includes('|') ? '|' : ',';
+    const f = s.split(sep).map((x) => x.trim());
+    const line = {
+      sku: (f[0] || '').toUpperCase(),
+      batch_no: f[1] || '',
+      expiry: parseExpiry(f[2]),
+      qty: f[3] === '' || f[3] == null ? null : Number(f[3]),
+      unit_cost: !f[4] ? null : Number(String(f[4]).replace(/[₱,\s]/g, '')),
+      raw: { expiry: f[2] || '', qty: f[3] || '', cost: f[4] || '' },
+    };
+    line.product = known.find((p) => p.sku === line.sku);
+
+    if (!line.sku) problems.push(`${at}: no product code.`);
+    else if (!line.product) problems.push(`${at}: no product with the code ${line.sku}.`);
+    else if (!line.product.active) problems.push(`${at}: ${line.product.name} is not on sale.`);
+
+    if (!line.batch_no) problems.push(`${at}: no batch number.`);
+    else {
+      const key = `${line.sku}|${line.batch_no.toUpperCase()}`;
+      if (seen.has(key)) problems.push(`${at}: batch ${line.batch_no} is on this note twice.`);
+      seen.add(key);
+    }
+
+    if (line.expiry === null) problems.push(`${at}: no expiry date.`);
+    else if (line.expiry === undefined) problems.push(`${at}: “${line.raw.expiry}” is not a date.`);
+    else if (line.expiry <= today) {
+      problems.push(`${at}: expires ${line.expiry}, which has already passed.`);
+    }
+
+    if (!Number.isFinite(line.qty) || line.qty <= 0 || line.qty % 1) {
+      problems.push(`${at}: “${line.raw.qty}” is not a whole number of units.`);
+    }
+    if (line.unit_cost != null && (!Number.isFinite(line.unit_cost) || line.unit_cost < 0)) {
+      problems.push(`${at}: “${line.raw.cost}” is not a cost.`);
+    }
+
+    lines.push(line);
+  });
+
+  if (!lines.length) problems.push('There are no lines on that delivery note.');
+  return { lines, problems };
+}
+
+async function deliveryDialog(knownPromise, reload) {
+  const known = await knownPromise;
+  dialog(`
+    <h3>Receive a whole delivery</h3>
+    <div class="dim">One line per product, straight off the delivery note:
+      <br><code>code | batch | expiry | how many | cost each</code>
+      <br>Dates can be written <b>2027-08-31</b>, <b>08/2027</b>, <b>31/08/2027</b> or
+      <b>Aug 2027</b> — a month on its own means the end of that month, the way
+      it is printed on a box. Leave the cost blank to keep the cost you already
+      have. Lines starting with <b>#</b> are ignored.</div>
+    <div class="row mt">
+      <div style="flex:0 0 auto"><label>Paid by</label>
+        <select id="d_method">
+          <option value="bank">Bank transfer</option>
+          <option value="cash">Cash</option>
+          <option value="gcash">GCash</option>
+          <option value="card">Card</option>
+        </select></div>
+      <div style="flex:0 0 auto; align-self:flex-end">
+        <button class="btn quiet sm" id="d_template">Start from your product list</button>
+      </div>
+    </div>
+    <label class="mt" for="d_text">The delivery note</label>
+    <textarea id="d_text" class="sheet" rows="12" spellcheck="false"
+      placeholder="BSE-SOP-01 | A2451 | 08/2027 | 24 | 83"></textarea>
+    <div id="d_preview" class="mt"></div>
+    <div class="mt right">
+      <button class="btn quiet" id="d_cancel">Cancel</button>
+      <button class="btn" id="d_save" disabled>Book it in</button>
+    </div>`, 'wide');
+
+  const review = () => {
+    const { lines, problems } = parseDelivery($('#d_text').value, known);
+    const units = lines.reduce((t, l) => t + (l.qty > 0 ? l.qty : 0), 0);
+    const value = lines.reduce((t, l) => t + (l.qty > 0
+      ? l.qty * (l.unit_cost != null ? l.unit_cost : Number(l.product?.unit_cost || 0)) : 0), 0);
+
+    $('#d_preview').innerHTML = problems.length
+      ? `<div class="none bad"><b>${problems.length} thing${
+          problems.length === 1 ? '' : 's'} to fix first</b><br>${
+          problems.slice(0, 12).map(esc).join('<br>')}${problems.length > 12 ? '<br>…' : ''}</div>`
+      : `<div class="dim"><b>${lines.length}</b> line${lines.length === 1 ? '' : 's'},
+           <b>${count(units)}</b> units, costing <b>${peso(value)}</b> — which is recorded
+           as money going out on the day you book it in.</div>
+         ${table(lines, [
+           { head: 'Code', cell: (l) => `<span class="dim">${esc(l.sku)}</span>` },
+           { head: 'Product', cell: (l) => `<b>${esc(l.product?.name || '')}</b>` },
+           { head: 'Batch', cell: (l) => esc(l.batch_no) },
+           { head: 'Expires', cell: (l) => onDay(l.expiry) },
+           { head: 'How many', n: true, cell: (l) => count(l.qty) },
+           { head: 'Cost each', n: true, cell: (l) => (l.unit_cost == null
+               ? `<span class="dim">${peso(l.product?.unit_cost || 0)}</span>`
+               : peso(l.unit_cost)) },
+           { head: 'Line total', n: true, cell: (l) => peso(l.qty
+               * (l.unit_cost != null ? l.unit_cost : Number(l.product?.unit_cost || 0))) },
+         ], '')}`;
+
+    $('#d_save').disabled = problems.length > 0;
+  };
+
+  $('#d_text').addEventListener('input', review);
+  $('#d_cancel').addEventListener('click', closeDialog);
+  $('#d_template').addEventListener('click', () => {
+    $('#d_text').value = ['# code | batch | expiry | how many | cost each',
+      '# Delete the lines that did not arrive, then fill in batch, expiry and quantity.',
+      ...known.filter((p) => p.active).map((p) => `${p.sku} | | | | `)].join('\n');
+    review();
+  });
+
+  $('#d_save').addEventListener('click', async () => {
+    const { lines, problems } = parseDelivery($('#d_text').value, known);
+    if (problems.length) return review();
+    $('#d_save').disabled = true;
+    try {
+      const r = await POST('/api/deliveries', {
+        lines: lines.map((l) => ({
+          sku: l.sku, batch_no: l.batch_no, expiry: l.expiry, qty: l.qty,
+          unit_cost: l.unit_cost == null ? '' : l.unit_cost,
+          method: $('#d_method').value,
+        })),
+      });
+      closeDialog();
+      notice(`${r.lines} lines, ${count(r.units)} units booked in — ${peso(r.value)} 🌸`, 'good');
+      reload();
+    } catch (e) { whoops(e); $('#d_save').disabled = false; }
+  });
+
+  review();
+}
 
 // ===========================================================================
 // Wholesale orders / picking
