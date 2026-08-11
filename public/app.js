@@ -89,12 +89,12 @@ function notice(text, kind = '') {
 }
 const whoops = (e) => notice(e.message, 'bad');
 
-function dialog(html) {
+function dialog(html, extra = '') {
   closeDialog();
   const veil = document.createElement('div');
   veil.className = 'veil';
   veil.id = 'dialog';
-  veil.innerHTML = `<div class="dialog">${html}</div>`;
+  veil.innerHTML = `<div class="dialog ${extra}">${html}</div>`;
   veil.addEventListener('click', (e) => { if (e.target === veil) closeDialog(); });
   document.body.append(veil);
   return veil;
@@ -387,14 +387,257 @@ SCREENS.products = async (page) => {
     <div class="tools">
       <input type="search" id="find" placeholder="Search by code, name or brand…">
       <button class="btn" id="add">＋ New product</button>
+      <button class="btn line" id="sheet">📋 Load a price list</button>
     </div>
-    <div class="panel" id="list"></div>`;
+    <div class="panel" id="list"></div>
+    ${user.role === 'admin' ? `
+      <div class="danger">
+        <h3>Going live</h3>
+        <div class="dim">The shop was set up with invented deliveries, sales and
+          reseller orders so there was something to test against. Erasing them
+          leaves the sign-ins, the staff, the customers and your price list
+          alone. It cannot be undone.</div>
+        <div class="mt"><button class="btn warn sm" id="erase">Erase the practice data</button></div>
+      </div>` : ''}`;
 
   $('#find', page).addEventListener('input', (e) => { term = e.target.value; load().catch(whoops); });
   $('#add', page).addEventListener('click', () => editProduct(null, load));
+  $('#sheet', page).addEventListener('click',
+    () => priceListDialog(GET('/api/products').catch(() => []), load));
+  $('#erase', page)?.addEventListener('click', () => erasePracticeData(load));
   await load();
   repeat(load, 15000);
 };
+
+// Typing the word is the point. A button that erases the books on one tap is a
+// button that will eventually be tapped by a sleeve.
+function erasePracticeData(reload) {
+  dialog(`
+    <h3>Erase the practice data</h3>
+    <div class="dim">This removes every delivery, every batch and unit of stock,
+      every counter sale, every reseller order and its invoices and payments,
+      every expense and promotion. Receipt numbering starts again at one.
+      <br><br>It keeps the sign-ins, the staff, the customers who registered,
+      the noticeboard and everything on your price list. Practice products that
+      are already hidden go with it, since nothing will be left against them.
+      <br><br><b>There is no way back from this.</b> Do it once, before the
+      first real sale.</div>
+    <label class="inline mt"><input type="checkbox" id="e_sellers" checked>
+      Remove the sample resellers and their sign-ins too</label>
+    <label class="mt" for="e_word">Type <b>ERASE</b> to confirm</label>
+    <input id="e_word" type="text" placeholder="ERASE" autocomplete="off">
+    <div class="mt right">
+      <button class="btn quiet" id="e_cancel">Keep everything</button>
+      <button class="btn warn" id="e_go" disabled>Erase</button>
+    </div>`);
+
+  const word = $('#e_word');
+  word.addEventListener('input',
+    () => { $('#e_go').disabled = word.value.trim().toUpperCase() !== 'ERASE'; });
+  $('#e_cancel').addEventListener('click', closeDialog);
+
+  $('#e_go').addEventListener('click', async () => {
+    $('#e_go').disabled = true;
+    try {
+      const r = await POST('/api/catalogue/erase', {
+        confirm: word.value.trim(), resellers: $('#e_sellers').checked,
+      });
+      closeDialog();
+      notice(`Erased ${r.sales_erased} sales, ${r.orders_erased} orders and ${
+        r.units_erased} units of stock. The books start here.`, 'good');
+      reload();
+    } catch (e) { whoops(e); $('#e_go').disabled = false; }
+  });
+}
+
+// ===========================================================================
+// The price list
+//
+// The brand issues one sheet with everything on it, so the shop takes one
+// sheet with everything on it. Typing thirty products through thirty dialogs
+// is not a smaller version of this job — it is the version where row nineteen
+// gets missed and nobody finds out until somebody tries to sell it.
+// ===========================================================================
+
+// A starting point, not a claim about what is in stock. These are the lines
+// Brilliant Skin Essentials is known for; the sizes and the exact range change,
+// so the shop's own sheet is the authority. Prices are deliberately blank —
+// a made-up price is far worse than a missing one.
+const BRILLIANT_SKIN = `# code | product | category | costs us | to resellers | they sell at | we sell at
+# Delete what you do not carry, add what is missing, then fill in the money.
+# Leave a price blank and the product is saved but stays off the shelf.
+BSE-SET-01 | Rejuvenating Set | Sets | | | |
+BSE-SET-02 | Anti-Acne Set | Sets | | | |
+BSE-SOP-01 | Kojic Papaya Soap 135g | Soaps | | | |
+BSE-SOP-02 | Kojic Papaya Soap 65g | Soaps | | | |
+BSE-SOP-03 | Anti-Acne Soap | Soaps | | | |
+BSE-SOP-04 | Glutathione Soap | Soaps | | | |
+BSE-TON-01 | Rejuvenating Toner 60ml | Toners | | | |
+BSE-TON-02 | Anti-Acne Toner 60ml | Toners | | | |
+BSE-CRM-01 | Rejuvenating Night Cream | Creams | | | |
+BSE-CRM-02 | Rejuvenating Day Cream | Creams | | | |
+BSE-CRM-03 | Underarm Whitening Cream | Creams | | | |
+BSE-SUN-01 | Sunblock SPF 60 | Sunscreen | | | |
+BSE-SER-01 | Facial Serum | Serums | | | |
+BSE-FAC-01 | Facial Wash | Face | | | |
+BSE-FAC-02 | Micellar Water | Face | | | |
+BSE-BOD-01 | Whitening Body Lotion | Body | | | |
+BSE-BOD-02 | Bleaching Body Set | Body | | | |
+BSE-LIP-01 | Lip and Cheek Tint | Lip | | | |
+BSE-WEL-01 | Slimming Coffee | Wellness | | | |
+BSE-WEL-02 | Glutathione Capsules | Wellness | | | |`;
+
+// Tab first, because the likeliest way this box gets filled is a paste out of
+// a spreadsheet. Pipes next, because that is what the starter list uses and a
+// product name is allowed to contain a comma.
+function parsePriceList(text) {
+  const items = [];
+  const problems = [];
+  const seen = new Set();
+
+  text.split('\n').forEach((raw, index) => {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) return;
+    const at = `Line ${index + 1}`;
+
+    const sep = line.includes('\t') ? '\t' : line.includes('|') ? '|' : ',';
+    const f = line.split(sep).map((s) => s.trim());
+
+    const money = (s) => {
+      if (!s || s === '-') return null;
+      const n = Number(s.replace(/[₱,\s]/g, ''));
+      return Number.isFinite(n) && n >= 0 ? n : NaN;
+    };
+
+    const item = {
+      sku: (f[0] || '').toUpperCase(),
+      name: f[1] || '',
+      category: f[2] || '',
+      unit_cost: money(f[3]),
+      wholesale_price: money(f[4]),
+      srp: money(f[5]),
+      retail_price: money(f[6]),
+    };
+
+    if (!item.sku) problems.push(`${at}: no product code.`);
+    if (!item.name) problems.push(`${at}: no product name.`);
+    if (seen.has(item.sku)) problems.push(`${at}: the code ${item.sku} is already used above.`);
+    seen.add(item.sku);
+
+    for (const [field, label] of [['unit_cost', 'cost'], ['wholesale_price', 'reseller price'],
+      ['srp', 'their price'], ['retail_price', 'our price']]) {
+      if (Number.isNaN(item[field])) problems.push(`${at}: “${f[{ unit_cost: 3, wholesale_price: 4, srp: 5, retail_price: 6 }[field]]}” is not a ${label}.`);
+    }
+    if (item.srp > 0 && item.retail_price > 0 && item.retail_price < item.srp) {
+      problems.push(`${at}: our ${peso(item.retail_price)} is below the ${
+        peso(item.srp)} resellers sell at.`);
+    }
+
+    items.push(item);
+  });
+
+  if (!items.length) problems.push('There are no products in that list.');
+  return { items, problems };
+}
+
+async function priceListDialog(currentPromise, reload) {
+  const current = await currentPromise;
+  dialog(`
+    <h3>Load a price list</h3>
+    <div class="dim">One product a line, separated by <b>|</b> or tabs or commas:
+      <br><code>code | product | category | costs us | to resellers | they sell at | we sell at</code>
+      <br>Paste straight out of a spreadsheet if you have one. Lines starting
+      with <b>#</b> are ignored. A product with no shop price is saved but stays
+      off the shelf until you give it one.</div>
+    <div class="row mt">
+      <div><label>Brand on every line</label>
+        <input id="c_brand" type="text" value="Brilliant Skin Essentials"></div>
+      <div style="flex:0 0 auto; align-self:flex-end">
+        <button class="btn quiet sm" id="c_starter">Start from the Brilliant Skin list</button>
+        <button class="btn quiet sm" id="c_current">Start from what is here now</button>
+      </div>
+    </div>
+    <label class="mt" for="c_text">The list</label>
+    <textarea id="c_text" class="sheet" rows="12" spellcheck="false"></textarea>
+    <div id="c_preview" class="mt"></div>
+    <div class="mt right">
+      <button class="btn quiet" id="c_cancel">Cancel</button>
+      <button class="btn" id="c_save" disabled>Load this list</button>
+    </div>`, 'wide');
+
+  const asLine = (p) => [p.sku, p.name, p.category || '', p.unit_cost, p.wholesale_price,
+    p.srp, p.retail_price].join(' | ');
+
+  const review = () => {
+    const { items, problems } = parsePriceList($('#c_text').value);
+    const listed = new Set(items.map((i) => i.sku));
+    const going = current.filter((p) => !listed.has(p.sku));
+    const unpriced = items.filter((i) => !i.retail_price).length;
+
+    $('#c_preview').innerHTML = problems.length
+      ? `<div class="none bad"><b>${problems.length} thing${
+          problems.length === 1 ? '' : 's'} to fix first</b><br>${
+          problems.slice(0, 12).map(esc).join('<br>')}${
+          problems.length > 12 ? '<br>…' : ''}</div>`
+      : `<div class="dim"><b>${items.length}</b> product${items.length === 1 ? '' : 's'} on this
+           list${unpriced ? `, <b>${unpriced}</b> with no shop price yet — those stay off
+           the shelf` : ''}.${going.length
+             ? ` <b>${going.length}</b> currently listed ${going.length === 1
+                 ? 'product is' : 'products are'} not on it and will be hidden, or removed
+                 outright if ${going.length === 1 ? 'it has' : 'they have'} never traded:
+                 ${esc(going.map((p) => p.name).slice(0, 6).join(', '))}${
+                 going.length > 6 ? '…' : ''}.` : ''}</div>
+         ${table(items.slice(0, 60), [
+           { head: 'Code', cell: (i) => `<span class="dim">${esc(i.sku)}</span>` },
+           { head: 'Product', cell: (i) => `<b>${esc(i.name)}</b>` },
+           { head: 'Category', cell: (i) => esc(i.category) },
+           { head: 'Costs us', n: true, cell: (i) => (i.unit_cost == null ? '—' : peso(i.unit_cost)) },
+           { head: 'To resellers', n: true, cell: (i) => (i.wholesale_price == null ? '—' : peso(i.wholesale_price)) },
+           { head: 'They sell at', n: true, cell: (i) => (i.srp == null ? '—' : peso(i.srp)) },
+           { head: 'We sell at', n: true, cell: (i) => (i.retail_price == null ? '—' : peso(i.retail_price)) },
+           { head: '', cell: (i) => (i.retail_price ? tag('on sale', 'green') : tag('no price', 'amber')) },
+         ], '')}`;
+
+    $('#c_save').disabled = problems.length > 0;
+  };
+
+  $('#c_text').addEventListener('input', review);
+  $('#c_starter').addEventListener('click', () => { $('#c_text').value = BRILLIANT_SKIN; review(); });
+  $('#c_current').addEventListener('click', () => {
+    $('#c_text').value = current.map(asLine).join('\n');
+    review();
+  });
+  $('#c_cancel').addEventListener('click', closeDialog);
+
+  $('#c_save').addEventListener('click', async () => {
+    const { items, problems } = parsePriceList($('#c_text').value);
+    if (problems.length) return review();
+    const brand = $('#c_brand').value.trim();
+
+    // A blank cell means "leave this alone", so it is left out rather than
+    // sent as a zero — sending zero would wipe a price that is already right.
+    const payload = items.map((i) => {
+      const row = { sku: i.sku, name: i.name };
+      if (i.category) row.category = i.category;
+      if (brand) row.brand = brand;
+      for (const f of ['unit_cost', 'wholesale_price', 'srp', 'retail_price']) {
+        if (i[f] != null) row[f] = i[f];
+      }
+      return row;
+    });
+
+    try {
+      const r = await POST('/api/catalogue', { items: payload });
+      closeDialog();
+      notice(`${r.added} added, ${r.updated} updated, ${r.on_sale} on sale 🌸`, 'good');
+      if (r.unpriced) notice(`${r.unpriced} still need a price before they can be sold.`);
+      reload();
+    } catch (e) { whoops(e); }
+  });
+
+  $('#c_text').value = current.length ? current.map(asLine).join('\n') : BRILLIANT_SKIN;
+  review();
+}
 
 function editProduct(p, reload) {
   const isNew = !p;

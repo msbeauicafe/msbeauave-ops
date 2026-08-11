@@ -168,6 +168,29 @@ td { padding: 6px 8px; border-bottom: 1px solid var(--rose-blush); }
 tbody tr:hover td { background: var(--rose-blush); }
 td.n, th.n { text-align: right; }
 .none { color: var(--muted); padding: 20px; text-align: center; font-size: .88rem; }
+.none.bad {
+  color: var(--danger); background: #f3dddd; border-radius: 8px;
+  text-align: left; line-height: 1.7;
+}
+
+/* A pasted price list: columns only line up if the digits are all one width. */
+textarea.sheet {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: .78rem; line-height: 1.55; white-space: pre; overflow-wrap: normal;
+  overflow-x: auto;
+}
+
+/* A price list is seven columns wide before it is anything else. */
+.dialog.wide { max-width: 1000px; }
+.dialog.wide td:first-child, .dialog.wide th:first-child { white-space: nowrap; }
+
+/* Things that cannot be undone, kept apart from the things that can. */
+.danger {
+  border: 1px solid #e2bcbc; background: #fdf4f4; border-radius: 12px;
+  padding: 16px 18px; margin-top: 18px;
+}
+.danger h3 { color: var(--danger); font-size: .95rem; margin-bottom: 4px; }
+.danger .btn.warn { background: var(--danger); }
 
 /* ---------- controls ---------- */
 input[type=text], input[type=number], input[type=password], input[type=date],

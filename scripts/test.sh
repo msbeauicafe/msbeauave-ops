@@ -29,12 +29,20 @@ $AS_PG "$PGBIN/initdb" -D "$WORK/pgdata" -U postgres --auth=trust --no-sync >/de
 $AS_PG "$PGBIN/pg_ctl" -D "$WORK/pgdata" -w \
   -o "-k $WORK -p $PGPORT -c listen_addresses='' -c fsync=off -c synchronous_commit=off" \
   -l "$WORK/pg.log" start >/dev/null
-"$PGBIN/psql" -q -h "$WORK" -p "$PGPORT" -d postgres -c "CREATE DATABASE msbeauave_test" >/dev/null
-
-for f in "$ROOT"/db/0*.sql; do
-  "$PGBIN/psql" -q -v ON_ERROR_STOP=1 -h "$WORK" -p "$PGPORT" -d msbeauave_test -f "$f" >/dev/null
+# Two databases. The going-live tests replace the whole catalogue and erase
+# every sale, which is not something that can share a database with tests that
+# are counting sales.
+for name in msbeauave_test msbeauave_golive; do
+  "$PGBIN/psql" -q -h "$WORK" -p "$PGPORT" -d postgres -c "CREATE DATABASE $name" >/dev/null
+  for f in "$ROOT"/db/0*.sql; do
+    "$PGBIN/psql" -q -v ON_ERROR_STOP=1 -h "$WORK" -p "$PGPORT" -d "$name" -f "$f" >/dev/null
+  done
 done
 
-echo "==> running the tests"
 cd "$ROOT"
-node --test tests/*.test.js
+echo "==> running the tests"
+node --test tests/acceptance.test.js
+
+echo "==> going live"
+TEST_DATABASE_URL="postgresql://postgres@localhost:$PGPORT/msbeauave_golive?host=$WORK" \
+  node --test tests/golive.test.js
