@@ -220,8 +220,10 @@ const TABS = {
   ],
 };
 
+// What a sign-in can do, not who the person is. Several people hold full
+// access; only one of them owns the shop, so this says admin.
 const roleName = (r) => ({
-  admin: 'Owner', warehouse: 'Warehouse', cashier: 'Cashier', reseller: 'Reseller',
+  admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier', reseller: 'Reseller',
 }[r] ?? r);
 
 function drawFrame() {
