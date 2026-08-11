@@ -39,12 +39,36 @@ async function GET(path) {
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// The bar along the bottom
+//
+// Line icons rather than emoji: emoji are drawn by the phone, so the row looks
+// different on every handset and never matches the rest of the app. These are
+// one stroke weight and one colour, and they take the tint of the active tab.
+// ---------------------------------------------------------------------------
+const ICON = {
+  home: '<path d="M3 10.6 12 3l9 7.6V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
+  shop: '<path d="M4 8h16l-1.2 12.1a1 1 0 0 1-1 .9H6.2a1 1 0 0 1-1-.9z"/>'
+      + '<path d="M8.5 8V6a3.5 3.5 0 0 1 7 0v2"/>',
+  alerts: '<path d="M18 9a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6"/>'
+        + '<path d="M13.7 20a2 2 0 0 1-3.4 0"/>',
+  visit: '<path d="M20 10.5c0 5.5-8 12-8 12s-8-6.5-8-12a8 8 0 1 1 16 0z"/>'
+       + '<circle cx="12" cy="10.3" r="2.8"/>',
+  me: '<circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/>',
+  cart: '<path d="M3 4h2.2l2.4 11.4a1.6 1.6 0 0 0 1.6 1.3h8.1a1.6 1.6 0 0 0 1.6-1.2L21 8H6"/>'
+      + '<circle cx="10" cy="20" r="1.4"/><circle cx="17.5" cy="20" r="1.4"/>',
+};
+
+const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[name]}</svg>`;
+
 let term = '';
 let category = '';
 let view = 'home';
 let goods = [];
 let categories = [];
 let promos = [];
+let purchases = [];   // this shopper's reservations, for the badge and Alerts
 let me = null;          // the signed-in shopper, or null
 // The basket lives in the browser until it is reserved: a shopper who is only
 // browsing should not need an account, and a half-filled basket surviving a
@@ -60,6 +84,8 @@ let meNumbers = null;   // their purchase counts and vouchers
 // ---------------------------------------------------------------------------
 function draw() {
   const searchable = view === 'home' || view === 'shop';
+  // Anything the customer has to come in for is what the badge counts.
+  const waiting = () => purchases.filter((p) => p.status === 'reserved').length;
 
   $('#app').innerHTML = `
     <header class="sh-header">
@@ -69,22 +95,25 @@ function draw() {
           <input id="find" type="search" value="${esc(term)}"
             placeholder="Search skincare…" autocomplete="off">
         </label>`
-      : `<h1 class="sh-title">${view === 'visit' ? 'Find us' : 'Me'}</h1>`}
-      <button class="sh-cart" id="cart" aria-label="Basket">🛒${
+      : `<h1 class="sh-title">${
+          { visit: 'Find us', alerts: 'Alerts', me: 'Me' }[view]}</h1>`}
+      <button class="sh-cart" id="cart" aria-label="Basket">${icon('cart')}${
         basketCount() ? `<span class="sh-cart-n">${basketCount()}</span>` : ''}</button>
     </header>
 
     <div class="sh-page" id="page">${
       view === 'home' ? homeView()
       : view === 'shop' ? shopView()
+      : view === 'alerts' ? alertsView()
       : view === 'visit' ? visitView()
       : meView()}</div>
 
     <nav class="sh-nav">
-      ${[['home', '🏠', 'Home'], ['shop', '🛍️', 'Shop'],
-         ['visit', '📍', 'Visit'], ['me', '👤', 'Me']].map(([id, icon, label]) => `
+      ${[['home', 'Home'], ['shop', 'Shop'], ['alerts', 'Alerts'],
+         ['visit', 'Visit'], ['me', 'Me']].map(([id, label]) => `
         <button class="${view === id ? 'on' : ''}" data-nav="${id}">
-          <i>${icon}</i>${label}</button>`).join('')}
+          <i>${icon(id)}${id === 'alerts' && waiting() ? `<b>${waiting()}</b>` : ''}</i>
+          ${label}</button>`).join('')}
     </nav>`;
 
   wire();
@@ -118,6 +147,12 @@ function wire() {
   $('#cart').addEventListener('click', openBasket);
 
   if (view === 'me') wireMe();
+
+  $$('[data-go]').forEach((b) => b.addEventListener('click', () => {
+    view = b.dataset.go;
+    window.scrollTo(0, 0);
+    draw();
+  }));
 
   $$('[data-nav]').forEach((b) => b.addEventListener('click', () => {
     view = b.dataset.nav;
@@ -210,6 +245,80 @@ function grid(list) {
 // ---------------------------------------------------------------------------
 // Visit — where we are and when we are open
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Alerts — things that are actually about you
+//
+// Reservations first, because one of those means walking to the shop before it
+// lapses. Then what is on promotion. Nothing invented: if there is nothing to
+// say, the page says so rather than filling the space.
+// ---------------------------------------------------------------------------
+function alertsView() {
+  if (!me) {
+    return `
+      <div class="sh-panel">
+        <h4>Sign in to see your alerts</h4>
+        <p>Once you have an account, anything waiting for you at the counter
+           shows up here.</p>
+      </div>
+      ${promoAlerts()}`;
+  }
+
+  const held = purchases.filter((p) => p.status === 'reserved');
+  const done = purchases.filter((p) => p.status === 'collected').slice(0, 3);
+  const gone = purchases.filter((p) => p.status === 'cancelled').slice(0, 2);
+
+  return `
+    ${held.map((p) => `
+      <button class="al al-now" data-go="me">
+        <i>${icon('shop')}</i>
+        <div>
+          <b>Waiting for you · ${esc(p.code)}</b>
+          <span>${(p.lines || []).map((l) => `${esc(l.name)} ×${l.qty}`).join(', ')}</span>
+          <span class="al-when">Hold until ${new Date(p.hold_until).toLocaleString('en-PH',
+            { dateStyle: 'medium', timeStyle: 'short' })} · ${peso(p.total)} to pay</span>
+        </div>
+      </button>`).join('')}
+
+    ${done.map((p) => `
+      <div class="al">
+        <i>${icon('me')}</i>
+        <div>
+          <b>Collected · ${esc(p.code)}</b>
+          <span>${peso(p.total)} · ${p.points_given} point${p.points_given === 1 ? '' : 's'} added</span>
+          <span class="al-when">${new Date(p.collected_at).toLocaleDateString('en-PH',
+            { dateStyle: 'medium' })}</span>
+        </div>
+      </div>`).join('')}
+
+    ${gone.map((p) => `
+      <div class="al al-off">
+        <i>${icon('alerts')}</i>
+        <div>
+          <b>Reservation ${esc(p.code)} ended</b>
+          <span>The hold ran out, so the stock went back on the shelf.</span>
+        </div>
+      </div>`).join('')}
+
+    ${promoAlerts()}
+
+    ${!held.length && !done.length && !gone.length && !promos.length
+      ? '<div class="sh-panel"><h4>Nothing right now</h4>'
+        + '<p>Reserve something and it will show up here until you collect it.</p></div>'
+      : ''}`;
+}
+
+function promoAlerts() {
+  return promos.map((pm) => `
+    <button class="al al-sale" data-go="home">
+      <i>${icon('shop')}</i>
+      <div>
+        <b>−${Number(pm.percent_off)}% · ${esc(pm.product)}</b>
+        <span>${peso(pm.price)} instead of ${peso(pm.was)}</span>
+        <span class="al-when">Until ${onDay(pm.ends_on)}</span>
+      </div>
+    </button>`).join('');
+}
+
 function visitView() {
   return `
     <div class="sh-panel">
@@ -585,6 +694,9 @@ async function loadMe() {
   const out = await GET('/api/shop/me');
   me = out.customer;
   meNumbers = out.customer ? { purchases: out.purchases, vouchers: out.vouchers } : null;
+  // The badge and the Alerts page need the reservations themselves, not just
+  // the counts, and asking once here keeps the bar honest on every screen.
+  purchases = me ? await GET('/api/shop/purchases').catch(() => []) : [];
 }
 
 async function load() {

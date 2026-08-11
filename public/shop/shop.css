@@ -139,12 +139,39 @@ body {
   border-top: 1px solid var(--rose-soft); z-index: 6;
 }
 .sh-nav button {
-  flex: 1; border: none; background: none; padding: 8px 2px 10px; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  font: inherit; font-size: .66rem; color: var(--muted);
+  flex: 1; border: none; background: none; padding: 7px 2px 9px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  font: inherit; font-size: .64rem; color: var(--muted);
 }
 .sh-nav button.on { color: var(--rose-deep); font-weight: 700; }
-.sh-nav i { font-style: normal; font-size: 1.15rem; }
+.sh-nav i { position: relative; display: block; width: 24px; height: 24px; }
+.sh-nav svg { width: 24px; height: 24px; display: block; }
+
+/* The count of things that need the customer to do something. */
+.sh-nav i b {
+  position: absolute; top: -5px; right: -9px; min-width: 17px; height: 17px;
+  background: var(--danger); color: #fff; border-radius: 999px;
+  font-size: .6rem; font-weight: 700; line-height: 17px; text-align: center;
+  padding: 0 4px; box-shadow: 0 0 0 2px #fff;
+}
+
+/* ---------- alerts ---------- */
+.al {
+  display: flex; gap: 12px; align-items: flex-start; width: calc(100% - 24px);
+  margin: 12px 12px 0; padding: 14px; text-align: left; font: inherit;
+  background: #fff; border: 1px solid var(--rose-blush); border-radius: 12px;
+  color: inherit; cursor: default;
+}
+button.al { cursor: pointer; }
+.al > i { flex: none; width: 26px; height: 26px; color: var(--rose-deep); }
+.al > i svg { width: 26px; height: 26px; }
+.al b { display: block; font-size: .88rem; margin-bottom: 2px; }
+.al span { display: block; font-size: .8rem; color: var(--muted); line-height: 1.4; }
+.al .al-when { font-size: .72rem; margin-top: 4px; }
+.al-now { border-color: var(--rose-dust); background: #fff; }
+.al-now b { color: var(--rose-deep); }
+.al-sale > i { color: var(--danger); }
+.al-off { opacity: .72; }
 
 /* ---------- the middle of the frame ---------- */
 .sh-page { flex: 1; display: flex; flex-direction: column; }
@@ -315,3 +342,4 @@ body {
   color: var(--rose-deep); border-radius: 999px; padding: 8px 16px;
   font-size: .82rem; font-weight: 700; text-decoration: none;
 }
+.sh-cart svg { width: 22px; height: 22px; display: block; }
