@@ -1,0 +1,147 @@
+/* MS BEAU AVE — the shop window.
+   Same palette as the back office, arranged the way a phone shopper expects:
+   a coloured band at the top with the search in it, tiles two across, and the
+   things you tap most sitting at the bottom under your thumb. */
+:root {
+  --rose-primary: #C98DA4;
+  --rose-deep:    #A2647E;
+  --rose-soft:    #EFCCDA;
+  --rose-blush:   #F9E9F0;
+  --rose-dust:    #DDAEC2;
+  --ink:          #45303C;
+  --bg:           #FBF6F8;
+  --muted:        #92707F;
+  --danger:       #B04A4A;
+}
+
+* { box-sizing: border-box; margin: 0; }
+body {
+  background: var(--rose-blush);
+  color: var(--ink);
+  font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* On a phone this is the whole screen; on a desktop it sits in the middle
+   looking like the phone it was drawn for, rather than stretching to 2000px. */
+.phone {
+  max-width: 480px; margin: 0 auto; background: #fff; min-height: 100vh;
+  display: flex; flex-direction: column;
+}
+@media (min-width: 520px) {
+  body { padding: 18px 0; }
+  .phone { border-radius: 18px; overflow: hidden; min-height: calc(100vh - 36px);
+           box-shadow: 0 10px 40px rgba(158, 91, 93, .18); }
+}
+
+/* ---------- the band at the top ---------- */
+.sh-header {
+  background: linear-gradient(135deg, var(--rose-primary), var(--rose-deep));
+  padding: 12px; display: flex; gap: 10px; align-items: center;
+  position: sticky; top: 0; z-index: 5;
+}
+.sh-header .logo-mark {
+  width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none;
+  border: 2px solid rgba(255, 255, 255, .75); background: #fff;
+}
+.sh-header .logo-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sh-search {
+  flex: 1; display: flex; align-items: center; gap: 6px; background: #fff;
+  border-radius: 10px; padding: 8px 10px; min-width: 0;
+}
+.sh-search input {
+  border: none; outline: none; flex: 1; font: inherit; font-size: .9rem;
+  padding: 0; min-width: 0; background: none; color: var(--ink);
+}
+
+.sh-wallet { display: flex; background: #fff; border-bottom: 8px solid var(--rose-blush); }
+.sh-wallet div {
+  flex: 1; padding: 10px 6px; display: flex; flex-direction: column; gap: 2px;
+  align-items: center; border-right: 1px solid var(--rose-blush); text-align: center;
+}
+.sh-wallet div:last-child { border-right: none; }
+.sh-wallet b { color: var(--rose-deep); font-size: .85rem; }
+.sh-wallet span { font-size: .68rem; color: var(--muted); }
+
+/* ---------- category chips ---------- */
+.sh-chips { display: flex; gap: 8px; overflow-x: auto; padding: 12px; background: #fff; }
+.sh-chips button {
+  flex: none; border: 1px solid var(--rose-soft); background: #fff; color: var(--ink);
+  border-radius: 999px; padding: 6px 14px; font: inherit; font-size: .8rem; cursor: pointer;
+}
+.sh-chips button.on { background: var(--rose-deep); color: #fff; border-color: var(--rose-deep); }
+
+.sh-banner {
+  margin: 0 12px 12px; border-radius: 12px; color: #fff; padding: 16px;
+  background: linear-gradient(135deg, var(--rose-deep), var(--rose-primary) 60%, var(--rose-dust));
+}
+.sh-banner h3 { font-family: Georgia, "Times New Roman", serif; font-size: 1.25rem; margin-bottom: 4px; }
+.sh-banner p { font-size: .82rem; opacity: .92; }
+
+.sh-rowhead {
+  padding: 4px 12px 8px; color: var(--rose-deep); font-weight: 700;
+  font-size: .85rem; letter-spacing: .03em;
+}
+
+/* ---------- the goods ---------- */
+.sh-feed {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 10px 16px;
+  flex: 1; align-content: start;
+}
+.sh-card {
+  background: #fff; border: 1px solid var(--rose-blush); border-radius: 10px;
+  overflow: hidden; font-size: .78rem; display: flex; flex-direction: column;
+  text-align: left; padding: 0; font-family: inherit; color: inherit; cursor: pointer;
+}
+.sh-card:active { transform: scale(.99); }
+.sh-img {
+  height: 140px; background: var(--rose-blush); display: grid; place-items: center;
+  font-size: 2.4rem; overflow: hidden;
+}
+.sh-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sh-body { padding: 8px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.sh-name { line-height: 1.3; }
+.sh-brand { color: var(--muted); font-size: .68rem; }
+.sh-price { color: var(--rose-deep); font-weight: 700; font-size: .95rem; margin-top: auto; }
+.sh-out { color: var(--danger); font-size: .68rem; font-weight: 700; }
+.sh-card.gone .sh-img { opacity: .5; }
+
+.sh-empty { grid-column: 1 / 3; text-align: center; color: var(--muted); padding: 40px 20px; font-size: .88rem; }
+
+/* ---------- one product, close up ---------- */
+.sh-sheet {
+  position: fixed; inset: 0; background: rgba(40, 20, 25, .55); z-index: 20;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sh-sheet-inner {
+  background: #fff; width: 100%; max-width: 480px; border-radius: 18px 18px 0 0;
+  padding: 16px; max-height: 88vh; overflow-y: auto;
+}
+.sh-sheet-inner .big-img {
+  width: 100%; height: 260px; object-fit: cover; border-radius: 12px;
+  background: var(--rose-blush); display: block;
+}
+.sh-sheet-inner .big-img.placeholder { display: grid; place-items: center; font-size: 4rem; }
+.sh-sheet-inner h2 { font-size: 1.05rem; margin: 12px 0 2px; }
+.sh-sheet-inner .price { color: var(--rose-deep); font-weight: 700; font-size: 1.35rem; margin: 8px 0; }
+.sh-close {
+  border: none; background: var(--rose-blush); color: var(--rose-deep); border-radius: 999px;
+  padding: 10px; font: inherit; font-weight: 600; width: 100%; cursor: pointer; margin-top: 12px;
+}
+.sh-note {
+  background: var(--rose-blush); border-radius: 10px; padding: 10px 12px;
+  font-size: .8rem; color: var(--muted); margin-top: 10px;
+}
+
+/* ---------- under the thumb ---------- */
+.sh-nav {
+  position: sticky; bottom: 0; display: flex; background: #fff;
+  border-top: 1px solid var(--rose-soft); z-index: 6;
+}
+.sh-nav button {
+  flex: 1; border: none; background: none; padding: 8px 2px 10px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font: inherit; font-size: .66rem; color: var(--muted);
+}
+.sh-nav button.on { color: var(--rose-deep); font-weight: 700; }
+.sh-nav i { font-style: normal; font-size: 1.15rem; }

@@ -29,6 +29,12 @@ const server = http.createServer((req, res) => {
   if (file !== PUBLIC && !file.startsWith(PUBLIC + path.sep)) {
     res.writeHead(403); return res.end();
   }
+  // A directory means its own index.html if it has one — /shop/ is the
+  // customer app, a separate page, not the back office's SPA route.
+  if (fs.existsSync(file) && fs.statSync(file).isDirectory()) {
+    const inner = path.join(file, 'index.html');
+    file = fs.existsSync(inner) ? inner : file;
+  }
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     file = path.join(PUBLIC, 'index.html');
   }

@@ -3,6 +3,6 @@
   "outputDirectory": "public",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/((?!api/|\\.well-known/).*)", "destination": "/index.html" }
+    { "source": "/((?!api/|shop/|shop$|\\.well-known/).*)", "destination": "/index.html" }
   ]
 }
