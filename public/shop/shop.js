@@ -52,8 +52,6 @@ const ICON = {
       + '<path d="M8.5 8V6a3.5 3.5 0 0 1 7 0v2"/>',
   alerts: '<path d="M18 9a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6"/>'
         + '<path d="M13.7 20a2 2 0 0 1-3.4 0"/>',
-  visit: '<path d="M20 10.5c0 5.5-8 12-8 12s-8-6.5-8-12a8 8 0 1 1 16 0z"/>'
-       + '<circle cx="12" cy="10.3" r="2.8"/>',
   me: '<circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/>',
   cart: '<path d="M3 4h2.2l2.4 11.4a1.6 1.6 0 0 0 1.6 1.3h8.1a1.6 1.6 0 0 0 1.6-1.2L21 8H6"/>'
       + '<circle cx="10" cy="20" r="1.4"/><circle cx="17.5" cy="20" r="1.4"/>',
@@ -96,7 +94,7 @@ function draw() {
             placeholder="Search skincare…" autocomplete="off">
         </label>`
       : `<h1 class="sh-title">${
-          { visit: 'Find us', alerts: 'Alerts', me: 'Me' }[view]}</h1>`}
+          { alerts: 'Notifications', me: 'Me' }[view]}</h1>`}
       <button class="sh-cart" id="cart" aria-label="Basket">${icon('cart')}${
         basketCount() ? `<span class="sh-cart-n">${basketCount()}</span>` : ''}</button>
     </header>
@@ -105,12 +103,11 @@ function draw() {
       view === 'home' ? homeView()
       : view === 'shop' ? shopView()
       : view === 'alerts' ? alertsView()
-      : view === 'visit' ? visitView()
       : meView()}</div>
 
     <nav class="sh-nav">
-      ${[['home', 'Home'], ['shop', 'Shop'], ['alerts', 'Alerts'],
-         ['visit', 'Visit'], ['me', 'Me']].map(([id, label]) => `
+      ${[['home', 'Home'], ['shop', 'Shop'], ['alerts', 'Notifications'],
+         ['me', 'Me']].map(([id, label]) => `
         <button class="${view === id ? 'on' : ''}" data-nav="${id}">
           <i>${icon(id)}${id === 'alerts' && waiting() ? `<b>${waiting()}</b>` : ''}</i>
           ${label}</button>`).join('')}
@@ -243,10 +240,11 @@ function grid(list) {
 }
 
 // ---------------------------------------------------------------------------
-// Visit — where we are and when we are open
+// Where we are and when we are open. Not a tab any more — it sits at the
+// foot of Me, which is where somebody looks for the shop's own details.
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// Alerts — things that are actually about you
+// Notifications — things that are actually about you
 //
 // Reservations first, because one of those means walking to the shop before it
 // lapses. Then what is on promotion. Nothing invented: if there is nothing to
@@ -256,7 +254,7 @@ function alertsView() {
   if (!me) {
     return `
       <div class="sh-panel">
-        <h4>Sign in to see your alerts</h4>
+        <h4>Sign in to see your notifications</h4>
         <p>Once you have an account, anything waiting for you at the counter
            shows up here.</p>
       </div>
@@ -319,7 +317,7 @@ function promoAlerts() {
     </button>`).join('');
 }
 
-function visitView() {
+function visitPanels() {
   return `
     <div class="sh-panel">
       <h4>Where we are</h4>
@@ -405,6 +403,8 @@ function meView() {
          you collect — cash, GCash or card. One point for every ₱20 you spend.</p>
     </div>
 
+    ${visitPanels()}
+
     <div class="me-out"><button class="sh-close" id="signout">Sign out</button></div>`;
 }
 
@@ -439,7 +439,9 @@ function signedOutView() {
       <h4>What an account is for</h4>
       <p>Points on what you buy, and your purchases in one place once ordering
          in the app is switched on. Nothing is shared with anyone.</p>
-    </div>`;
+    </div>
+
+    ${visitPanels()}`;
 }
 
 function wireMe() {
