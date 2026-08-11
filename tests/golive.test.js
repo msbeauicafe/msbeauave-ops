@@ -390,3 +390,58 @@ test('under the house split a delivery of one unit reaches nobody, which is why 
     assert.deepEqual(r.data.received[0].split, { b2b: 1 },
       'the single unit goes to wholesale, and the shop still reads as sold out');
   });
+
+// ===========================================================================
+// The split, set from the price list
+// ===========================================================================
+
+test('a price list can set the split, and leaving it off keeps what is there', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+
+  await load(admin, [{ sku: 'SPLIT-01', name: 'Split From List', category: 'Soaps',
+    unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100,
+    alloc_b2b: 0, alloc_shop: 1, alloc_reserve: 0 }]);
+
+  let r = await POST(store, '/api/deliveries', {
+    lines: [{ sku: 'SPLIT-01', batch_no: unique('S'), expiry: monthsOut(24), qty: 10 }],
+  });
+  assert.deepEqual(r.data.received[0].split, { shop: 10 },
+    'the split came from the list, not the house default');
+
+  // Loaded again with no split column: the product keeps what it has.
+  await load(admin, [{ sku: 'SPLIT-01', name: 'Split From List', retail_price: 120 }]);
+  r = await POST(store, '/api/deliveries', {
+    lines: [{ sku: 'SPLIT-01', batch_no: unique('S'), expiry: monthsOut(24), qty: 10 }],
+  });
+  assert.deepEqual(r.data.received[0].split, { shop: 10 },
+    'a list without a split column must not quietly reset it to 70/20/10');
+});
+
+test('a split that does not add up to 100 is refused, naming the product', async () => {
+  const admin = await signIn('admin');
+  const r = await load(admin, [{ sku: 'SPLIT-02', name: 'Bad Split', retail_price: 100,
+    alloc_b2b: 0.5, alloc_shop: 0.8, alloc_reserve: 0 }]);
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /Bad Split/);
+  assert.match(r.data.error, /130/, 'the message says what it actually adds up to');
+});
+
+test('two thirds of a split is a typo, not a split', async () => {
+  const admin = await signIn('admin');
+  const r = await load(admin, [{ sku: 'SPLIT-03', name: 'Partial Split', retail_price: 100,
+    alloc_b2b: 0, alloc_shop: 1 }]);
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /all three/);
+});
+
+test('a new product with no split on the list takes the house 70/20/10', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  await load(admin, [{ sku: 'SPLIT-04', name: 'No Split Given', category: 'Soaps',
+    unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100 }]);
+  const r = await POST(store, '/api/deliveries', {
+    lines: [{ sku: 'SPLIT-04', batch_no: unique('S'), expiry: monthsOut(24), qty: 100 }],
+  });
+  assert.deepEqual(r.data.received[0].split, { b2b: 70, shop: 20, reserve: 10 });
+});

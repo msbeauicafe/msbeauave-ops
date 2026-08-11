@@ -463,29 +463,30 @@ function erasePracticeData(reload) {
 // Brilliant Skin Essentials is known for; the sizes and the exact range change,
 // so the shop's own sheet is the authority. Prices are deliberately blank —
 // a made-up price is far worse than a missing one.
-const BRILLIANT_SKIN = `# code | product | category | costs us | to resellers | they sell at | we sell at
+const BRILLIANT_SKIN = `# code | product | category | costs us | to resellers | they sell at | we sell at | split
 # Delete what you do not carry, add what is missing, then fill in the money.
 # Leave a price blank and the product is saved but stays off the shelf.
-BSE-SET-01 | Rejuvenating Set | Sets | | | |
-BSE-SET-02 | Anti-Acne Set | Sets | | | |
-BSE-SOP-01 | Kojic Papaya Soap 135g | Soaps | | | |
-BSE-SOP-02 | Kojic Papaya Soap 65g | Soaps | | | |
-BSE-SOP-03 | Anti-Acne Soap | Soaps | | | |
-BSE-SOP-04 | Glutathione Soap | Soaps | | | |
-BSE-TON-01 | Rejuvenating Toner 60ml | Toners | | | |
-BSE-TON-02 | Anti-Acne Toner 60ml | Toners | | | |
-BSE-CRM-01 | Rejuvenating Night Cream | Creams | | | |
-BSE-CRM-02 | Rejuvenating Day Cream | Creams | | | |
-BSE-CRM-03 | Underarm Whitening Cream | Creams | | | |
-BSE-SUN-01 | Sunblock SPF 60 | Sunscreen | | | |
-BSE-SER-01 | Facial Serum | Serums | | | |
-BSE-FAC-01 | Facial Wash | Face | | | |
-BSE-FAC-02 | Micellar Water | Face | | | |
-BSE-BOD-01 | Whitening Body Lotion | Body | | | |
-BSE-BOD-02 | Bleaching Body Set | Body | | | |
-BSE-LIP-01 | Lip and Cheek Tint | Lip | | | |
-BSE-WEL-01 | Slimming Coffee | Wellness | | | |
-BSE-WEL-02 | Glutathione Capsules | Wellness | | | |`;
+# The split is wholesale/shop/reserve. 0/100/0 puts every delivery on the shelf.
+BSE-SET-01 | Rejuvenating Set | Sets |  |  |  |  | 0/100/0
+BSE-SET-02 | Anti-Acne Set | Sets |  |  |  |  | 0/100/0
+BSE-SOP-01 | Kojic Papaya Soap 135g | Soaps |  |  |  |  | 0/100/0
+BSE-SOP-02 | Kojic Papaya Soap 65g | Soaps |  |  |  |  | 0/100/0
+BSE-SOP-03 | Anti-Acne Soap | Soaps |  |  |  |  | 0/100/0
+BSE-SOP-04 | Glutathione Soap | Soaps |  |  |  |  | 0/100/0
+BSE-TON-01 | Rejuvenating Toner 60ml | Toners |  |  |  |  | 0/100/0
+BSE-TON-02 | Anti-Acne Toner 60ml | Toners |  |  |  |  | 0/100/0
+BSE-CRM-01 | Rejuvenating Night Cream | Creams |  |  |  |  | 0/100/0
+BSE-CRM-02 | Rejuvenating Day Cream | Creams |  |  |  |  | 0/100/0
+BSE-CRM-03 | Underarm Whitening Cream | Creams |  |  |  |  | 0/100/0
+BSE-SUN-01 | Sunblock SPF 60 | Sunscreen |  |  |  |  | 0/100/0
+BSE-SER-01 | Facial Serum | Serums |  |  |  |  | 0/100/0
+BSE-FAC-01 | Facial Wash | Face |  |  |  |  | 0/100/0
+BSE-FAC-02 | Micellar Water | Face |  |  |  |  | 0/100/0
+BSE-BOD-01 | Whitening Body Lotion | Body |  |  |  |  | 0/100/0
+BSE-BOD-02 | Bleaching Body Set | Body |  |  |  |  | 0/100/0
+BSE-LIP-01 | Lip and Cheek Tint | Lip |  |  |  |  | 0/100/0
+BSE-WEL-01 | Slimming Coffee | Wellness |  |  |  |  | 0/100/0
+BSE-WEL-02 | Glutathione Capsules | Wellness |  |  |  |  | 0/100/0`;
 
 // Tab first, because the likeliest way this box gets filled is a paste out of
 // a spreadsheet. Pipes next, because that is what the starter list uses and a
@@ -517,7 +518,23 @@ function parsePriceList(text) {
       wholesale_price: money(f[4]),
       srp: money(f[5]),
       retail_price: money(f[6]),
+      split: (f[7] || '').trim(),
     };
+
+    // How a delivery of this product is split, written the way it reads:
+    // wholesale / shop / reserve, as percentages. Left off, whatever the
+    // product already has stands.
+    if (item.split) {
+      const parts = item.split.split(/[/\\]/).map((x) => Number(x.trim()));
+      if (parts.length !== 3 || parts.some((v) => !Number.isFinite(v) || v < 0)) {
+        problems.push(`${at}: “${item.split}” is not a split — write it as 0/100/0.`);
+      } else if (Math.abs(parts[0] + parts[1] + parts[2] - 100) > 0.1) {
+        problems.push(`${at}: the split adds up to ${
+          Math.round((parts[0] + parts[1] + parts[2]) * 10) / 10}, not 100.`);
+      } else {
+        [item.alloc_b2b, item.alloc_shop, item.alloc_reserve] = parts.map((v) => v / 100);
+      }
+    }
 
     if (!item.sku) problems.push(`${at}: no product code.`);
     if (!item.name) problems.push(`${at}: no product name.`);
@@ -545,10 +562,14 @@ async function priceListDialog(currentPromise, reload) {
   dialog(`
     <h3>Load a price list</h3>
     <div class="dim">One product a line, separated by <b>|</b> or tabs or commas:
-      <br><code>code | product | category | costs us | to resellers | they sell at | we sell at</code>
+      <br><code>code | product | category | costs us | to resellers | they sell at | we sell at | split</code>
       <br>Paste straight out of a spreadsheet if you have one. Lines starting
       with <b>#</b> are ignored. A product with no shop price is saved but stays
-      off the shelf until you give it one.</div>
+      off the shelf until you give it one.
+      <br>The split is how a delivery is divided — <b>wholesale/shop/reserve</b>
+      as percentages adding up to 100. <b>0/100/0</b> puts everything on the
+      shelf. Leave it off and the product keeps the split it has; a brand new
+      product with none takes the house 70/20/10.</div>
     <div class="row mt">
       <div><label>Brand on every line</label>
         <input id="c_brand" type="text" value="Brilliant Skin Essentials"></div>
@@ -565,8 +586,11 @@ async function priceListDialog(currentPromise, reload) {
       <button class="btn" id="c_save" disabled>Load this list</button>
     </div>`, 'wide');
 
+  const pct = (v, fallback) => Math.round((v == null ? fallback : Number(v)) * 100);
+  const splitOf = (p) =>
+    `${pct(p.alloc_b2b, 0.7)}/${pct(p.alloc_shop, 0.2)}/${pct(p.alloc_reserve, 0.1)}`;
   const asLine = (p) => [p.sku, p.name, p.category || '', p.unit_cost, p.wholesale_price,
-    p.srp, p.retail_price].join(' | ');
+    p.srp, p.retail_price, splitOf(p)].join(' | ');
 
   const review = () => {
     const { items, problems } = parsePriceList($('#c_text').value);
@@ -595,6 +619,9 @@ async function priceListDialog(currentPromise, reload) {
            { head: 'To resellers', n: true, cell: (i) => (i.wholesale_price == null ? '—' : peso(i.wholesale_price)) },
            { head: 'They sell at', n: true, cell: (i) => (i.srp == null ? '—' : peso(i.srp)) },
            { head: 'We sell at', n: true, cell: (i) => (i.retail_price == null ? '—' : peso(i.retail_price)) },
+           { head: 'Split', cell: (i) => (i.alloc_shop == null
+               ? '<span class="dim">unchanged</span>'
+               : `<span class="dim">${i.split}</span>`) },
            { head: '', cell: (i) => (i.retail_price ? tag('on sale', 'green') : tag('no price', 'amber')) },
          ], '')}`;
 
@@ -620,7 +647,8 @@ async function priceListDialog(currentPromise, reload) {
       const row = { sku: i.sku, name: i.name };
       if (i.category) row.category = i.category;
       if (brand) row.brand = brand;
-      for (const f of ['unit_cost', 'wholesale_price', 'srp', 'retail_price']) {
+      for (const f of ['unit_cost', 'wholesale_price', 'srp', 'retail_price',
+        'alloc_b2b', 'alloc_shop', 'alloc_reserve']) {
         if (i[f] != null) row[f] = i[f];
       }
       return row;

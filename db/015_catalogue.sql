@@ -42,6 +42,10 @@ declare
   v_name    text;
   v_srp     numeric(12,2);
   v_retail  numeric(12,2);
+  v_b2b     numeric;
+  v_shop    numeric;
+  v_res     numeric;
+  v_given   int;
   v_seen    text[] := array[]::text[];
   v_added   int := 0;
   v_updated int := 0;
@@ -91,6 +95,27 @@ begin
         v_name, v_retail, v_srp;
     end if;
 
+    -- How a delivery of this product is split. All three shares or none: the
+    -- table will not hold two of them, and it should not — a split missing a
+    -- third of itself is not a split, it is a typo that lost some stock.
+    v_b2b  := (item->>'alloc_b2b')::numeric;
+    v_shop := (item->>'alloc_shop')::numeric;
+    v_res  := (item->>'alloc_reserve')::numeric;
+    v_given := (v_b2b is not null)::int + (v_shop is not null)::int + (v_res is not null)::int;
+    if v_given between 1 and 2 then
+      raise exception 'The split for % needs all three shares — wholesale, shop and reserve.',
+        v_name;
+    end if;
+    if v_given = 3 then
+      if v_b2b < 0 or v_shop < 0 or v_res < 0 then
+        raise exception 'A share of the split for % cannot be negative.', v_name;
+      end if;
+      if abs(v_b2b + v_shop + v_res - 1) >= 0.001 then
+        raise exception 'The split for % adds up to %, not 100.',
+          v_name, round((v_b2b + v_shop + v_res) * 100, 1);
+      end if;
+    end if;
+
     v_seen := v_seen || v_sku;
   end loop;
 
@@ -113,12 +138,16 @@ begin
         shelf_life_months = coalesce((item->>'shelf_life_months')::int, p.shelf_life_months),
         shelf_min       = coalesce((item->>'shelf_min')::int, p.shelf_min),
         active          = (coalesce((item->>'retail_price')::numeric, p.retail_price) > 0),
+        alloc_b2b       = coalesce((item->>'alloc_b2b')::numeric, p.alloc_b2b),
+        alloc_shop      = coalesce((item->>'alloc_shop')::numeric, p.alloc_shop),
+        alloc_reserve   = coalesce((item->>'alloc_reserve')::numeric, p.alloc_reserve),
         retired_at      = null          -- back on the list, whatever it was before
       where p.sku = v_sku;
       v_updated := v_updated + 1;
     else
       insert into products (sku, name, brand, category, unit_cost, wholesale_price,
-                            srp, retail_price, shelf_life_months, shelf_min, active)
+                            srp, retail_price, shelf_life_months, shelf_min, active,
+                            alloc_b2b, alloc_shop, alloc_reserve)
       values (v_sku, btrim(item->>'name'),
               nullif(btrim(coalesce(item->>'brand', '')), ''),
               nullif(btrim(coalesce(item->>'category', '')), ''),
@@ -128,7 +157,11 @@ begin
               v_retail,
               coalesce((item->>'shelf_life_months')::int, 24),
               coalesce((item->>'shelf_min')::int, 0),
-              v_retail > 0);
+              v_retail > 0,
+              -- Left out, all three stay null and the house split applies.
+              (item->>'alloc_b2b')::numeric,
+              (item->>'alloc_shop')::numeric,
+              (item->>'alloc_reserve')::numeric);
       v_added := v_added + 1;
     end if;
   end loop;
