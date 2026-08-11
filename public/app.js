@@ -182,6 +182,7 @@ const TABS = {
     ['workspace', '🗂️', 'Workspace'],
     ['pickups', '📦', 'Pickups'],
     ['promos', '🏷️', 'Promos'],
+    ['team', '🧑‍💼', 'Team'],
     ['products', '🧴', 'Products'],
     ['receive', '📦', 'Receive'],
     ['orders', '🚚', 'Wholesale'],
@@ -203,6 +204,7 @@ const TABS = {
   cashier: [
     ['till', '🛍️', 'Till'],
     ['pickups', '📦', 'Pickups'],
+    ['team', '🧑‍💼', 'Team'],
     ['workspace', '🗂️', 'Workspace'],
     ['tillreturns', '↩️', 'Returns'],
     ['closeday', '🌙', 'Close of day'],
@@ -2167,6 +2169,194 @@ SCREENS.promos = async (page) => {
   };
 
   $('#new', page).addEventListener('click', () => openPromo(null));
+  await load();
+  repeat(load, 20000);
+};
+
+// ===========================================================================
+// The team — who works here, and who is here now
+// ===========================================================================
+// Postgres hands an interval over in parts, and every part has to be counted:
+// a half-hour shift arrives as minutes only, and dropping them would show 0h
+// against somebody who was here.
+const hoursOf = (interval) => {
+  if (!interval) return '—';
+  const h = (interval.days || 0) * 24 + (interval.hours || 0)
+          + (interval.minutes || 0) / 60 + (interval.seconds || 0) / 3600;
+  if (h >= 1) return `${h.toFixed(1)}h`;
+  const mins = Math.round(h * 60);
+  return mins >= 1 ? `${mins}m` : 'just started';
+};
+
+SCREENS.team = async (page) => {
+  const owner = user.role === 'admin';
+  page.innerHTML = `
+    <div class="head"><h2>Team</h2>
+      <span class="hint">${owner ? 'Who works here, and the hours they actually worked'
+        : 'Who is on today'}</span></div>
+    ${owner ? '<div class="tools"><button class="btn" id="add">＋ Add someone</button></div>' : ''}
+    <div class="tiles" id="tiles"></div>
+    <div class="panel" id="list"></div>
+    ${owner ? '<div class="panel"><h3>Recent shifts</h3><div id="shifts"></div></div>' : ''}`;
+
+  let data = { team: [], shifts: [], logins: [] };
+
+  const load = async () => {
+    data = await GET('/api/team');
+    const here = data.team.filter((p) => p.here);
+    const on = here.filter((p) => p.on_shift);
+
+    $('#tiles', page).innerHTML = `
+      <div class="tile good"><div class="big">${on.length}</div>
+        <div class="label">On shift right now</div></div>
+      <div class="tile"><div class="big">${here.length}</div>
+        <div class="label">On the team</div></div>`;
+
+    $('#list', page).innerHTML = table(data.team, [
+      { head: '', cell: (p) => p.has_photo
+          ? `<img class="thumb" style="width:34px;height:34px" src="/api/team/${p.id}/photo" alt="">`
+          : `<span class="thumb none-photo" style="width:34px;height:34px">🧑</span>` },
+      { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>`
+          + (p.here ? '' : ' ' + tag('left', 'grey')) },
+      { head: 'Position', cell: (p) => esc(p.position) },
+      { head: 'Signs in as', cell: (p) => p.signs_in_as
+          ? tag(roleName(p.signs_in_as), 'pink') : '<span class="dim">no login</span>' },
+      ...(owner ? [
+        { head: 'Phone', cell: (p) => `<span class="dim">${esc(p.phone || '')}</span>` },
+        { head: 'This week', n: true, cell: (p) => hoursOf(p.hours_this_week) },
+      ] : []),
+      { head: 'Now', cell: (p) => p.on_shift
+          ? `${tag('on shift', 'green')} <span class="dim">since ${when(p.since)}</span>`
+          : (p.here ? '<span class="dim">off</span>' : '') },
+      { head: '', cell: (p) => !p.here ? '' : `
+          <button class="btn sm ${p.on_shift ? 'stop' : 'go'}"
+            data-clock="${p.id}" data-dir="${p.on_shift ? 'out' : 'in'}">
+            ${p.on_shift ? 'Clock out' : 'Clock in'}</button>
+          ${owner ? `<button class="btn sm quiet" data-edit="${p.id}">Edit</button>` : ''}` },
+    ], 'Nobody on the team yet');
+
+    if (owner) {
+      $('#shifts', page).innerHTML = table(data.shifts, [
+        { head: 'Who', cell: (s) => esc(s.name) },
+        { head: 'Day', cell: (s) => onDay(s.business_date) },
+        { head: 'On', cell: (s) => when(s.started_at) },
+        { head: 'Off', cell: (s) => s.ended_at ? when(s.ended_at) : tag('still on', 'green') },
+        { head: 'Worked', n: true, cell: (s) => hoursOf(s.worked) },
+        { head: 'Clocked by', cell: (s) => `<span class="dim">${esc(s.started_by)}${
+            s.ended_by && s.ended_by !== s.started_by ? ' / ' + esc(s.ended_by) : ''}</span>` },
+      ], 'No shifts recorded yet');
+    }
+
+    $$('[data-clock]', page).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const out = await POST(`/api/team/${b.dataset.clock}/clock`, { direction: b.dataset.dir });
+        notice(b.dataset.dir === 'out'
+          ? `Clocked out after ${hoursOf(out.worked)} 🌸` : 'Clocked in 🌸', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    }));
+
+    $$('[data-edit]', page).forEach((b) => b.addEventListener('click', () =>
+      openPerson(data.team.find((p) => String(p.id) === b.dataset.edit))));
+  };
+
+  const openPerson = (p) => {
+    const isNew = !p;
+    // Someone already linked to a login keeps theirs in the list; everybody
+    // else can only be offered the accounts nobody has claimed.
+    const options = [
+      { id: '', display_name: 'No sign-in' },
+      ...(p?.user_id ? [{ id: p.user_id, display_name: `${p.username} (current)` }] : []),
+      ...data.logins,
+    ];
+
+    dialog(`
+      <h3>${isNew ? 'Add someone' : esc(p.name)}</h3>
+      <div class="row">
+        <div style="flex:2"><label>Name</label>
+          <input id="t_name" type="text" value="${esc(p?.name || '')}"></div>
+        <div><label>Position</label>
+          <input id="t_pos" type="text" value="${esc(p?.position || '')}"
+            placeholder="Cashier, Warehouse…"></div>
+      </div>
+      <div class="row">
+        <div><label>Phone</label>
+          <input id="t_phone" type="text" value="${esc(p?.phone || '')}"></div>
+        <div><label>Signs in as</label>
+          <select id="t_user">
+            ${options.map((o) => `<option value="${esc(String(o.id))}"
+              ${p?.user_id && o.id === p.user_id ? 'selected' : ''}>
+              ${esc(o.display_name)}</option>`).join('')}
+          </select></div>
+        ${isNew ? '<div><label>Started</label><input id="t_from" type="date"></div>' : ''}
+      </div>
+      <div><label>Note</label>
+        <input id="t_note" type="text" value="${esc(p?.note || '')}"
+          placeholder="Anything worth remembering"></div>
+
+      ${isNew ? '' : `
+        <h3 class="mt">Photograph</h3>
+        <div class="row" style="align-items:center">
+          <div style="flex:0 0 auto" id="t_pic">${p.has_photo
+            ? `<img class="thumb" style="width:70px;height:70px" src="/api/team/${p.id}/photo" alt="">`
+            : '<span class="thumb none-photo" style="width:70px;height:70px">🧑</span>'}</div>
+          <div><label for="t_file">Choose a picture</label>
+            <input id="t_file" type="file" accept="image/*"></div>
+        </div>`}
+
+      <div class="mt right">
+        ${isNew || !p.here ? '' : `<button class="btn quiet" id="t_left">They have left</button>`}
+        <button class="btn" id="t_save">Save</button>
+      </div>`);
+
+    if (!isNew) {
+      $('#t_file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          await POST(`/api/team/${p.id}/photo`, { dataUrl: await shrink(file, 600) });
+          $('#t_pic').innerHTML =
+            `<img class="thumb" style="width:70px;height:70px" src="/api/team/${p.id}/photo?v=${Date.now()}" alt="">`;
+          notice('Picture saved 🌸', 'good');
+          load();
+        } catch (err) { whoops(err); }
+        e.target.value = '';
+      });
+
+      $('#t_left')?.addEventListener('click', async () => {
+        try {
+          await POST(`/api/team/${p.id}/left`, {});
+          closeDialog();
+          notice('Recorded — their hours stay on the books', 'good');
+          load();
+        } catch (err) { whoops(err); }
+      });
+    }
+
+    $('#t_save').addEventListener('click', async () => {
+      const chosen = $('#t_user').value;
+      const body = {
+        name: $('#t_name').value,
+        position: $('#t_pos').value,
+        phone: $('#t_phone').value,
+        note: $('#t_note').value,
+        user_id: chosen ? Number(chosen) : null,
+      };
+
+      try {
+        if (isNew) {
+          await POST('/api/team', { ...body, started: $('#t_from').value || null });
+        } else {
+          await PUT(`/api/team/${p.id}`, body);
+        }
+        closeDialog();
+        notice('Saved 🌸', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    });
+  };
+
+  if (owner) $('#add', page).addEventListener('click', () => openPerson(null));
   await load();
   repeat(load, 20000);
 };

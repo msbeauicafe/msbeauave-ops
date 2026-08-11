@@ -956,3 +956,96 @@ test('ending a promotion puts the price back', async () => {
   await POST(admin, `/api/promos/${data.id}/end`);
   assert.equal(Number((await GET(till, `/api/till/products?q=${sku}`)).data[0].price_now), 200);
 });
+
+// ===========================================================================
+// The team
+//
+// The promise: hours are traceable, nobody is on two shifts at once, and what
+// people earn and where they live is the owner's business alone.
+// ===========================================================================
+async function newEmployee(admin, name, position = 'Cashier') {
+  const { status, data } = await POST(admin, '/api/team', { name, position, phone: '09170000000' });
+  assert.equal(status, 200, JSON.stringify(data));
+  return data.id;
+}
+
+test('a person cannot be on two shifts at once', async () => {
+  const admin = await signIn('admin');
+  const id = await newEmployee(admin, unique('Rina'));
+
+  assert.equal((await POST(admin, `/api/team/${id}/clock`, { direction: 'in' })).status, 200);
+  const twice = await POST(admin, `/api/team/${id}/clock`, { direction: 'in' });
+  assert.equal(twice.status, 400);
+  assert.match(twice.data.error, /already clocked in/);
+
+  assert.equal((await POST(admin, `/api/team/${id}/clock`, { direction: 'out' })).status, 200);
+  const spare = await POST(admin, `/api/team/${id}/clock`, { direction: 'out' });
+  assert.equal(spare.status, 400, 'and cannot clock out twice either');
+});
+
+test('only the owner sees phone numbers, notes and hours', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  await newEmployee(admin, unique('Joel'), 'Warehouse');
+
+  const asOwner = (await GET(admin, '/api/team')).data;
+  assert.ok('phone' in asOwner.team[0]);
+  assert.ok('hours_this_week' in asOwner.team[0]);
+
+  for (const who of [store, till]) {
+    const seen = (await GET(who, '/api/team')).data;
+    assert.ok(seen.team.length, 'staff still see who they work with');
+    assert.ok(!('phone' in seen.team[0]), 'but never a colleague\'s phone number');
+    assert.ok(!('note' in seen.team[0]));
+    assert.ok(!('hours_this_week' in seen.team[0]));
+    assert.equal(seen.shifts.length, 0, 'nor the shift record');
+  }
+});
+
+test('clocking on is the counter\'s job, keeping the list is the owner\'s', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const id = await newEmployee(admin, unique('Ana'));
+
+  assert.equal((await POST(till, `/api/team/${id}/clock`, { direction: 'in' })).status, 200,
+    'a cashier runs the counter, so a cashier clocks people on');
+  assert.equal((await POST(store, `/api/team/${id}/clock`, { direction: 'out' })).status, 403);
+  assert.equal((await POST(till, '/api/team', { name: 'X', position: 'Y' })).status, 403,
+    'but only the owner adds people');
+});
+
+test('someone leaving keeps their hours on the books', async () => {
+  const admin = await signIn('admin');
+  const id = await newEmployee(admin, unique('Departing'));
+  await POST(admin, `/api/team/${id}/clock`, { direction: 'in' });
+
+  await POST(admin, `/api/team/${id}/left`, {});
+  const { team, shifts } = (await GET(admin, '/api/team')).data;
+
+  // Postgres hands bigints back as strings, so compare as numbers.
+  const person = team.find((p) => Number(p.id) === id);
+  assert.ok(person, 'the person is still on the list, dated, not deleted');
+  assert.equal(person.here, false);
+  assert.equal(person.on_shift, false, 'and their open shift was closed for them');
+  assert.ok(shifts.some((s) => Number(s.employee_id) === id),
+    'the shift they worked is still recorded');
+});
+
+test('one sign-in belongs to one person', async () => {
+  const admin = await signIn('admin');
+  const spare = await db.query(
+    `insert into app_users (username, display_name, password_hash, role)
+     values ($1,$1,$2,'cashier') returning id`, [unique('till'), hashPassword('secret123')]);
+  const userId = Number(spare.rows[0].id);
+
+  const first = await POST(admin, '/api/team',
+    { name: unique('First'), position: 'Cashier', user_id: userId });
+  assert.equal(first.status, 200);
+
+  const second = await POST(admin, '/api/team',
+    { name: unique('Second'), position: 'Cashier', user_id: userId });
+  assert.equal(second.status, 400);
+  assert.match(second.data.error, /already belongs to someone/);
+});
