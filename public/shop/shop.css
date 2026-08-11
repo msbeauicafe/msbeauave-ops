@@ -281,3 +281,29 @@ body {
   color: var(--rose-deep); border-radius: 9px; padding: 8px; font: inherit;
   font-size: .8rem; cursor: pointer;
 }
+
+/* ---------- promotions ---------- */
+.sh-banner.sale { position: relative; }
+.sh-flash {
+  position: absolute; top: 12px; right: 12px; background: #fff; color: var(--danger);
+  border-radius: 999px; padding: 3px 10px; font-size: .72rem; font-weight: 700;
+}
+.sh-live { display: flex; gap: 10px; overflow-x: auto; padding: 0 12px 14px; }
+.sh-live .lcard {
+  position: relative; flex: none; width: 150px; background: #fff; text-align: left;
+  border: 1px solid var(--rose-soft); border-radius: 12px; padding: 0 0 8px;
+  overflow: hidden; font: inherit; color: inherit; cursor: pointer;
+}
+.sh-live .sh-img { height: 100px; }
+.sh-live .ltag {
+  position: absolute; top: 6px; left: 6px; background: var(--danger); color: #fff;
+  font-size: .62rem; border-radius: 4px; padding: 1px 6px; font-weight: 700;
+}
+.sh-live .lname { font-size: .76rem; padding: 6px 8px 2px; line-height: 1.25; }
+.sh-live .sh-price { padding: 0 8px; }
+.sh-price s { color: var(--muted); font-weight: 400; font-size: .78rem; }
+.sh-off {
+  background: var(--rose-blush); color: var(--danger); font-size: .64rem;
+  font-weight: 700; padding: 1px 5px; border-radius: 3px; align-self: flex-start;
+}
+.sh-off.big { font-size: .8rem; padding: 4px 10px; border-radius: 6px; margin-bottom: 6px; }

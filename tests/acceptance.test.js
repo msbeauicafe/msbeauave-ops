@@ -876,3 +876,83 @@ test('the app cannot reserve stock the shelf does not have', async () => {
   assert.equal(await shelfFree(till, sku), free,
     'a refused reservation must not leave anything held');
 });
+
+// ===========================================================================
+// Promotions
+//
+// The promise: a discount is what the customer is charged, it never undercuts
+// the price resellers sell at, and it never touches a wholesale price.
+// ===========================================================================
+test('a promotion is charged, not merely advertised', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin,
+    { unit_cost: 50, wholesale_price: 100, srp: 150, retail_price: 200 });
+  await receive(store, sku, 24, 100);
+
+  const started = await POST(admin, '/api/promos',
+    { sku, headline: 'Ten off', percent: 10, ends: monthsOut(1) });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+
+  const onShelf = (await GET(till, `/api/till/products?q=${sku}`)).data[0];
+  assert.equal(Number(onShelf.retail_price), 200, 'the ordinary price is still known');
+  assert.equal(Number(onShelf.price_now), 180, 'and the till knows what to charge today');
+
+  const sale = await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 2 }], method: 'cash', tendered: 500 });
+  assert.equal(sale.status, 200, JSON.stringify(sale.data));
+  assert.equal(Number(sale.data.total), 360, 'two at the promotion price, not the shelf price');
+  assert.equal(Number(sale.data.lines[0].unit_price), 180);
+});
+
+test('a promotion may never undercut what resellers sell at', async () => {
+  const admin = await signIn('admin');
+  const sku = await newProduct(admin,
+    { unit_cost: 50, wholesale_price: 100, srp: 180, retail_price: 200 });
+
+  const tooDeep = await POST(admin, '/api/promos',
+    { sku, headline: 'Half price', percent: 50, ends: monthsOut(1) });
+  assert.equal(tooDeep.status, 400);
+  assert.match(tooDeep.data.error, /below the 180\.00 resellers sell at/,
+    'and it has to say what the limit is, not just refuse');
+  assert.match(tooDeep.data.error, /most you can take off is 10 percent/);
+
+  const allowed = await POST(admin, '/api/promos',
+    { sku, headline: 'Ten off', percent: 10, ends: monthsOut(1) });
+  assert.equal(allowed.status, 200, 'right up to the floor is fine');
+});
+
+test('a promotion never moves a wholesale price', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin,
+    { unit_cost: 50, wholesale_price: 100, srp: 150, retail_price: 200 });
+  await receive(store, sku, 24, 200);
+  await POST(admin, '/api/promos', { sku, headline: 'Sale', percent: 20, ends: monthsOut(1) });
+
+  const resellerId = await newReseller(admin);
+  const buyer = await signIn('reseller', resellerId);
+  const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });
+  assert.equal(order.status, 200, JSON.stringify(order.data));
+
+  const placed = (await GET(admin, `/api/orders/${order.data.orderId}`)).data;
+  assert.equal(Number(placed.lines[0].unit_price), 100,
+    'wholesale is contracted — a retail promotion must not touch it');
+});
+
+test('ending a promotion puts the price back', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin,
+    { unit_cost: 50, wholesale_price: 100, srp: 150, retail_price: 200 });
+  await receive(store, sku, 24, 100);
+
+  const { data } = await POST(admin, '/api/promos',
+    { sku, headline: 'Briefly', percent: 10, ends: monthsOut(1) });
+  assert.equal(Number((await GET(till, `/api/till/products?q=${sku}`)).data[0].price_now), 180);
+
+  await POST(admin, `/api/promos/${data.id}/end`);
+  assert.equal(Number((await GET(till, `/api/till/products?q=${sku}`)).data[0].price_now), 200);
+});

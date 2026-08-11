@@ -17,6 +17,9 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
 const peso = (v) => '₱' + Number(v || 0).toLocaleString('en-PH',
   { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const onDay = (v) => (v ? new Date(v).toLocaleDateString('en-PH',
+  { dateStyle: 'medium', timeZone: 'Asia/Manila' }) : '');
+
 const photoUrl = (sku) => `/api/products/${encodeURIComponent(sku)}/photo`;
 
 async function POST(path, body) {
@@ -41,6 +44,7 @@ let category = '';
 let view = 'home';
 let goods = [];
 let categories = [];
+let promos = [];
 let me = null;          // the signed-in shopper, or null
 // The basket lives in the browser until it is reserved: a shopper who is only
 // browsing should not need an account, and a half-filled basket surviving a
@@ -137,7 +141,25 @@ function homeView() {
       <div><b>Same day</b><span>pick up in Cebu</span></div>
     </div>
 
-    ${term ? '' : `
+    ${term ? '' : promos.length ? `
+      <div class="sh-banner sale">
+        <span class="sh-flash">−${Number(promos[0].percent_off)}% off</span>
+        <h3>${esc(promos[0].headline)}</h3>
+        <p>${peso(promos[0].price)} instead of ${peso(promos[0].was)} · until ${
+          onDay(promos[0].ends_on)}</p>
+      </div>
+      <div class="sh-rowhead">🌸 MS BEAU LIVE · on promotion</div>
+      <div class="sh-live">
+        ${promos.map((pm) => `
+          <button class="lcard" data-sku="${esc(pm.sku)}">
+            <div class="sh-img">${pm.has_photo
+              ? `<img src="${photoUrl(pm.sku)}" alt="" loading="lazy">` : '🧴'}</div>
+            <span class="ltag">−${Number(pm.percent_off)}%</span>
+            <div class="lname">${esc(pm.product)}</div>
+            <div class="sh-price">${peso(pm.price)}
+              <s>${peso(pm.was)}</s></div>
+          </button>`).join('')}
+      </div>` : `
       <div class="sh-banner">
         <h3>Skincare, straight from the counter</h3>
         <p>Everything here is on our shelves right now. Reserve in store or message us.</p>
@@ -175,7 +197,9 @@ function grid(list) {
         <div class="sh-body">
           <div class="sh-name">${esc(p.name)}</div>
           <div class="sh-brand">${esc(p.brand || '')}</div>
-          <div class="sh-price">${peso(p.price)}</div>
+          <div class="sh-price">${peso(p.price)}${
+            p.was ? ` <s>${peso(p.was)}</s>` : ''}</div>
+          ${p.percent_off ? `<div class="sh-off">−${Number(p.percent_off)}% off</div>` : ''}
           ${p.in_stock ? '' : '<div class="sh-out">Sold out</div>'}
         </div>
       </button>`).join('')
@@ -450,7 +474,9 @@ function openProduct(p) {
         : '<div class="big-img placeholder">🧴</div>'}
       <h2>${esc(p.name)}</h2>
       <div class="sh-brand">${esc(p.brand || '')}${p.category ? ' · ' + esc(p.category) : ''}</div>
-      <div class="price">${peso(p.price)}</div>
+      <div class="price">${peso(p.price)}${
+        p.was ? ` <s class="sh-brand">${peso(p.was)}</s>` : ''}</div>
+      ${p.percent_off ? `<div class="sh-off big">−${Number(p.percent_off)}% off today</div>` : ''}
       ${p.in_stock
         ? '<div class="sh-note">In stock at the counter today.</div>'
         : '<div class="sh-note">Sold out for now — message us and we will tell you when it lands.</div>'}
@@ -554,7 +580,12 @@ async function loadMe() {
 }
 
 async function load() {
-  goods = await GET(`/api/shop/catalog?q=${encodeURIComponent(term)}`);
+  const [list, running] = await Promise.all([
+    GET(`/api/shop/catalog?q=${encodeURIComponent(term)}`),
+    GET('/api/shop/promos').catch(() => []),
+  ]);
+  goods = list;
+  promos = running;
   draw();
 }
 

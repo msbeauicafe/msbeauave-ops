@@ -181,6 +181,7 @@ const TABS = {
     ['dashboard', '🏠', 'Dashboard'],
     ['workspace', '🗂️', 'Workspace'],
     ['pickups', '📦', 'Pickups'],
+    ['promos', '🏷️', 'Promos'],
     ['products', '🧴', 'Products'],
     ['receive', '📦', 'Receive'],
     ['orders', '🚚', 'Wholesale'],
@@ -1424,8 +1425,11 @@ SCREENS.till = async (page) => {
 
   const add = (p) => {
     if (p.on_shelf <= 0) return;
+    // The promotion price, because that is what place_order will charge. A
+    // basket that totals one figure and a receipt that prints another is an
+    // argument at the counter.
     const line = basket.get(p.sku)
-      ?? { sku: p.sku, name: p.name, price: Number(p.retail_price), qty: 0 };
+      ?? { sku: p.sku, name: p.name, price: Number(p.price_now ?? p.retail_price), qty: 0 };
     line.qty += 1;
     basket.set(p.sku, line);
     drawBasket();
@@ -1437,7 +1441,8 @@ SCREENS.till = async (page) => {
         ${p.has_photo ? `<img class="goodpic" src="${photoUrl(p.sku)}" alt="" loading="lazy">`
           : '<span class="goodpic none-photo">🧴</span>'}
         <span class="nm">${esc(p.name)}</span>
-        <span class="pr">${peso(p.retail_price)}</span>
+        <span class="pr">${peso(p.price_now ?? p.retail_price)}${
+          p.percent_off ? ` <s class="dim">${peso(p.retail_price)}</s>` : ''}</span>
         <span class="st">${p.on_shelf > 0 ? `${p.on_shelf} on the shelf` : 'none on the shelf'}</span>
       </button>`).join('') : '<div class="none">Nothing matches.</div>';
 
@@ -2036,6 +2041,134 @@ SCREENS.pickups = async (page) => {
 
   await load();
   repeat(load, 15000);
+};
+
+// ===========================================================================
+// Promotions — a discount the till actually charges
+// ===========================================================================
+SCREENS.promos = async (page) => {
+  page.innerHTML = `
+    <div class="head"><h2>Promos</h2>
+      <span class="hint">What comes off the shop price, and until when</span></div>
+    <div class="tools">
+      <button class="btn" id="new">＋ Start a promotion</button>
+    </div>
+    <div class="panel"><h3>Running now</h3><div id="live"></div></div>
+    <div class="split">
+      <div class="panel"><h3>Worth putting on sale</h3>
+        <div class="dim">Batches with less than six months left, and the most you
+          can take off before undercutting what resellers sell at.</div>
+        <div id="cands" class="mt"></div></div>
+      <div class="panel"><h3>Everything, past and future</h3><div id="all"></div></div>
+    </div>`;
+
+  let data = { live: [], all: [], candidates: [] };
+
+  const load = async () => {
+    data = await GET('/api/promos');
+
+    $('#live', page).innerHTML = table(data.live, [
+      { head: 'Product', cell: (p) => `<b>${esc(p.product)}</b>
+          <span class="dim">${esc(p.sku)}</span>` },
+      { head: 'Headline', cell: (p) => esc(p.headline) },
+      { head: 'Off', n: true, cell: (p) => `${tag(`−${Number(p.percent_off)}%`, 'red')}` },
+      { head: 'Was', n: true, cell: (p) => `<s class="dim">${peso(p.was)}</s>` },
+      { head: 'Now', n: true, cell: (p) => `<b>${peso(p.now_price)}</b>` },
+      { head: 'Until', cell: (p) => onDay(p.ends_on) },
+      { head: 'Lot', cell: (p) => p.batch_no ? `<span class="dim">${esc(p.batch_no)}</span>` : '' },
+      { head: '', cell: (p) => user.role === 'admin'
+          ? `<button class="btn sm stop" data-end="${p.id}">End it</button>` : '' },
+    ], 'Nothing on promotion right now');
+
+    $('#cands', page).innerHTML = table(data.candidates, [
+      { head: 'Product', cell: (c) => `<b>${esc(c.product)}</b>` },
+      { head: 'Lot', cell: (c) => `<span class="dim">${esc(c.batch_no)}</span>` },
+      { head: 'Expires', cell: (c) => `${onDay(c.expiry)}
+          <span class="dim">${c.days_left}d</span>` },
+      { head: 'Units', n: true, cell: (c) => count(c.units) },
+      { head: 'Max off', n: true, cell: (c) => c.max_percent > 0 ? `${c.max_percent}%` : '—' },
+      { head: '', cell: (c) => (user.role === 'admin' && !c.already_on_promo && c.max_percent > 0)
+          ? `<button class="btn sm quiet" data-cand="${c.batch_id}">Put on sale</button>`
+          : (c.already_on_promo ? tag('on promo', 'green') : '') },
+    ], 'Nothing near expiry 🌸');
+
+    $('#all', page).innerHTML = table(data.all, [
+      { head: 'Product', cell: (p) => esc(p.product) },
+      { head: 'Off', n: true, cell: (p) => `${Number(p.percent_off)}%` },
+      { head: 'From', cell: (p) => onDay(p.starts_on) },
+      { head: 'Until', cell: (p) => onDay(p.ends_on) },
+      { head: 'State', cell: (p) => p.ended_early ? tag('stopped', 'grey')
+          : p.running ? tag('running', 'green')
+          : (new Date(p.starts_on) > new Date() ? tag('scheduled', 'amber') : tag('finished', 'grey')) },
+    ], 'No promotions yet');
+
+    $$('[data-end]', page).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await POST(`/api/promos/${b.dataset.end}/end`);
+        notice('Ended — the price is back to normal', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    }));
+
+    $$('[data-cand]', page).forEach((b) => b.addEventListener('click', () => {
+      const c = data.candidates.find((x) => String(x.batch_id) === b.dataset.cand);
+      openPromo(c);
+    }));
+  };
+
+  const openPromo = (from) => {
+    const inAMonth = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    dialog(`
+      <h3>Start a promotion</h3>
+      <div class="row">
+        <div style="flex:2"><label>Product code</label>
+          <input id="pm_sku" type="text" value="${esc(from?.sku || '')}"
+            placeholder="e.g. SER-004"></div>
+        <div><label>Take off (%)</label>
+          <input id="pm_pc" type="number" min="1" max="90" step="1"
+            value="${from ? Math.min(20, from.max_percent) : 15}"></div>
+      </div>
+      ${from ? `<div class="dim">${esc(from.product)} · lot ${esc(from.batch_no)} ·
+        ${count(from.units)} units · expires ${onDay(from.expiry)} ·
+        the most you can take off is ${from.max_percent}%</div>` : ''}
+      <div><label>Headline</label>
+        <input id="pm_head" type="text" maxlength="90"
+          value="${from ? esc(`Flash Sale — ${from.product} (lot ${from.batch_no})`) : ''}"
+          placeholder="What the customer reads"></div>
+      <div class="row">
+        <div><label>Kind</label>
+          <select id="pm_kind">
+            <option value="flash">Flash sale</option>
+            <option value="instore">In-store promo</option>
+          </select></div>
+        <div><label>Starts</label><input id="pm_from" type="date"></div>
+        <div><label>Ends</label><input id="pm_to" type="date" value="${inAMonth}"></div>
+      </div>
+      <div class="dim mt">The shop price can never go below what resellers sell at.
+        If it would, this is refused and tells you the most you can take off.</div>
+      <div class="mt right"><button class="btn" id="pm_go">Start it</button></div>`);
+
+    $('#pm_go').addEventListener('click', async () => {
+      try {
+        await POST('/api/promos', {
+          sku: $('#pm_sku').value.trim().toUpperCase(),
+          headline: $('#pm_head').value,
+          percent: Number($('#pm_pc').value),
+          kind: $('#pm_kind').value,
+          starts: $('#pm_from').value || null,
+          ends: $('#pm_to').value,
+          batch_id: from?.batch_id || null,
+        });
+        closeDialog();
+        notice('Promotion started 🌸', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    });
+  };
+
+  $('#new', page).addEventListener('click', () => openPromo(null));
+  await load();
+  repeat(load, 20000);
 };
 
 start();
