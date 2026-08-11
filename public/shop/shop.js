@@ -138,7 +138,7 @@ function homeView() {
     <div class="sh-wallet">
       <div><b>Free</b><span>skin check in store</span></div>
       <div><b>GCash · Maya</b><span>+ cash at the counter</span></div>
-      <div><b>Same day</b><span>pick up in Cebu</span></div>
+      <div><b>9am – 7pm</b><span>Bayan Bayanan, Marikina</span></div>
     </div>
 
     ${term ? '' : promos.length ? `
@@ -213,9 +213,16 @@ function grid(list) {
 function visitView() {
   return `
     <div class="sh-panel">
-      <h4>MS BEAU AVE</h4>
-      <p>Skincare, sold from our own counter. Come in for a free skin check —
-         no appointment needed.</p>
+      <h4>Where we are</h4>
+      <p class="sh-address">Bayan Bayanan<br>Marikina City</p>
+      <a class="sh-map" target="_blank" rel="noopener"
+         href="https://www.google.com/maps/search/?api=1&query=${
+           encodeURIComponent('Bayan Bayanan, Marikina City')}">Open in Maps</a>
+    </div>
+
+    <div class="sh-panel">
+      <h4>When we are open</h4>
+      <p><b>9am – 7pm</b>, every day.</p>
     </div>
 
     <div class="sh-panel">
@@ -225,13 +232,14 @@ function visitView() {
 
     <div class="sh-panel">
       <h4>Reserving something</h4>
-      <p>Found something here you want held? Message us with the product name
-         and we will keep it for you until the end of the day.</p>
+      <p>Add it to your basket and reserve it here — we take it off the shelf
+         straight away and hold it until the end of the next day. Pay when you
+         collect.</p>
     </div>
 
-    <div class="sh-panel quiet">
-      <h4>Our address and opening hours</h4>
-      <p>Not published here yet. Ask us and we will point you to the counter.</p>
+    <div class="sh-panel">
+      <h4>A free skin check</h4>
+      <p>Come in any time we are open. No appointment needed.</p>
     </div>`;
 }
 
