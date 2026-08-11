@@ -25,6 +25,40 @@ const when = (v) => (v ? new Date(v).toLocaleString('en-PH',
 const onDay = (v) => (v ? new Date(v).toLocaleDateString('en-PH',
   { dateStyle: 'medium', timeZone: TZ }) : '—');
 
+// A product's picture, if it has one. The stamp is only there to defeat the
+// cache after a re-upload — without it the browser keeps showing the old shot.
+const photoUrl = (sku, stamp) =>
+  `/api/products/${encodeURIComponent(sku)}/photo${stamp ? `?v=${stamp}` : ''}`;
+
+const thumb = (p, size = 34) => (p.has_photo
+  ? `<img class="thumb" style="width:${size}px;height:${size}px" loading="lazy"
+       src="${photoUrl(p.sku)}" alt="">`
+  : `<span class="thumb none-photo" style="width:${size}px;height:${size}px">🧴</span>`);
+
+// Phone cameras produce four-thousand-pixel photographs; a shelf tile is 150
+// pixels wide. Shrinking here rather than on the way out means the big file
+// never leaves the phone, which matters on a shop's connection.
+function shrink(file, edge = 900, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('That file could not be read.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('That file is not an image.'));
+      img.onload = () => {
+        const scale = Math.min(1, edge / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 let user = null;
 let tab = null;
 let refreshTimer = null;
@@ -312,6 +346,7 @@ SCREENS.products = async (page) => {
   const load = async () => {
     const rows = await GET(`/api/products?q=${encodeURIComponent(term)}`);
     $('#list', page).innerHTML = table(rows, [
+      { head: '', cell: (p) => thumb(p) },
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>`
           + (p.active ? '' : ' ' + tag('hidden', 'grey'))
@@ -386,10 +421,57 @@ function editProduct(p, reload) {
       <div><label>Shop %</label><input id="f_as" type="number" value="${Math.round(num(p?.alloc_shop, 0.2) * 100)}"></div>
       <div><label>Reserve %</label><input id="f_ar" type="number" value="${Math.round(num(p?.alloc_reserve, 0.1) * 100)}"></div>
     </div>
+    ${isNew ? '' : `
+      <h3 class="mt">Photograph</h3>
+      <div class="dim">What the till and the customer app show for this product.</div>
+      <div class="row" style="align-items:center">
+        <div style="flex:0 0 auto" id="f_photo_now">${thumb(p, 76)}</div>
+        <div><label for="f_photo">Choose a picture</label>
+          <input id="f_photo" type="file" accept="image/*"></div>
+        <div style="flex:0 0 auto">
+          <button class="btn quiet sm" id="f_photo_clear"
+            ${p.has_photo ? '' : 'disabled'}>Remove</button></div>
+      </div>`}
     <div class="mt right">
       ${isNew ? '' : `<button class="btn quiet" id="f_toggle">${p.active ? 'Hide' : 'Show again'}</button>`}
       <button class="btn" id="f_save">Save</button>
     </div>`);
+
+
+  // The photograph saves on its own, the moment one is chosen — it is not part
+  // of the form below, and making someone press Save afterwards is how you end
+  // up with a picture that silently did not upload.
+  if (!isNew) {
+    const showPhoto = (has) => {
+      $('#f_photo_now').innerHTML = thumb({ sku: p.sku, has_photo: has }, 76)
+        .replace('src="' + photoUrl(p.sku) + '"', 'src="' + photoUrl(p.sku, Date.now()) + '"');
+      $('#f_photo_clear').disabled = !has;
+    };
+
+    $('#f_photo').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const dataUrl = await shrink(file);
+        await POST(`/api/products/${encodeURIComponent(p.sku)}/photo`, { dataUrl });
+        p.has_photo = true;
+        showPhoto(true);
+        notice('Picture saved 🌸', 'good');
+        reload();
+      } catch (err) { whoops(err); }
+      e.target.value = '';
+    });
+
+    $('#f_photo_clear').addEventListener('click', async () => {
+      try {
+        await POST(`/api/products/${encodeURIComponent(p.sku)}/photo`, { dataUrl: null });
+        p.has_photo = false;
+        showPhoto(false);
+        notice('Picture removed', 'good');
+        reload();
+      } catch (err) { whoops(err); }
+    });
+  }
 
   $('#f_save').addEventListener('click', async () => {
     const b2b = Number($('#f_ab').value) / 100;
@@ -1350,6 +1432,8 @@ SCREENS.till = async (page) => {
   const drawGoods = () => {
     $('#goods', page).innerHTML = goods.length ? goods.map((p) => `
       <button class="good ${p.on_shelf <= 0 ? 'empty' : ''}" data-add="${esc(p.sku)}">
+        ${p.has_photo ? `<img class="goodpic" src="${photoUrl(p.sku)}" alt="" loading="lazy">`
+          : '<span class="goodpic none-photo">🧴</span>'}
         <span class="nm">${esc(p.name)}</span>
         <span class="pr">${peso(p.retail_price)}</span>
         <span class="st">${p.on_shelf > 0 ? `${p.on_shelf} on the shelf` : 'none on the shelf'}</span>
