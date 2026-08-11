@@ -311,3 +311,11 @@ label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3
   background: var(--rose-blush); margin-bottom: 2px;
 }
 .good span.goodpic { display: grid; place-items: center; font-size: 1.8rem; }
+
+/* ---------- loyalty at the till ---------- */
+.loyalty {
+  margin-top: 14px; padding: 12px; border-radius: 10px;
+  background: var(--rose-blush); border: 1px solid var(--rose-soft);
+}
+.loyalty label { margin-top: 0; }
+.loyalty .hit { display: block; width: 100%; text-align: left; margin-top: 6px; }

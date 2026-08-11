@@ -1049,3 +1049,118 @@ test('one sign-in belongs to one person', async () => {
   assert.equal(second.status, 400);
   assert.match(second.data.error, /already belongs to someone/);
 });
+
+// ===========================================================================
+// Customers and loyalty
+//
+// The promise: the counter can sign somebody up in seconds, a walk-in sale can
+// earn them points, and claiming the account in the app finds those points
+// waiting rather than starting them at zero.
+// ===========================================================================
+test('the counter registers a customer, and a walk-in sale earns them points', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin,
+    { unit_cost: 50, wholesale_price: 100, srp: 150, retail_price: 200 });
+  await receive(store, sku, 24, 100);
+
+  const phone = `0917${String(Date.now()).slice(-7)}`;
+  const made = await POST(till, '/api/customers', { name: 'Maria Walkin', phone });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+
+  const sale = await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 2 }], method: 'cash', tendered: 500 });
+  const put = await POST(till, `/api/sales/${sale.data.receipt_no}/customer`,
+    { customer_id: made.data.id });
+  assert.equal(put.status, 200, JSON.stringify(put.data));
+  assert.equal(put.data.points, 20, '₱400 at one point per ₱20');
+
+  const twice = await POST(till, `/api/sales/${sale.data.receipt_no}/customer`,
+    { customer_id: made.data.id });
+  assert.equal(twice.status, 400, 'one receipt cannot be counted twice');
+
+  const seen = (await GET(admin, `/api/customers/${made.data.id}`)).data;
+  assert.equal(seen.points, 20);
+  assert.equal(Number(seen.spent), 400);
+  assert.equal(seen.orders, 1);
+  assert.equal(seen.claimed, false, 'they have not set a password yet');
+});
+
+test('claiming a counter account keeps the points already earned', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin,
+    { unit_cost: 50, wholesale_price: 100, srp: 150, retail_price: 200 });
+  await receive(store, sku, 24, 100);
+
+  const digits = String(Date.now()).slice(-7);
+  const made = await POST(till, '/api/customers', { name: 'Ana Claimed', phone: `0917${digits}` });
+  const sale = await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 500 });
+  await POST(till, `/api/sales/${sale.data.receipt_no}/customer`, { customer_id: made.data.id });
+
+  // Nobody can sign in to it before it is claimed, whatever they guess.
+  const guess = await POST(null, '/api/shop/login', { phone: `0917${digits}`, password: 'guess123' });
+  assert.equal(guess.status, 401);
+
+  // Claimed with the same number written differently, as a person would.
+  const claim = await POST(null, '/api/shop/join',
+    { name: 'Ana Claimed', phone: `+63 917 ${digits}`, password: 'herpassword' });
+  assert.equal(claim.status, 200, JSON.stringify(claim.data));
+  assert.equal(claim.data.customer.points, 10,
+    'the points the shop added are hers on the first screen she sees');
+
+  const all = (await GET(admin, '/api/customers')).data.customers
+    .filter((c) => (c.phone || '').includes(digits));
+  assert.equal(all.length, 1, 'claiming must not leave a second, empty account');
+});
+
+test('a customer\'s history counts both the counter and the app', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin,
+    { unit_cost: 50, wholesale_price: 100, srp: 150, retail_price: 200 });
+  await receive(store, sku, 24, 100);
+
+  const digits = String(Date.now()).slice(-7);
+  const made = await POST(till, '/api/customers', { name: 'Both Ways', phone: `0918${digits}` });
+  const sale = await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 500 });
+  await POST(till, `/api/sales/${sale.data.receipt_no}/customer`, { customer_id: made.data.id });
+
+  const claim = await POST(null, '/api/shop/join',
+    { name: 'Both Ways', phone: `0918${digits}`, password: 'herpassword' });
+  assert.equal(claim.status, 200, JSON.stringify(claim.data));
+
+  const jar = (await fetch(`${base}/api/shop/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: `0918${digits}`, password: 'herpassword' }),
+  }));
+  const cookie = (jar.headers.getSetCookie?.()[0] ?? jar.headers.get('set-cookie')).split(';')[0];
+
+  const reserved = await POST(cookie, '/api/shop/reserve', { lines: [{ sku, qty: 1 }] });
+  assert.equal(reserved.status, 200, JSON.stringify(reserved.data));
+  await POST(till, `/api/pickups/${reserved.data.code}/collect`, { method: 'cash' });
+
+  const seen = (await GET(admin, `/api/customers/${made.data.id}`)).data;
+  assert.equal(seen.orders, 2, 'one at the counter, one reserved in the app');
+  assert.equal(Number(seen.spent), 400);
+  assert.equal(seen.points, 20);
+  assert.deepEqual(seen.history.map((h) => h.how).sort(), ['counter', 'reserved']);
+});
+
+test('a cashier may register and attribute, but not read the whole list', async () => {
+  const till = await signIn('cashier');
+  const store = await signIn('warehouse');
+
+  assert.equal((await GET(till, '/api/customers')).status, 403,
+    'the customer book is the owner\'s');
+  assert.equal((await GET(store, '/api/customers/find?q=09')).status, 403,
+    'and the stockroom has no business looking anybody up');
+  assert.equal((await GET(till, '/api/customers/find?q=09')).status, 200,
+    'but the counter must be able to find whoever is standing there');
+});

@@ -183,6 +183,7 @@ const TABS = {
     ['pickups', '📦', 'Pickups'],
     ['promos', '🏷️', 'Promos'],
     ['team', '🧑‍💼', 'Team'],
+    ['crm', '💗', 'Customers'],
     ['products', '🧴', 'Products'],
     ['receive', '📦', 'Receive'],
     ['orders', '🚚', 'Wholesale'],
@@ -205,6 +206,7 @@ const TABS = {
     ['till', '🛍️', 'Till'],
     ['pickups', '📦', 'Pickups'],
     ['team', '🧑‍💼', 'Team'],
+    ['crm', '💗', 'Customers'],
     ['workspace', '🗂️', 'Workspace'],
     ['tillreturns', '↩️', 'Returns'],
     ['closeday', '🌙', 'Close of day'],
@@ -1535,10 +1537,61 @@ ${esc(r.method.toUpperCase())}${r.method === 'cash'
   ? `   given ${peso(r.tendered)}\nCHANGE${' '.repeat(5)}${peso(r.change)}` : ''}
 --------------------------------
 Salamat po! 🌸</div>
+      <div class="loyalty">
+        <label for="who">Points for a customer? Search by name or number</label>
+        <input id="who" type="search" autocomplete="off" placeholder="Optional">
+        <div id="hits"></div>
+      </div>
       <div class="mt right">
         <button class="btn quiet" onclick="window.print()">🖨 Print</button>
         <button class="btn" id="next">Next sale</button></div>`);
     $('#next').addEventListener('click', closeDialog);
+
+    // Attributing happens after the sale, never before it: the goods have gone
+    // and the money is in the drawer, so a mistyped number must not be able to
+    // hold any of that up. Worst case the points are added later.
+    let timer;
+    $('#who').addEventListener('input', (e) => {
+      const term = e.target.value.trim();
+      clearTimeout(timer);
+      if (!term) return ($('#hits').innerHTML = '');
+      timer = setTimeout(async () => {
+        try {
+          const found = await GET(`/api/customers/find?q=${encodeURIComponent(term)}`);
+          $('#hits').innerHTML = found.length
+            ? found.map((c) => `
+                <button class="btn sm quiet hit" data-cust="${c.id}">
+                  ${esc(c.name)} <span class="dim">${esc(c.phone || '')} ·
+                  ${count(c.points)} pts</span></button>`).join('')
+            : `<div class="dim">Nobody by that name or number.
+                 <button class="btn sm" id="reg">Register them</button></div>`;
+
+          $$('[data-cust]').forEach((b) => b.addEventListener('click', async () => {
+            try {
+              const out = await POST(`/api/sales/${encodeURIComponent(r.receipt_no)}/customer`,
+                { customer_id: Number(b.dataset.cust) });
+              notice(`+${out.points} points 🌸`, 'good');
+              $('.loyalty').innerHTML =
+                `<div class="dim">${out.points} points added to their account.</div>`;
+            } catch (err) { whoops(err); }
+          }));
+
+          $('#reg')?.addEventListener('click', async () => {
+            const name = prompt('Name?');
+            if (!name) return;
+            try {
+              const made = await POST('/api/customers', { name, phone: term });
+              await POST(`/api/sales/${encodeURIComponent(r.receipt_no)}/customer`,
+                { customer_id: made.id });
+              notice('Registered, and the points are on 🌸', 'good');
+              $('.loyalty').innerHTML =
+                '<div class="dim">Registered. They can claim the account in the app '
+                + 'with that number.</div>';
+            } catch (err) { whoops(err); }
+          });
+        } catch (err) { whoops(err); }
+      }, 250);
+    });
   }
 
   drawBasket();
@@ -2359,6 +2412,143 @@ SCREENS.team = async (page) => {
   if (owner) $('#add', page).addEventListener('click', () => openPerson(null));
   await load();
   repeat(load, 20000);
+};
+
+// ===========================================================================
+// Customers — who buys, how often, and what they are owed in points
+// ===========================================================================
+const STANDING = {
+  active: ['green', 'bought recently'],
+  slipping: ['amber', 'not for a month'],
+  lapsed: ['red', 'not for three months'],
+  'never bought': ['grey', 'never bought'],
+};
+
+SCREENS.crm = async (page) => {
+  let term = '';
+  page.innerHTML = `
+    <div class="head"><h2>Customers</h2>
+      <span class="hint">Everyone with a loyalty account, however they got one</span></div>
+    <div class="tools">
+      <input type="search" id="find" placeholder="Search by name or number…">
+      <button class="btn" id="add">＋ Register someone</button>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <div class="panel" id="list"></div>`;
+
+  const load = async () => {
+    const d = await GET(`/api/customers?q=${encodeURIComponent(term)}`);
+
+    $('#tiles', page).innerHTML = `
+      <div class="tile"><div class="big">${count(d.counts.all)}</div>
+        <div class="label">On the list</div></div>
+      <div class="tile good"><div class="big">${count(d.counts.active)}</div>
+        <div class="label">Bought in the last month</div></div>
+      <div class="tile warn"><div class="big">${count(d.counts.slipping)}</div>
+        <div class="label">Slipping — a month or more</div></div>
+      <div class="tile bad"><div class="big">${count(d.counts.lapsed)}</div>
+        <div class="label">Lapsed — three months or more</div></div>
+      <div class="tile"><div class="big">${count(d.points)}</div>
+        <div class="label">Points owed across everyone</div></div>`;
+
+    $('#list', page).innerHTML = table(d.customers, [
+      { head: 'Name', cell: (c) => `<b>${esc(c.name)}</b>`
+          + (c.claimed ? '' : ' ' + tag('not claimed', 'grey')) },
+      { head: 'Number', cell: (c) => `<span class="dim">${esc(c.phone || '')}</span>` },
+      { head: 'Standing', cell: (c) => {
+          const [kind, why] = STANDING[c.standing] ?? ['grey', c.standing];
+          return `${tag(c.standing, kind)} <span class="dim">${why}</span>`; } },
+      { head: 'Orders', n: true, cell: (c) => count(c.orders) },
+      { head: 'Spent', n: true, cell: (c) => peso(c.spent) },
+      { head: 'Points', n: true, cell: (c) => `${count(c.points)}
+          <span class="dim">${esc(c.tier)}</span>` },
+      { head: 'Joined', cell: (c) => `${onDay(c.joined_at)}
+          <span class="dim">${c.joined_via === 'counter' ? 'at the counter' : 'in the app'}</span>` },
+      { head: '', cell: (c) => `<button class="btn sm quiet" data-open="${c.id}">Open</button>` },
+    ], term ? 'Nobody matches that' : 'No customers yet');
+
+    $$('[data-open]', page).forEach((b) => b.addEventListener('click', () => openCustomer(b.dataset.open)));
+  };
+
+  const openCustomer = async (id) => {
+    let c;
+    try { c = await GET(`/api/customers/${id}`); } catch (e) { return whoops(e); }
+    const [kind] = STANDING[c.standing] ?? ['grey'];
+
+    dialog(`
+      <h3>${esc(c.name)}</h3>
+      <div class="dim">${esc(c.phone || '')} · joined ${onDay(c.joined_at)}
+        ${c.joined_via === 'counter' ? 'at the counter' : 'in the app'}
+        ${c.claimed ? '' : ' · has not claimed the account yet'}</div>
+
+      <div class="tiles mt">
+        <div class="tile"><div class="big">${count(c.orders)}</div><div class="label">Orders</div></div>
+        <div class="tile"><div class="big">${peso(c.spent)}</div><div class="label">Spent</div></div>
+        <div class="tile"><div class="big">${count(c.points)}</div>
+          <div class="label">Points · ${esc(c.tier)}</div></div>
+      </div>
+      <div class="tags">${tag(c.standing, kind)}
+        ${c.last_bought ? `<span class="dim">last bought ${onDay(c.last_bought)}</span>` : ''}</div>
+
+      <div><label>Note</label>
+        <input id="c_note" type="text" value="${esc(c.note || '')}"
+          placeholder="Skin type, what they like, anything worth remembering"></div>
+      <div class="mt right"><button class="btn sm" id="c_save">Save note</button></div>
+
+      <h3 class="mt">What they have bought</h3>
+      <div id="c_hist"></div>`);
+
+    $('#c_hist').innerHTML = table(c.history || [], [
+      { head: 'When', cell: (h) => when(h.at) },
+      { head: 'Reference', cell: (h) => `<span class="dim">${esc(h.reference)}</span>` },
+      { head: 'How', cell: (h) => h.how === 'counter'
+          ? tag('at the counter', 'pink') : tag('reserved in the app', 'green') },
+      { head: 'Total', n: true, cell: (h) => peso(h.total) },
+      { head: 'Points', n: true, cell: (h) => count(h.points) },
+    ], 'Nothing yet');
+
+    $('#c_save').addEventListener('click', async () => {
+      try {
+        await PUT(`/api/customers/${id}/note`, { note: $('#c_note').value });
+        notice('Saved 🌸', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    });
+  };
+
+  $('#find', page).addEventListener('input', (e) => {
+    term = e.target.value;
+    load().catch(whoops);
+  });
+  $('#add', page).addEventListener('click', () => {
+    dialog(`
+      <h3>Register a customer</h3>
+      <div class="dim">Takes a name and a number. They set their own password
+        later by joining in the app with the same number — their points will be
+        waiting.</div>
+      <div class="row mt">
+        <div style="flex:2"><label>Name</label><input id="n_name" type="text"></div>
+        <div><label>Mobile number</label><input id="n_phone" type="text"
+          placeholder="09XX XXX XXXX"></div>
+      </div>
+      <div><label>Note</label><input id="n_note" type="text"
+        placeholder="Optional"></div>
+      <div class="mt right"><button class="btn" id="n_go">Register</button></div>`);
+
+    $('#n_go').addEventListener('click', async () => {
+      try {
+        await POST('/api/customers', {
+          name: $('#n_name').value, phone: $('#n_phone').value, note: $('#n_note').value,
+        });
+        closeDialog();
+        notice('Registered 🌸', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    });
+  });
+
+  await load();
+  repeat(load, 30000);
 };
 
 start();
