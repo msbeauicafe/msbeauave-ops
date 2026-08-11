@@ -190,7 +190,8 @@ textarea.sheet {
   padding: 16px 18px; margin-top: 18px;
 }
 .danger h3 { color: var(--danger); font-size: .95rem; margin-bottom: 4px; }
-.danger .btn.warn { background: var(--danger); }
+/* Anything that cannot be undone, wherever it appears. */
+.btn.warn { background: var(--danger); color: #fff; border: none; }
 
 /* ---------- controls ---------- */
 input[type=text], input[type=number], input[type=password], input[type=date],

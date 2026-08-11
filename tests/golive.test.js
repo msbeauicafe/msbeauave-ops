@@ -56,7 +56,7 @@ async function signIn(role) {
   });
   assert.equal(res.status, 200, `could not sign in as ${username}`);
   const raw = res.headers.getSetCookie?.()[0] ?? res.headers.get('set-cookie');
-  return raw.split(';')[0];
+  return Object.assign(raw.split(';')[0], { username });
 }
 
 const load = (admin, items) => POST(admin, '/api/catalogue', { items });
@@ -444,4 +444,100 @@ test('a new product with no split on the list takes the house 70/20/10', async (
     lines: [{ sku: 'SPLIT-04', batch_no: unique('S'), expiry: monthsOut(24), qty: 100 }],
   });
   assert.deepEqual(r.data.received[0].split, { b2b: 70, shop: 20, reserve: 10 });
+});
+
+// ===========================================================================
+// Removing a sign-in
+//
+// Switching off keeps the row and is the right answer most of the time.
+// Removing is for accounts that should never have existed — duplicates, tests,
+// typos — and it has to leave the record of what they did intact.
+// ===========================================================================
+
+const DELETE = (c, p) => request(c, 'DELETE', p);
+
+test('a sign-in is removed, and what it did stays in the records under its name',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+
+    await load(admin, [{ sku: 'GONE-01', name: 'Handled By Someone Leaving',
+      category: 'Soaps', unit_cost: 10, wholesale_price: 60, srp: 80, retail_price: 100 }]);
+    const got = await POST(store, '/api/deliveries', {
+      lines: [{ sku: 'GONE-01', batch_no: unique('G'), expiry: monthsOut(24), qty: 10 }],
+    });
+    assert.equal(got.status, 200, JSON.stringify(got.data));
+
+    const before = (await db.query(
+      'select count(*)::int as n from audit_log where actor = $1', [store.username])).rows[0].n;
+    assert.ok(before > 0, 'the delivery should have been journalled');
+
+    const row = (await GET(admin, '/api/users')).data.find((u) => u.username === store.username);
+    const r = await DELETE(admin, `/api/users/${row.id}`);
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.removed, store.username);
+
+    assert.equal((await GET(admin, '/api/users')).data.some((u) => u.id === row.id), false,
+      'the sign-in is gone');
+    assert.equal((await db.query(
+      'select count(*)::int as n from audit_log where actor = $1', [store.username])).rows[0].n,
+      before,
+      'the journal names who did what, so removing the account loses no history');
+  });
+
+test('you cannot remove the sign-in you are using', async () => {
+  const admin = await signIn('admin');
+  const mine = (await GET(admin, '/api/users')).data.find((u) => u.username === admin.username);
+  const r = await DELETE(admin, `/api/users/${mine.id}`);
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /sign-in you are using/);
+});
+
+test('the last admin standing cannot be removed', async () => {
+  // Unreachable over HTTP on purpose: whoever is calling is themselves an
+  // active admin, so a second one always exists. The guard is there for
+  // anything reaching the database directly, and that is where it is checked.
+  const admin = await signIn('admin');
+  const only = (await db.query(
+    `select id, username from app_users where username = $1`, [admin.username])).rows[0];
+  await db.query(
+    `update app_users set active = false where role = 'admin' and username <> $1`,
+    [admin.username]);
+  try {
+    await assert.rejects(
+      db.query(`do $$ begin
+        perform set_config('app.role', 'admin', true);
+        perform set_config('app.actor', 'somebody-else', true);
+        perform remove_login(${only.id});
+      end $$;`),
+      /last admin/);
+  } finally {
+    await db.query(`update app_users set active = true where role = 'admin'`);
+  }
+});
+
+test('removing a login leaves the person on the team, minus the link', async () => {
+  const admin = await signIn('admin');
+  const leaver = await signIn('cashier');
+  const id = (await GET(admin, '/api/users')).data
+    .find((u) => u.username === leaver.username).id;
+
+  const person = await POST(admin, '/api/team',
+    { name: 'Someone Real', position: 'Counter', user_id: id });
+  assert.equal(person.status, 200, JSON.stringify(person.data));
+
+  assert.equal((await DELETE(admin, `/api/users/${id}`)).status, 200);
+
+  const team = (await GET(admin, '/api/team')).data.team;
+  const still = team.find((p) => p.name === 'Someone Real');
+  assert.ok(still, 'the person stays on the team');
+  assert.equal(still.user_id, null, 'they only lose the link to the account that has gone');
+});
+
+test('the counter cannot remove sign-ins', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const target = (await GET(admin, '/api/users')).data.find((u) => u.username === till.username);
+  const r = await DELETE(till, `/api/users/${target.id}`);
+  assert.equal(r.status, 403);
 });

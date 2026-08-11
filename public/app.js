@@ -79,6 +79,7 @@ async function call(method, path, body) {
 const GET = (p) => call('GET', p);
 const POST = (p, b) => call('POST', p, b ?? {});
 const PUT = (p, b) => call('PUT', p, b);
+const DELETE = (p) => call('DELETE', p);
 
 function notice(text, kind = '') {
   const el = document.createElement('div');
@@ -1816,7 +1817,9 @@ SCREENS.people = async (page) => {
       { head: '', cell: (u) => `
           <button class="btn sm quiet" data-flip="${u.id}" data-to="${u.active ? 0 : 1}">
             ${u.active ? 'Switch off' : 'Switch on'}</button>
-          <button class="btn sm line" data-pw="${u.id}">New password</button>` },
+          <button class="btn sm line" data-pw="${u.id}">New password</button>
+          <button class="btn sm warn" data-del="${u.id}"
+            data-who="${esc(u.username)}">Remove</button>` },
     ], 'No sign-ins yet.');
 
     $$('[data-flip]', page).forEach((b) => b.addEventListener('click', async () => {
@@ -1824,6 +1827,28 @@ SCREENS.people = async (page) => {
         await POST(`/api/users/${b.dataset.flip}/active`, { active: b.dataset.to === '1' });
         draw(await GET('/api/users'));
       } catch (e) { whoops(e); }
+    }));
+    // Removing is permanent, so it asks. Switching off is one tap and
+    // reversible, which is why that one does not.
+    $$('[data-del]', page).forEach((b) => b.addEventListener('click', () => {
+      dialog(`<h3>Remove ${esc(b.dataset.who)}?</h3>
+        <div class="dim">The sign-in goes for good and cannot be used again.
+          Everything it has already done stays in the records under its name.
+          <br><br>To stop someone signing in for now and keep the account,
+          use <b>Switch off</b> instead.</div>
+        <div class="mt right">
+          <button class="btn quiet" id="rm_no">Keep it</button>
+          <button class="btn warn" id="rm_yes">Remove</button></div>`);
+      $('#rm_no').addEventListener('click', closeDialog);
+      $('#rm_yes').addEventListener('click', async () => {
+        $('#rm_yes').disabled = true;
+        try {
+          const r = await DELETE(`/api/users/${b.dataset.del}`);
+          closeDialog();
+          notice(`${r.removed} removed`, 'good');
+          draw(await GET('/api/users'));
+        } catch (e) { whoops(e); $('#rm_yes').disabled = false; }
+      });
     }));
     $$('[data-pw]', page).forEach((b) => b.addEventListener('click', () => {
       dialog(`<h3>Set a new password</h3>
