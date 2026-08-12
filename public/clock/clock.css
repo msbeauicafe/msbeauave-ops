@@ -1,0 +1,114 @@
+/* The screen by the door.
+ *
+ * Different from the back office on purpose. It is used standing up, at arm's
+ * length, by somebody holding a bag in one hand — so everything is bigger than
+ * looks necessary on a laptop, and there is nothing on it to press by mistake.
+ */
+:root {
+  --rose-primary: #C98DA4; --rose-deep: #A2647E; --rose-soft: #EFCCDA;
+  --rose-blush: #F9E9F0; --rose-dust: #DDAEC2; --ink: #45303C;
+  --bg: #FBF6F8; --muted: #92707F; --good: #4B8C6A; --bad: #B4544F;
+}
+* { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 16px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column;
+}
+
+#bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 18px; background: var(--rose-blush);
+  border-bottom: 1px solid var(--rose-soft); flex: 0 0 auto;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.brand b {
+  display: block; font-family: Georgia, serif; letter-spacing: .08em;
+  color: var(--rose-deep); font-size: 1rem;
+}
+.brand span { font-size: .8rem; color: var(--muted); }
+#bar .right { display: flex; align-items: center; gap: 12px; }
+#now { font-variant-numeric: tabular-nums; color: var(--rose-deep); font-weight: 600; }
+button.quiet {
+  background: none; border: 1px solid var(--rose-dust); color: var(--rose-deep);
+  border-radius: 8px; padding: 7px 12px; font-size: .82rem; cursor: pointer;
+}
+
+main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
+.tools { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.tools input, .tools select {
+  font: inherit; font-size: 1.05rem; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--rose-soft); background: #fff; color: var(--ink);
+}
+.tools input { flex: 1 1 260px; }
+
+/* Faces, big enough to hit without looking. */
+.grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.card {
+  background: #fff; border: 1px solid var(--rose-soft); border-radius: 16px;
+  padding: 16px 12px; text-align: center; cursor: pointer; font: inherit;
+  color: inherit; display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.card:active { transform: scale(.97); }
+.card.on { border-color: var(--good); background: #F3F9F5; }
+.card[disabled] { opacity: .45; cursor: not-allowed; }
+.card img, .face {
+  width: 64px; height: 64px; border-radius: 50%; object-fit: cover;
+  background: var(--rose-blush); display: grid; place-items: center; font-size: 30px;
+}
+.card b { font-size: 1rem; line-height: 1.25; }
+.card span { font-size: .78rem; color: var(--muted); }
+.none { color: var(--muted); padding: 40px 0; text-align: center; }
+
+/* The PIN pad. Full screen, because a small dialog on a tablet is a mis-tap. */
+.veil {
+  position: fixed; inset: 0; background: rgba(69, 48, 60, .45);
+  display: grid; place-items: center; padding: 16px; z-index: 50;
+}
+.pad {
+  background: #fff; border-radius: 20px; padding: 22px; width: min(420px, 100%);
+  box-shadow: 0 18px 50px rgba(69, 48, 60, .25);
+}
+.pad h2 { font-size: 1.35rem; color: var(--rose-deep); }
+.pad .sub { color: var(--muted); font-size: .9rem; margin-bottom: 12px; }
+.dots {
+  font-size: 1.9rem; letter-spacing: .32em; text-align: center; color: var(--rose-deep);
+  min-height: 2.4rem; font-variant-numeric: tabular-nums;
+}
+.keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.keys button {
+  font: inherit; font-size: 1.5rem; padding: 16px 0; border-radius: 14px;
+  border: 1px solid var(--rose-soft); background: var(--rose-blush);
+  color: var(--ink); cursor: pointer;
+}
+.keys button:active { background: var(--rose-soft); }
+.keys .go { background: var(--rose-primary); color: #fff; border-color: var(--rose-primary); }
+.keys .wipe { font-size: .95rem; color: var(--muted); }
+.pad .cancel { width: 100%; margin-top: 12px; padding: 12px; }
+
+/* Signing the device in — shown once, then never again on that tablet. */
+.gate { max-width: 380px; margin: 8vh auto 0; text-align: center; }
+.gate h2 { color: var(--rose-deep); font-size: 1.3rem; margin-bottom: 4px; }
+.gate p { color: var(--muted); font-size: .9rem; margin-bottom: 18px; }
+.gate input {
+  width: 100%; font: inherit; font-size: 1.05rem; padding: 13px 14px; margin-bottom: 10px;
+  border-radius: 12px; border: 1px solid var(--rose-soft); background: #fff;
+}
+.gate button {
+  width: 100%; font: inherit; font-size: 1rem; padding: 13px; border-radius: 12px;
+  border: none; background: var(--rose-primary); color: #fff; font-weight: 700; cursor: pointer;
+}
+
+#notices { position: fixed; left: 0; right: 0; bottom: 0; padding: 16px; z-index: 60; }
+.say {
+  max-width: 620px; margin: 0 auto; padding: 16px 18px; border-radius: 14px;
+  font-size: 1.05rem; font-weight: 600; text-align: center; color: #fff;
+  box-shadow: 0 10px 30px rgba(69, 48, 60, .25);
+}
+.say.good { background: var(--good); }
+.say.bad { background: var(--bad); }

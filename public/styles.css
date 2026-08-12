@@ -414,3 +414,5 @@ label.inline input { width: auto; }
   .slip { break-inside: avoid; border-style: solid; border-color: #bbb; }
   .slip-pin { color: #000; }
 }
+
+.mb { margin-bottom: 12px; }

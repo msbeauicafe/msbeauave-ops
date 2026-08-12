@@ -1844,3 +1844,51 @@ test('the database itself refuses a supervisor the owner-only jobs', async () =>
     client.release();
   }
 });
+
+test('reissuing PINs covers the whole team, not the first bite', async () => {
+  // The server works twenty at a time because hashing is slow on purpose.
+  // Issuing to people who have none can find the rest by looking for a missing
+  // PIN; reissuing to everybody cannot, because after the first bite they all
+  // have one. This is that walk.
+  const admin = await signIn('admin');
+  const [north] = await twoBranches(admin);
+  const many = Array.from({ length: 25 }, (_, i) => ({
+    name: `${unique('P')}-${String(i).padStart(2, '0')}`, position: 'Cashier' }));
+  assert.equal((await POST(admin, '/api/team/bulk',
+    { people: many, branch_id: north })).status, 200);
+
+  const mine = (await GET(admin, '/api/team')).data.team
+    .filter((p) => p.branch_id && Number(p.branch_id) === north);
+  assert.ok(mine.length >= 25, `expected the 25 just added, saw ${mine.length}`);
+
+  const runThrough = async (everyone) => {
+    const seen = [];
+    let after = 0;
+    for (let guard = 0; guard < 50; guard++) {
+      const r = await POST(admin, '/api/team/pins', { everyone, after });
+      assert.equal(r.status, 200, JSON.stringify(r.data));
+      seen.push(...r.data.issued);
+      after = r.data.after ?? after;
+      if (!r.data.remaining || !r.data.issued.length) break;
+    }
+    return seen;
+  };
+
+  const first = await runThrough(false);
+  assert.ok(first.length >= 25, `first pass covered ${first.length}, expected 25+`);
+  // People who have left are skipped on purpose — a PIN for somebody who no
+  // longer works here is a door left open, not an oversight.
+  assert.equal((await GET(admin, '/api/team')).data.team
+    .filter((p) => !p.ended_on && !p.has_pin).length, 0,
+    'nobody still working here may be left without a PIN');
+
+  // Now everybody again — the case that used to stop after twenty.
+  const second = await runThrough(true);
+  const ids = new Set(second.map((p) => String(p.id)));
+  const everyone = (await GET(admin, '/api/team')).data.team.filter((p) => !p.ended_on);
+  assert.ok(everyone.length > 20, 'the point of this test is more than one bite');
+  assert.equal(ids.size, everyone.length,
+    `reissue covered ${ids.size} of ${everyone.length} — it must not stop after a bite`);
+  assert.equal(new Set(second.map((p) => p.pin)).size, second.length,
+    'and no two people may be handed the same PIN');
+});

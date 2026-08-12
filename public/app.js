@@ -2343,12 +2343,17 @@ async function pinSlipsDialog(reload) {
     const all = [];
     try {
       // The server works in bites because hashing is slow on purpose; keep
-      // asking until nobody is left without one.
+      // asking, handing back where the last bite stopped, until nobody is
+      // left. Reissuing for everybody has to walk the whole team, not stop
+      // after the first twenty.
+      let after = 0;
       for (;;) {
-        const r = await POST('/api/team/pins', { everyone });
+        const r = await POST('/api/team/pins', { everyone, after });
         all.push(...r.issued);
-        $('#k_out').innerHTML = `<div class="dim mt">${all.length} so far…</div>`;
-        if (everyone || !r.remaining || !r.issued.length) break;
+        after = r.after ?? after;
+        $('#k_out').innerHTML = `<div class="dim mt">${all.length} done${
+          r.remaining ? `, ${r.remaining} to go…` : ''}</div>`;
+        if (!r.remaining || !r.issued.length) break;
       }
     } catch (e) {
       whoops(e);
@@ -2401,7 +2406,11 @@ SCREENS.clock = async (page) => {
     <div class="tools">
       <input type="search" id="c_find" placeholder="Find your name…" autocomplete="off">
       <select id="c_branch"></select>
+      <a class="btn line" href="/clock/" target="_blank" rel="noopener">🚪 Open the door screen</a>
     </div>
+    <div class="dim mb">The door screen is this clock on a page of its own —
+      no menu, nothing else on it. Put it on the tablet by the door so nobody
+      clocking on is one tap from the takings.</div>
     <div id="c_grid" class="clock-grid"></div>`;
 
   // A device left by one door should show that door's faces. It remembers the
