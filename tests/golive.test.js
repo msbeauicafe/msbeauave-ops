@@ -1253,3 +1253,193 @@ test('the same lot can be delivered to a second shop, but not twice to one', asy
   assert.equal(again.status, 400);
   assert.match(again.data.error, /already at this branch/);
 });
+
+// ===========================================================================
+// Undoing a delivery
+//
+// The value of this function is entirely in what it refuses, so most of these
+// tests are about it saying no. A reversal that can erase a lot which has been
+// sold is not an undo button, it is a way to make a sale disappear.
+// ===========================================================================
+
+test('a mis-keyed delivery can be unmade — stock, money and journal together',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const sku = 'RV-PLAIN';
+    await shopOnly(admin, sku, 'Reverse Plain');
+
+    const got = await POST(store, '/api/receive',
+      { sku, batch_no: unique('R'), expiry: monthsOut(24), qty: 10000, unit_cost: 170 });
+    const batch = Number(got.data.batchId);
+
+    const spend = async () => Number((await db.query(
+      `select coalesce(sum(amount), 0) as v from expenses
+        where batch_id = $1 and source = 'receiving'`, [batch])).rows[0].v);
+    assert.equal(await spend(), 1700000);
+
+    const undone = await POST(admin, `/api/receipts/${batch}/undo`,
+      { why: 'typed 10000 instead of 1000' });
+    assert.equal(undone.status, 200, JSON.stringify(undone.data));
+    assert.equal(undone.data.units, 10000);
+    assert.equal(Number(undone.data.value), 1700000);
+
+    // All three go together, or the books are worse off than before.
+    assert.equal(await spend(), 0, 'the money paid out has to go back');
+    assert.equal((await db.query('select 1 from stock where batch_id = $1', [batch])).rowCount,
+      0, 'the stock has to go');
+    assert.equal((await db.query('select 1 from movements where batch_id = $1', [batch])).rowCount,
+      0, 'the journal lines have to go');
+    assert.equal((await db.query('select 1 from batches where id = $1', [batch])).rowCount,
+      0, 'the batch itself has to go');
+  });
+
+test('undoing a delivery leaves a signed record behind', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = 'RV-TRACE';
+  await shopOnly(admin, sku, 'Reverse Trace');
+  const lot = unique('T');
+
+  const got = await POST(store, '/api/receive',
+    { sku, batch_no: lot, expiry: monthsOut(24), qty: 50, unit_cost: 12 });
+  await POST(admin, `/api/receipts/${got.data.batchId}/undo`, { why: 'never arrived' });
+
+  const kept = await db.query('select * from receipt_reversals where batch_no = $1', [lot]);
+  assert.equal(kept.rowCount, 1, 'an undo nobody can see is its own dishonesty');
+  assert.equal(kept.rows[0].units, 50);
+  assert.equal(kept.rows[0].why, 'never arrived');
+  assert.equal(Number(kept.rows[0].value), 600);
+  assert.equal(kept.rows[0].actor, admin.username, 'who did it is the point');
+});
+
+test('a delivery will not be undone without a reason', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = 'RV-WHY';
+  await shopOnly(admin, sku, 'Reverse Why');
+
+  const got = await POST(store, '/api/receive',
+    { sku, batch_no: unique('W'), expiry: monthsOut(24), qty: 5 });
+  const bare = await POST(admin, `/api/receipts/${got.data.batchId}/undo`, { why: '  ' });
+  assert.equal(bare.status, 400);
+  assert.equal((await db.query('select 1 from batches where id = $1',
+    [got.data.batchId])).rowCount, 1, 'and nothing happened');
+});
+
+test('a delivery that has been sold from cannot be undone', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = 'RV-SOLD';
+  await shopOnly(admin, sku, 'Reverse Sold');
+
+  const got = await POST(store, '/api/receive',
+    { sku, batch_no: unique('S'), expiry: monthsOut(24), qty: 20, unit_cost: 30 });
+  const batch = Number(got.data.batchId);
+
+  const sale = await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 1000 });
+  assert.equal(sale.status, 200, JSON.stringify(sale.data));
+
+  const nope = await POST(admin, `/api/receipts/${batch}/undo`, { why: 'changed my mind' });
+  assert.equal(nope.status, 400);
+  assert.match(nope.data.error, /touched since it arrived/);
+  assert.equal((await db.query('select 1 from batches where id = $1', [batch])).rowCount, 1,
+    'a function that can erase a sale is a function that can launder one');
+});
+
+test('a delivery that has been sent to another shop cannot be undone', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'RV-SENT';
+  await shopOnly(admin, sku, 'Reverse Sent');
+
+  const got = await POST(store, '/api/receive',
+    { sku, batch_no: unique('X'), expiry: monthsOut(24), qty: 30, branch_id: north });
+  const batch = Number(got.data.batchId);
+  assert.equal((await POST(store, '/api/transfer',
+    { batchId: batch, pool: 'shop', from_branch: north, to_branch: south, qty: 10 })).status, 200);
+
+  const nope = await POST(admin, `/api/receipts/${batch}/undo`, { why: 'wrong quantity' });
+  assert.equal(nope.status, 400);
+  assert.match(nope.data.error, /touched since it arrived/);
+});
+
+// A reseller sign-in needs a reseller behind it, which the schema insists on.
+async function signInAsReseller() {
+  const username = unique('buyer');
+  const r = await db.query(
+    `insert into resellers (name, tier, status, docs_verified, credit_limit, terms_days)
+     values ($1, 3, 'active', true, 500000, 30) returning id`, [unique('Buyer Co')]);
+  await db.query(
+    `insert into app_users (username, display_name, password_hash, role, reseller_id)
+     values ($1,$1,$2,'reseller',$3)`,
+    [username, hashPassword('secret123'), Number(r.rows[0].id)]);
+  const res = await fetch(`${base}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password: 'secret123' }),
+  });
+  assert.equal(res.status, 200, `could not sign in as ${username}`);
+  const raw = res.headers.getSetCookie?.()[0] ?? res.headers.get('set-cookie');
+  return Object.assign(raw.split(';')[0], { username });
+}
+
+test('a delivery promised to an order cannot be undone', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = 'RV-HELD';
+  await load(admin, [{ sku, name: 'Reverse Held', category: 'Soaps', unit_cost: 40,
+    wholesale_price: 60, srp: 80, retail_price: 100,
+    alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 }]);
+
+  const got = await POST(store, '/api/receive',
+    { sku, batch_no: unique('H'), expiry: monthsOut(24), qty: 40 });
+  const batch = Number(got.data.batchId);
+
+  const buyer = await signInAsReseller();
+  const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 5 }] });
+  assert.equal(order.status, 200, JSON.stringify(order.data));
+
+  const nope = await POST(admin, `/api/receipts/${batch}/undo`, { why: 'wrong quantity' });
+  assert.equal(nope.status, 400);
+  assert.match(nope.data.error, /promised to an order|already on an order/);
+});
+
+test('the warehouse can receive a delivery but not unmake one', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = 'RV-ROLE';
+  await shopOnly(admin, sku, 'Reverse Role');
+
+  const got = await POST(store, '/api/receive',
+    { sku, batch_no: unique('P'), expiry: monthsOut(24), qty: 8 });
+  const nope = await POST(store, `/api/receipts/${got.data.batchId}/undo`, { why: 'mistake' });
+  assert.equal(nope.status, 403, 'deleting a posted expense is not a warehouse job');
+});
+
+test('the list says why a delivery cannot be taken back, before anyone clicks',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const till = await signIn('cashier');
+    const sku = 'RV-LIST';
+    await shopOnly(admin, sku, 'Reverse List');
+
+    const clean = await POST(store, '/api/receive',
+      { sku, batch_no: unique('C'), expiry: monthsOut(24), qty: 12 });
+    const dirty = await POST(store, '/api/receive',
+      { sku, batch_no: unique('D'), expiry: monthsOut(12), qty: 12 });
+    await POST(till, '/api/till/sell',
+      { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 500 });
+
+    const rows = (await GET(admin, '/api/receipts?limit=50')).data;
+    const untouched = rows.find((r) => Number(r.batch_id) === Number(clean.data.batchId));
+    const traded = rows.find((r) => Number(r.batch_id) === Number(dirty.data.batchId));
+
+    // FEFO picks the nearest expiry, so the sale came off the second batch.
+    assert.equal(untouched.held_by, null, 'this one is still free to undo');
+    assert.equal(traded.held_by, 'already traded');
+  });

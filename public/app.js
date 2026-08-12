@@ -846,6 +846,12 @@ SCREENS.receive = async (page) => {
       <datalist id="skus"></datalist>
       <div id="r_out" class="mt"></div>
     </div>
+    <div class="panel"><h3>Deliveries you can still undo</h3>
+      <div class="dim">A delivery entered wrongly should be unmade, not written
+        off as damage — writing it off puts goods that never existed into the
+        shrinkage report and money that never moved into the loss column. This
+        only works while nothing has happened to the lot yet.</div>
+      <div id="r_undo" class="mt"></div></div>
     <div class="panel"><h3>Just received</h3><div id="r_recent"></div></div>`;
 
   GET('/api/products?q=').then((rows) => {
@@ -866,6 +872,30 @@ SCREENS.receive = async (page) => {
     ], 'Nothing has moved yet.');
   };
 
+  // The list says why a delivery is stuck as well as that it is, so nobody
+  // presses a button to find out.
+  const undoable = async () => {
+    const rows = await GET('/api/receipts?limit=15');
+    $('#r_undo', page).innerHTML = table(rows, [
+      { head: 'When', cell: (r) => when(r.received_at) },
+      { head: 'Product', cell: (r) => esc(r.name) },
+      { head: 'Batch', cell: (r) => `<span class="dim">${esc(r.batch_no || '—')}</span>` },
+      { head: 'Units', n: true, cell: (r) => count(r.qty_received) },
+      { head: 'Cost', n: true, cell: (r) => peso(r.value) },
+      { head: 'Where', cell: (r) => `<span class="dim">${esc(r.branches || '—')}</span>` },
+      { head: '', cell: (r) => (r.held_by
+          ? tag(r.held_by, 'grey')
+          : `<button class="btn sm stop" data-undo="${r.batch_id}"
+               data-what="${esc(r.name)} — ${esc(r.batch_no || 'no batch number')}, ${
+                 r.qty_received} unit(s), ${peso(r.value)}">Undo</button>`) },
+    ], 'Nothing received yet.');
+
+    $$('[data-undo]', page).forEach((b) => b.addEventListener('click',
+      () => undoDialog(b.dataset.undo, b.dataset.what, () => {
+        undoable(); recent();
+      })));
+  };
+
   $('#r_go', page).addEventListener('click', async () => {
     try {
       const r = await POST('/api/receive', {
@@ -884,6 +914,7 @@ SCREENS.receive = async (page) => {
       $('#r_qty', page).value = '';
       $('#r_cost', page).value = '';
       recent();
+      undoable();
     } catch (e) { whoops(e); }
   });
 
@@ -893,8 +924,38 @@ SCREENS.receive = async (page) => {
       branchOf(page, 'r_branch')));
 
   await recent();
+  await undoable().catch(() => {});
   repeat(recent, 15000);
 };
+
+// Undoing a delivery removes every trace that it was entered, so the reason is
+// the only thing left behind. That is why the box is not optional, and why the
+// dialog says plainly what is about to disappear.
+function undoDialog(batchId, what, done) {
+  dialog(`
+    <h3>Undo this delivery?</h3>
+    <div class="dim">${esc(what)}</div>
+    <div class="banner warn mt">The stock, the money recorded as paid out and
+      the journal lines all go together, as though the delivery had never been
+      entered. It cannot be undone twice.</div>
+    <div class="mt"><label>Why is this being undone?</label>
+      <input id="ud_why" type="text" placeholder="typed 10000 instead of 1000"></div>
+    <div class="row mt">
+      <button class="btn stop" id="ud_go">Undo the delivery</button>
+      <button class="btn quiet" id="ud_no">Keep it</button></div>`);
+
+  $('#ud_no').addEventListener('click', closeDialog);
+  $('#ud_go').addEventListener('click', async () => {
+    const why = $('#ud_why').value.trim();
+    if (!why) return notice('Say why, so the record shows it.', 'bad');
+    try {
+      const r = await POST(`/api/receipts/${batchId}/undo`, { why });
+      closeDialog();
+      notice(`Undone — ${r.units} unit(s), ${peso(r.value)} 🌸`, 'good');
+      done();
+    } catch (e) { whoops(e); }
+  });
+}
 
 // ===========================================================================
 // A whole delivery note
