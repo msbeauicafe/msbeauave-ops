@@ -184,6 +184,7 @@ const TABS = {
     ['pickups', '📦', 'Pickups'],
     ['promos', '🏷️', 'Promos'],
     ['team', '🧑‍💼', 'Team'],
+    ['clock', '⏱️', 'Time clock'],
     ['crm', '💗', 'Customers'],
     ['finance', '💰', 'Finance'],
     ['products', '🧴', 'Products'],
@@ -201,6 +202,7 @@ const TABS = {
     ['orders', '📋', 'Pick & send'],
     ['receive', '📦', 'Receive'],
     ['stockroom', '🔀', 'Stockroom'],
+    ['clock', '⏱️', 'Time clock'],
     ['restock', '🛎️', 'Shelf tasks'],
     ['reorder', '📈', 'Reordering'],
   ],
@@ -208,6 +210,7 @@ const TABS = {
     ['till', '🛍️', 'Till'],
     ['pickups', '📦', 'Pickups'],
     ['team', '🧑‍💼', 'Team'],
+    ['clock', '⏱️', 'Time clock'],
     ['crm', '💗', 'Customers'],
     ['finance', '💰', 'Finance'],
     ['workspace', '🗂️', 'Workspace'],
@@ -1888,6 +1891,181 @@ SCREENS.people = async (page) => {
 };
 
 // ===========================================================================
+// Taking on several people at once
+// ===========================================================================
+function bulkTeamDialog(reload) {
+  dialog(`
+    <h3>Add several people</h3>
+    <div class="dim">One person a line, separated by <b>|</b> or tabs or commas:
+      <br><code>name | position | phone | started</code>
+      <br>Phone and start date can be left off — the start date then means today.
+      Lines beginning with <b>#</b> are ignored. Nobody gets a clock PIN here;
+      set those individually afterwards.</div>
+    <label class="mt" for="b_text">The list</label>
+    <textarea id="b_text" class="sheet" rows="12" spellcheck="false"
+      placeholder="Aileen Ramos | Counter | 09171234567 | 2026-08-01"></textarea>
+    <div id="b_preview" class="mt"></div>
+    <div class="mt right">
+      <button class="btn quiet" id="b_cancel">Cancel</button>
+      <button class="btn" id="b_save" disabled>Add them</button>
+    </div>`, 'wide');
+
+  const parse = (text) => {
+    const people = [];
+    const problems = [];
+    const seen = new Set();
+    text.split('\n').forEach((raw, i) => {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) return;
+      const at = `Line ${i + 1}`;
+      const sep = line.includes('\t') ? '\t' : line.includes('|') ? '|' : ',';
+      const f = line.split(sep).map((x) => x.trim());
+      const person = { name: f[0] || '', position: f[1] || '', phone: f[2] || '',
+                       started: f[3] || '' };
+
+      if (!person.name) problems.push(`${at}: no name.`);
+      if (!person.position) problems.push(`${at}: no position.`);
+      if (person.name && seen.has(person.name.toLowerCase())) {
+        problems.push(`${at}: ${person.name} is on the list twice.`);
+      }
+      seen.add(person.name.toLowerCase());
+      if (person.started && Number.isNaN(Date.parse(person.started))) {
+        problems.push(`${at}: “${person.started}” is not a date.`);
+      }
+      people.push(person);
+    });
+    if (!people.length) problems.push('There is nobody on that list.');
+    return { people, problems };
+  };
+
+  const review = () => {
+    const { people, problems } = parse($('#b_text').value);
+    $('#b_preview').innerHTML = problems.length
+      ? `<div class="none bad"><b>${problems.length} thing${
+          problems.length === 1 ? '' : 's'} to fix first</b><br>${
+          problems.slice(0, 12).map(esc).join('<br>')}${problems.length > 12 ? '<br>…' : ''}</div>`
+      : `<div class="dim"><b>${people.length}</b> to add.</div>
+         ${table(people, [
+           { head: 'Name', cell: (x) => `<b>${esc(x.name)}</b>` },
+           { head: 'Position', cell: (x) => esc(x.position) },
+           { head: 'Phone', cell: (x) => `<span class="dim">${esc(x.phone || '—')}</span>` },
+           { head: 'Started', cell: (x) => (x.started ? onDay(x.started)
+               : '<span class="dim">today</span>') },
+         ], '')}`;
+    $('#b_save').disabled = problems.length > 0;
+  };
+
+  $('#b_text').addEventListener('input', review);
+  $('#b_cancel').addEventListener('click', closeDialog);
+  $('#b_save').addEventListener('click', async () => {
+    const { people, problems } = parse($('#b_text').value);
+    if (problems.length) return review();
+    $('#b_save').disabled = true;
+    try {
+      const r = await POST('/api/team/bulk', { people });
+      closeDialog();
+      notice(`${r.added} added — ${r.on_the_team} on the team 🌸`, 'good');
+      notice('They cannot clock on until each has a PIN. Edit → Clock PIN.');
+      reload();
+    } catch (e) { whoops(e); $('#b_save').disabled = false; }
+  });
+
+  review();
+}
+
+// ===========================================================================
+// The time clock
+//
+// One shared device by the door. Big faces, because somebody arriving at seven
+// in the morning should not have to read. Pick yourself, type your PIN, and
+// the same button clocks you out at the end of the day.
+// ===========================================================================
+SCREENS.clock = async (page) => {
+  page.innerHTML = `
+    <div class="head"><h2>Time clock</h2>
+      <span class="hint">Tap your name, type your PIN</span></div>
+    <div class="tools">
+      <input type="search" id="c_find" placeholder="Find your name…" autocomplete="off">
+    </div>
+    <div id="c_grid" class="clock-grid"></div>`;
+
+  let team = [];
+  const load = async () => {
+    team = (await GET('/api/team')).team.filter((p) => p.here);
+    draw();
+  };
+
+  const draw = () => {
+    const q = ($('#c_find', page).value || '').trim().toLowerCase();
+    const shown = q ? team.filter((p) => p.name.toLowerCase().includes(q)) : team;
+    $('#c_grid', page).innerHTML = shown.length ? shown.map((p) => `
+      <button class="clock-card ${p.on_shift ? 'on' : ''}" data-who="${p.id}"
+        ${p.has_pin ? '' : 'disabled'}>
+        ${p.has_photo
+          ? `<img src="/api/team/${p.id}/photo" alt="">`
+          : '<span class="clock-face">🧑</span>'}
+        <b>${esc(p.name)}</b>
+        <span>${p.on_shift ? `on since ${when(p.since)}`
+          : p.has_pin ? esc(p.position) : 'no PIN yet'}</span>
+      </button>`).join('')
+      : '<div class="none">Nobody matches that.</div>';
+
+    $$('[data-who]', page).forEach((b) => b.addEventListener('click',
+      () => pinPad(team.find((p) => String(p.id) === b.dataset.who), load)));
+  };
+
+  $('#c_find', page).addEventListener('input', draw);
+  await load();
+  repeat(load, 20000);
+};
+
+function pinPad(person, done) {
+  let pin = '';
+  dialog(`
+    <h3>${esc(person.name)}</h3>
+    <div class="dim">${person.on_shift
+      ? 'Type your PIN to clock out.' : 'Type your PIN to clock on.'}</div>
+    <div class="pin-dots" id="p_dots"></div>
+    <div class="pin-pad">
+      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) =>
+        `<button data-d="${d}">${d}</button>`).join('')}
+      <button class="quiet" id="p_clear">clear</button>
+      <button data-d="0">0</button>
+      <button class="go" id="p_ok">✓</button>
+    </div>
+    <div class="mt right"><button class="btn quiet" id="p_cancel">Cancel</button></div>`);
+
+  const dots = () => {
+    $('#p_dots').textContent = pin.replace(/./g, '● ') || '– – – –';
+  };
+  dots();
+
+  $$('[data-d]').forEach((b) => b.addEventListener('click', () => {
+    if (pin.length < 8) pin += b.dataset.d;
+    dots();
+  }));
+  $('#p_clear').addEventListener('click', () => { pin = ''; dots(); });
+  $('#p_cancel').addEventListener('click', closeDialog);
+
+  $('#p_ok').addEventListener('click', async () => {
+    $('#p_ok').disabled = true;
+    try {
+      const r = await POST('/api/clock', { employeeId: person.id, pin });
+      closeDialog();
+      notice(r.action === 'in'
+        ? `Good morning ${r.name} — clocked on 🌸`
+        : `${r.name} clocked out after ${(r.worked_minutes / 60).toFixed(2)} hours 🌸`, 'good');
+      done();
+    } catch (e) {
+      whoops(e);
+      pin = '';
+      dots();
+      $('#p_ok').disabled = false;
+    }
+  });
+}
+
+// ===========================================================================
 // The till
 // ===========================================================================
 const basket = new Map();
@@ -2757,10 +2935,28 @@ SCREENS.team = async (page) => {
     <div class="head"><h2>Team</h2>
       <span class="hint">${owner ? 'Who works here, and the hours they actually worked'
         : 'Who is on today'}</span></div>
-    ${owner ? '<div class="tools"><button class="btn" id="add">＋ Add someone</button></div>' : ''}
+    <div class="tools">
+      <input type="search" id="t_find" placeholder="Search by name or position…">
+      ${owner ? `<button class="btn" id="add">＋ Add someone</button>
+        <button class="btn line" id="t_many">👥 Add many</button>` : ''}
+    </div>
     <div class="tiles" id="tiles"></div>
     <div class="panel" id="list"></div>
-    ${owner ? '<div class="panel"><h3>Recent shifts</h3><div id="shifts"></div></div>' : ''}`;
+    ${owner ? `
+      <div class="panel">
+        <h3>Hours worked</h3>
+        <div class="dim">Totals for whatever period you pay over. An open shift
+          counts up to now, so somebody who forgot to clock out is visible
+          rather than silently worth nothing.</div>
+        <div class="row mt">
+          <div><label>From</label><input type="date" id="h_from"></div>
+          <div><label>To</label><input type="date" id="h_to"></div>
+          <div style="flex:0 0 auto; align-self:flex-end">
+            <button class="btn" id="h_go">Total it up</button></div>
+        </div>
+        <div id="hours" class="mt"></div>
+      </div>
+      <div class="panel"><h3>Recent shifts</h3><div id="shifts"></div></div>` : ''}`;
 
   let data = { team: [], shifts: [], logins: [] };
 
@@ -2775,7 +2971,12 @@ SCREENS.team = async (page) => {
       <div class="tile"><div class="big">${here.length}</div>
         <div class="label">On the team</div></div>`;
 
-    $('#list', page).innerHTML = table(data.team, [
+    const q = ($('#t_find', page)?.value || '').trim().toLowerCase();
+    const shown = q
+      ? data.team.filter((p) => `${p.name} ${p.position}`.toLowerCase().includes(q))
+      : data.team;
+
+    $('#list', page).innerHTML = table(shown, [
       { head: '', cell: (p) => p.has_photo
           ? `<img class="thumb" style="width:34px;height:34px" src="/api/team/${p.id}/photo" alt="">`
           : `<span class="thumb none-photo" style="width:34px;height:34px">🧑</span>` },
@@ -2796,7 +2997,7 @@ SCREENS.team = async (page) => {
             data-clock="${p.id}" data-dir="${p.on_shift ? 'out' : 'in'}">
             ${p.on_shift ? 'Clock out' : 'Clock in'}</button>
           ${owner ? `<button class="btn sm quiet" data-edit="${p.id}">Edit</button>` : ''}` },
-    ], 'Nobody on the team yet');
+    ], q ? 'Nobody matches that search.' : 'Nobody on the team yet');
 
     if (owner) {
       $('#shifts', page).innerHTML = table(data.shifts, [
@@ -2858,6 +3059,20 @@ SCREENS.team = async (page) => {
           placeholder="Anything worth remembering"></div>
 
       ${isNew ? '' : `
+        <h3 class="mt">Clock PIN</h3>
+        <div class="dim">Four to eight digits, typed on the shared device by the
+          door. It stops one person clocking in another; it is not a password
+          and opens nothing else.</div>
+        <div class="row">
+          <div><label for="t_pin">${p.has_pin ? 'Replace the PIN' : 'Set a PIN'}</label>
+            <input id="t_pin" type="text" inputmode="numeric" maxlength="8"
+              autocomplete="off" placeholder="${p.has_pin ? 'unchanged' : 'e.g. 4821'}"></div>
+          <div style="flex:0 0 auto; align-self:flex-end">
+            <button class="btn quiet sm" id="t_pin_save">Save PIN</button></div>
+          <div style="flex:0 0 auto; align-self:flex-end" class="dim">
+            ${p.has_pin ? '✅ can clock on' : '⚠️ cannot clock on yet'}</div>
+        </div>
+
         <h3 class="mt">Photograph</h3>
         <div class="row" style="align-items:center">
           <div style="flex:0 0 auto" id="t_pic">${p.has_photo
@@ -2873,6 +3088,15 @@ SCREENS.team = async (page) => {
       </div>`);
 
     if (!isNew) {
+      $('#t_pin_save').addEventListener('click', async () => {
+        try {
+          await POST(`/api/team/${p.id}/pin`, { pin: $('#t_pin').value.trim() });
+          notice(`${p.name} can clock on now 🌸`, 'good');
+          closeDialog();
+          load();
+        } catch (err) { whoops(err); }
+      });
+
       $('#t_file').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -2919,7 +3143,41 @@ SCREENS.team = async (page) => {
     });
   };
 
-  if (owner) $('#add', page).addEventListener('click', () => openPerson(null));
+  $('#t_find', page).addEventListener('input', () => load().catch(whoops));
+
+  if (owner) {
+    $('#add', page).addEventListener('click', () => openPerson(null));
+    $('#t_many', page).addEventListener('click', () => bulkTeamDialog(load));
+
+    // Default the report to this month so far — the commonest thing to ask.
+    const today = new Date().toISOString().slice(0, 10);
+    $('#h_from', page).value = today.slice(0, 8) + '01';
+    $('#h_to', page).value = today;
+
+    $('#h_go', page).addEventListener('click', async () => {
+      try {
+        const r = await GET(`/api/team/hours?from=${$('#h_from', page).value}`
+          + `&to=${$('#h_to', page).value}`);
+        const total = r.people.reduce((t, x) => t + Number(x.hours), 0);
+        const open = r.people.reduce((t, x) => t + Number(x.still_open), 0);
+        $('#hours', page).innerHTML = `
+          <div class="dim"><b>${r.people.length}</b> people ·
+            <b>${total.toFixed(2)}</b> hours between ${onDay(r.from)} and ${onDay(r.to)}${
+            open ? ` · <b>${open}</b> shift${open === 1 ? '' : 's'} still open, counted up to now`
+                 : ''}</div>
+          ${table(r.people, [
+            { head: 'Who', cell: (x) => `<b>${esc(x.name)}</b>`
+                + (x.here ? '' : ' ' + tag('left', 'grey')) },
+            { head: 'Position', cell: (x) => esc(x.position) },
+            { head: 'Days', n: true, cell: (x) => count(x.days) },
+            { head: 'Hours', n: true, cell: (x) => Number(x.hours).toFixed(2) },
+            { head: 'Longest shift', n: true, cell: (x) => Number(x.longest_hours).toFixed(2) },
+            { head: '', cell: (x) => (Number(x.still_open)
+                ? tag('still on', 'amber') : '') },
+          ], 'Nobody worked in that period.')}`;
+      } catch (e) { whoops(e); }
+    });
+  }
   await load();
   repeat(load, 20000);
 };

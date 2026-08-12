@@ -346,3 +346,38 @@ label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3
 
 label.inline { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: .8rem; }
 label.inline input { width: auto; }
+
+/* ---------- the time clock ----------
+   A shared device by the door, often held at arm's length by somebody still
+   holding a bag. Big targets, faces before names. */
+.clock-grid {
+  display: grid; gap: 12px; margin-top: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+}
+.clock-card {
+  background: #fff; border: 1px solid var(--rose-soft); border-radius: 14px;
+  padding: 14px 10px 12px; cursor: pointer; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font: inherit; color: var(--ink);
+}
+.clock-card:disabled { opacity: .45; cursor: not-allowed; }
+.clock-card.on { border-color: var(--success); background: #f2f8f3; }
+.clock-card img, .clock-card .clock-face {
+  width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
+  background: var(--rose-blush); display: grid; place-items: center; font-size: 1.9rem;
+}
+.clock-card b { font-size: .9rem; line-height: 1.25; }
+.clock-card span { font-size: .74rem; color: var(--muted); }
+
+.pin-dots {
+  text-align: center; font-size: 1.5rem; letter-spacing: .18em;
+  color: var(--rose-deep); margin: 14px 0 10px; min-height: 30px;
+}
+.pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pin-pad button {
+  padding: 16px 0; font-size: 1.3rem; font-weight: 600; font-family: inherit;
+  border: 1px solid var(--rose-dust); border-radius: 12px;
+  background: #fff; color: var(--ink); cursor: pointer;
+}
+.pin-pad button.quiet { font-size: .82rem; color: var(--muted); }
+.pin-pad button.go { background: var(--rose-primary); color: #fff; border: none; }

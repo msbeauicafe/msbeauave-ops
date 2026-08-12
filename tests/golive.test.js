@@ -590,3 +590,138 @@ test('a reseller sign-in works once the company exists', async () => {
   });
   assert.equal(r.status, 200, JSON.stringify(r.data));
 });
+
+// ===========================================================================
+// The time clock
+//
+// Sixty people cannot queue at the till to be clocked in by a cashier, so they
+// do it themselves on a shared device. The PIN is the only thing standing
+// between one person and another person's attendance record.
+// ===========================================================================
+
+async function hire(admin, name, position = 'Counter') {
+  const r = await POST(admin, '/api/team', { name, position });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  return Number(r.data.id);
+}
+
+test('several people are taken on at once, and each is refused the clock until they have a PIN',
+  async () => {
+    const admin = await signIn('admin');
+    const stamp = unique('crew');
+    const r = await POST(admin, '/api/team/bulk', {
+      people: [
+        { name: `${stamp} One`, position: 'Counter', phone: '09171234567' },
+        { name: `${stamp} Two`, position: 'Stockroom' },
+      ],
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.added, 2);
+
+    const team = (await GET(admin, '/api/team')).data.team;
+    const one = team.find((p) => p.name === `${stamp} One`);
+    assert.equal(one.has_pin, false, 'nobody gets a PIN by being added');
+
+    const tried = await POST(admin, '/api/clock', { employeeId: one.id, pin: '1234' });
+    assert.equal(tried.status, 400);
+    assert.match(tried.data.error, /no PIN yet/);
+  });
+
+test('a list with the same person twice is refused before anybody is added', async () => {
+  const admin = await signIn('admin');
+  const before = (await GET(admin, '/api/team')).data.team.length;
+  const stamp = unique('dup');
+  const r = await POST(admin, '/api/team/bulk', {
+    people: [{ name: stamp, position: 'Counter' }, { name: stamp, position: 'Stockroom' }],
+  });
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /twice/);
+  assert.equal((await GET(admin, '/api/team')).data.team.length, before);
+});
+
+test('the PIN clocks a person on and the same PIN clocks them off', async () => {
+  const admin = await signIn('admin');
+  const id = await hire(admin, unique('Clocker'));
+  assert.equal((await POST(admin, `/api/team/${id}/pin`, { pin: '4821' })).status, 200);
+
+  const on = await POST(admin, '/api/clock', { employeeId: id, pin: '4821' });
+  assert.equal(on.status, 200, JSON.stringify(on.data));
+  assert.equal(on.data.action, 'in');
+
+  const team = (await GET(admin, '/api/team')).data.team;
+  assert.equal(team.find((p) => Number(p.id) === id).on_shift, true);
+
+  const off = await POST(admin, '/api/clock', { employeeId: id, pin: '4821' });
+  assert.equal(off.data.action, 'out');
+  assert.ok(off.data.worked_minutes >= 0);
+  assert.equal((await GET(admin, '/api/team')).data.team.find((p) => Number(p.id) === id).on_shift, false);
+});
+
+test('the wrong PIN clocks nobody on', async () => {
+  const admin = await signIn('admin');
+  const id = await hire(admin, unique('Guarded'));
+  await POST(admin, `/api/team/${id}/pin`, { pin: '1111' });
+
+  const r = await POST(admin, '/api/clock', { employeeId: id, pin: '2222' });
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /does not match/);
+  assert.equal((await GET(admin, '/api/team')).data.team.find((p) => Number(p.id) === id).on_shift, false);
+});
+
+test('a PIN shorter than four digits is refused, and the hash never leaves the server',
+  async () => {
+    const admin = await signIn('admin');
+    const id = await hire(admin, unique('Short'));
+    const r = await POST(admin, `/api/team/${id}/pin`, { pin: '12' });
+    assert.equal(r.status, 400);
+    assert.match(r.data.error, /4 to 8 digits/);
+
+    const person = (await GET(admin, '/api/team')).data.team.find((p) => Number(p.id) === id);
+    assert.equal('pin_hash' in person, false, 'the hash is never sent to a browser');
+  });
+
+test('hours add up over whatever period gets paid, counting an open shift up to now',
+  async () => {
+    const admin = await signIn('admin');
+    const id = await hire(admin, unique('Hours'), 'Stockroom');
+    await POST(admin, `/api/team/${id}/pin`, { pin: '9090' });
+    await POST(admin, '/api/clock', { employeeId: id, pin: '9090' });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const r = await GET(admin, `/api/team/hours?from=${today}&to=${today}`);
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+
+    const mine = r.data.people.find((x) => Number(x.employee_id) === id);
+    assert.ok(mine, 'the person appears in the period');
+    assert.equal(mine.days, 1);
+    assert.equal(mine.still_open, 1,
+      'a shift nobody closed is flagged rather than quietly counted as zero');
+    assert.ok(Number(mine.hours) >= 0);
+  });
+
+test('the shift log covers a range rather than the last handful', async () => {
+  const admin = await signIn('admin');
+  const today = new Date().toISOString().slice(0, 10);
+  const r = await GET(admin, `/api/team/shifts?from=${today}&to=${today}`);
+  assert.equal(r.status, 200);
+  assert.ok(Array.isArray(r.data));
+  assert.ok(r.data.every((s) => s.business_date.slice(0, 10) === today));
+});
+
+test('only the owner sets a PIN', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const id = await hire(admin, unique('NotYours'));
+  assert.equal((await POST(till, `/api/team/${id}/pin`, { pin: '1234' })).status, 403);
+});
+
+test('the clock itself works from any staff device, not just the owner', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await hire(admin, unique('Anyone'));
+  await POST(admin, `/api/team/${id}/pin`, { pin: '7777' });
+
+  const r = await POST(store, '/api/clock', { employeeId: id, pin: '7777' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.action, 'in');
+});
