@@ -1578,7 +1578,10 @@ SCREENS.stockroom = async (page) => {
               <input id="tq_${b.batch_id}" type="number" min="1"></div>
             <div style="flex:0 0 auto"><button class="btn sm line"
               data-send="${b.batch_id}">🚚 Send</button></div>
-          </div>` : ''}
+          </div>` : `
+          <div class="dim mt" style="border-top:1px dashed var(--rose-soft);padding-top:10px">
+            Sending stock to another shop needs a second shop. Add one under
+            <b>Branches</b> and a <b>🚚 Send</b> row appears here.</div>`}
         </div>`).join('') : '<div class="none">Nothing received for that code.</div>';
 
     $$('[data-move]', page).forEach((btn) => btn.addEventListener('click', async () => {
