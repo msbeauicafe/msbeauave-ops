@@ -381,3 +381,36 @@ label.inline input { width: auto; }
 }
 .pin-pad button.quiet { font-size: .82rem; color: var(--muted); }
 .pin-pad button.go { background: var(--rose-primary); color: #fff; border: none; }
+
+/* ---------- PIN slips ----------
+   Cut-up cards on screen, and the only thing on the page when printed. */
+.slips {
+  display: grid; gap: 10px; margin-top: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.slip {
+  border: 1px dashed var(--rose-dust); border-radius: 10px;
+  padding: 12px 14px; background: #fff; text-align: center;
+}
+.slip-shop {
+  font-family: Georgia, "Times New Roman", serif; letter-spacing: .1em;
+  font-size: .7rem; color: var(--rose-deep);
+}
+.slip-who { font-weight: 700; margin-top: 6px; }
+.slip-job { font-size: .74rem; color: var(--muted); }
+.slip-pin {
+  font-size: 1.9rem; font-weight: 700; letter-spacing: .28em;
+  color: var(--rose-deep); margin: 8px 0 6px; font-variant-numeric: tabular-nums;
+}
+.slip-note { font-size: .66rem; color: var(--muted); line-height: 1.4; }
+
+@media print {
+  /* When there are slips, they are the page — nothing else goes on the paper. */
+  body:has(.slips) .banner,
+  body:has(.slips) .dim,
+  body:has(.slips) h3,
+  body:has(.slips) .row { display: none !important; }
+  .slips { grid-template-columns: repeat(3, 1fr); gap: 6mm; }
+  .slip { break-inside: avoid; border-style: solid; border-color: #bbb; }
+  .slip-pin { color: #000; }
+}

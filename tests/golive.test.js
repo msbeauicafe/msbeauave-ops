@@ -725,3 +725,111 @@ test('the clock itself works from any staff device, not just the owner', async (
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.equal(r.data.action, 'in');
 });
+
+// ===========================================================================
+// Issuing PINs on paper
+// ===========================================================================
+
+test('PINs are issued to whoever lacks one, returned once, and never readable again',
+  async () => {
+    const admin = await signIn('admin');
+    const stamp = unique('slips');
+    await POST(admin, '/api/team/bulk', {
+      people: [
+        { name: `${stamp} A`, position: 'Counter' },
+        { name: `${stamp} B`, position: 'Counter' },
+      ],
+    });
+
+    const r = await POST(admin, '/api/team/pins', {});
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    const mine = r.data.issued.filter((p) => p.name.startsWith(stamp));
+    assert.equal(mine.length, 2);
+    for (const p of mine) {
+      assert.match(p.pin, /^\d{4}$/, 'four digits');
+      assert.ok(!['0000', '1234', '1111'].includes(p.pin), 'not one anybody guesses first');
+    }
+
+    // The PIN that came back is the PIN that works.
+    const first = mine[0];
+    const on = await POST(admin, '/api/clock', { employeeId: first.id, pin: first.pin });
+    assert.equal(on.status, 200, JSON.stringify(on.data));
+    assert.equal(on.data.action, 'in');
+
+    // And it is nowhere in what the team list hands a browser.
+    const listed = (await GET(admin, '/api/team')).data.team
+      .find((p) => Number(p.id) === Number(first.id));
+    assert.equal(listed.has_pin, true);
+    assert.equal(JSON.stringify(listed).includes(first.pin), false,
+      'the PIN itself is never sent again');
+  });
+
+test('issuing again leaves people who already have a PIN alone', async () => {
+  const admin = await signIn('admin');
+  const stamp = unique('again');
+  await POST(admin, '/api/team/bulk', { people: [{ name: stamp, position: 'Counter' }] });
+
+  const first = await POST(admin, '/api/team/pins', {});
+  const theirs = first.data.issued.find((p) => p.name === stamp);
+  assert.ok(theirs);
+
+  const second = await POST(admin, '/api/team/pins', {});
+  assert.equal(second.data.issued.some((p) => p.name === stamp), false,
+    'reissuing unasked would lock somebody out of a clock they are already using');
+
+  // The original still works.
+  const on = await POST(admin, '/api/clock', { employeeId: theirs.id, pin: theirs.pin });
+  assert.equal(on.status, 200, JSON.stringify(on.data));
+});
+
+test('only the owner issues PINs', async () => {
+  const till = await signIn('cashier');
+  assert.equal((await POST(till, '/api/team/pins', {})).status, 403);
+});
+
+test('no two people on the team share a clock PIN', async () => {
+  const admin = await signIn('admin');
+  const stamp = unique('many');
+  // Enough people that a duplicate would be the expected outcome, not bad luck.
+  await POST(admin, '/api/team/bulk', {
+    people: Array.from({ length: 20 }, (_, i) =>
+      ({ name: `${stamp} ${i}`, position: 'Counter' })),
+  });
+
+  const r = await POST(admin, '/api/team/pins', {});
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const pins = r.data.issued.map((p) => p.pin);
+  assert.equal(new Set(pins).size, pins.length, 'every PIN issued is distinct');
+
+  const held = (await db.query(
+    `select count(*)::int as n, count(distinct pin_fp)::int as distinct_pins
+       from employees where pin_fp is not null and ended_on is null`)).rows[0];
+  assert.equal(held.n, held.distinct_pins,
+    'nobody on the team shares a PIN with anybody else');
+});
+
+test('a PIN somebody else already uses is refused by hand too', async () => {
+  const admin = await signIn('admin');
+  const a = await hire(admin, unique('First'));
+  const b = await hire(admin, unique('Second'));
+
+  assert.equal((await POST(admin, `/api/team/${a}/pin`, { pin: '8431' })).status, 200);
+  const clash = await POST(admin, `/api/team/${b}/pin`, { pin: '8431' });
+  assert.equal(clash.status, 400);
+  assert.match(clash.data.error, /already uses that PIN/);
+  assert.doesNotMatch(clash.data.error, /First/,
+    'naming who holds it would hand one person another PIN by elimination');
+});
+
+test('a PIN frees up when somebody leaves', async () => {
+  const admin = await signIn('admin');
+  const leaver = await hire(admin, unique('Leaver'));
+  const starter = await hire(admin, unique('Starter'));
+
+  await POST(admin, `/api/team/${leaver}/pin`, { pin: '7314' });
+  assert.equal((await POST(admin, `/api/team/${starter}/pin`, { pin: '7314' })).status, 400);
+
+  await POST(admin, `/api/team/${leaver}/left`, {});
+  assert.equal((await POST(admin, `/api/team/${starter}/pin`, { pin: '7314' })).status, 200,
+    'there is no reason to retire a number along with the person');
+});

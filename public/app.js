@@ -1974,6 +1974,89 @@ function bulkTeamDialog(reload) {
 }
 
 // ===========================================================================
+// PINs, on paper
+//
+// The PIN comes back from the server once and is never readable again — only
+// its hash is kept, so there is no screen anywhere that can be made to show it
+// a second time. That is the whole point, and it means this sheet has to be
+// printed or written down before the dialog closes. A lost slip is a new PIN,
+// which is the right trade: a system that can tell you somebody's PIN can tell
+// anybody.
+// ===========================================================================
+async function pinSlipsDialog(reload) {
+  dialog(`
+    <h3>PINs &amp; slips</h3>
+    <div class="dim">Gives a PIN to everybody who has not got one, and prints a
+      slip each to hand out. Anybody who already has a PIN is left alone —
+      reissuing would lock them out of a clock they are already using.
+      <br><br><b>The PINs appear once.</b> Only the scrambled form is stored, so
+      nothing here can be looked up again afterwards. Print before you close
+      this. If somebody loses their slip, give them a new PIN from Edit.</div>
+    <div class="row mt">
+      <div style="flex:0 0 auto">
+        <label class="inline"><input type="checkbox" id="k_all">
+          Reissue for <b>everyone</b>, including those who already have one</label></div>
+    </div>
+    <div class="mt right">
+      <button class="btn quiet" id="k_cancel">Cancel</button>
+      <button class="btn" id="k_go">Generate</button>
+    </div>
+    <div id="k_out"></div>`, 'wide');
+
+  $('#k_cancel').addEventListener('click', closeDialog);
+
+  $('#k_go').addEventListener('click', async () => {
+    const everyone = $('#k_all').checked;
+    $('#k_go').disabled = true;
+    $('#k_all').disabled = true;
+    const all = [];
+    try {
+      // The server works in bites because hashing is slow on purpose; keep
+      // asking until nobody is left without one.
+      for (;;) {
+        const r = await POST('/api/team/pins', { everyone });
+        all.push(...r.issued);
+        $('#k_out').innerHTML = `<div class="dim mt">${all.length} so far…</div>`;
+        if (everyone || !r.remaining || !r.issued.length) break;
+      }
+    } catch (e) {
+      whoops(e);
+      $('#k_go').disabled = false;
+      $('#k_all').disabled = false;
+      return;
+    }
+
+    if (!all.length) {
+      $('#k_out').innerHTML =
+        '<div class="none mt">Everybody already has a PIN. Tick the box above to reissue.</div>';
+      $('#k_go').disabled = false;
+      $('#k_all').disabled = false;
+      return;
+    }
+
+    $('#k_out').innerHTML = `
+      <div class="banner warn mt">Printed or written down before you close this,
+        or these are gone — ${all.length} PIN${all.length === 1 ? '' : 's'} issued.</div>
+      <div class="mt right"><button class="btn" id="k_print">🖨️ Print the slips</button></div>
+      <div class="slips" id="k_slips">
+        ${all.map((p) => `
+          <div class="slip">
+            <div class="slip-shop">MS BEAU AVE</div>
+            <div class="slip-who">${esc(p.name)}</div>
+            <div class="slip-job">${esc(p.position)}</div>
+            <div class="slip-pin">${esc(p.pin)}</div>
+            <div class="slip-note">Your clock-in PIN. Tap your name on the
+              tablet by the door, then type this. Keep it to yourself — it is
+              how the shop knows the hours are yours.</div>
+          </div>`).join('')}
+      </div>`;
+
+    $('#k_print').addEventListener('click', () => window.print());
+    reload();
+  });
+}
+
+// ===========================================================================
 // The time clock
 //
 // One shared device by the door. Big faces, because somebody arriving at seven
@@ -2938,7 +3021,8 @@ SCREENS.team = async (page) => {
     <div class="tools">
       <input type="search" id="t_find" placeholder="Search by name or position…">
       ${owner ? `<button class="btn" id="add">＋ Add someone</button>
-        <button class="btn line" id="t_many">👥 Add many</button>` : ''}
+        <button class="btn line" id="t_many">👥 Add many</button>
+        <button class="btn line" id="t_pins">🖨️ PINs &amp; slips</button>` : ''}
     </div>
     <div class="tiles" id="tiles"></div>
     <div class="panel" id="list"></div>
@@ -3148,6 +3232,7 @@ SCREENS.team = async (page) => {
   if (owner) {
     $('#add', page).addEventListener('click', () => openPerson(null));
     $('#t_many', page).addEventListener('click', () => bulkTeamDialog(load));
+    $('#t_pins', page).addEventListener('click', () => pinSlipsDialog(load));
 
     // Default the report to this month so far — the commonest thing to ask.
     const today = new Date().toISOString().slice(0, 10);
