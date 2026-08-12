@@ -1016,3 +1016,174 @@ test('only the owner changes the branch list, but any staff device can read it',
     'the clock by the door has to know which shop it is standing in');
   assert.equal((await POST(till, '/api/branches', { name: unique('Nope') })).status, 403);
 });
+
+// ===========================================================================
+// Two branches, kept apart
+//
+// The point of the whole change. Every one of these would pass trivially with
+// one shop; they only mean anything with two.
+// ===========================================================================
+
+async function twoBranches(admin) {
+  const a = await POST(admin, '/api/branches', { name: unique('North') });
+  const b = await POST(admin, '/api/branches', { name: unique('South') });
+  return [Number(a.data.id), Number(b.data.id)];
+}
+
+const shopOnly = (admin, sku, name) => load(admin, [
+  { sku, name, category: 'Soaps', unit_cost: 40, wholesale_price: 60,
+    srp: 80, retail_price: 100, alloc_b2b: 0, alloc_shop: 1, alloc_reserve: 0 }]);
+
+test('stock received at one branch cannot be sold at the other', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-ONE';
+  await shopOnly(admin, sku, 'Branch One');
+
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('N'), expiry: monthsOut(24), qty: 20, branch_id: north });
+
+  const atSouth = await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 500, branch_id: south });
+  assert.equal(atSouth.status, 400);
+  // The app softens the engine's wording; what matters is that it refused.
+  assert.match(atSouth.data.error, /Not enough stock/i);
+  assert.match(atSouth.data.error, /BR-ONE/);
+
+  const atNorth = await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 500, branch_id: north });
+  assert.equal(atNorth.status, 200, JSON.stringify(atNorth.data));
+});
+
+test('selling at one branch leaves the other branch\'s shelf untouched', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-TWO';
+  await shopOnly(admin, sku, 'Branch Two');
+
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('N'), expiry: monthsOut(24), qty: 10, branch_id: north });
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('S'), expiry: monthsOut(24), qty: 10, branch_id: south });
+
+  const before = (await GET(admin, `/api/branch-stock?branch=${south}&q=${sku}`)).data[0];
+  await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 4 }], method: 'cash', tendered: 500, branch_id: north });
+
+  const northNow = (await GET(admin, `/api/branch-stock?branch=${north}&q=${sku}`)).data[0];
+  const southNow = (await GET(admin, `/api/branch-stock?branch=${south}&q=${sku}`)).data[0];
+  assert.equal(northNow.free_shop, 6);
+  assert.equal(southNow.free_shop, before.free_shop, 'the other shop did not move');
+
+  // And the business-wide total still adds up to what is really held.
+  const all = (await GET(admin, `/api/products?q=${sku}`)).data[0];
+  assert.equal(Number(all.free_shop), 16);
+});
+
+test('oldest-first is decided within a branch, not across the business', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-FEFO';
+  await shopOnly(admin, sku, 'Branch Fefo');
+
+  // The older lot is at the far shop; the near shop must not reach for it.
+  const old = unique('OLD');
+  const fresh = unique('FRESH');
+  await POST(store, '/api/receive',
+    { sku, batch_no: old, expiry: monthsOut(4), qty: 5, branch_id: south });
+  await POST(store, '/api/receive',
+    { sku, batch_no: fresh, expiry: monthsOut(30), qty: 5, branch_id: north });
+
+  const sold = await POST(till, '/api/till/sell',
+    { lines: [{ sku, qty: 2 }], method: 'cash', tendered: 500, branch_id: north });
+  assert.equal(sold.status, 200, JSON.stringify(sold.data));
+  assert.equal(sold.data.lines[0].batch_no, fresh,
+    'the near shop sold its own stock, not the older lot two towns away');
+});
+
+test('a transfer moves units between shops and conserves the total', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-MOVE';
+  await shopOnly(admin, sku, 'Branch Move');
+
+  const batch = await POST(store, '/api/receive',
+    { sku, batch_no: unique('T'), expiry: monthsOut(24), qty: 12, branch_id: north });
+  const batchId = batch.data.batchId;
+
+  const moved = await POST(store, '/api/transfer',
+    { batchId, pool: 'shop', from_branch: north, to_branch: south, qty: 5 });
+  assert.equal(moved.status, 200, JSON.stringify(moved.data));
+
+  const n = (await GET(admin, `/api/branch-stock?branch=${north}&q=${sku}`)).data[0];
+  const s = (await GET(admin, `/api/branch-stock?branch=${south}&q=${sku}`)).data[0];
+  assert.equal(n.free_shop, 7);
+  assert.equal(s.free_shop, 5);
+  assert.equal(Number((await GET(admin, `/api/products?q=${sku}`)).data[0].free_shop), 12,
+    'a transfer moves stock, it does not create or destroy it');
+});
+
+test('a transfer cannot send more than the branch has free', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-SHORT';
+  await shopOnly(admin, sku, 'Branch Short');
+
+  const batch = await POST(store, '/api/receive',
+    { sku, batch_no: unique('T'), expiry: monthsOut(24), qty: 3, branch_id: north });
+  const r = await POST(store, '/api/transfer',
+    { batchId: batch.data.batchId, pool: 'shop',
+      from_branch: north, to_branch: south, qty: 10 });
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /Not enough stock/i);
+});
+
+test('the same lot arriving at two shops stays one batch with one expiry', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-LOT';
+  await shopOnly(admin, sku, 'Branch Lot');
+  const lot = unique('LOT');
+
+  const first = await POST(store, '/api/receive',
+    { sku, batch_no: lot, expiry: monthsOut(24), qty: 6, branch_id: north });
+  const second = await POST(store, '/api/receive',
+    { sku, batch_no: lot, expiry: monthsOut(24), qty: 4, branch_id: south });
+  assert.equal(second.status, 200, JSON.stringify(second.data));
+  assert.equal(second.data.batchId, first.data.batchId, 'one lot, one batch');
+
+  // The same lot cannot be recorded with two different expiries.
+  const wrong = await POST(store, '/api/receive',
+    { sku, batch_no: lot, expiry: monthsOut(30), qty: 1, branch_id: south });
+  assert.equal(wrong.status, 400);
+  assert.match(wrong.data.error, /already recorded expiring/);
+});
+
+test('a counted shelf is one shop\'s shelf', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-COUNT';
+  await shopOnly(admin, sku, 'Branch Count');
+
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('C'), expiry: monthsOut(24), qty: 10, branch_id: north });
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('C'), expiry: monthsOut(24), qty: 7, branch_id: south });
+
+  const counted = await POST(store, '/api/stock-count',
+    { sku, counted: 10, branch_id: north });
+  assert.equal(counted.status, 200, JSON.stringify(counted.data));
+  assert.equal(counted.data.on_system, 10,
+    'counting North against the whole business would invent a variance of seven');
+  assert.equal(counted.data.variance, 0);
+});
