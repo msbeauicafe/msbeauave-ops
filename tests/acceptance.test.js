@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { hashPassword } from '../lib/auth.js';
+import { today, daysAgo } from '../lib/day.js';
 import { server } from '../scripts/dev.js';
 import { pool } from '../lib/db.js';
 
@@ -1171,11 +1172,10 @@ test('a cashier may register and attribute, but not read the whole list', async 
 // The promise: margin is worked out from what the goods cost when they were
 // sold, expenses come off it, and nothing on the books can be made to vanish.
 // ===========================================================================
-const period = () => {
-  const to = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
-  return `from=${from}&to=${to}`;
-};
+// Manila, not UTC. The engine books a sale against the Manila trading day, so
+// a window built from the UTC date asks for yesterday for the eight hours
+// after Manila midnight — and the tests pass all day and fail overnight.
+const period = () => `from=${daysAgo(2)}&to=${today()}`;
 
 test('margin uses what the goods cost when they were sold', async () => {
   const admin = await signIn('admin');

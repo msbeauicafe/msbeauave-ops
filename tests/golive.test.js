@@ -9,6 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { hashPassword } from '../lib/auth.js';
+import { today as manilaToday } from '../lib/day.js';
 import { server } from '../scripts/dev.js';
 import { pool } from '../lib/db.js';
 
@@ -688,7 +689,7 @@ test('hours add up over whatever period gets paid, counting an open shift up to 
     await POST(admin, `/api/team/${id}/pin`, { pin: '9090' });
     await POST(admin, '/api/clock', { employeeId: id, pin: '9090' });
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = manilaToday();
     const r = await GET(admin, `/api/team/hours?from=${today}&to=${today}`);
     assert.equal(r.status, 200, JSON.stringify(r.data));
 
@@ -702,7 +703,7 @@ test('hours add up over whatever period gets paid, counting an open shift up to 
 
 test('the shift log covers a range rather than the last handful', async () => {
   const admin = await signIn('admin');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = manilaToday();
   const r = await GET(admin, `/api/team/shifts?from=${today}&to=${today}`);
   assert.equal(r.status, 200);
   assert.ok(Array.isArray(r.data));
@@ -881,7 +882,7 @@ test('leaving keeps the person and their hours', async () => {
   assert.ok(person, 'still on the list');
   assert.equal(person.here, false, 'marked as gone');
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = manilaToday();
   const hours = await GET(admin, `/api/team/hours?from=${today}&to=${today}`);
   assert.ok(hours.data.people.some((x) => Number(x.employee_id) === id),
     'their hours still appear in the period they worked');
@@ -1000,7 +1001,7 @@ test('hours can be totalled one branch at a time', async () => {
   await POST(admin, `/api/team/${id}/pin`, { pin: '3141' });
   await POST(admin, '/api/clock', { employeeId: id, pin: '3141' });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = manilaToday();
   const mine = await GET(admin,
     `/api/team/hours?from=${today}&to=${today}&branch=${made.data.id}`);
   assert.equal(mine.status, 200, JSON.stringify(mine.data));
@@ -1665,4 +1666,181 @@ test('only the owner renames a sign-in', async () => {
 
   const nope = await PUT(till, `/api/users/${row.id}`, { username: 'something.else' });
   assert.equal(nope.status, 403);
+});
+
+// ===========================================================================
+// The supervisor
+//
+// A supervisor is a cashier and a stockroom person on one floor — not a little
+// bit of an owner. The dangerous direction is too much, and too much never
+// raises an error on its own, so most of these check for a refusal.
+// ===========================================================================
+
+test('a supervisor can work the till and the stockroom', async () => {
+  const admin = await signIn('admin');
+  const boss = await signIn('supervisor');
+  const sku = 'SUP-BOTH';
+  await shopOnly(admin, sku, 'Supervisor Both');
+
+  // The stockroom half: receiving a delivery.
+  const got = await POST(boss, '/api/receive',
+    { sku, batch_no: unique('S'), expiry: monthsOut(24), qty: 20, unit_cost: 30 });
+  assert.equal(got.status, 200, JSON.stringify(got.data));
+
+  // The till half: selling from it.
+  const sale = await POST(boss, '/api/till/sell',
+    { lines: [{ sku, qty: 2 }], method: 'cash', tendered: 500 });
+  assert.equal(sale.status, 200, JSON.stringify(sale.data));
+
+  // And the jobs that fall between the two on a bad afternoon.
+  const count = await POST(boss, '/api/stock-count', { sku, counted: 18 });
+  assert.equal(count.status, 200, JSON.stringify(count.data));
+  const moved = await POST(boss, '/api/move',
+    { batchId: Number(got.data.batchId), from: 'shop', to: 'reserve', qty: 1 });
+  assert.equal(moved.status, 200, JSON.stringify(moved.data));
+});
+
+test('a supervisor cannot touch prices, money, people or sign-ins', async () => {
+  const admin = await signIn('admin');
+  const boss = await signIn('supervisor');
+  const sku = 'SUP-NOPE';
+  await shopOnly(admin, sku, 'Supervisor Nope');
+
+  const refused = [
+    ['PUT', `/api/products/${sku}`, { retail_price: 1 }, 'changing a price'],
+    ['POST', '/api/products', { sku: 'X-1', name: 'X' }, 'adding a product'],
+    ['GET', '/api/finance', undefined, 'the company books'],
+    ['POST', '/api/expenses', { kind: 'rent', description: 'x', amount: 1, method: 'cash' },
+      'recording a company expense'],
+    ['GET', '/api/dashboard', undefined, "the owner's dashboard"],
+    ['POST', '/api/users', { username: 'x', password: 'password1', role: 'admin' },
+      'making a sign-in'],
+    ['POST', '/api/team', { name: 'X', position: 'Staff' }, 'adding staff'],
+    ['POST', '/api/branches', { name: 'X' }, 'opening a branch'],
+    ['POST', '/api/catalogue/erase', { confirm: 'ERASE' }, 'erasing the shop'],
+  ];
+  for (const [method, path, body, what] of refused) {
+    const r = await request(boss, method, path, body);
+    assert.equal(r.status, 403, `a supervisor must not be doing ${what} (${path})`);
+  }
+
+  // The other half of the same rule: the stockroom's own tools are theirs.
+  // A journal of what moved is how a shelf discrepancy gets explained, and it
+  // is already open to the stockroom, so refusing it here would be a
+  // supervisor with less reach than the people they cover.
+  const journal = await GET(boss, '/api/reports/journal?limit=5');
+  assert.equal(journal.status, 200, 'the movement journal is a stockroom tool');
+});
+
+test('a supervisor sees their own shop and not the other', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const boss = await signIn('supervisor');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'SUP-SHOP';
+  await shopOnly(admin, sku, 'Supervisor Shop');
+  await tieTo(admin, boss, south);
+
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('N'), expiry: monthsOut(24), qty: 12, branch_id: north });
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('S'), expiry: monthsOut(24), qty: 4, branch_id: south });
+
+  const shelf = (await GET(boss, `/api/till/products?q=${sku}&branch=${north}`)).data
+    .find((p) => p.sku === sku);
+  assert.equal(shelf.on_shelf, 4, 'asking for the other shop must not show its stock');
+
+  const wrong = await POST(boss, '/api/receive',
+    { sku, batch_no: unique('W'), expiry: monthsOut(24), qty: 5, branch_id: north });
+  assert.equal(wrong.status, 400);
+  assert.match(wrong.data.error, /cannot act on/);
+});
+
+test("a supervisor reads their own shop's takings, not the company's", async () => {
+  const admin = await signIn('admin');
+  const boss = await signIn('supervisor');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'SUP-TAKE';
+  await shopOnly(admin, sku, 'Supervisor Take');
+  await tieTo(admin, boss, south);
+
+  await POST(boss, '/api/receive', { sku, batch_no: unique('T'), expiry: monthsOut(24), qty: 9 });
+  assert.equal((await POST(boss, '/api/till/sell',
+    { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 500 })).status, 200);
+
+  const mine = (await GET(boss, '/api/takings-by-branch')).data;
+  assert.ok(mine.length, 'their own day has to be readable');
+  assert.ok(mine.every((r) => Number(r.branch_id) === south),
+    'a supervisor must never be shown another shop in their takings');
+  assert.ok(!mine.some((r) => Number(r.branch_id) === north));
+});
+
+test('every table the shop floor can read has a supervisor policy to match',
+  async () => {
+    // The one list that has to be kept in step by hand. If somebody grants a
+    // cashier or a stockroom person a new table and forgets the supervisor,
+    // this fails here rather than as a blank screen on a Saturday.
+    const missing = await db.query(`
+      select p.tablename
+        from pg_policies p
+       where p.schemaname = 'public'
+         and p.cmd = 'SELECT'
+         and p.qual like '%current_role_name%'
+         and (p.qual like '%cashier%' or p.qual like '%warehouse%')
+         and not exists (
+           select 1 from pg_policies s
+            where s.schemaname = 'public' and s.tablename = p.tablename
+              and s.qual like '%supervisor%')`);
+    assert.deepEqual(missing.rows.map((r) => r.tablename), [],
+      'these tables are readable by the shop floor but not by a supervisor');
+  });
+
+test('supervisor is a role a sign-in can actually be', async () => {
+  const admin = await signIn('admin');
+  const made = await POST(admin, '/api/users',
+    { username: unique('boss'), password: 'password1', role: 'supervisor' });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+
+  const nonsense = await POST(admin, '/api/users',
+    { username: unique('who'), password: 'password1', role: 'manager' });
+  assert.equal(nonsense.status, 400);
+  assert.match(nonsense.data.error, /is not something a sign-in can be/);
+});
+
+test('the database itself refuses a supervisor the owner-only jobs', async () => {
+  // The router turns these away first, which is why the HTTP test above passes
+  // even if the rule underneath is wrong. This one goes straight at the
+  // database with a supervisor's role set, the way a bug or a stolen
+  // connection string would, and the answer has to be the same.
+  const client = await db.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select set_config('app.role', 'supervisor', true),
+                               set_config('app.actor', 'boss', true)`);
+    await client.query('set local role app_client');
+
+    const ownerOnly = [
+      [`select create_login('x','x','h','cashier')`, 'making a sign-in'],
+      [`select add_branch('Somewhere')`, 'opening a branch'],
+      [`select add_employee('X','Staff',null,null,null,null,null)`, 'adding staff'],
+      [`select start_fresh('ERASE EVERYTHING', true)`, 'erasing the shop'],
+      [`select set_login_branch(1, 1)`, 'moving somebody between shops'],
+      [`select reverse_receipt(1, 'because')`, 'undoing a delivery'],
+    ];
+    for (const [sql, what] of ownerOnly) {
+      await client.query('savepoint s');
+      let refused = false;
+      try {
+        await client.query(sql);
+      } catch (e) {
+        refused = e.code === '42501';
+        if (!refused) throw new Error(`${what} failed for the wrong reason: ${e.code} ${e.message}`);
+      }
+      await client.query('rollback to savepoint s');
+      assert.ok(refused, `the database must refuse a supervisor ${what}`);
+    }
+  } finally {
+    await client.query('rollback').catch(() => {});
+    client.release();
+  }
 });

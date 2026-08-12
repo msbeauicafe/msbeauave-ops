@@ -13,6 +13,12 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// The shop trades on Manila time and so does the engine. A browser date turned
+// into an ISO string is UTC, which is a different day for eight hours after
+// midnight — long enough for the first shift to be told the shop is empty.
+const localDay = (offsetDays = 0) =>
+  new Date(Date.now() - offsetDays * 864e5).toLocaleDateString('en-CA');
+
 const peso = (v) => '₱' + Number(v || 0).toLocaleString('en-PH',
   { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const count = (v) => Number(v || 0).toLocaleString('en-PH');
@@ -218,6 +224,22 @@ const TABS = {
     ['tillreturns', '↩️', 'Returns'],
     ['closeday', '🌙', 'Close of day'],
   ],
+  // A supervisor runs a floor: the till and the stockroom, plus the day their
+  // own shop had. No pricing, no company money, no sign-ins.
+  supervisor: [
+    ['till', '🛍️', 'Till'],
+    ['receive', '📦', 'Receive'],
+    ['stockroom', '🔀', 'Stockroom'],
+    ['orders', '📋', 'Pick & send'],
+    ['pickups', '📦', 'Pickups'],
+    ['restock', '🛎️', 'Shelf tasks'],
+    ['tillreturns', '↩️', 'Returns'],
+    ['closeday', '🌙', 'Close of day'],
+    ['shopday', '📊', "Shop's day"],
+    ['team', '🧑‍💼', 'Team'],
+    ['clock', '⏱️', 'Time clock'],
+    ['workspace', '🗂️', 'Workspace'],
+  ],
   reseller: [
     ['catalog', '🛒', 'Order stock'],
     ['myorders', '🚚', 'My orders'],
@@ -228,7 +250,8 @@ const TABS = {
 // What a sign-in can do, not who the person is. Several people hold full
 // access; only one of them owns the shop, so this says admin.
 const roleName = (r) => ({
-  admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier', reseller: 'Reseller',
+  admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier',
+  supervisor: 'Supervisor', reseller: 'Reseller',
 }[r] ?? r);
 
 function drawFrame() {
@@ -1002,7 +1025,7 @@ function parseDelivery(text, known) {
   const lines = [];
   const problems = [];
   const seen = new Set();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay();
 
   text.split('\n').forEach((raw, index) => {
     const s = raw.trim();
@@ -1428,7 +1451,7 @@ async function openReseller(id, reload) {
         <div><label>Amount received</label>
           <input id="p_amt" type="number" step="0.01" value="${owed}" autofocus></div>
         <div><label>Received on</label>
-          <input id="p_on" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+          <input id="p_on" type="date" value="${localDay()}"></div>
       </div>
       <div class="dim mt">Paying a 30-day invoice within 10 days takes 2% off by itself.
         Clearing the last past-due invoice lets the account order again.</div>
@@ -1772,8 +1795,8 @@ SCREENS.restock = async (page) => {
 // Reports
 // ===========================================================================
 SCREENS.reports = async (page) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const monthAgo = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const today = localDay();
+  const monthAgo = localDay(30);
 
   page.innerHTML = `
     <div class="head"><h2>Reports</h2></div>
@@ -1907,6 +1930,7 @@ SCREENS.people = async (page) => {
           <option value="admin">Everything (admin)</option>
           <option value="warehouse">Warehouse</option>
           <option value="cashier">Cashier (the till)</option>
+          <option value="supervisor">Supervisor (the till and the stockroom)</option>
           <option value="reseller">Reseller (their own portal)</option></select></div>
         <div id="u_link" style="display:none"><label>Which reseller</label>
           ${resellers.length
@@ -2816,6 +2840,71 @@ SCREENS.tillreturns = async (page) => {
 // ===========================================================================
 // Close of day — the blind count
 // ===========================================================================
+// ===========================================================================
+// The shop's day
+//
+// What a supervisor needs to answer "how did we do today" without being handed
+// the company's books. The takings view is branch-scoped in the database, so a
+// tied sign-in sees one shop here and there is nothing on this screen that
+// widens it.
+// ===========================================================================
+SCREENS.shopday = async (page) => {
+  const today = localDay();
+  const back = localDay(13);
+  page.innerHTML = `
+    <div class="head"><h2>Shop's day</h2>
+      <span class="hint">Takings and shifts for your shop</span></div>
+    <div class="panel">
+      <div class="row">
+        <div><label>From</label><input type="date" id="sd_from" value="${back}"></div>
+        <div><label>To</label><input type="date" id="sd_to" value="${today}"></div>
+        <div style="flex:0 0 auto"><button class="btn" id="sd_go">Show</button></div>
+      </div>
+      <div id="sd_out" class="mt"></div>
+    </div>
+    <div class="panel"><h3>On shift now</h3><div id="sd_who"></div></div>
+    <div class="panel"><h3>Short on the shelf</h3><div id="sd_short"></div></div>`;
+
+  const load = async () => {
+    const from = $('#sd_from', page).value || back;
+    const to = $('#sd_to', page).value || today;
+    const rows = await GET(`/api/takings-by-branch?from=${from}&to=${to}`);
+    const total = rows.reduce((n, r) => n + Number(r.revenue || 0), 0);
+    const sales = rows.reduce((n, r) => n + Number(r.sales || 0), 0);
+    $('#sd_out', page).innerHTML = `
+      <div class="banner good">${count(sales)} sale(s), <b>${peso(total)}</b>
+        over ${rows.length} trading day(s)</div>`
+      + table(rows, [
+        { head: 'Day', cell: (r) => onDay(r.business_date) },
+        { head: 'Shop', cell: (r) => esc(r.branch) },
+        { head: 'Sales', n: true, cell: (r) => count(r.sales) },
+        { head: 'Taken', n: true, cell: (r) => peso(r.revenue) },
+      ], 'Nothing sold in that stretch.');
+  };
+
+  const who = async () => {
+    const { team } = await GET('/api/team');
+    const on = team.filter((p) => p.on_shift);
+    $('#sd_who', page).innerHTML = table(on, [
+      { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>` },
+      { head: 'Job', cell: (p) => `<span class="dim">${esc(p.position)}</span>` },
+      { head: 'Since', cell: (p) => when(p.since) },
+    ], 'Nobody is clocked in.');
+  };
+
+  const short = async () => {
+    const rows = await GET('/api/restock').catch(() => []);
+    $('#sd_short', page).innerHTML = table(rows, [
+      { head: 'Product', cell: (t) => esc(t.name) },
+      { head: 'Why', cell: (t) => `<span class="dim">${esc(t.reason)}</span>` },
+      { head: 'Raised', cell: (t) => when(t.raised_at) },
+    ], 'Nothing waiting 🌸');
+  };
+
+  $('#sd_go', page).addEventListener('click', () => load().catch(whoops));
+  await Promise.all([load().catch(whoops), who().catch(() => {}), short().catch(() => {})]);
+};
+
 SCREENS.closeday = async (page) => {
   page.innerHTML = `
     <div class="head"><h2>Close of day</h2>
@@ -3280,7 +3369,7 @@ SCREENS.promos = async (page) => {
   };
 
   const openPromo = (from) => {
-    const inAMonth = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    const inAMonth = localDay(-30);
     dialog(`
       <h3>Start a promotion</h3>
       <div class="row">
@@ -3641,7 +3730,7 @@ SCREENS.team = async (page) => {
       + branches.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
 
     // Default the report to this month so far — the commonest thing to ask.
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDay();
     $('#h_from', page).value = today.slice(0, 8) + '01';
     $('#h_to', page).value = today;
 
@@ -3819,8 +3908,8 @@ const EXPENSE_KINDS = ['stock', 'rent', 'wages', 'utilities', 'supplies',
                        'transport', 'marketing', 'fees', 'other'];
 
 SCREENS.finance = async (page) => {
-  const today = new Date().toISOString().slice(0, 10);
-  let from = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+  const today = localDay();
+  let from = localDay(29);
   let to = today;
 
   page.innerHTML = `
@@ -3941,7 +4030,7 @@ SCREENS.finance = async (page) => {
   };
 
   $$('[data-span]', page).forEach((b) => b.addEventListener('click', () => {
-    from = new Date(Date.now() - (Number(b.dataset.span) - 1) * 864e5).toISOString().slice(0, 10);
+    from = localDay(Number(b.dataset.span) - 1);
     to = today;
     $('#f_from', page).value = from;
     $('#f_to', page).value = to;
