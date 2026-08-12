@@ -57,9 +57,12 @@ function gate() {
   $('#leave').hidden = true;
   $('#app').innerHTML = `
     <form class="gate" id="in">
-      <h2>Sign this device in</h2>
-      <p>Once only. Whoever sets up the tablet signs in here, and then it stays
-        on this screen — the staff just tap their name.</p>
+      <h2>Setting up this tablet</h2>
+      <p class="who">This box is for the owner or a supervisor, once, when the
+        tablet is first set up.</p>
+      <p><b>Clocking on for your shift?</b> You do not sign in here. Ask whoever
+        opens the shop to set this screen up — then your name appears and you
+        just tap it and type your PIN.</p>
       <input name="username" placeholder="Username" autocomplete="username" required>
       <input name="password" type="password" placeholder="Password"
         autocomplete="current-password" required>

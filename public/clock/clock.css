@@ -94,7 +94,9 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
 /* Signing the device in — shown once, then never again on that tablet. */
 .gate { max-width: 380px; margin: 8vh auto 0; text-align: center; }
 .gate h2 { color: var(--rose-deep); font-size: 1.3rem; margin-bottom: 4px; }
-.gate p { color: var(--muted); font-size: .9rem; margin-bottom: 18px; }
+.gate p { color: var(--muted); font-size: .9rem; margin-bottom: 14px; }
+.gate p.who { color: var(--rose-deep); font-weight: 600; }
+.gate p b { color: var(--ink); }
 .gate input {
   width: 100%; font: inherit; font-size: 1.05rem; padding: 13px 14px; margin-bottom: 10px;
   border-radius: 12px; border: 1px solid var(--rose-soft); background: #fff;
