@@ -833,3 +833,76 @@ test('a PIN frees up when somebody leaves', async () => {
   assert.equal((await POST(admin, `/api/team/${starter}/pin`, { pin: '7314' })).status, 200,
     'there is no reason to retire a number along with the person');
 });
+
+// ===========================================================================
+// Taking somebody off the team list
+//
+// Two different things get called "remove". Deleting is for rows that should
+// never have existed; leaving is dated and keeps the hours, because payroll
+// still has to add up.
+// ===========================================================================
+
+test('somebody entered by mistake is deleted outright', async () => {
+  const admin = await signIn('admin');
+  const id = await hire(admin, unique('Typo'), 'Counter');
+
+  const r = await DELETE(admin, `/api/team/${id}`);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+
+  const team = (await GET(admin, '/api/team')).data.team;
+  assert.equal(team.some((p) => Number(p.id) === id), false, 'gone from the list');
+});
+
+test('somebody who has worked a shift cannot be deleted, and is told where to go',
+  async () => {
+    const admin = await signIn('admin');
+    const id = await hire(admin, unique('Worked'), 'Counter');
+    await POST(admin, `/api/team/${id}/pin`, { pin: '5150' });
+    await POST(admin, '/api/clock', { employeeId: id, pin: '5150' });
+
+    const r = await DELETE(admin, `/api/team/${id}`);
+    assert.equal(r.status, 400);
+    assert.match(r.data.error, /1 shift on record/);
+    assert.match(r.data.error, /They have left/);
+
+    assert.equal((await GET(admin, '/api/team')).data.team.some((p) => Number(p.id) === id),
+      true, 'still on the list, because their hours are');
+  });
+
+test('leaving keeps the person and their hours', async () => {
+  const admin = await signIn('admin');
+  const id = await hire(admin, unique('Leaving'), 'Counter');
+  await POST(admin, `/api/team/${id}/pin`, { pin: '6160' });
+  await POST(admin, '/api/clock', { employeeId: id, pin: '6160' });
+
+  assert.equal((await POST(admin, `/api/team/${id}/left`, {})).status, 200);
+  const person = (await GET(admin, '/api/team')).data.team.find((p) => Number(p.id) === id);
+  assert.ok(person, 'still on the list');
+  assert.equal(person.here, false, 'marked as gone');
+
+  const today = new Date().toISOString().slice(0, 10);
+  const hours = await GET(admin, `/api/team/hours?from=${today}&to=${today}`);
+  assert.ok(hours.data.people.some((x) => Number(x.employee_id) === id),
+    'their hours still appear in the period they worked');
+});
+
+test('removing a person leaves the sign-in they used alone', async () => {
+  const admin = await signIn('admin');
+  const theirs = await signIn('cashier');
+  const login = (await GET(admin, '/api/users')).data
+    .find((u) => u.username === theirs.username);
+
+  const made = await POST(admin, '/api/team',
+    { name: unique('Linked'), position: 'Counter', user_id: login.id });
+  assert.equal((await DELETE(admin, `/api/team/${Number(made.data.id)}`)).status, 200);
+
+  assert.ok((await GET(admin, '/api/users')).data.some((u) => u.id === login.id),
+    'taking somebody off the team is not taking away their account');
+});
+
+test('only the owner removes people', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const id = await hire(admin, unique('Safe'), 'Counter');
+  assert.equal((await DELETE(till, `/api/team/${id}`)).status, 403);
+});

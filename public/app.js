@@ -3081,6 +3081,10 @@ SCREENS.team = async (page) => {
             data-clock="${p.id}" data-dir="${p.on_shift ? 'out' : 'in'}">
             ${p.on_shift ? 'Clock out' : 'Clock in'}</button>
           ${owner ? `<button class="btn sm quiet" data-edit="${p.id}">Edit</button>` : ''}` },
+      ...(owner ? [
+        { head: '', cell: (p) => `<button class="btn sm warn" data-drop="${p.id}"
+            data-who="${esc(p.name)}">Remove</button>` },
+      ] : []),
     ], q ? 'Nobody matches that search.' : 'Nobody on the team yet');
 
     if (owner) {
@@ -3106,6 +3110,32 @@ SCREENS.team = async (page) => {
 
     $$('[data-edit]', page).forEach((b) => b.addEventListener('click', () =>
       openPerson(data.team.find((p) => String(p.id) === b.dataset.edit))));
+
+    // Two different things get called "remove", so the dialog says which this
+    // is and where the other one lives.
+    $$('[data-drop]', page).forEach((b) => b.addEventListener('click', () => {
+      dialog(`<h3>Remove ${esc(b.dataset.who)}?</h3>
+        <div class="dim">This is for somebody who should never have been on the
+          list — a test entry, a duplicate, a name typed into the wrong box. The
+          record goes for good.
+          <br><br>If they genuinely worked here and are leaving, close this and
+          use <b>Edit → They have left</b> instead. That dates the departure and
+          keeps their hours, which payroll still has to add up.
+          <br><br>Anybody with a shift on record cannot be removed here.</div>
+        <div class="mt right">
+          <button class="btn quiet" id="d_no">Keep them</button>
+          <button class="btn warn" id="d_yes">Remove</button></div>`);
+      $('#d_no').addEventListener('click', closeDialog);
+      $('#d_yes').addEventListener('click', async () => {
+        $('#d_yes').disabled = true;
+        try {
+          const r = await DELETE(`/api/team/${b.dataset.drop}`);
+          closeDialog();
+          notice(`${r.removed} removed`, 'good');
+          load();
+        } catch (e) { whoops(e); $('#d_yes').disabled = false; }
+      });
+    }));
   };
 
   const openPerson = (p) => {
