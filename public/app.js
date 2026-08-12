@@ -1509,8 +1509,15 @@ SCREENS.reorder = async (page) => {
 // Stockroom — moving, counting, writing off
 // ===========================================================================
 SCREENS.stockroom = async (page) => {
+  const shops = await branches();
+  const elsewhere = (here) => shops.filter((b) => String(b.id) !== String(here));
+
   page.innerHTML = `
-    <div class="head"><h2>Stockroom</h2></div>
+    <div class="head"><h2>Stockroom</h2>
+      ${shops.length > 1 ? '<span class="hint">Everything here is one shop\'s stock</span>' : ''}
+    </div>
+    ${shops.length > 1 ? `<div class="tools">${
+      branchPicker(shops, 's_branch', 'Working at')}</div>` : ''}
     <div class="split">
       <div class="panel"><h3>🔀 Move stock between pools</h3>
         <div class="row">
@@ -1542,7 +1549,9 @@ SCREENS.stockroom = async (page) => {
   const findBatches = async () => {
     const sku = $('#m_sku', page).value.trim();
     if (!sku) return;
-    const rows = await GET(`/api/products/${encodeURIComponent(sku)}/batches`);
+    const here = branchOf(page, 's_branch');
+    const rows = await GET(`/api/products/${encodeURIComponent(sku)}/batches`
+      + (here ? `?branch=${here}` : ''));
     $('#m_out', page).innerHTML = rows.length ? rows.map((b) => `
       <div class="tile mt"><b>${esc(b.batch_no)}</b>
         <span class="dim">expires ${onDay(b.expiry)} — wholesale ${b.free_b2b},
@@ -1556,21 +1565,50 @@ SCREENS.stockroom = async (page) => {
             <option value="reserve">Reserve</option></select></div>
           <div><label>How many</label><input id="mq_${b.batch_id}" type="number" min="1"></div>
           <div style="flex:0 0 auto"><button class="btn sm" data-move="${b.batch_id}">Move</button></div>
-        </div></div>`).join('') : '<div class="none">Nothing received for that code.</div>';
+        </div>
+        ${elsewhere(here).length ? `
+          <div class="row mt" style="border-top:1px dashed var(--rose-soft);padding-top:10px">
+            <div><label>Send to</label><select id="tb_${b.batch_id}">${
+              elsewhere(here).map((x) => `<option value="${x.id}">${esc(x.name)}</option>`)
+                .join('')}</select></div>
+            <div><label>From pool</label><select id="tp_${b.batch_id}">
+              <option value="shop">Shop</option><option value="b2b">Wholesale</option>
+              <option value="reserve">Reserve</option></select></div>
+            <div><label>How many</label>
+              <input id="tq_${b.batch_id}" type="number" min="1"></div>
+            <div style="flex:0 0 auto"><button class="btn sm line"
+              data-send="${b.batch_id}">🚚 Send</button></div>
+          </div>` : ''}
+        </div>`).join('') : '<div class="none">Nothing received for that code.</div>';
 
     $$('[data-move]', page).forEach((btn) => btn.addEventListener('click', async () => {
       const id = btn.dataset.move;
       try {
         await POST('/api/move', {
           batchId: +id, from: $(`#mf_${id}`).value, to: $(`#mt_${id}`).value,
-          qty: +$(`#mq_${id}`).value,
+          qty: +$(`#mq_${id}`).value, branch_id: branchOf(page, 's_branch'),
         });
         notice('Stock moved 🌸', 'good');
         findBatches();
       } catch (e) { whoops(e); }
     }));
+    // Sending stock to another shop. The pool does not change: what was on the
+    // shelf here is on the shelf there.
+    $$('[data-send]', page).forEach((btn) => btn.addEventListener('click', async () => {
+      const id = btn.dataset.send;
+      try {
+        await POST('/api/transfer', {
+          batchId: +id, pool: $(`#tp_${id}`).value,
+          from_branch: branchOf(page, 's_branch') || shops[0].id,
+          to_branch: $(`#tb_${id}`).value, qty: +$(`#tq_${id}`).value,
+        });
+        notice('Sent 🚚', 'good');
+        findBatches();
+      } catch (e) { whoops(e); }
+    }));
   };
   $('#m_find', page).addEventListener('click', () => findBatches().catch(whoops));
+  wireBranchPicker(page, 's_branch', () => findBatches().catch(() => {}));
 
   const counts = async () => {
     const rows = await GET('/api/stock-counts');
@@ -1586,7 +1624,8 @@ SCREENS.stockroom = async (page) => {
   $('#c_go', page).addEventListener('click', async () => {
     try {
       const r = await POST('/api/stock-count',
-        { sku: $('#c_sku', page).value.trim(), counted: +$('#c_qty', page).value });
+        { sku: $('#c_sku', page).value.trim(), counted: +$('#c_qty', page).value,
+          branch_id: branchOf(page, 's_branch') });
       $('#c_out', page).innerHTML = `<div class="banner ${r.variance === 0 ? 'good' : 'warn'}">
         Counted ${r.counted}, system says ${r.on_system} — difference <b>${r.variance}</b>.
         ${r.variance === 0 ? 'Spot on 🌸' : 'Noted for the owner to look at.'}</div>`;
@@ -1954,12 +1993,15 @@ SCREENS.branches = async (page) => {
       <div class="dim">Staff, the time clock and sign-ins each belong to a
         branch, so a shared device by one door shows that door's faces and
         hours can be totalled a shop at a time.
-        <br><br><b>Stock, sales and money are still counted across the whole
-        business.</b> Splitting those means teaching the picking engine which
-        shelf it is reaching for, and half-doing it would leave the totals
-        adding up perfectly for the wrong shop — the kind of mistake found in a
-        stock count months later. That work starts the day there is a second
-        branch to test it against.</div>
+        <br><br><b>Stock and sales are counted a shop at a time too.</b> Every
+        shelf, every till receipt and every wholesale order carries the branch
+        it happened at, and the screens that touch a shelf — Receive,
+        Stockroom, the till, Wholesale — ask which shop first. One shop cannot
+        sell what is sitting in another's stockroom; to make it sellable there,
+        send it across with <b>Send</b> in the Stockroom.
+        <br><br><b>Money is still totalled across the whole business.</b>
+        Reports, Finance and the Dashboard add every branch together. Splitting
+        those is the next piece of work.</div>
     </div>`;
 
   const load = async () => {
