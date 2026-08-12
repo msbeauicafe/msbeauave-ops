@@ -1893,7 +1893,8 @@ SCREENS.reports = async (page) => {
 // Sign-ins
 // ===========================================================================
 SCREENS.people = async (page) => {
-  const [users, resellers] = await Promise.all([GET('/api/users'), GET('/api/resellers')]);
+  const [users, resellers, shops] = await Promise.all([
+    GET('/api/users'), GET('/api/resellers'), branches()]);
   page.innerHTML = `
     <div class="head"><h2>Sign-ins</h2>
       <span class="hint">Switching someone off ends their session straight away</span></div>
@@ -1930,6 +1931,14 @@ SCREENS.people = async (page) => {
       { head: 'Name', cell: (u) => esc(u.display_name) },
       { head: 'Can do', cell: (u) => tag(roleName(u.role), 'pink') },
       { head: 'Reseller', cell: (u) => esc(u.reseller || '—') },
+      { head: 'Works at', cell: (u) => (u.role === 'reseller'
+          ? '<span class="dim">—</span>'
+          : `<select class="sm" data-branch="${u.id}">
+              <option value="">Every branch</option>
+              ${shops.map((b) => `<option value="${b.id}"${
+                String(b.id) === String(u.branch_id) ? ' selected' : ''
+              }>${esc(b.name)}</option>`).join('')}
+             </select>`) },
       { head: 'State', cell: (u) => u.active ? tag('active', 'green') : tag('switched off', 'grey') },
       { head: '', cell: (u) => `
           <button class="btn sm quiet" data-flip="${u.id}" data-to="${u.active ? 0 : 1}">
@@ -1938,6 +1947,17 @@ SCREENS.people = async (page) => {
           <button class="btn sm warn" data-del="${u.id}"
             data-who="${esc(u.username)}">Remove</button>` },
     ], 'No sign-ins yet.');
+
+    // Tying someone to a shop is not cosmetic: their screens stop asking which
+    // branch, and the database refuses to act on any other.
+    $$('[data-branch]', page).forEach((sel) => sel.addEventListener('change', async () => {
+      try {
+        await POST(`/api/users/${sel.dataset.branch}/branch`, { branch_id: sel.value || null });
+        notice(sel.value
+          ? `Now works at ${sel.selectedOptions[0].textContent}`
+          : 'Covers every branch', 'good');
+      } catch (e) { whoops(e); draw(await GET('/api/users')); }
+    }));
 
     $$('[data-flip]', page).forEach((b) => b.addEventListener('click', async () => {
       try {

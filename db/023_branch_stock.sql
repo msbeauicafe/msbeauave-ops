@@ -100,7 +100,7 @@ begin
     raise exception 'a unit cost cannot be negative';
   end if;
 
-  v_branch := coalesce(p_branch, default_branch());
+  v_branch := branch_or_default(p_branch);
   if not exists (select 1 from branches where id = v_branch and active) then
     raise exception 'That branch is not open.';
   end if;
@@ -194,7 +194,7 @@ begin
   if p_qty <= 0 then raise exception 'quantity must be more than zero'; end if;
   if p_from = p_to then raise exception 'those are the same pool'; end if;
 
-  v_branch := coalesce(p_branch, default_branch());
+  v_branch := branch_or_default(p_branch);
 
   select * into s from stock
    where batch_id = p_batch and pool = p_from and branch_id = v_branch for update;
@@ -298,7 +298,7 @@ begin
     raise exception 'unknown channel %', p_channel;
   end if;
 
-  v_branch := coalesce(p_branch, default_branch());
+  v_branch := branch_or_default(p_branch);
   if not exists (select 1 from branches where id = v_branch and active) then
     raise exception 'That branch is not open.';
   end if;
@@ -445,7 +445,7 @@ begin
     raise exception 'payment must be cash, gcash or card';
   end if;
 
-  v_branch := coalesce(p_branch, default_branch());
+  v_branch := branch_or_default(p_branch);
   v_order := place_order('shop', p_lines, null, v_branch);
   perform fulfil_order(v_order);
   select total into v_total from orders where id = v_order;
@@ -512,7 +512,7 @@ begin
     raise exception 'reason must be tester or damaged';
   end if;
 
-  v_branch := coalesce(p_branch, default_branch());
+  v_branch := branch_or_default(p_branch);
   select * into s from stock
    where batch_id = p_batch and pool = 'shop' and branch_id = v_branch for update;
   if not found or s.on_hand - s.committed < p_qty then
@@ -604,7 +604,7 @@ language plpgsql security definer as $$
 declare v_system int; v_branch bigint; out_ stock_counts;
 begin
   perform require_role('admin','warehouse');
-  v_branch := coalesce(p_branch, default_branch());
+  v_branch := branch_or_default(p_branch);
 
   select coalesce(sum(s.on_hand), 0)::int into v_system
     from batches b join stock s on s.batch_id = b.id

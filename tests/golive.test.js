@@ -1443,3 +1443,144 @@ test('the list says why a delivery cannot be taken back, before anyone clicks',
     assert.equal(untouched.held_by, null, 'this one is still free to undo');
     assert.equal(traded.held_by, 'already traded');
   });
+
+// ===========================================================================
+// A sign-in that belongs to one shop
+//
+// The point of tying a cashier to a branch is that it holds when the browser
+// says otherwise. A rule the client can talk its way out of is a label, not a
+// rule, so most of these send the wrong branch on purpose.
+// ===========================================================================
+
+async function tieTo(admin, user, branchId) {
+  const users = (await GET(admin, '/api/users')).data;
+  const row = users.find((u) => u.username === user.username);
+  assert.ok(row, `no sign-in called ${user.username}`);
+  const r = await POST(admin, `/api/users/${row.id}/branch`, { branch_id: branchId });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  return Number(row.id);
+}
+
+test('a tied sign-in receives stock at its own shop without being asked',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const [north, south] = await twoBranches(admin);
+    const sku = 'TIE-HERE';
+    await shopOnly(admin, sku, 'Tied Here');
+    await tieTo(admin, store, south);
+
+    // No branch named at all — it has to land where the person works, not at
+    // whichever branch happens to sort first.
+    const got = await POST(store, '/api/receive',
+      { sku, batch_no: unique('T'), expiry: monthsOut(24), qty: 7 });
+    assert.equal(got.status, 200, JSON.stringify(got.data));
+
+    const here = (await GET(admin, `/api/branch-stock?branch=${south}&q=${sku}`)).data;
+    const there = (await GET(admin, `/api/branch-stock?branch=${north}&q=${sku}`)).data;
+    assert.equal(here[0].free_shop, 7);
+    assert.equal(there.length, 0, 'nothing landed at the shop they do not work at');
+  });
+
+test('a tied sign-in cannot act on another shop, however it asks', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'TIE-NOPE';
+  await shopOnly(admin, sku, 'Tied Nope');
+  await tieTo(admin, store, south);
+
+  const nope = await POST(store, '/api/receive',
+    { sku, batch_no: unique('N'), expiry: monthsOut(24), qty: 7, branch_id: north });
+  assert.equal(nope.status, 400, JSON.stringify(nope.data));
+  assert.match(nope.data.error, /cannot act on/);
+
+  const there = (await GET(admin, `/api/branch-stock?branch=${north}&q=${sku}`)).data;
+  assert.equal(there.length, 0, 'and it refused rather than quietly using its own shop');
+});
+
+test('a tied till sees its own shelf even when asked for the other one', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'TIE-TILL';
+  await shopOnly(admin, sku, 'Tied Till');
+
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('A'), expiry: monthsOut(24), qty: 11, branch_id: north });
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 3, branch_id: south });
+  await tieTo(admin, till, south);
+
+  const asked = (await GET(till, `/api/till/products?q=${sku}&branch=${north}`)).data
+    .find((p) => p.sku === sku);
+  assert.equal(asked.on_shelf, 3, 'asking for the other shop must not show its stock');
+});
+
+test('a tied sign-in is only offered its own shop to choose from', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const [, south] = await twoBranches(admin);
+  await tieTo(admin, till, south);
+
+  const mine = (await GET(till, '/api/branches')).data;
+  assert.equal(mine.length, 1, 'a picker with one option is a picker that hides itself');
+  assert.equal(Number(mine[0].id), south);
+
+  const all = (await GET(admin, '/api/branches')).data;
+  assert.ok(all.length >= 2, 'the owner still sees every shop');
+});
+
+test('untying a sign-in gives every shop back', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'TIE-FREE';
+  await shopOnly(admin, sku, 'Tied Free');
+
+  await tieTo(admin, store, south);
+  await tieTo(admin, store, null);
+
+  const got = await POST(store, '/api/receive',
+    { sku, batch_no: unique('F'), expiry: monthsOut(24), qty: 4, branch_id: north });
+  assert.equal(got.status, 200, JSON.stringify(got.data));
+  const there = (await GET(admin, `/api/branch-stock?branch=${north}&q=${sku}`)).data;
+  assert.equal(there[0].free_shop, 4);
+});
+
+test('a reseller sign-in does not belong to one of the shops', async () => {
+  const admin = await signIn('admin');
+  const buyer = await signInAsReseller();
+  const [, south] = await twoBranches(admin);
+
+  const users = (await GET(admin, '/api/users')).data;
+  const row = users.find((u) => u.username === buyer.username);
+  const nope = await POST(admin, `/api/users/${row.id}/branch`, { branch_id: south });
+  assert.equal(nope.status, 400);
+  assert.match(nope.data.error, /does not belong to one of your shops/);
+});
+
+test('only the owner decides which shop a sign-in works at', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [, south] = await twoBranches(admin);
+  const users = (await GET(admin, '/api/users')).data;
+  const row = users.find((u) => u.username === store.username);
+
+  const nope = await POST(store, `/api/users/${row.id}/branch`, { branch_id: south });
+  assert.equal(nope.status, 403, 'moving yourself to another shop is not a warehouse job');
+});
+
+test('a sign-in cannot be tied to a shop that is closed', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const [, south] = await twoBranches(admin);
+  assert.equal((await POST(admin, `/api/branches/${south}/close`, {})).status, 200);
+
+  const users = (await GET(admin, '/api/users')).data;
+  const row = users.find((u) => u.username === till.username);
+  const nope = await POST(admin, `/api/users/${row.id}/branch`, { branch_id: south });
+  assert.equal(nope.status, 400);
+  assert.match(nope.data.error, /not open/);
+});

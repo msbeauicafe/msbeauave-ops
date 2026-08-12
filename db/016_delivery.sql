@@ -116,7 +116,7 @@ begin
     if exists (
       select 1 from batches b join stock st on st.batch_id = b.id
        where b.sku = v_sku and b.batch_no = v_batch
-         and st.branch_id = coalesce(p_branch, default_branch())) then
+         and st.branch_id = branch_or_default(p_branch)) then
       raise exception 'Line %: batch % of % is already at this branch.', n, v_batch, v_name;
     end if;
   end loop;
@@ -142,7 +142,7 @@ begin
       'sku', v_sku, 'batch_id', v_id, 'qty', v_qty,
       'split', (select jsonb_object_agg(pool, on_hand) from stock
                  where batch_id = v_id
-                   and branch_id = coalesce(p_branch, default_branch())));
+                   and branch_id = branch_or_default(p_branch)));
   end loop;
 
   return jsonb_build_object(
