@@ -331,7 +331,7 @@ test('the same batch cannot be received twice, on one note or across two', async
     lines: [{ sku: 'DEL-04', batch_no: 'ONCE', expiry: monthsOut(24), qty: 5 }],
   });
   assert.equal(again.status, 400);
-  assert.match(again.data.error, /already been received/);
+  assert.match(again.data.error, /already at this branch/);
 });
 
 test('the counter cannot book stock in', async () => {
@@ -1186,4 +1186,70 @@ test('a counted shelf is one shop\'s shelf', async () => {
   assert.equal(counted.data.on_system, 10,
     'counting North against the whole business would invent a variance of seven');
   assert.equal(counted.data.variance, 0);
+});
+
+test('the till lists the shelf of the shop selling, not the business total', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-TILL';
+  await shopOnly(admin, sku, 'Branch Till');
+
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('N'), expiry: monthsOut(24), qty: 9, branch_id: north });
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('S'), expiry: monthsOut(24), qty: 4, branch_id: south });
+
+  const atNorth = (await GET(till, `/api/till/products?q=${sku}&branch=${north}`)).data
+    .find((p) => p.sku === sku);
+  const atSouth = (await GET(till, `/api/till/products?q=${sku}&branch=${south}`)).data
+    .find((p) => p.sku === sku);
+
+  assert.equal(atNorth.on_shelf, 9);
+  assert.equal(atSouth.on_shelf, 4,
+    'showing 13 here would take an order the shop cannot fill');
+});
+
+test('a whole delivery note lands at the branch it was received at', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-NOTE';
+  await shopOnly(admin, sku, 'Branch Note');
+
+  const r = await POST(store, '/api/deliveries', {
+    branch_id: south,
+    lines: [{ sku, batch_no: unique('D'), expiry: monthsOut(24), qty: 15 }],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual(r.data.received[0].split, { shop: 15 });
+
+  const atSouth = (await GET(admin, `/api/branch-stock?branch=${south}&q=${sku}`)).data;
+  const atNorth = (await GET(admin, `/api/branch-stock?branch=${north}&q=${sku}`)).data;
+  assert.equal(atSouth[0].free_shop, 15);
+  assert.equal(atNorth.length, 0, 'nothing landed at the other shop');
+});
+
+test('the same lot can be delivered to a second shop, but not twice to one', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'BR-LOT2';
+  await shopOnly(admin, sku, 'Branch Lot Two');
+  const lot = unique('L');
+
+  assert.equal((await POST(store, '/api/deliveries', {
+    branch_id: north, lines: [{ sku, batch_no: lot, expiry: monthsOut(24), qty: 5 }],
+  })).status, 200);
+
+  assert.equal((await POST(store, '/api/deliveries', {
+    branch_id: south, lines: [{ sku, batch_no: lot, expiry: monthsOut(24), qty: 5 }],
+  })).status, 200, 'one lot can be split across two shops');
+
+  const again = await POST(store, '/api/deliveries', {
+    branch_id: north, lines: [{ sku, batch_no: lot, expiry: monthsOut(24), qty: 5 }],
+  });
+  assert.equal(again.status, 400);
+  assert.match(again.data.error, /already at this branch/);
 });

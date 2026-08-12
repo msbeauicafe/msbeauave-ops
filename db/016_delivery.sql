@@ -17,7 +17,7 @@
 -- only decides that twenty of them succeed or fail together.
 -- ============================================================================
 
-create or replace function receive_delivery(p_lines jsonb)
+create or replace function receive_delivery(p_lines jsonb, p_branch bigint default null)
 returns jsonb language plpgsql security definer as $$
 declare
   line     jsonb;
@@ -104,8 +104,20 @@ begin
     end if;
     v_seen := v_seen || v_key;
 
-    if exists (select 1 from batches where sku = v_sku and batch_no = v_batch) then
-      raise exception 'Line %: batch % of % has already been received.', n, v_batch, v_name;
+    -- The same lot can arrive at a second shop; that is one batch in two
+    -- places, not a duplicate. What it cannot do is arrive with a different
+    -- expiry, because then it is not the same lot.
+    if exists (select 1 from batches
+                where sku = v_sku and batch_no = v_batch and expiry <> v_expiry) then
+      raise exception 'Line %: batch % of % is already recorded expiring %, not %.',
+        n, v_batch, v_name,
+        (select expiry from batches where sku = v_sku and batch_no = v_batch), v_expiry;
+    end if;
+    if exists (
+      select 1 from batches b join stock st on st.batch_id = b.id
+       where b.sku = v_sku and b.batch_no = v_batch
+         and st.branch_id = coalesce(p_branch, default_branch())) then
+      raise exception 'Line %: batch % of % is already at this branch.', n, v_batch, v_name;
     end if;
   end loop;
 
@@ -119,7 +131,8 @@ begin
     v_cost  := nullif(btrim(coalesce(line->>'unit_cost', '')), '')::numeric;
 
     v_id := receive_stock(v_sku, v_batch, (line->>'expiry')::date, v_qty, v_cost,
-                          coalesce(nullif(btrim(coalesce(line->>'method', '')), ''), 'bank'));
+                          coalesce(nullif(btrim(coalesce(line->>'method', '')), ''), 'bank'),
+                          p_branch);
 
     v_lines := v_lines + 1;
     v_units := v_units + v_qty;
@@ -127,7 +140,9 @@ begin
                           * v_qty);
     v_out := v_out || jsonb_build_object(
       'sku', v_sku, 'batch_id', v_id, 'qty', v_qty,
-      'split', (select jsonb_object_agg(pool, on_hand) from stock where batch_id = v_id));
+      'split', (select jsonb_object_agg(pool, on_hand) from stock
+                 where batch_id = v_id
+                   and branch_id = coalesce(p_branch, default_branch())));
   end loop;
 
   return jsonb_build_object(
@@ -135,6 +150,7 @@ begin
 end;
 $$;
 
-alter function receive_delivery(jsonb) set search_path = public, extensions;
-revoke all on function receive_delivery(jsonb) from public;
-grant execute on function receive_delivery(jsonb) to app_client;
+drop function if exists receive_delivery(jsonb);
+alter function receive_delivery(jsonb, bigint) set search_path = public, extensions;
+revoke all on function receive_delivery(jsonb, bigint) from public;
+grant execute on function receive_delivery(jsonb, bigint) to app_client;

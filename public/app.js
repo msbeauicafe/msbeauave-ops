@@ -816,6 +816,7 @@ async function showBatches(sku) {
 // Receiving
 // ===========================================================================
 SCREENS.receive = async (page) => {
+  const shops = await branches();
   page.innerHTML = `
     <div class="head"><h2>Receive a delivery</h2>
       <span class="hint">Splits automatically between wholesale, shop and reserve</span></div>
@@ -835,6 +836,7 @@ SCREENS.receive = async (page) => {
             <option value="gcash">GCash</option>
             <option value="card">Card</option>
           </select></div>
+        ${branchPicker(shops, 'r_branch', 'Arrived at')}
         <div style="flex:0 0 auto"><button class="btn" id="r_go">Receive</button></div>
         <div style="flex:0 0 auto"><button class="btn line" id="r_note">📦 Whole delivery</button></div>
       </div>
@@ -873,6 +875,7 @@ SCREENS.receive = async (page) => {
         qty: +$('#r_qty', page).value,
         unit_cost: $('#r_cost', page).value,
         method: $('#r_method', page).value,
+        branch_id: branchOf(page, 'r_branch'),
       });
       const label = { b2b: 'Wholesale', shop: 'Shop', reserve: 'Reserve' };
       $('#r_out', page).innerHTML = `<div class="banner good">✅ Received and split —
@@ -884,8 +887,10 @@ SCREENS.receive = async (page) => {
     } catch (e) { whoops(e); }
   });
 
+  wireBranchPicker(page, 'r_branch');
   $('#r_note', page).addEventListener('click',
-    () => deliveryDialog(GET('/api/products?q=').catch(() => []), recent));
+    () => deliveryDialog(GET('/api/products?q=').catch(() => []), recent,
+      branchOf(page, 'r_branch')));
 
   await recent();
   repeat(recent, 15000);
@@ -986,7 +991,7 @@ function parseDelivery(text, known) {
   return { lines, problems };
 }
 
-async function deliveryDialog(knownPromise, reload) {
+async function deliveryDialog(knownPromise, reload, branchId = null) {
   const known = await knownPromise;
   dialog(`
     <h3>Receive a whole delivery</h3>
@@ -1061,6 +1066,7 @@ async function deliveryDialog(knownPromise, reload) {
     $('#d_save').disabled = true;
     try {
       const r = await POST('/api/deliveries', {
+        branch_id: branchId,
         lines: lines.map((l) => ({
           sku: l.sku, batch_no: l.batch_no, expiry: l.expiry, qty: l.qty,
           unit_cost: l.unit_cost == null ? '' : l.unit_cost,
@@ -1892,6 +1898,45 @@ SCREENS.people = async (page) => {
 };
 
 // ===========================================================================
+// Which shop am I standing in?
+//
+// A till, a delivery and a stock move all happen somewhere. With one branch
+// the question has one answer and the picker stays out of the way; with two it
+// is the first thing that has to be right, so the choice is remembered per
+// device rather than asked every morning.
+// ===========================================================================
+let BRANCHES = null;
+
+async function branches() {
+  if (!BRANCHES) BRANCHES = await GET('/api/branches').catch(() => []);
+  return BRANCHES.filter((b) => b.active);
+}
+
+const branchRemembered = () => localStorage.getItem('branch') || '';
+
+// Renders nothing at all when there is only one shop: a choice of one is not a
+// choice, and an extra control on the till is an extra thing to get wrong.
+function branchPicker(list, id = 'branch_pick', label = 'Branch') {
+  if (list.length < 2) return '';
+  const chosen = branchRemembered();
+  return `<div style="flex:0 0 auto"><label>${esc(label)}</label>
+    <select id="${id}">${list.map((b) =>
+      `<option value="${b.id}" ${String(b.id) === chosen ? 'selected' : ''}>${
+        esc(b.name)}</option>`).join('')}</select></div>`;
+}
+
+function wireBranchPicker(page, id = 'branch_pick', after) {
+  const el = $(`#${id}`, page);
+  if (!el) return;
+  el.addEventListener('change', () => {
+    localStorage.setItem('branch', el.value);
+    if (after) after();
+  });
+}
+
+const branchOf = (page, id = 'branch_pick') => $(`#${id}`, page)?.value || null;
+
+// ===========================================================================
 // Branches
 //
 // One shop today. The list exists so that the day there are two, nothing has
@@ -2279,13 +2324,15 @@ const basket = new Map();
 
 SCREENS.till = async (page) => {
   let goods = [];
+  const shops = await branches();
 
   page.innerHTML = `
     <div class="head"><h2>Till</h2><span class="hint">Sells from the shop shelf only</span></div>
     <div class="till">
       <div>
         <div class="tools"><input type="search" id="q"
-          placeholder="Scan a barcode, or type a name…" autofocus></div>
+          placeholder="Scan a barcode, or type a name…" autofocus>
+          ${branchPicker(shops, 'till_branch', 'Selling at')}</div>
         <div class="goods" id="goods"></div>
       </div>
       <div class="panel">
@@ -2359,11 +2406,20 @@ SCREENS.till = async (page) => {
   };
 
   const search = async () => {
-    goods = await GET(`/api/till/products?q=${encodeURIComponent($('#q', page).value)}`);
+    goods = await GET(`/api/till/products?q=${encodeURIComponent($('#q', page).value)}`
+      + (branchOf(page, 'till_branch') ? `&branch=${branchOf(page, 'till_branch')}` : ''));
     drawGoods();
   };
 
   $('#q', page).addEventListener('input', () => search().catch(whoops));
+  // Switching shops empties the basket: a basket picked off one shelf cannot
+  // be paid for at another, and half-moving it would be worse than starting
+  // again.
+  wireBranchPicker(page, 'till_branch', () => {
+    basket.clear();
+    drawBasket();
+    search().catch(whoops);
+  });
   $('#q', page).addEventListener('keydown', (e) => {
     // A barcode scanner types the code and presses Enter.
     if (e.key !== 'Enter') return;
@@ -2402,7 +2458,7 @@ SCREENS.till = async (page) => {
     try {
       const receipt = await POST('/api/till/sell', {
         lines: [...basket.values()].map((l) => ({ sku: l.sku, qty: l.qty })),
-        method, tendered,
+        method, tendered, branch_id: branchOf(page, 'till_branch'),
       });
       basket.clear();
       drawBasket();
