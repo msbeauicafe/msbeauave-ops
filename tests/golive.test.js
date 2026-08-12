@@ -43,6 +43,7 @@ async function request(cookie, method, path, body) {
 }
 const GET = (c, p) => request(c, 'GET', p);
 const POST = (c, p, b) => request(c, 'POST', p, b ?? {});
+const PUT = (c, p, b) => request(c, 'PUT', p, b ?? {});
 
 async function signIn(role) {
   const username = unique(role);
@@ -1583,4 +1584,85 @@ test('a sign-in cannot be tied to a shop that is closed', async () => {
   const nope = await POST(admin, `/api/users/${row.id}/branch`, { branch_id: south });
   assert.equal(nope.status, 400);
   assert.match(nope.data.error, /not open/);
+});
+
+// ===========================================================================
+// Renaming a sign-in
+//
+// The point is that it is a rename and not a replacement: the password, the
+// shop and the link to the staff record all have to survive, or people would
+// go on using delete-and-recreate and lose them.
+// ===========================================================================
+
+test('a sign-in can be renamed without disturbing the password', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const row = (await GET(admin, '/api/users')).data
+    .find((u) => u.username === till.username);
+
+  const fresh = `renamed-${row.id}`;
+  const r = await PUT(admin, `/api/users/${row.id}`,
+    { username: fresh, display_name: 'Yana Magtibay' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+
+  const after = (await GET(admin, '/api/users')).data.find((u) => String(u.id) === String(row.id));
+  assert.equal(after.username, fresh);
+  assert.equal(after.display_name, 'Yana Magtibay');
+
+  // The same password, under the new name.
+  const back = await fetch(`${base}/api/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: fresh, password: 'secret123' }) });
+  assert.equal(back.status, 200, 'renaming somebody must not lock them out');
+
+  // And not under the old one.
+  const old = await fetch(`${base}/api/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: till.username, password: 'secret123' }) });
+  assert.equal(old.status, 401);
+});
+
+test('renaming a sign-in keeps the shop it works at', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const [, south] = await twoBranches(admin);
+  const row = (await GET(admin, '/api/users')).data
+    .find((u) => u.username === till.username);
+
+  await POST(admin, `/api/users/${row.id}/branch`, { branch_id: south });
+  await PUT(admin, `/api/users/${row.id}`, { username: `kept-${row.id}` });
+
+  const after = (await GET(admin, '/api/users')).data.find((u) => String(u.id) === String(row.id));
+  assert.equal(Number(after.branch_id), south, 'a rename is not a reset');
+});
+
+test('two sign-ins cannot end up with the same name', async () => {
+  const admin = await signIn('admin');
+  const one = await signIn('cashier');
+  const two = await signIn('warehouse');
+  const row = (await GET(admin, '/api/users')).data.find((u) => u.username === two.username);
+
+  const clash = await PUT(admin, `/api/users/${row.id}`, { username: one.username });
+  assert.equal(clash.status, 400);
+  assert.match(clash.data.error, /already a sign-in called/);
+});
+
+test('a username with a space in it is refused, with the fix named', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const row = (await GET(admin, '/api/users')).data.find((u) => u.username === till.username);
+
+  const spaced = await PUT(admin, `/api/users/${row.id}`, { username: 'Yana Magtibay' });
+  assert.equal(spaced.status, 400);
+  assert.match(spaced.data.error, /cannot have spaces/);
+  assert.match(spaced.data.error, /yana\.magtibay/, 'saying what to type instead');
+});
+
+test('only the owner renames a sign-in', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const row = (await GET(admin, '/api/users')).data.find((u) => u.username === till.username);
+
+  const nope = await PUT(till, `/api/users/${row.id}`, { username: 'something.else' });
+  assert.equal(nope.status, 403);
 });

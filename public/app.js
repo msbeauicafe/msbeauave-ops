@@ -1943,6 +1943,8 @@ SCREENS.people = async (page) => {
       { head: '', cell: (u) => `
           <button class="btn sm quiet" data-flip="${u.id}" data-to="${u.active ? 0 : 1}">
             ${u.active ? 'Switch off' : 'Switch on'}</button>
+          <button class="btn sm quiet" data-ren="${u.id}"
+            data-user="${esc(u.username)}" data-disp="${esc(u.display_name)}">Rename</button>
           <button class="btn sm line" data-pw="${u.id}">New password</button>
           <button class="btn sm warn" data-del="${u.id}"
             data-who="${esc(u.username)}">Remove</button>` },
@@ -1957,6 +1959,35 @@ SCREENS.people = async (page) => {
           ? `Now works at ${sel.selectedOptions[0].textContent}`
           : 'Covers every branch', 'good');
       } catch (e) { whoops(e); draw(await GET('/api/users')); }
+    }));
+
+    $$('[data-ren]', page).forEach((b) => b.addEventListener('click', () => {
+      dialog(`
+        <h3>Rename this sign-in</h3>
+        <div class="dim">The password does not change. Whoever uses this account
+          carries on with the one they have — only what they type in the
+          username box is different.</div>
+        <div class="row mt">
+          <div><label>Username</label>
+            <input id="rn_user" type="text" value="${esc(b.dataset.user)}"></div>
+          <div><label>Display name</label>
+            <input id="rn_disp" type="text" value="${esc(b.dataset.disp)}"></div>
+        </div>
+        <div class="row mt">
+          <button class="btn" id="rn_go">Save</button>
+          <button class="btn quiet" id="rn_no">Cancel</button></div>`);
+      $('#rn_no').addEventListener('click', closeDialog);
+      $('#rn_go').addEventListener('click', async () => {
+        try {
+          await PUT(`/api/users/${b.dataset.ren}`, {
+            username: $('#rn_user').value.trim(),
+            display_name: $('#rn_disp').value.trim(),
+          });
+          closeDialog();
+          notice('Renamed 🌸', 'good');
+          draw(await GET('/api/users'));
+        } catch (e) { whoops(e); }
+      });
     }));
 
     $$('[data-flip]', page).forEach((b) => b.addEventListener('click', async () => {
