@@ -185,6 +185,7 @@ const TABS = {
     ['promos', '🏷️', 'Promos'],
     ['team', '🧑‍💼', 'Team'],
     ['clock', '⏱️', 'Time clock'],
+    ['branches', '🏬', 'Branches'],
     ['crm', '💗', 'Customers'],
     ['finance', '💰', 'Finance'],
     ['products', '🧴', 'Products'],
@@ -1891,9 +1892,109 @@ SCREENS.people = async (page) => {
 };
 
 // ===========================================================================
+// Branches
+//
+// One shop today. The list exists so that the day there are two, nothing has
+// to be untangled — every person, every clock and every sign-in already knows
+// which door it belongs to.
+// ===========================================================================
+SCREENS.branches = async (page) => {
+  page.innerHTML = `
+    <div class="head"><h2>Branches</h2>
+      <span class="hint">Where the shop trades, and who works at each</span></div>
+    <div class="tools"><button class="btn" id="br_add">＋ New branch</button></div>
+    <div class="panel" id="br_list"></div>
+    <div class="panel">
+      <h3>What is split by branch, and what is not</h3>
+      <div class="dim">Staff, the time clock and sign-ins each belong to a
+        branch, so a shared device by one door shows that door's faces and
+        hours can be totalled a shop at a time.
+        <br><br><b>Stock, sales and money are still counted across the whole
+        business.</b> Splitting those means teaching the picking engine which
+        shelf it is reaching for, and half-doing it would leave the totals
+        adding up perfectly for the wrong shop — the kind of mistake found in a
+        stock count months later. That work starts the day there is a second
+        branch to test it against.</div>
+    </div>`;
+
+  const load = async () => {
+    const rows = await GET('/api/branches');
+    $('#br_list', page).innerHTML = table(rows, [
+      { head: 'Branch', cell: (b) => `<b>${esc(b.name)}</b>`
+          + (b.active ? '' : ' ' + tag('closed', 'grey')) },
+      { head: 'Where', cell: (b) => `<span class="dim">${esc(b.address || '—')}</span>` },
+      { head: 'Open', cell: (b) => esc(b.opens || '—') },
+      { head: 'Phone', cell: (b) => `<span class="dim">${esc(b.phone || '—')}</span>` },
+      { head: 'People', n: true, cell: (b) => count(b.people) },
+      { head: 'On shift', n: true, cell: (b) => (b.on_shift
+          ? tag(String(b.on_shift), 'green') : '<span class="dim">0</span>') },
+      { head: '', cell: (b) => `
+          <button class="btn sm quiet" data-br-edit="${b.id}">Edit</button>
+          <button class="btn sm ${b.active ? 'line' : 'go'}"
+            data-br-shut="${b.id}" data-open="${b.active ? 0 : 1}">
+            ${b.active ? 'Close' : 'Reopen'}</button>` },
+    ], 'No branches yet.');
+
+    $$('[data-br-edit]', page).forEach((b) => b.addEventListener('click',
+      () => editBranch(rows.find((x) => String(x.id) === b.dataset.brEdit), load)));
+
+    $$('[data-br-shut]', page).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await POST(`/api/branches/${b.dataset.brShut}/close`,
+          { reopen: b.dataset.open === '1' });
+        notice(b.dataset.open === '1' ? 'Open again' : 'Closed', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    }));
+  };
+
+  $('#br_add', page).addEventListener('click', () => editBranch(null, load));
+  await load();
+};
+
+function editBranch(b, reload) {
+  const isNew = !b;
+  dialog(`
+    <h3>${isNew ? 'New branch' : esc(b.name)}</h3>
+    <div class="row">
+      <div style="flex:2"><label>Name</label>
+        <input id="br_name" type="text" value="${esc(b?.name || '')}"
+          placeholder="Bayan Bayanan"></div>
+      <div><label>Open</label>
+        <input id="br_opens" type="text" value="${esc(b?.opens || '')}"
+          placeholder="9am – 7pm"></div>
+    </div>
+    <div class="row">
+      <div style="flex:2"><label>Address</label>
+        <input id="br_addr" type="text" value="${esc(b?.address || '')}"></div>
+      <div><label>Phone</label>
+        <input id="br_phone" type="text" value="${esc(b?.phone || '')}"></div>
+    </div>
+    <div class="mt right">
+      <button class="btn quiet" id="br_cancel">Cancel</button>
+      <button class="btn" id="br_save">Save</button>
+    </div>`);
+
+  $('#br_cancel').addEventListener('click', closeDialog);
+  $('#br_save').addEventListener('click', async () => {
+    const body = {
+      name: $('#br_name').value, address: $('#br_addr').value,
+      phone: $('#br_phone').value, opens: $('#br_opens').value,
+    };
+    try {
+      if (isNew) await POST('/api/branches', body);
+      else await PUT(`/api/branches/${b.id}`, body);
+      closeDialog();
+      notice('Saved 🌸', 'good');
+      reload();
+    } catch (e) { whoops(e); }
+  });
+}
+
+// ===========================================================================
 // Taking on several people at once
 // ===========================================================================
-function bulkTeamDialog(reload) {
+function bulkTeamDialog(reload, branches = []) {
   dialog(`
     <h3>Add several people</h3>
     <div class="dim">One person a line, separated by <b>|</b> or tabs or commas:
@@ -1901,6 +2002,9 @@ function bulkTeamDialog(reload) {
       <br>Phone and start date can be left off — the start date then means today.
       Lines beginning with <b>#</b> are ignored. Nobody gets a clock PIN here;
       set those individually afterwards.</div>
+    ${branches.length > 1 ? `<div class="row mt"><div><label>Which branch</label>
+      <select id="b_branch">${branches.filter((b) => b.active).map((b) =>
+        `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div></div>` : ''}
     <label class="mt" for="b_text">The list</label>
     <textarea id="b_text" class="sheet" rows="12" spellcheck="false"
       placeholder="Aileen Ramos | Counter | 09171234567 | 2026-08-01"></textarea>
@@ -1962,7 +2066,8 @@ function bulkTeamDialog(reload) {
     if (problems.length) return review();
     $('#b_save').disabled = true;
     try {
-      const r = await POST('/api/team/bulk', { people });
+      const r = await POST('/api/team/bulk',
+        { people, branch_id: $('#b_branch')?.value || null });
       closeDialog();
       notice(`${r.added} added — ${r.on_the_team} on the team 🌸`, 'good');
       notice('They cannot clock on until each has a PIN. Edit → Clock PIN.');
@@ -2069,8 +2174,20 @@ SCREENS.clock = async (page) => {
       <span class="hint">Tap your name, type your PIN</span></div>
     <div class="tools">
       <input type="search" id="c_find" placeholder="Find your name…" autocomplete="off">
+      <select id="c_branch"></select>
     </div>
     <div id="c_grid" class="clock-grid"></div>`;
+
+  // A device left by one door should show that door's faces. It remembers the
+  // choice, because nobody wants to pick the branch every morning.
+  const branches = await GET('/api/branches').catch(() => []);
+  const remembered = localStorage.getItem('clockBranch') || '';
+  $('#c_branch', page).innerHTML =
+    (branches.length > 1 ? '<option value="">Everybody</option>' : '')
+    + branches.filter((b) => b.active).map((b) =>
+      `<option value="${b.id}" ${String(b.id) === remembered ? 'selected' : ''}>${
+        esc(b.name)}</option>`).join('');
+  if (branches.length < 2) $('#c_branch', page).style.display = 'none';
 
   let team = [];
   const load = async () => {
@@ -2080,7 +2197,10 @@ SCREENS.clock = async (page) => {
 
   const draw = () => {
     const q = ($('#c_find', page).value || '').trim().toLowerCase();
-    const shown = q ? team.filter((p) => p.name.toLowerCase().includes(q)) : team;
+    const here = $('#c_branch', page).value;
+    const shown = team
+      .filter((p) => !here || String(p.branch_id) === here)
+      .filter((p) => !q || p.name.toLowerCase().includes(q));
     $('#c_grid', page).innerHTML = shown.length ? shown.map((p) => `
       <button class="clock-card ${p.on_shift ? 'on' : ''}" data-who="${p.id}"
         ${p.has_pin ? '' : 'disabled'}>
@@ -2098,6 +2218,10 @@ SCREENS.clock = async (page) => {
   };
 
   $('#c_find', page).addEventListener('input', draw);
+  $('#c_branch', page).addEventListener('change', (e) => {
+    localStorage.setItem('clockBranch', e.target.value);
+    draw();
+  });
   await load();
   repeat(load, 20000);
 };
@@ -3020,6 +3144,7 @@ SCREENS.team = async (page) => {
         : 'Who is on today'}</span></div>
     <div class="tools">
       <input type="search" id="t_find" placeholder="Search by name or position…">
+      <select id="t_branch"><option value="">Every branch</option></select>
       ${owner ? `<button class="btn" id="add">＋ Add someone</button>
         <button class="btn line" id="t_many">👥 Add many</button>
         <button class="btn line" id="t_pins">🖨️ PINs &amp; slips</button>` : ''}
@@ -3035,6 +3160,8 @@ SCREENS.team = async (page) => {
         <div class="row mt">
           <div><label>From</label><input type="date" id="h_from"></div>
           <div><label>To</label><input type="date" id="h_to"></div>
+          <div><label>Branch</label>
+            <select id="h_branch"><option value="">Every branch</option></select></div>
           <div style="flex:0 0 auto; align-self:flex-end">
             <button class="btn" id="h_go">Total it up</button></div>
         </div>
@@ -3056,9 +3183,10 @@ SCREENS.team = async (page) => {
         <div class="label">On the team</div></div>`;
 
     const q = ($('#t_find', page)?.value || '').trim().toLowerCase();
-    const shown = q
-      ? data.team.filter((p) => `${p.name} ${p.position}`.toLowerCase().includes(q))
-      : data.team;
+    const onlyBranch = $('#t_branch', page)?.value || '';
+    const shown = data.team
+      .filter((p) => !onlyBranch || String(p.branch_id) === onlyBranch)
+      .filter((p) => !q || `${p.name} ${p.position}`.toLowerCase().includes(q));
 
     $('#list', page).innerHTML = table(shown, [
       { head: '', cell: (p) => p.has_photo
@@ -3067,6 +3195,7 @@ SCREENS.team = async (page) => {
       { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>`
           + (p.here ? '' : ' ' + tag('left', 'grey')) },
       { head: 'Position', cell: (p) => esc(p.position) },
+      { head: 'Branch', cell: (p) => `<span class="dim">${esc(p.branch || '')}</span>` },
       { head: 'Signs in as', cell: (p) => p.signs_in_as
           ? tag(roleName(p.signs_in_as), 'pink') : '<span class="dim">no login</span>' },
       ...(owner ? [
@@ -3167,10 +3296,21 @@ SCREENS.team = async (page) => {
               ${esc(o.display_name)}</option>`).join('')}
           </select></div>
         ${isNew ? '<div><label>Started</label><input id="t_from" type="date"></div>' : ''}
+        ${isNew && branches.length > 1 ? `<div><label>Branch</label>
+          <select id="t_new_branch">${branchOptions()}</select></div>` : ''}
       </div>
       <div><label>Note</label>
         <input id="t_note" type="text" value="${esc(p?.note || '')}"
           placeholder="Anything worth remembering"></div>
+
+      ${isNew || branches.length < 2 ? '' : `
+        <h3 class="mt">Branch</h3>
+        <div class="row">
+          <div><label>Works at</label>
+            <select id="t_branch_pick">${branchOptions(p.branch_id)}</select></div>
+          <div style="flex:0 0 auto; align-self:flex-end">
+            <button class="btn quiet sm" id="t_branch_save">Move them</button></div>
+        </div>`}
 
       ${isNew ? '' : `
         <h3 class="mt">Clock PIN</h3>
@@ -3202,6 +3342,16 @@ SCREENS.team = async (page) => {
       </div>`);
 
     if (!isNew) {
+      $('#t_branch_save')?.addEventListener('click', async () => {
+        try {
+          await POST(`/api/team/${p.id}/branch`,
+            { branch_id: $('#t_branch_pick').value });
+          notice(`${p.name} moved`, 'good');
+          closeDialog();
+          load();
+        } catch (err) { whoops(err); }
+      });
+
       $('#t_pin_save').addEventListener('click', async () => {
         try {
           await POST(`/api/team/${p.id}/pin`, { pin: $('#t_pin').value.trim() });
@@ -3241,6 +3391,7 @@ SCREENS.team = async (page) => {
         position: $('#t_pos').value,
         phone: $('#t_phone').value,
         note: $('#t_note').value,
+        branch_id: $('#t_new_branch')?.value || null,
         user_id: chosen ? Number(chosen) : null,
       };
 
@@ -3258,11 +3409,23 @@ SCREENS.team = async (page) => {
   };
 
   $('#t_find', page).addEventListener('input', () => load().catch(whoops));
+  $('#t_branch', page).addEventListener('change', () => load().catch(whoops));
+
+  // The branch pickers everywhere on this screen come from the same list.
+  const branches = await GET('/api/branches').catch(() => []);
+  const branchOptions = (chosen) => branches.filter((b) => b.active || b.id === chosen)
+    .map((b) => `<option value="${b.id}" ${b.id === chosen ? 'selected' : ''}>${
+      esc(b.name)}</option>`).join('');
+  $('#t_branch', page).innerHTML = '<option value="">Every branch</option>'
+    + branches.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
 
   if (owner) {
     $('#add', page).addEventListener('click', () => openPerson(null));
-    $('#t_many', page).addEventListener('click', () => bulkTeamDialog(load));
+    $('#t_many', page).addEventListener('click', () => bulkTeamDialog(load, branches));
     $('#t_pins', page).addEventListener('click', () => pinSlipsDialog(load));
+
+    $('#h_branch', page).innerHTML = '<option value="">Every branch</option>'
+      + branches.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
 
     // Default the report to this month so far — the commonest thing to ask.
     const today = new Date().toISOString().slice(0, 10);
@@ -3272,7 +3435,8 @@ SCREENS.team = async (page) => {
     $('#h_go', page).addEventListener('click', async () => {
       try {
         const r = await GET(`/api/team/hours?from=${$('#h_from', page).value}`
-          + `&to=${$('#h_to', page).value}`);
+          + `&to=${$('#h_to', page).value}`
+          + ($('#h_branch', page).value ? `&branch=${$('#h_branch', page).value}` : ''));
         const total = r.people.reduce((t, x) => t + Number(x.hours), 0);
         const open = r.people.reduce((t, x) => t + Number(x.still_open), 0);
         $('#hours', page).innerHTML = `
@@ -3284,6 +3448,7 @@ SCREENS.team = async (page) => {
             { head: 'Who', cell: (x) => `<b>${esc(x.name)}</b>`
                 + (x.here ? '' : ' ' + tag('left', 'grey')) },
             { head: 'Position', cell: (x) => esc(x.position) },
+            { head: 'Branch', cell: (x) => `<span class="dim">${esc(x.branch)}</span>` },
             { head: 'Days', n: true, cell: (x) => count(x.days) },
             { head: 'Hours', n: true, cell: (x) => Number(x.hours).toFixed(2) },
             { head: 'Longest shift', n: true, cell: (x) => Number(x.longest_hours).toFixed(2) },

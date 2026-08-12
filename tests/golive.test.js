@@ -906,3 +906,113 @@ test('only the owner removes people', async () => {
   const id = await hire(admin, unique('Safe'), 'Counter');
   assert.equal((await DELETE(till, `/api/team/${id}`)).status, 403);
 });
+
+// ===========================================================================
+// Branches — the foundations
+//
+// Staff, the clock and sign-ins belong to a branch. Stock and money do not yet,
+// on purpose: splitting those means teaching the picking engine which shelf it
+// is reaching for, and half-doing it hides the mistake in a stock count.
+// ===========================================================================
+
+test('the shop starts as one branch, and everybody already belongs to it', async () => {
+  const admin = await signIn('admin');
+  const r = await GET(admin, '/api/branches');
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.ok(r.data.length >= 1);
+  assert.ok(r.data.some((b) => b.name === 'Bayan Bayanan'));
+
+  const id = await hire(admin, unique('Somewhere'), 'Counter');
+  const person = (await GET(admin, '/api/team')).data.team.find((p) => Number(p.id) === id);
+  assert.ok(person.branch_id, 'a new person lands at a branch without being asked');
+  assert.ok(person.branch, 'and the list says which');
+});
+
+test('a second branch can be opened and somebody moved to it', async () => {
+  const admin = await signIn('admin');
+  const name = unique('Concepcion');
+  const made = await POST(admin, '/api/branches',
+    { name, address: 'Concepcion, Marikina', opens: '9am – 6pm' });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+
+  const id = await hire(admin, unique('Mover'), 'Counter');
+  const moved = await POST(admin, `/api/team/${id}/branch`, { branch_id: made.data.id });
+  assert.equal(moved.status, 200, JSON.stringify(moved.data));
+
+  const person = (await GET(admin, '/api/team')).data.team.find((p) => Number(p.id) === id);
+  assert.equal(person.branch, name);
+});
+
+test('two branches cannot share a name', async () => {
+  const admin = await signIn('admin');
+  const name = unique('Twice');
+  assert.equal((await POST(admin, '/api/branches', { name })).status, 200);
+  const again = await POST(admin, '/api/branches', { name });
+  assert.equal(again.status, 400);
+  assert.match(again.data.error, /already a branch called/);
+});
+
+test('a branch with people at it cannot be closed', async () => {
+  const admin = await signIn('admin');
+  const made = await POST(admin, '/api/branches', { name: unique('Staffed') });
+  const id = await hire(admin, unique('Stays'), 'Counter');
+  await POST(admin, `/api/team/${id}/branch`, { branch_id: made.data.id });
+
+  const shut = await POST(admin, `/api/branches/${made.data.id}/close`, {});
+  assert.equal(shut.status, 400);
+  assert.match(shut.data.error, /still has 1 person/);
+  assert.match(shut.data.error, /Move them/);
+
+  // Once nobody is left, it closes, and closing is not deleting.
+  await DELETE(admin, `/api/team/${id}`);
+  assert.equal((await POST(admin, `/api/branches/${made.data.id}/close`, {})).status, 200);
+  const listed = (await GET(admin, '/api/branches')).data
+    .find((b) => Number(b.id) === Number(made.data.id));
+  assert.ok(listed, 'a branch that traded stays on the books');
+  assert.equal(listed.active, false);
+});
+
+test('the last branch open cannot be closed', async () => {
+  const admin = await signIn('admin');
+  const open = (await GET(admin, '/api/branches')).data.filter((b) => b.active);
+  // Close all but one, then try the last.
+  for (const b of open.slice(1)) {
+    await db.query('update employees set ended_on = current_date where branch_id = $1', [b.id]);
+    await POST(admin, `/api/branches/${b.id}/close`, {});
+  }
+  const last = (await GET(admin, '/api/branches')).data.filter((x) => x.active);
+  assert.equal(last.length, 1);
+  // Empty it too, so the "move them first" guard cannot be what answers.
+  await db.query('update employees set ended_on = current_date where branch_id = $1',
+    [last[0].id]);
+  const r = await POST(admin, `/api/branches/${last[0].id}/close`, {});
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /only branch open/);
+  await db.query('update branches set active = true');
+});
+
+test('hours can be totalled one branch at a time', async () => {
+  const admin = await signIn('admin');
+  const made = await POST(admin, '/api/branches', { name: unique('Payroll') });
+  const id = await hire(admin, unique('Worker'), 'Counter');
+  await POST(admin, `/api/team/${id}/branch`, { branch_id: made.data.id });
+  await POST(admin, `/api/team/${id}/pin`, { pin: '3141' });
+  await POST(admin, '/api/clock', { employeeId: id, pin: '3141' });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const mine = await GET(admin,
+    `/api/team/hours?from=${today}&to=${today}&branch=${made.data.id}`);
+  assert.equal(mine.status, 200, JSON.stringify(mine.data));
+  assert.ok(mine.data.people.every((x) => x.branch === (made.data.name || x.branch)));
+  assert.ok(mine.data.people.some((x) => Number(x.employee_id) === id));
+
+  const everywhere = await GET(admin, `/api/team/hours?from=${today}&to=${today}`);
+  assert.ok(everywhere.data.people.length >= mine.data.people.length);
+});
+
+test('only the owner changes the branch list, but any staff device can read it', async () => {
+  const till = await signIn('cashier');
+  assert.equal((await GET(till, '/api/branches')).status, 200,
+    'the clock by the door has to know which shop it is standing in');
+  assert.equal((await POST(till, '/api/branches', { name: unique('Nope') })).status, 403);
+});
