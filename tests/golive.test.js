@@ -1808,19 +1808,21 @@ test('every table the shop floor can read has a supervisor policy to match',
     // The one list that has to be kept in step by hand. If somebody grants a
     // cashier or a stockroom person a new table and forgets the supervisor,
     // this fails here rather than as a blank screen on a Saturday.
-    const missing = await db.query(`
-      select p.tablename
-        from pg_policies p
-       where p.schemaname = 'public'
-         and p.cmd = 'SELECT'
-         and p.qual like '%current_role_name%'
-         and (p.qual like '%cashier%' or p.qual like '%warehouse%')
-         and not exists (
-           select 1 from pg_policies s
-            where s.schemaname = 'public' and s.tablename = p.tablename
-              and s.qual like '%supervisor%')`);
-    assert.deepEqual(missing.rows.map((r) => r.tablename), [],
-      'these tables are readable by the shop floor but not by a supervisor');
+    for (const role of ['supervisor', 'office']) {
+      const missing = await db.query(`
+        select p.tablename
+          from pg_policies p
+         where p.schemaname = 'public'
+           and p.cmd = 'SELECT'
+           and p.qual like '%current_role_name%'
+           and (p.qual like '%cashier%' or p.qual like '%warehouse%')
+           and not exists (
+             select 1 from pg_policies s
+              where s.schemaname = 'public' and s.tablename = p.tablename
+                and s.qual like '%' || $1 || '%')`, [role]);
+      assert.deepEqual(missing.rows.map((r) => r.tablename), [],
+        `these tables are readable by the shop floor but not by a ${role}`);
+    }
   });
 
 test('supervisor is a role a sign-in can actually be', async () => {
@@ -2211,4 +2213,114 @@ test('a timekeeper is a role a sign-in can be, and is not an employee', async ()
   const board = (await GET(tablet, '/api/team')).data.team;
   assert.ok(!board.some((p) => p.name === tablet.username),
     'the tablet must not appear among the faces');
+});
+
+// ===========================================================================
+// The office
+//
+// Exactly what a cashier and a stockroom person can do between them. The line
+// that matters is the one at the top: the shop's takings belong to whoever
+// answers for the shop, and that is not the office.
+// ===========================================================================
+
+test('an office sign-in can work both the till and the stockroom', async () => {
+  const admin = await signIn('admin');
+  const desk = await signIn('office');
+  const sku = 'OFF-BOTH';
+  await shopOnly(admin, sku, 'Office Both');
+
+  const got = await POST(desk, '/api/receive',
+    { sku, batch_no: unique('O'), expiry: monthsOut(24), qty: 12, unit_cost: 25 });
+  assert.equal(got.status, 200, JSON.stringify(got.data));
+
+  const sale = await POST(desk, '/api/till/sell',
+    { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 500 });
+  assert.equal(sale.status, 200, JSON.stringify(sale.data));
+
+  assert.equal((await POST(desk, '/api/stock-count', { sku, counted: 11 })).status, 200);
+  assert.equal((await POST(desk, '/api/move',
+    { batchId: Number(got.data.batchId), from: 'shop', to: 'reserve', qty: 1 })).status, 200);
+});
+
+test("the office does not read the shop's takings", async () => {
+  const admin = await signIn('admin');
+  const desk = await signIn('office');
+  const boss = await signIn('supervisor');
+
+  // The one screen that separates the two roles.
+  assert.equal((await GET(desk, '/api/takings-by-branch')).status, 403);
+  assert.equal((await GET(boss, '/api/takings-by-branch')).status, 200,
+    'a supervisor still has it');
+});
+
+test('the office cannot touch prices, money, people or sign-ins', async () => {
+  const admin = await signIn('admin');
+  const desk = await signIn('office');
+  const sku = 'OFF-NOPE';
+  await shopOnly(admin, sku, 'Office Nope');
+
+  for (const [method, path, body, what] of [
+    ['PUT', `/api/products/${sku}`, { retail_price: 1 }, 'changing a price'],
+    ['GET', '/api/finance', undefined, 'the company books'],
+    ['GET', '/api/dashboard', undefined, "the owner's dashboard"],
+    ['POST', '/api/users', { username: 'x', password: 'password1', role: 'admin' },
+      'making a sign-in'],
+    ['POST', '/api/team', { name: 'X', position: 'Staff' }, 'adding staff'],
+    ['POST', '/api/branches', { name: 'X' }, 'opening a branch'],
+    ['POST', '/api/expenses', { kind: 'rent', description: 'x', amount: 1, method: 'cash' },
+      'recording an expense'],
+  ]) {
+    const r = await request(desk, method, path, body);
+    assert.equal(r.status, 403, `the office must not be doing ${what} (${path})`);
+  }
+});
+
+test('an office sign-in stays at its own shop', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const desk = await signIn('office');
+  const [north, south] = await twoBranches(admin);
+  const sku = 'OFF-SHOP';
+  await shopOnly(admin, sku, 'Office Shop');
+  await tieTo(admin, desk, south);
+
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('N'), expiry: monthsOut(24), qty: 9, branch_id: north });
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('S'), expiry: monthsOut(24), qty: 4, branch_id: south });
+
+  const shelf = (await GET(desk, `/api/till/products?q=${sku}&branch=${north}`)).data
+    .find((p) => p.sku === sku);
+  assert.equal(shelf.on_shelf, 4, 'asking for the other shop must not show its stock');
+
+  const wrong = await POST(desk, '/api/receive',
+    { sku, batch_no: unique('W'), expiry: monthsOut(24), qty: 5, branch_id: north });
+  assert.equal(wrong.status, 400);
+  assert.match(wrong.data.error, /cannot act on/);
+});
+
+test('the database refuses an office sign-in the owner-only jobs', async () => {
+  const client = await db.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select set_config('app.role', 'office', true),
+                               set_config('app.actor', 'desk', true)`);
+    await client.query('set local role app_client');
+    for (const [sql, what] of [
+      [`select create_login('x','x','h','cashier')`, 'making a sign-in'],
+      [`select add_branch('Somewhere')`, 'opening a branch'],
+      [`select add_employee('X','Staff',null,null,null,null,null)`, 'adding staff'],
+      [`select reverse_receipt(1, 'because')`, 'undoing a delivery'],
+      [`select sign_out_everywhere(1)`, 'signing somebody out'],
+    ]) {
+      await client.query('savepoint s');
+      let refused = false;
+      try { await client.query(sql); } catch (e) { refused = e.code === '42501'; }
+      await client.query('rollback to savepoint s');
+      assert.ok(refused, `the database must refuse the office ${what}`);
+    }
+  } finally {
+    await client.query('rollback').catch(() => {});
+    client.release();
+  }
 });
