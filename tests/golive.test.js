@@ -2035,3 +2035,74 @@ test('a PIN taken back stops working on the keypad too', async () => {
   await request(admin, 'DELETE', `/api/team/${who.id}/pin`);
   assert.equal((await POST(admin, '/api/clock/by-pin', { pin })).status, 400);
 });
+
+// ===========================================================================
+// Signing a device out from somewhere else
+//
+// The clock screen has no sign-out button on purpose, so this is the only way
+// the shop tablet gets signed out. Sessions are signed cookies rather than
+// rows, so what is really being tested is that a cookie which still verifies
+// can nonetheless be refused for being older than the line the owner drew.
+// ===========================================================================
+
+test('an owner can end every session a sign-in has open', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const row = (await GET(admin, '/api/users')).data.find((u) => u.username === till.username);
+
+  // Two devices, both signed in as the same person — the tablet and a phone.
+  const second = await fetch(`${base}/api/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: till.username, password: 'secret123' }) });
+  const phone = (second.headers.getSetCookie?.()[0] ?? second.headers.get('set-cookie'))
+    .split(';')[0];
+
+  assert.equal((await GET(till, '/api/team')).status, 200, 'the tablet works');
+  assert.equal((await GET(phone, '/api/team')).status, 200, 'and the phone works');
+
+  const done = await POST(admin, `/api/users/${row.id}/sign-out-everywhere`);
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+
+  const after = await GET(till, '/api/team');
+  assert.equal(after.status, 401, 'the tablet is out');
+  assert.match(after.data.error, /signed out by the owner/);
+  assert.equal((await GET(phone, '/api/team')).status, 401, 'and so is the phone');
+});
+
+test('signing out everywhere does not change the password', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const row = (await GET(admin, '/api/users')).data.find((u) => u.username === till.username);
+  await POST(admin, `/api/users/${row.id}/sign-out-everywhere`);
+
+  const back = await fetch(`${base}/api/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: till.username, password: 'secret123' }) });
+  assert.equal(back.status, 200, 'they sign in again with what they already had');
+  const fresh = (back.headers.getSetCookie?.()[0] ?? back.headers.get('set-cookie')).split(';')[0];
+  assert.equal((await GET(fresh, '/api/team')).status, 200,
+    'and the new session is not caught by the same line');
+});
+
+test('one sign-in being signed out leaves everybody else alone', async () => {
+  const admin = await signIn('admin');
+  const one = await signIn('cashier');
+  const two = await signIn('warehouse');
+  const row = (await GET(admin, '/api/users')).data.find((u) => u.username === one.username);
+
+  await POST(admin, `/api/users/${row.id}/sign-out-everywhere`);
+  assert.equal((await GET(one, '/api/team')).status, 401);
+  assert.equal((await GET(two, '/api/team')).status, 200, 'a different person is untouched');
+  assert.equal((await GET(admin, '/api/team')).status, 200, 'and so is the owner');
+});
+
+test('only the owner can sign somebody out everywhere', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const boss = await signIn('supervisor');
+  const row = (await GET(admin, '/api/users')).data.find((u) => u.username === till.username);
+
+  assert.equal((await POST(boss, `/api/users/${row.id}/sign-out-everywhere`)).status, 403);
+  assert.equal((await POST(till, `/api/users/${row.id}/sign-out-everywhere`)).status, 403);
+  assert.equal((await GET(till, '/api/team')).status, 200, 'and nobody was signed out');
+});

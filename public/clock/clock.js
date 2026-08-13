@@ -55,7 +55,6 @@ let fixedBranch = null;
 // ---------------------------------------------------------------------------
 function gate() {
   clearInterval(refresher);
-  $('#leave').hidden = true;
   $('#app').innerHTML = `
     <form class="gate" id="in">
       <h2>Setting up this tablet</h2>
@@ -86,7 +85,6 @@ function gate() {
 // The faces
 // ---------------------------------------------------------------------------
 async function start() {
-  $('#leave').hidden = false;
   // One job, two ways of doing it: find your face on the left, or type your
   // four digits on the right. There is deliberately no way into the back office
   // from here — a tablet on a counter should not be a door to the till, and a
@@ -270,12 +268,6 @@ function pad(person) {
     }
   });
 }
-
-$('#leave').addEventListener('click', async () => {
-  await POST('/api/logout').catch(() => {});
-  signedIn = false;
-  gate();
-});
 
 // Does this device already have a sign-in? Asking costs one request and saves
 // showing a login box to a shop that is already set up.

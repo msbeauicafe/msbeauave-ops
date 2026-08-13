@@ -1970,6 +1970,8 @@ SCREENS.people = async (page) => {
           <button class="btn sm quiet" data-ren="${u.id}"
             data-user="${esc(u.username)}" data-disp="${esc(u.display_name)}">Rename</button>
           <button class="btn sm line" data-pw="${u.id}">New password</button>
+          <button class="btn sm quiet" data-out="${u.id}"
+            data-who="${esc(u.display_name)}">Sign out everywhere</button>
           <button class="btn sm warn" data-del="${u.id}"
             data-who="${esc(u.username)}">Remove</button>` },
     ], 'No sign-ins yet.');
@@ -1983,6 +1985,27 @@ SCREENS.people = async (page) => {
           ? `Now works at ${sel.selectedOptions[0].textContent}`
           : 'Covers every branch', 'good');
       } catch (e) { whoops(e); draw(await GET('/api/users')); }
+    }));
+
+    // How the tablet by the door gets signed out: it has no button of its own,
+    // so this ends every session that sign-in has open, wherever they are.
+    $$('[data-out]', page).forEach((b) => b.addEventListener('click', () => {
+      dialog(`
+        <h3>Sign out everywhere?</h3>
+        <div class="dim">Every device signed in as <b>${esc(b.dataset.who)}</b> stops
+          working at once — the shop tablet, a phone, a laptop left open at home.
+          Nothing is lost; they sign in again with the same password.</div>
+        <div class="row mt">
+          <button class="btn stop" id="so_go">Sign them out</button>
+          <button class="btn quiet" id="so_no">Cancel</button></div>`);
+      $('#so_no').addEventListener('click', closeDialog);
+      $('#so_go').addEventListener('click', async () => {
+        try {
+          const r = await POST(`/api/users/${b.dataset.out}/sign-out-everywhere`);
+          closeDialog();
+          notice(`${r.signedOut} signed out everywhere 🌸`, 'good');
+        } catch (e) { whoops(e); }
+      });
     }));
 
     $$('[data-ren]', page).forEach((b) => b.addEventListener('click', () => {
