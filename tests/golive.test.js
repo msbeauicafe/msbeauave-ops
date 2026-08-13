@@ -1454,6 +1454,11 @@ test('the list says why a delivery cannot be taken back, before anyone clicks',
 // rule, so most of these send the wrong branch on purpose.
 // ===========================================================================
 
+// A PIN has to be unique across everyone still working here, so a literal in
+// one test can be taken by a person another test created. Deriving it from the
+// row makes collisions impossible rather than unlikely.
+const ownPin = (id) => String(10000000 + Number(id) * 7).slice(-8);
+
 async function tieTo(admin, user, branchId) {
   const users = (await GET(admin, '/api/users')).data;
   const row = users.find((u) => u.username === user.username);
@@ -1924,15 +1929,16 @@ test('a PIN can be taken back, and then it does not open the clock', async () =>
   const who = (await GET(admin, '/api/team')).data.team
     .filter((p) => /^Gate-/.test(p.name)).pop();
 
-  assert.equal((await POST(admin, `/api/team/${who.id}/pin`, { pin: '8431' })).status, 200);
+  const pin = ownPin(who.id);
+  assert.equal((await POST(admin, `/api/team/${who.id}/pin`, { pin })).status, 200);
   assert.equal((await POST(admin, '/api/clock',
-    { employeeId: who.id, pin: '8431' })).status, 200, 'the PIN works to begin with');
-  await POST(admin, '/api/clock', { employeeId: who.id, pin: '8431' });
+    { employeeId: who.id, pin })).status, 200, 'the PIN works to begin with');
+  await POST(admin, '/api/clock', { employeeId: who.id, pin });
 
   const gone = await request(admin, 'DELETE', `/api/team/${who.id}/pin`);
   assert.equal(gone.status, 200, JSON.stringify(gone.data));
 
-  const after = await POST(admin, '/api/clock', { employeeId: who.id, pin: '8431' });
+  const after = await POST(admin, '/api/clock', { employeeId: who.id, pin });
   assert.equal(after.status, 400);
   assert.match(after.data.error, /no PIN yet/,
     'and the clock says there is no PIN rather than that it did not match');
@@ -1950,10 +1956,82 @@ test('only the owner takes a PIN back', async () => {
     { people: [{ name: unique('Keep'), position: 'Guard' }], branch_id: north });
   const who = (await GET(admin, '/api/team')).data.team
     .filter((p) => /^Keep-/.test(p.name)).pop();
-  await POST(admin, `/api/team/${who.id}/pin`, { pin: '7712' });
+  const pin = ownPin(who.id);
+  assert.equal((await POST(admin, `/api/team/${who.id}/pin`, { pin })).status, 200);
 
   assert.equal((await request(till, 'DELETE', `/api/team/${who.id}/pin`)).status, 403);
   assert.equal((await POST(admin, '/api/clock',
-    { employeeId: who.id, pin: '7712' })).status, 200, 'and the PIN still works');
-  await POST(admin, '/api/clock', { employeeId: who.id, pin: '7712' });
+    { employeeId: who.id, pin })).status, 200, 'and the PIN still works');
+  await POST(admin, '/api/clock', { employeeId: who.id, pin });
+});
+
+// ===========================================================================
+// Clocking on by PIN alone
+//
+// The door screen leads with a keypad, so the PIN has to identify the person
+// by itself. Its keyed fingerprint is uniquely indexed, which is what makes
+// that safe to do — and these check that the uniqueness is really relied on
+// rather than assumed.
+// ===========================================================================
+
+test('a PIN alone clocks the right person in and out', async () => {
+  const admin = await signIn('admin');
+  const [north] = await twoBranches(admin);
+  await POST(admin, '/api/team/bulk', { people: [
+    { name: unique('Solo'), position: 'Cashier' }], branch_id: north });
+  const who = (await GET(admin, '/api/team')).data.team.filter((p) => /^Solo-/.test(p.name)).pop();
+  const pin = ownPin(who.id);
+  assert.equal((await POST(admin, `/api/team/${who.id}/pin`, { pin })).status, 200);
+
+  const inn = await POST(admin, '/api/clock/by-pin', { pin });
+  assert.equal(inn.status, 200, JSON.stringify(inn.data));
+  assert.equal(inn.data.name, who.name, 'the PIN has to find the person who holds it');
+  assert.equal(inn.data.action, 'in');
+
+  const out = await POST(admin, '/api/clock/by-pin', { pin });
+  assert.equal(out.data.action, 'out');
+});
+
+test('a PIN nobody holds says the same as a wrong one', async () => {
+  const admin = await signIn('admin');
+  // Eight digits, so no four-digit PIN issued anywhere can collide with it.
+  const nobody = await POST(admin, '/api/clock/by-pin', { pin: '52379416' });
+  assert.equal(nobody.status, 400);
+  assert.match(nobody.data.error, /does not match anybody/,
+    'a screen by the door must not reveal which PINs exist');
+  assert.equal((await POST(admin, '/api/clock/by-pin', { pin: 'abcd' })).status, 400);
+});
+
+test('the door screen of one shop will not clock the other shop in', async () => {
+  const admin = await signIn('admin');
+  const [north, south] = await twoBranches(admin);
+  await POST(admin, '/api/team/bulk',
+    { people: [{ name: unique('Far'), position: 'Cashier' }], branch_id: south });
+  const who = (await GET(admin, '/api/team')).data.team.filter((p) => /^Far-/.test(p.name)).pop();
+  const pin = ownPin(who.id);
+  assert.equal((await POST(admin, `/api/team/${who.id}/pin`, { pin })).status, 200);
+
+  // The tablet at the other door hands its own branch, and must not find them.
+  const wrongDoor = await POST(admin, '/api/clock/by-pin', { pin, branch_id: north });
+  assert.equal(wrongDoor.status, 400);
+
+  const ownDoor = await POST(admin, '/api/clock/by-pin', { pin, branch_id: south });
+  assert.equal(ownDoor.status, 200, JSON.stringify(ownDoor.data));
+  assert.equal(ownDoor.data.name, who.name);
+  await POST(admin, '/api/clock/by-pin', { pin, branch_id: south });
+});
+
+test('a PIN taken back stops working on the keypad too', async () => {
+  const admin = await signIn('admin');
+  const [north] = await twoBranches(admin);
+  await POST(admin, '/api/team/bulk',
+    { people: [{ name: unique('Bye'), position: 'Guard' }], branch_id: north });
+  const who = (await GET(admin, '/api/team')).data.team.filter((p) => /^Bye-/.test(p.name)).pop();
+  const pin = ownPin(who.id);
+  assert.equal((await POST(admin, `/api/team/${who.id}/pin`, { pin })).status, 200);
+  assert.equal((await POST(admin, '/api/clock/by-pin', { pin })).status, 200);
+  await POST(admin, '/api/clock/by-pin', { pin });
+
+  await request(admin, 'DELETE', `/api/team/${who.id}/pin`);
+  assert.equal((await POST(admin, '/api/clock/by-pin', { pin })).status, 400);
 });

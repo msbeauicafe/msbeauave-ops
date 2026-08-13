@@ -48,6 +48,7 @@ setInterval(tick, 10000);
 let signedIn = false;
 let team = [];
 let refresher = null;
+let fixedBranch = null;
 
 // ---------------------------------------------------------------------------
 // Signing the device in — once, by whoever sets the tablet down
@@ -86,12 +87,62 @@ function gate() {
 // ---------------------------------------------------------------------------
 async function start() {
   $('#leave').hidden = false;
+  // The keypad comes first because it is what almost everybody uses: type the
+  // four digits and go. Finding your own face among forty-eight is the slow
+  // path, so it sits underneath, for anyone who would rather tap a name.
   $('#app').innerHTML = `
-    <div class="tools">
-      <input id="find" type="search" placeholder="Find your name…" autocomplete="off">
-      <select id="branch"></select>
-    </div>
-    <div class="grid" id="grid"></div>`;
+    <section class="keyfirst">
+      <h1>Type your PIN</h1>
+      <div class="dots" id="kdots"></div>
+      <div class="keys" id="keypad">
+        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button data-k="${d}">${d}</button>`).join('')}
+        <button class="wipe" id="kwipe">clear</button>
+        <button data-k="0">0</button>
+        <button class="go" id="kgo">✓</button>
+      </div>
+    </section>
+    <details class="byname" id="byname">
+      <summary>Or find your name</summary>
+      <div class="tools">
+        <input id="find" type="search" placeholder="Find your name…" autocomplete="off">
+        <select id="branch"></select>
+      </div>
+      <div class="grid" id="grid"></div>
+    </details>`;
+
+  let typed = '';
+  const kdots = () => {
+    $('#kdots').textContent = typed.replace(/./g, '●') || '– – – –';
+  };
+  kdots();
+  $$('[data-k]').forEach((b) => b.addEventListener('click', () => {
+    if (typed.length < 8) typed += b.dataset.k;
+    kdots();
+  }));
+  $('#kwipe').addEventListener('click', () => { typed = ''; kdots(); });
+  const punch = async () => {
+    if (typed.length < 4) return say('Type your four-digit PIN.', 'bad');
+    $('#kgo').disabled = true;
+    try {
+      const r = await POST('/api/clock/by-pin', { pin: typed, branch_id: fixedBranch });
+      say(r.action === 'in'
+        ? `Good morning ${r.name} — clocked on 🌸`
+        : `${r.name} clocked out after ${(r.worked_minutes / 60).toFixed(2)} hours 🌸`);
+      typed = ''; kdots();
+      load().catch(() => {});
+    } catch (e) {
+      say(e.message, 'bad');
+      typed = ''; kdots();
+    } finally { $('#kgo').disabled = false; }
+  };
+  $('#kgo').addEventListener('click', punch);
+  // A tablet with a keyboard attached, or somebody who prefers typing.
+  document.addEventListener('keydown', (e) => {
+    if ($('.veil')) return;
+    if (/^[0-9]$/.test(e.key) && typed.length < 8) { typed += e.key; kdots(); }
+    else if (e.key === 'Backspace') { typed = typed.slice(0, -1); kdots(); }
+    else if (e.key === 'Enter') punch();
+  });
 
   // A device left by one door shows that door's faces, and remembers which,
   // because nobody wants to pick the shop every morning.
@@ -102,6 +153,7 @@ async function start() {
   const branches = await GET('/api/branches').catch(() => []);
   const pinned = new URLSearchParams(location.search).get('shop');
   const fixed = pinned && branches.find((b) => String(b.id) === String(pinned));
+  fixedBranch = fixed ? Number(fixed.id) : null;
   const remembered = localStorage.getItem('clockBranch') || '';
   const picker = $('#branch');
   picker.innerHTML = fixed

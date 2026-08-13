@@ -114,3 +114,29 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
 }
 .say.good { background: var(--good); }
 .say.bad { background: var(--bad); }
+
+/* The keypad, first thing on the screen.
+ *
+ * Sized so it can be used without looking down: the person typing is usually
+ * arriving, holding something, and already late. */
+.keyfirst {
+  max-width: 380px; margin: 0 auto 8px; text-align: center;
+}
+.keyfirst h1 {
+  font-size: 1.25rem; color: var(--rose-deep); font-weight: 600; margin-bottom: 6px;
+}
+.keyfirst .dots {
+  font-size: 2.1rem; letter-spacing: .34em; color: var(--rose-deep);
+  min-height: 2.6rem; font-variant-numeric: tabular-nums;
+}
+.keyfirst .keys { margin-top: 8px; }
+
+/* Finding a face is the slow path, so it is folded away until wanted. */
+.byname { max-width: 980px; margin: 18px auto 0; }
+.byname summary {
+  cursor: pointer; color: var(--rose-deep); font-size: .95rem; padding: 12px 0;
+  text-align: center; list-style: none; border-top: 1px solid var(--rose-soft);
+}
+.byname summary::-webkit-details-marker { display: none; }
+.byname summary::after { content: ' ▾'; color: var(--rose-dust); }
+.byname[open] summary::after { content: ' ▴'; }
