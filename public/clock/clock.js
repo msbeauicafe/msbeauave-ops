@@ -87,27 +87,26 @@ function gate() {
 // ---------------------------------------------------------------------------
 async function start() {
   $('#leave').hidden = false;
-  // The keypad comes first because it is what almost everybody uses: type the
-  // four digits and go. Finding your own face among forty-eight is the slow
-  // path, so it sits underneath, for anyone who would rather tap a name.
+  // Names first: you find yourself, tap, and type your PIN. The keypad is the
+  // shortcut for anyone who knows their digits by heart, folded underneath so
+  // it is there without being in the way.
   $('#app').innerHTML = `
-    <section class="keyfirst">
-      <h1>Type your PIN</h1>
-      <div class="dots" id="kdots"></div>
-      <div class="keys" id="keypad">
-        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button data-k="${d}">${d}</button>`).join('')}
-        <button class="wipe" id="kwipe">clear</button>
-        <button data-k="0">0</button>
-        <button class="go" id="kgo">✓</button>
-      </div>
-    </section>
-    <details class="byname" id="byname">
-      <summary>Or find your name</summary>
-      <div class="tools">
-        <input id="find" type="search" placeholder="Find your name…" autocomplete="off">
-        <select id="branch"></select>
-      </div>
-      <div class="grid" id="grid"></div>
+    <div class="tools">
+      <input id="find" type="search" placeholder="Find your name…" autocomplete="off">
+      <select id="branch"></select>
+    </div>
+    <div class="grid" id="grid"></div>
+    <details class="bypin" id="bypin">
+      <summary>Or type your PIN</summary>
+      <section class="keyfirst">
+        <div class="dots" id="kdots"></div>
+        <div class="keys" id="keypad">
+          ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button data-k="${d}">${d}</button>`).join('')}
+          <button class="wipe" id="kwipe">clear</button>
+          <button data-k="0">0</button>
+          <button class="go" id="kgo">✓</button>
+        </div>
+      </section>
     </details>`;
 
   let typed = '';
@@ -138,7 +137,7 @@ async function start() {
   $('#kgo').addEventListener('click', punch);
   // A tablet with a keyboard attached, or somebody who prefers typing.
   document.addEventListener('keydown', (e) => {
-    if ($('.veil')) return;
+    if ($('.veil') || !$('#bypin')?.open || document.activeElement === $('#find')) return;
     if (/^[0-9]$/.test(e.key) && typed.length < 8) { typed += e.key; kdots(); }
     else if (e.key === 'Backspace') { typed = typed.slice(0, -1); kdots(); }
     else if (e.key === 'Enter') punch();
@@ -195,12 +194,12 @@ function draw() {
   $('#grid').innerHTML = shown.length ? shown.map((p) => `
     <button class="card ${p.on_shift ? 'on' : ''}" data-who="${p.id}"
       ${p.has_pin ? '' : 'disabled'}>
+      ${p.on_shift ? '<span class="dot" title="on shift"></span>' : ''}
       ${p.has_photo
         ? `<img src="/api/team/${p.id}/photo" alt="">`
         : '<span class="face">🧑</span>'}
       <b>${esc(p.name)}</b>
-      <span>${p.on_shift ? 'on shift'
-        : p.has_pin ? esc(p.position) : 'no PIN yet — ask the owner'}</span>
+      <span>${p.has_pin ? esc(p.position) : 'no PIN yet — ask the owner'}</span>
     </button>`).join('')
     : '<div class="none">Nobody matches that.</div>';
 
