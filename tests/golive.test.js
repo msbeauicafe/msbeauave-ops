@@ -1648,15 +1648,38 @@ test('two sign-ins cannot end up with the same name', async () => {
   assert.match(clash.data.error, /already a sign-in called/);
 });
 
-test('a username with a space in it is refused, with the fix named', async () => {
+test('a username may be a name with a space in it', async () => {
   const admin = await signIn('admin');
   const till = await signIn('cashier');
   const row = (await GET(admin, '/api/users')).data.find((u) => u.username === till.username);
 
-  const spaced = await PUT(admin, `/api/users/${row.id}`, { username: 'Yana Magtibay' });
-  assert.equal(spaced.status, 400);
-  assert.match(spaced.data.error, /cannot have spaces/);
-  assert.match(spaced.data.error, /yana\.magtibay/, 'saying what to type instead');
+  const wanted = `sonny lorica ${row.id}`;
+  assert.equal((await PUT(admin, `/api/users/${row.id}`, { username: wanted })).status, 200);
+
+  // And it signs in, typed however the person happens to capitalise it.
+  for (const typed of [wanted, wanted.toUpperCase()]) {
+    const back = await fetch(`${base}/api/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: typed, password: 'secret123' }) });
+    assert.equal(back.status, 200, `could not sign in as "${typed}"`);
+  }
+});
+
+test('a username is tidied, so no two can look identical', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const row = (await GET(admin, '/api/users')).data.find((u) => u.username === till.username);
+
+  // Doubled and trailing spaces are invisible on a screen; two sign-ins that
+  // look the same and are not is the bug nobody can see.
+  assert.equal((await PUT(admin, `/api/users/${row.id}`,
+    { username: `  msbeau${row.id}   adona  ` })).status, 200);
+  const after = (await GET(admin, '/api/users')).data.find((u) => String(u.id) === String(row.id));
+  assert.equal(after.username, `msbeau${row.id} adona`);
+
+  const empty = await PUT(admin, `/api/users/${row.id}`, { username: '   ' });
+  assert.equal(empty.status, 400);
+  assert.match(empty.data.error, /needs a username/);
 });
 
 test('only the owner renames a sign-in', async () => {
