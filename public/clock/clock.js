@@ -87,10 +87,10 @@ function gate() {
 // ---------------------------------------------------------------------------
 async function start() {
   $('#leave').hidden = false;
-  // Two things happen at this counter and now both are on the screen at once:
-  // the shift, which everybody does, and opening the app, which a few do. The
-  // clock takes the width because it is the common one; the sign-in sits
-  // beside it rather than behind a tap.
+  // One job, two ways of doing it: find your face on the left, or type your
+  // four digits on the right. There is deliberately no way into the back office
+  // from here — a tablet on a counter should not be a door to the till, and a
+  // sign-in box on it would leave the tablet as whoever last used it.
   $('#app').innerHTML = `
     <div class="two">
       <section class="clockside">
@@ -115,36 +115,9 @@ async function start() {
           <p class="hint">Or tap your name on the left.</p>
         </section>
 
-        <section class="signside">
-          <h2>Open the back office</h2>
-          <p>For a cashier taking the till, or a supervisor.</p>
-          <form id="appin">
-            <input name="username" placeholder="Username" autocomplete="off" required>
-            <input name="password" type="password" placeholder="Password"
-              autocomplete="off" required>
-            <button>Sign in</button>
-          </form>
-          <p class="warnline">This tablet stays signed in as whoever does this.
-            Use <b>Sign out</b>, top right, when you are finished.</p>
-        </section>
       </aside>
     </div>`;
 
-  // Signing in here replaces the tablet's own session with this person's, which
-  // is the honest behaviour — the till has to know who is selling. It also
-  // means the tablet is left as them, so the screen says so rather than
-  // leaving it to be discovered.
-  $('#appin').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    try {
-      const who = await POST('/api/login', {
-        username: form.get('username'), password: form.get('password'),
-      });
-      say(`Signed in as ${who.user?.name || form.get('username')} — opening the app…`);
-      setTimeout(() => { location.href = '/'; }, 900);
-    } catch (err) { say(err.message, 'bad'); }
-  });
 
   let typed = '';
   const kdots = () => {
@@ -174,8 +147,7 @@ async function start() {
   $('#kgo').addEventListener('click', punch);
   // A tablet with a keyboard attached, or somebody who prefers typing.
   document.addEventListener('keydown', (e) => {
-    if ($('.veil') || document.activeElement === $('#find')
-        || document.activeElement?.closest('#appin')) return;
+    if ($('.veil') || document.activeElement === $('#find')) return;
     if (/^[0-9]$/.test(e.key) && typed.length < 8) { typed += e.key; kdots(); }
     else if (e.key === 'Backspace') { typed = typed.slice(0, -1); kdots(); }
     else if (e.key === 'Enter') punch();

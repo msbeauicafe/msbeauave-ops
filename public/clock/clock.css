@@ -148,32 +148,19 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
 }
 @media (max-width: 820px) { .two { grid-template-columns: 1fr; } }
 
-.signside h2 { font-size: 1.05rem; color: var(--rose-deep); margin-bottom: 4px; }
-.signside p { font-size: .82rem; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
-.signside input {
-  width: 100%; font: inherit; font-size: 1rem; padding: 12px 13px; margin-bottom: 9px;
-  border-radius: 11px; border: 1px solid var(--rose-soft); background: var(--bg);
-}
-.signside button {
-  width: 100%; font: inherit; font-size: .98rem; padding: 12px; border-radius: 11px;
-  border: none; background: var(--rose-primary); color: #fff; font-weight: 700; cursor: pointer;
-}
-.signside .warnline {
-  margin: 12px 0 0; font-size: .74rem; color: #9a7b16;
-  background: #fffdf5; border: 1px solid #e6d9a8; border-radius: 9px; padding: 9px 11px;
-}
 
-/* The right-hand rail: the keypad on top, then the way into the app.
+/* The right-hand rail: the keypad, and nothing else.
  *
- * The keypad is on the right because that is where a hand rests on a tablet
- * propped on a counter, and it is always on screen rather than folded away —
- * somebody who knows their four digits should not have to find a control
- * first. The faces stay on the left for everyone else. */
+ * It is on the right because that is where a hand rests on a tablet propped on
+ * a counter, and always on screen rather than folded away — somebody who knows
+ * their four digits should not have to find a control first. The faces stay on
+ * the left for everyone else. There is no sign-in here on purpose: a tablet
+ * that sits out all day should not be a door into the till. */
 .rail {
   display: flex; flex-direction: column; gap: 16px;
   position: sticky; top: 16px;
 }
-.padside, .signside {
+.padside {
   background: #fff; border: 1px solid var(--rose-soft); border-radius: 16px;
   padding: 18px;
 }
