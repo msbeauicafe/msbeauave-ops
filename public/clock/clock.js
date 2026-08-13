@@ -87,27 +87,63 @@ function gate() {
 // ---------------------------------------------------------------------------
 async function start() {
   $('#leave').hidden = false;
-  // Names first: you find yourself, tap, and type your PIN. The keypad is the
-  // shortcut for anyone who knows their digits by heart, folded underneath so
-  // it is there without being in the way.
+  // Two things happen at this counter and now both are on the screen at once:
+  // the shift, which everybody does, and opening the app, which a few do. The
+  // clock takes the width because it is the common one; the sign-in sits
+  // beside it rather than behind a tap.
   $('#app').innerHTML = `
-    <div class="tools">
-      <input id="find" type="search" placeholder="Find your name…" autocomplete="off">
-      <select id="branch"></select>
-    </div>
-    <div class="grid" id="grid"></div>
-    <details class="bypin" id="bypin">
-      <summary>Or type your PIN</summary>
-      <section class="keyfirst">
-        <div class="dots" id="kdots"></div>
-        <div class="keys" id="keypad">
-          ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button data-k="${d}">${d}</button>`).join('')}
-          <button class="wipe" id="kwipe">clear</button>
-          <button data-k="0">0</button>
-          <button class="go" id="kgo">✓</button>
+    <div class="two">
+      <section class="clockside">
+        <div class="tools">
+          <input id="find" type="search" placeholder="Find your name…" autocomplete="off">
+          <select id="branch"></select>
         </div>
+        <div class="grid" id="grid"></div>
+        <details class="bypin" id="bypin">
+          <summary>Or type your PIN</summary>
+          <section class="keyfirst">
+            <div class="dots" id="kdots"></div>
+            <div class="keys" id="keypad">
+              ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) =>
+                `<button data-k="${d}">${d}</button>`).join('')}
+              <button class="wipe" id="kwipe">clear</button>
+              <button data-k="0">0</button>
+              <button class="go" id="kgo">✓</button>
+            </div>
+          </section>
+        </details>
       </section>
-    </details>`;
+
+      <aside class="signside">
+        <h2>Open the back office</h2>
+        <p>For a cashier taking the till, or a supervisor. Most people only
+          need the clock on the left.</p>
+        <form id="appin">
+          <input name="username" placeholder="Username" autocomplete="off" required>
+          <input name="password" type="password" placeholder="Password"
+            autocomplete="off" required>
+          <button>Sign in</button>
+        </form>
+        <p class="warnline">This tablet stays signed in as whoever does this.
+          Use <b>Sign out</b>, top right, when you are finished.</p>
+      </aside>
+    </div>`;
+
+  // Signing in here replaces the tablet's own session with this person's, which
+  // is the honest behaviour — the till has to know who is selling. It also
+  // means the tablet is left as them, so the screen says so rather than
+  // leaving it to be discovered.
+  $('#appin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    try {
+      const who = await POST('/api/login', {
+        username: form.get('username'), password: form.get('password'),
+      });
+      say(`Signed in as ${who.user?.name || form.get('username')} — opening the app…`);
+      setTimeout(() => { location.href = '/'; }, 900);
+    } catch (err) { say(err.message, 'bad'); }
+  });
 
   let typed = '';
   const kdots = () => {
