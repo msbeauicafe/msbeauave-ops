@@ -95,15 +95,23 @@ async function start() {
 
   // A device left by one door shows that door's faces, and remembers which,
   // because nobody wants to pick the shop every morning.
+  //
+  // ?shop=<id> in the address fixes it outright, with no picker at all. That is
+  // what the per-branch app icons use: the tablet at one door is that door's
+  // clock and cannot be switched to the other shop by a stray tap.
   const branches = await GET('/api/branches').catch(() => []);
+  const pinned = new URLSearchParams(location.search).get('shop');
+  const fixed = pinned && branches.find((b) => String(b.id) === String(pinned));
   const remembered = localStorage.getItem('clockBranch') || '';
   const picker = $('#branch');
-  picker.innerHTML = (branches.length > 1 ? '<option value="">Everybody</option>' : '')
-    + branches.filter((b) => b.active).map((b) =>
-      `<option value="${b.id}"${String(b.id) === remembered ? ' selected' : ''}>${
-        esc(b.name)}</option>`).join('');
-  if (branches.length < 2) picker.style.display = 'none';
-  const named = branches.find((b) => String(b.id) === picker.value);
+  picker.innerHTML = fixed
+    ? `<option value="${fixed.id}" selected>${esc(fixed.name)}</option>`
+    : (branches.length > 1 ? '<option value="">Everybody</option>' : '')
+      + branches.filter((b) => b.active).map((b) =>
+        `<option value="${b.id}"${String(b.id) === remembered ? ' selected' : ''}>${
+          esc(b.name)}</option>`).join('');
+  if (fixed || branches.length < 2) picker.style.display = 'none';
+  const named = fixed || branches.find((b) => String(b.id) === picker.value);
   $('#where').textContent = named ? `Time clock · ${named.name}` : 'Time clock';
 
   $('#find').addEventListener('input', draw);
