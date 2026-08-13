@@ -2106,3 +2106,109 @@ test('only the owner can sign somebody out everywhere', async () => {
   assert.equal((await POST(till, `/api/users/${row.id}/sign-out-everywhere`)).status, 403);
   assert.equal((await GET(till, '/api/team')).status, 200, 'and nobody was signed out');
 });
+
+// ===========================================================================
+// The timekeeper
+//
+// The door tablet's own sign-in. Not a person. The whole point is what it
+// cannot reach, so almost all of this is refusals — a tablet that sits on a
+// counter all day should carry the smallest thing that still works.
+// ===========================================================================
+
+async function signInAsTimekeeper() {
+  const username = unique('clockdev');
+  await db.query(
+    `insert into app_users (username, display_name, password_hash, role)
+     values ($1,$1,$2,'timekeeper')`, [username, hashPassword('1234')]);
+  const res = await fetch(`${base}/api/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password: '1234' }) });
+  assert.equal(res.status, 200, 'a timekeeper has to be able to sign a tablet in');
+  const raw = res.headers.getSetCookie?.()[0] ?? res.headers.get('set-cookie');
+  return Object.assign(raw.split(';')[0], { username });
+}
+
+test('a timekeeper can run the clock and see who is on the team', async () => {
+  const admin = await signIn('admin');
+  const [north] = await twoBranches(admin);
+  await POST(admin, '/api/team/bulk',
+    { people: [{ name: unique('Tick'), position: 'Cashier' }], branch_id: north });
+  const who = (await GET(admin, '/api/team')).data.team.filter((p) => /^Tick-/.test(p.name)).pop();
+  const pin = ownPin(who.id);
+  assert.equal((await POST(admin, `/api/team/${who.id}/pin`, { pin })).status, 200);
+
+  const tablet = await signInAsTimekeeper();
+  assert.equal((await GET(tablet, '/api/team')).status, 200, 'the faces');
+  assert.equal((await GET(tablet, '/api/branches')).status, 200, 'and which shop it is');
+
+  const byName = await POST(tablet, '/api/clock', { employeeId: who.id, pin });
+  assert.equal(byName.status, 200, JSON.stringify(byName.data));
+  assert.equal(byName.data.action, 'in');
+  const byPin = await POST(tablet, '/api/clock/by-pin', { pin });
+  assert.equal(byPin.status, 200, JSON.stringify(byPin.data));
+  assert.equal(byPin.data.action, 'out');
+});
+
+test('a timekeeper can reach nothing else at all', async () => {
+  const admin = await signIn('admin');
+  const tablet = await signInAsTimekeeper();
+
+  const refused = [
+    ['GET', '/api/products?q=', undefined, 'the catalogue'],
+    ['GET', '/api/branch-stock?q=', undefined, 'the shelves'],
+    ['GET', '/api/till/products?q=', undefined, 'the till'],
+    ['POST', '/api/till/sell', { lines: [{ sku: 'X', qty: 1 }], method: 'cash' }, 'a sale'],
+    ['GET', '/api/finance', undefined, 'the money'],
+    ['GET', '/api/dashboard', undefined, "the owner's dashboard"],
+    ['GET', '/api/users', undefined, 'the sign-ins'],
+    ['GET', '/api/reports/journal', undefined, 'the stock journal'],
+    ['GET', '/api/takings-by-branch', undefined, 'the takings'],
+    ['POST', '/api/receive', { sku: 'X', batch_no: 'B', expiry: monthsOut(12), qty: 1 },
+      'receiving stock'],
+    ['POST', '/api/team', { name: 'X', position: 'Staff' }, 'adding staff'],
+    ['GET', '/api/orders', undefined, 'wholesale orders'],
+    ['GET', '/api/customers?q=', undefined, 'customers'],
+  ];
+  for (const [method, path, body, what] of refused) {
+    const r = await request(tablet, method, path, body);
+    assert.equal(r.status, 403, `a door tablet must not reach ${what} (${path})`);
+  }
+});
+
+test('the database refuses a timekeeper too, not just the router', async () => {
+  const client = await db.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select set_config('app.role', 'timekeeper', true),
+                               set_config('app.actor', 'tablet', true)`);
+    await client.query('set local role app_client');
+    for (const [sql, what] of [
+      [`select sell('[]'::jsonb, 'cash', null, null)`, 'selling'],
+      [`select receive_stock('X','B',current_date + 400, 1)`, 'receiving'],
+      [`select create_login('x','x','h','cashier')`, 'making a sign-in'],
+      [`select add_employee('X','Staff',null,null,null,null,null)`, 'adding staff'],
+    ]) {
+      await client.query('savepoint s');
+      let refused = false;
+      try { await client.query(sql); } catch (e) { refused = e.code === '42501'; }
+      await client.query('rollback to savepoint s');
+      assert.ok(refused, `the database must refuse a timekeeper ${what}`);
+    }
+  } finally {
+    await client.query('rollback').catch(() => {});
+    client.release();
+  }
+});
+
+test('a timekeeper is a role a sign-in can be, and is not an employee', async () => {
+  const admin = await signIn('admin');
+  const made = await POST(admin, '/api/users',
+    { username: unique('tablet'), password: 'password1', role: 'timekeeper' });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+
+  // It holds no staff record, so it never appears on the clock's own board.
+  const tablet = await signInAsTimekeeper();
+  const board = (await GET(tablet, '/api/team')).data.team;
+  assert.ok(!board.some((p) => p.name === tablet.username),
+    'the tablet must not appear among the faces');
+});

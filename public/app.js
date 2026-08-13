@@ -251,7 +251,7 @@ const TABS = {
 // access; only one of them owns the shop, so this says admin.
 const roleName = (r) => ({
   admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier',
-  supervisor: 'Supervisor', reseller: 'Reseller',
+  supervisor: 'Supervisor', timekeeper: 'Timekeeper', reseller: 'Reseller',
 }[r] ?? r);
 
 function drawFrame() {
@@ -1931,6 +1931,7 @@ SCREENS.people = async (page) => {
           <option value="warehouse">Warehouse</option>
           <option value="cashier">Cashier (the till)</option>
           <option value="supervisor">Supervisor (the till and the stockroom)</option>
+          <option value="timekeeper">Timekeeper (a door tablet — the clock only)</option>
           <option value="reseller">Reseller (their own portal)</option></select></div>
         <div id="u_link" style="display:none"><label>Which reseller</label>
           ${resellers.length

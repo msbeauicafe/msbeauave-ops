@@ -50,34 +50,36 @@ let team = [];
 let refresher = null;
 let fixedBranch = null;
 
+// The tablet's own sign-in. Not a person, and not on the team list.
+const TIMEKEEPER = 'Timekeeper';
+
 // ---------------------------------------------------------------------------
 // Signing the device in — once, by whoever sets the tablet down
 // ---------------------------------------------------------------------------
 function gate() {
   clearInterval(refresher);
+  // No username, and nobody's own password. The tablet has a sign-in of its
+  // own — the timekeeper — which can see the team and work the clock and
+  // nothing else at all. Whoever opens the shop types its code once.
   $('#app').innerHTML = `
     <form class="gate" id="in">
       <h2>Setting up this tablet</h2>
-      <p class="who">This box is for the owner or a supervisor, once, when the
-        tablet is first set up.</p>
-      <p><b>Clocking on for your shift?</b> You do not sign in here. Ask whoever
-        opens the shop to set this screen up — then your name appears and you
-        just tap it and type your PIN.</p>
-      <input name="username" placeholder="Username" autocomplete="username" required>
-      <input name="password" type="password" placeholder="Password"
-        autocomplete="current-password" required>
-      <button>Sign in</button>
+      <p class="who">Once, when the tablet is first set up.</p>
+      <p><b>Clocking on for your shift?</b> Not here. Ask whoever opens the shop
+        to set this screen up — then your name appears and you tap it and type
+        your own PIN.</p>
+      <input name="code" type="password" inputmode="numeric" placeholder="Timekeeper code"
+        autocomplete="off" required>
+      <button>Set up</button>
     </form>`;
   $('#in').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const form = new FormData(e.target);
+    const code = new FormData(e.target).get('code');
     try {
-      await POST('/api/login', {
-        username: form.get('username'), password: form.get('password'),
-      });
+      await POST('/api/login', { username: TIMEKEEPER, password: code });
       signedIn = true;
       start();
-    } catch (err) { say(err.message, 'bad'); }
+    } catch (err) { say('That code does not match.', 'bad'); }
   });
 }
 
