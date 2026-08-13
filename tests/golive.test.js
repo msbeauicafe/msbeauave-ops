@@ -1915,3 +1915,45 @@ test('reissuing PINs covers the whole team, not the first bite', async () => {
   assert.equal(new Set(second.map((p) => p.pin)).size, second.length,
     'and no two people may be handed the same PIN');
 });
+
+test('a PIN can be taken back, and then it does not open the clock', async () => {
+  const admin = await signIn('admin');
+  const [north] = await twoBranches(admin);
+  await POST(admin, '/api/team/bulk',
+    { people: [{ name: unique('Gate'), position: 'Guard' }], branch_id: north });
+  const who = (await GET(admin, '/api/team')).data.team
+    .filter((p) => /^Gate-/.test(p.name)).pop();
+
+  assert.equal((await POST(admin, `/api/team/${who.id}/pin`, { pin: '8431' })).status, 200);
+  assert.equal((await POST(admin, '/api/clock',
+    { employeeId: who.id, pin: '8431' })).status, 200, 'the PIN works to begin with');
+  await POST(admin, '/api/clock', { employeeId: who.id, pin: '8431' });
+
+  const gone = await request(admin, 'DELETE', `/api/team/${who.id}/pin`);
+  assert.equal(gone.status, 200, JSON.stringify(gone.data));
+
+  const after = await POST(admin, '/api/clock', { employeeId: who.id, pin: '8431' });
+  assert.equal(after.status, 400);
+  assert.match(after.data.error, /no PIN yet/,
+    'and the clock says there is no PIN rather than that it did not match');
+
+  const row = (await GET(admin, '/api/team')).data.team
+    .find((p) => String(p.id) === String(who.id));
+  assert.equal(row.has_pin, false);
+});
+
+test('only the owner takes a PIN back', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const [north] = await twoBranches(admin);
+  await POST(admin, '/api/team/bulk',
+    { people: [{ name: unique('Keep'), position: 'Guard' }], branch_id: north });
+  const who = (await GET(admin, '/api/team')).data.team
+    .filter((p) => /^Keep-/.test(p.name)).pop();
+  await POST(admin, `/api/team/${who.id}/pin`, { pin: '7712' });
+
+  assert.equal((await request(till, 'DELETE', `/api/team/${who.id}/pin`)).status, 403);
+  assert.equal((await POST(admin, '/api/clock',
+    { employeeId: who.id, pin: '7712' })).status, 200, 'and the PIN still works');
+  await POST(admin, '/api/clock', { employeeId: who.id, pin: '7712' });
+});
