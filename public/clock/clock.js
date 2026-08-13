@@ -99,33 +99,34 @@ async function start() {
           <select id="branch"></select>
         </div>
         <div class="grid" id="grid"></div>
-        <details class="bypin" id="bypin">
-          <summary>Or type your PIN</summary>
-          <section class="keyfirst">
-            <div class="dots" id="kdots"></div>
-            <div class="keys" id="keypad">
-              ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) =>
-                `<button data-k="${d}">${d}</button>`).join('')}
-              <button class="wipe" id="kwipe">clear</button>
-              <button data-k="0">0</button>
-              <button class="go" id="kgo">✓</button>
-            </div>
-          </section>
-        </details>
       </section>
 
-      <aside class="signside">
-        <h2>Open the back office</h2>
-        <p>For a cashier taking the till, or a supervisor. Most people only
-          need the clock on the left.</p>
-        <form id="appin">
-          <input name="username" placeholder="Username" autocomplete="off" required>
-          <input name="password" type="password" placeholder="Password"
-            autocomplete="off" required>
-          <button>Sign in</button>
-        </form>
-        <p class="warnline">This tablet stays signed in as whoever does this.
-          Use <b>Sign out</b>, top right, when you are finished.</p>
+      <aside class="rail">
+        <section class="padside" id="bypin" open>
+          <h2>Type your PIN</h2>
+          <div class="dots" id="kdots"></div>
+          <div class="keys" id="keypad">
+            ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) =>
+              `<button data-k="${d}">${d}</button>`).join('')}
+            <button class="wipe" id="kwipe">clear</button>
+            <button data-k="0">0</button>
+            <button class="go" id="kgo">✓</button>
+          </div>
+          <p class="hint">Or tap your name on the left.</p>
+        </section>
+
+        <section class="signside">
+          <h2>Open the back office</h2>
+          <p>For a cashier taking the till, or a supervisor.</p>
+          <form id="appin">
+            <input name="username" placeholder="Username" autocomplete="off" required>
+            <input name="password" type="password" placeholder="Password"
+              autocomplete="off" required>
+            <button>Sign in</button>
+          </form>
+          <p class="warnline">This tablet stays signed in as whoever does this.
+            Use <b>Sign out</b>, top right, when you are finished.</p>
+        </section>
       </aside>
     </div>`;
 
@@ -173,7 +174,8 @@ async function start() {
   $('#kgo').addEventListener('click', punch);
   // A tablet with a keyboard attached, or somebody who prefers typing.
   document.addEventListener('keydown', (e) => {
-    if ($('.veil') || !$('#bypin')?.open || document.activeElement === $('#find')) return;
+    if ($('.veil') || document.activeElement === $('#find')
+        || document.activeElement?.closest('#appin')) return;
     if (/^[0-9]$/.test(e.key) && typed.length < 8) { typed += e.key; kdots(); }
     else if (e.key === 'Backspace') { typed = typed.slice(0, -1); kdots(); }
     else if (e.key === 'Enter') punch();
