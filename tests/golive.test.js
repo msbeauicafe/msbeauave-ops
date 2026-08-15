@@ -2324,3 +2324,116 @@ test('the database refuses an office sign-in the owner-only jobs', async () => {
     client.release();
   }
 });
+
+// ---------------------------------------------------------------------------
+// The credit ladder
+//
+// Tiers used to be three numbers typed per account. These tests are about the
+// thing that changed: that a tier now means something, that editing what it
+// means carries the accounts standing on it, and that an account deliberately
+// set apart is left where its owner put it.
+// ---------------------------------------------------------------------------
+test('promoting an account takes the ladder rather than typed numbers', async () => {
+  const owner = await signIn('admin');
+  const made = await POST(owner, '/api/resellers', { name: unique('Ladder Trading') });
+  const id = made.data.id;
+
+  const before = await GET(owner, `/api/resellers/${id}`);
+  assert.equal(Number(before.data.tier), 1, 'a new account starts at the floor');
+  assert.equal(Number(before.data.credit_limit), 0);
+
+  const { ladder } = (await GET(owner, '/api/reseller-tiers')).data;
+  const two = ladder.find((t) => t.tier === 2);
+
+  const up = await POST(owner, `/api/resellers/${id}/tier`, { tier: 2 });
+  assert.equal(up.status, 200);
+
+  const after = await GET(owner, `/api/resellers/${id}`);
+  assert.equal(Number(after.data.tier), 2);
+  assert.equal(Number(after.data.credit_limit), Number(two.credit_limit));
+  assert.equal(Number(after.data.terms_days), Number(two.terms_days));
+});
+
+test('editing a rung moves everyone on it, and nobody who was set apart', async () => {
+  const owner = await signIn('admin');
+  const follower = (await POST(owner, '/api/resellers', { name: unique('Follows') })).data.id;
+  const apart = (await POST(owner, '/api/resellers', { name: unique('Apart') })).data.id;
+
+  await POST(owner, `/api/resellers/${follower}/tier`, { tier: 3 });
+  // Terms of its own: same rung, a limit somebody chose for this account.
+  await POST(owner, `/api/resellers/${apart}/terms`,
+    { tier: 3, credit_limit: 12345, terms_days: 7 });
+
+  const was = (await GET(owner, '/api/reseller-tiers')).data.ladder.find((t) => t.tier === 3);
+  const moved = await PUT(owner, '/api/reseller-tiers/3',
+    { credit_limit: 99000, terms_days: 45 });
+  assert.equal(moved.status, 200);
+  assert.ok(moved.data.moved >= 1, 'at least the account on the rung moves');
+
+  const a = await GET(owner, `/api/resellers/${follower}`);
+  assert.equal(Number(a.data.credit_limit), 99000, 'the account on the rung follows it');
+  assert.equal(Number(a.data.terms_days), 45);
+
+  const b = await GET(owner, `/api/resellers/${apart}`);
+  assert.equal(Number(b.data.credit_limit), 12345, 'the exception stays where it was put');
+  assert.equal(Number(b.data.terms_days), 7);
+
+  // Put the rung back so the rest of the suite sees what it expects.
+  await PUT(owner, '/api/reseller-tiers/3',
+    { credit_limit: Number(was.credit_limit), terms_days: Number(was.terms_days) });
+});
+
+test('the floor cannot be given credit', async () => {
+  const owner = await signIn('admin');
+  const no = await PUT(owner, '/api/reseller-tiers/1', { credit_limit: 5000, terms_days: 30 });
+  assert.equal(no.status, 400);
+  assert.match(no.data.error, /pays before dispatch/);
+
+  // And not around the API either: the table itself refuses it.
+  await assert.rejects(
+    db.query('update reseller_tiers set credit_limit = 5000 where tier = 1'),
+    (e) => e.code === '23514');
+});
+
+test('an account back on its rung stops counting as an exception', async () => {
+  const owner = await signIn('admin');
+  const id = (await POST(owner, '/api/resellers', { name: unique('Rejoins') })).data.id;
+  const two = (await GET(owner, '/api/reseller-tiers')).data.ladder.find((t) => t.tier === 2);
+
+  await POST(owner, `/api/resellers/${id}/terms`,
+    { tier: 2, credit_limit: 555, terms_days: 3 });
+  let adrift = (await GET(owner, '/api/reseller-tiers')).data.offLadder;
+  assert.ok(adrift.some((r) => String(r.id) === String(id)), 'off the rung, and shown as such');
+
+  // Typing in exactly what the rung already says is not an exception.
+  await POST(owner, `/api/resellers/${id}/terms`,
+    { tier: 2, credit_limit: Number(two.credit_limit), terms_days: Number(two.terms_days) });
+  adrift = (await GET(owner, '/api/reseller-tiers')).data.offLadder;
+  assert.ok(!adrift.some((r) => String(r.id) === String(id)), 'back on the rung, back in the fold');
+});
+
+test('the database refuses anybody but the owner the credit ladder', async () => {
+  for (const role of ['supervisor', 'office', 'cashier', 'warehouse']) {
+    const client = await db.connect();
+    try {
+      await client.query('begin');
+      await client.query(`select set_config('app.role', $1, true),
+                                 set_config('app.actor', 'desk', true)`, [role]);
+      await client.query('set local role app_client');
+      for (const [sql, what] of [
+        ['select set_tier(1, 3)', 'promoting an account'],
+        ['select set_tier_ladder(2, 999999, 90)', 'rewriting a rung'],
+        ['select set_terms(1, 3, 999999, 90)', 'setting terms by hand'],
+      ]) {
+        await client.query('savepoint s');
+        let refused = false;
+        try { await client.query(sql); } catch (e) { refused = e.code === '42501'; }
+        await client.query('rollback to savepoint s');
+        assert.ok(refused, `the database must refuse a ${role} ${what}`);
+      }
+    } finally {
+      await client.query('rollback').catch(() => {});
+      client.release();
+    }
+  }
+});
