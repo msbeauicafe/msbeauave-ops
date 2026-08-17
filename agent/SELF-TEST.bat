@@ -61,14 +61,30 @@ if /i not "!NODEARCH!"=="x64" (
   echo.
 )
 
+REM npm lives in the same folder as node.exe. If node is found and npm is not,
+REM it was not installed rather than merely missing from PATH — the Node
+REM installer has a tick-box for it, and an install that skipped it looks
+REM exactly like this.
 where npm >nul 2>&1
 if errorlevel 1 (
+  for /f "delims=" %%p in ('where node 2^>nul') do set NODEEXE=%%p
   echo.
-  echo   Node is installed but npm is not on PATH, which usually means the
-  echo   installer was interrupted. Re-run the Node.js installer and take the
-  echo   defaults.
+  echo   Node is installed, but npm is not.
   echo.
-  echo FAIL: npm not found >> install-log.txt
+  echo   node.exe is at:  !NODEEXE!
+  echo   npm.cmd should be in that same folder, and is not — so the Node
+  echo   installer ran with its npm component turned off.
+  echo.
+  echo   To fix it: Settings ^> Apps, find Node.js, choose Modify, and make
+  echo   sure "npm package manager" is ticked. Or just re-run the installer
+  echo   from https://nodejs.org and take every default. Then close this
+  echo   window, open a NEW one, and run this again.
+  echo.
+  echo   MEANWHILE, you can still test everything except the scanner right
+  echo   now: close this and double-click TEST-WITHOUT-SCANNER.bat. That one
+  echo   needs no npm at all.
+  echo.
+  echo FAIL: npm not installed alongside node >> install-log.txt
   pause
   exit /b 1
 )

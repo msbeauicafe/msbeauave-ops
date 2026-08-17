@@ -48,6 +48,10 @@ The agent is deliberately the smallest thing that can work:
    agent checks and says so plainly if they disagree.
 3. Copy this `agent` folder onto the PC, open a command prompt in it, and run
    `npm install`. That fetches **koffi**, which is how Node calls into the DLL.
+   If npm turns out to be missing, the Node installer was run with its npm
+   component turned off — Settings → Apps → Node.js → Modify, and tick *npm
+   package manager*. (`TEST-WITHOUT-SCANNER.bat` needs none of this and will
+   run meanwhile.)
 4. Copy `door.example.json` to `door.json` and fill it in.
 5. **`npm run selftest`.** This is the important step. It opens the scanner,
    reads a print, walks the three-scan enrolment, loads the result into the

@@ -6,13 +6,14 @@ title MS BEAU AVE - door (pretend scanner)
 REM ---------------------------------------------------------------------------
 REM The whole door, with a pretend scanner in place of the real one.
 REM
-REM For seeing that the rest of it works — that this PC can reach the website,
-REM that it signs in, that it pulls down the right shop's fingerprints, and
-REM that the clock page grows its "Place your finger" panel — without a ZK9500
-REM plugged in. Nothing here touches ZKTeco's library, so it runs anywhere.
+REM This needs NOTHING installed but Node itself — no npm, no downloads, no
+REM internet beyond reaching our own website. The one component the agent
+REM normally fetches (koffi) is what talks to ZKTeco's library, and a pretend
+REM scanner never touches it.
 REM
-REM It will never actually recognise a finger. That is the point: it separates
-REM "the scanner is not working" from "everything else is not working".
+REM So this is the thing to run when the rest of the setup is misbehaving: it
+REM separates "the scanner is not working" from "everything else is not
+REM working", and it will run on a machine where npm is broken or missing.
 REM ---------------------------------------------------------------------------
 
 where node >nul 2>&1
@@ -26,24 +27,8 @@ if errorlevel 1 (
 )
 
 if not exist door.json (
-  echo.
-  echo   door.json is missing. Copy door.example.json to door.json first.
-  echo   For a test on this PC the example values are fine as they are.
-  echo.
-  pause
-  exit /b 1
-)
-
-if not exist node_modules (
-  echo   Fetching what the agent needs, one moment...
-  call npm install --no-audit --no-fund
-  if errorlevel 1 (
-    echo.
-    echo   That failed. Run SELF-TEST.bat - it says why.
-    echo.
-    pause
-    exit /b 1
-  )
+  echo   Making door.json from the example — the defaults are right for a test.
+  copy /y door.example.json door.json >nul
 )
 
 echo.
