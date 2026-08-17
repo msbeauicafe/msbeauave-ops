@@ -132,6 +132,15 @@ export async function open(conf = {}) {
         + 'and the DLL is the other one. Install the matching Node, or point zkfpPath at the '
         + "SDK's other bin folder.");
     }
+    // The commonest one, and the one whose own message says least: koffi is
+    // what lets Node call into the DLL at all, and it arrives with npm.
+    if (/Cannot find module 'koffi'/.test(e.message)) {
+      throw new Error(
+        'The piece that talks to the scanner has not been fetched yet — run '
+        + '"npm install" in this folder. (If npm is missing, Node was installed '
+        + 'without it, or node.exe was copied here instead of Node being '
+        + 'installed. Everything except the scanner works meanwhile.)');
+    }
     if (/cannot open|not found|No such file/i.test(e.message)) {
       throw new Error(
         `Could not find libzkfp.dll (tried "${dll}"). Install the ZKFinger SDK, or set `
@@ -185,8 +194,14 @@ export async function close() {
  * @param {{id:number, name:string, finger:number, template:string}[]} people
  */
 export async function load(people) {
-  loadedCount = people.length;
-  if (STUB) { stubPeople = people; return people.length; }
+  if (STUB) { stubPeople = people; loadedCount = people.length; return people.length; }
+
+  // No scanner open means no matcher to load into, and that is a normal state
+  // rather than a fault: a door whose reader is unplugged still fetches its
+  // shop's list, still answers the clock page, and still says the PIN pad is
+  // the way in today. Reaching into the library here was a plain mistake — it
+  // turned "no scanner" into a crash on every refresh.
+  if (!device || !cache) { loadedCount = 0; return 0; }
 
   fn.dbClear(cache);
   let added = 0;
