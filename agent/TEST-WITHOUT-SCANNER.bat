@@ -31,6 +31,22 @@ if not exist door.json (
   copy /y door.example.json door.json >nul
 )
 
+REM door.js must be beside this file. If it is not, the batch file was run
+REM from inside the zip window rather than from an extracted folder, which is
+REM the commonest way this goes wrong and looks like nothing happening at all.
+if not exist door.js (
+  echo.
+  echo   door.js is not in this folder, so this was almost certainly run from
+  echo   inside the zip window. Windows copies the one file out to a temporary
+  echo   folder and leaves the rest behind.
+  echo.
+  echo   Right-click the downloaded zip, choose "Extract All", put it somewhere
+  echo   like C:\MBA door, and run this from THERE.
+  echo.
+  pause
+  exit /b 1
+)
+
 echo.
 echo   Starting with a PRETEND scanner. Leave this window open, then open
 echo   https://msbeauave-ops.vercel.app/clock/ in Chrome ON THIS PC.
@@ -40,8 +56,10 @@ echo   count of how many fingerprints this shop has on file. That count comes
 echo   from the website, so seeing it proves the whole path except the scanner.
 echo.
 
+
 set SDK_STUB=1
 call node door.js
 echo.
-echo   The door has stopped. Anything above this line is the reason.
+echo   The door has stopped. The reason is above, and in door-log.txt in this
+echo   folder — send me that file if it is not obvious.
 pause

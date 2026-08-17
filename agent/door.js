@@ -17,7 +17,30 @@ let people = [];
 let lastError = null;
 let lastLoad = null;
 
-const say = (...a) => console.log(new Date().toLocaleTimeString('en-GB'), ...a);
+// Everything this says also goes to door-log.txt beside the program.
+//
+// A window that closes takes its reason with it, and the reason is the only
+// thing worth having when somebody is setting a door up for the first time in
+// a shop with the internet playing up. A file can be sent to somebody. A
+// window that flashed cannot.
+const LOG = new URL('./door-log.txt', import.meta.url);
+const say = (...a) => {
+  const line = [new Date().toLocaleTimeString('en-GB'), ...a].join(' ');
+  console.log(line);
+  try { fs.appendFileSync(LOG, line + '\n'); } catch { /* the log is a nicety */ }
+};
+
+// Anything that kills the program outright says so on the way out, rather than
+// leaving a closed window and no explanation.
+process.on('uncaughtException', (e) => {
+  say('STOPPED:', e && e.message ? e.message : String(e));
+  say(e && e.stack ? e.stack : '');
+  process.exit(1);
+});
+process.on('unhandledRejection', (e) => {
+  say('STOPPED:', e && e.message ? e.message : String(e));
+  process.exit(1);
+});
 
 async function call(method, path, body) {
   const res = await fetch(conf.site + path, {
