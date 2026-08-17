@@ -157,18 +157,14 @@ const server = http.createServer((req, res) => {
     enrolling = true;
     (async () => {
       try {
-        for (let tries = 0; tries < 40; tries++) {
-          const scan = await sdk.capture(3000);
-          if (scan) {
-            res.end(JSON.stringify({
-              template: scan.template.toString('base64'), quality: scan.quality,
-            }));
-            return;
-          }
-        }
-        res.end(JSON.stringify({ error: 'No finger was presented.' }));
+        // Three scans of the one finger, merged. The steps go to the log so
+        // whoever is enrolling can be told when to lift and press again.
+        const made = await sdk.enrol((step) => say(`enrol: scan ${step} of 3`));
+        res.end(JSON.stringify({
+          template: made.template.toString('base64'), quality: made.quality,
+        }));
       } catch (e) {
-        res.writeHead(500).end(JSON.stringify({ error: e.message }));
+        res.writeHead(400).end(JSON.stringify({ error: e.message }));
       } finally { enrolling = false; }
     })();
     return;
@@ -188,7 +184,7 @@ const server = http.createServer((req, res) => {
 
 say(`MS BEAU AVE door agent — shop ${conf.shop}, ${conf.site}`);
 try {
-  say('scanner:', await sdk.open());
+  say('scanner:', await sdk.open(conf));
 } catch (e) {
   // Not fatal. The clock page falls back to PINs, and the shop keeps working
   // while somebody sorts the driver out.

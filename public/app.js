@@ -3723,7 +3723,7 @@ SCREENS.team = async (page) => {
         const state = $('#t_fingerstate');
         const button = $('#t_scan');
         button.disabled = true;
-        state.textContent = 'Place the finger on the scanner…';
+        state.textContent = 'Press the finger three times, lifting between each…';
         try {
           const got = await fetch('http://127.0.0.1:9500/capture',
             { signal: AbortSignal.timeout(40000) }).then((r) => r.json());
