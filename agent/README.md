@@ -107,6 +107,8 @@ usually says what to do. The ones worth knowing:
 | the finger did not match the earlier scans | a different finger mid-enrolment |
 | libzkfp.dll and Node do not match | 32-bit against 64-bit; see step 2 |
 
-`SDK_STUB=1 npm start` runs the whole agent against a pretend scanner. Useful
-for working on the clock screen, and for telling a website problem apart from
-a hardware one.
+`TEST-WITHOUT-SCANNER.bat` (or `SDK_STUB=1 npm start`) runs the whole agent
+against a pretend scanner: it signs in, pulls the shop's templates down, and
+answers the clock page, but never reads a finger. That is exactly what tells a
+website problem apart from a hardware one — if the clock page finds the agent
+and shows a count, everything except the scanner is working.
