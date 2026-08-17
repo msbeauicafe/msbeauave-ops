@@ -193,3 +193,9 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
   border-color: var(--good); background: #F3F9F5;
 }
 .padside.finger.hit .scan { transform: scale(1.25); }
+
+/* The diagnostic line under the keypad, shown only with ?debug=1. It is
+ * allowed to be wordy because the only person who ever sees it is standing at
+ * the machine trying to work out why the scanner is not answering. */
+.padside.finger.cold .hint { font-size: .8rem; line-height: 1.5; color: var(--muted); }
+.padside.finger.cold .hint b { color: var(--rose-deep); word-break: break-all; }

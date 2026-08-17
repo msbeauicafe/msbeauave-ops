@@ -119,10 +119,24 @@ async function watch() {
 // Loopback only — it binds 127.0.0.1, so nothing on the shop's network can
 // reach it even by accident.
 // ---------------------------------------------------------------------------
+// Who may talk to this agent: our own site, and the machine it runs on.
+//
+// Pinning it to conf.site alone was too tight — a preview build, or the clock
+// opened from a local copy while somebody is setting the door up, is the same
+// person at the same machine and gets refused for no good reason. Loopback is
+// allowed because anything running there is already inside the box.
+const site = String(conf.site || '').replace(/\/$/, '');
+const allowed = (origin) => {
+  if (!origin) return site;
+  if (origin === site) return origin;
+  if (/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) return origin;
+  return site;
+};
+
 const server = http.createServer((req, res) => {
-  // The page is served from https://msbeauave-ops.vercel.app and this is a
-  // different origin, so it needs saying explicitly. Only that one site.
-  res.setHeader('Access-Control-Allow-Origin', conf.site);
+  // The page is served over https and this is plain http on loopback, so it is
+  // a different origin whatever happens and the permission has to be explicit.
+  res.setHeader('Access-Control-Allow-Origin', allowed(req.headers.origin));
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
   res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') {
@@ -191,8 +205,26 @@ try {
   lastError = e.message;
   say('scanner:', e.message);
 }
-await signIn();
-await refresh();
-setInterval(refresh, REFRESH_MS);
-if (sdk.ready()) watch();
+// Start listening first, and sign in afterwards.
+//
+// The old order killed the agent outright if the website could not be reached
+// — which is exactly when somebody is standing at the door wanting to know
+// why. Now it comes up regardless, serves /hello with the reason in it, and
+// keeps retrying in the background.
 server.listen(PORT, '127.0.0.1', () => say(`listening on http://127.0.0.1:${PORT}`));
+
+try {
+  await signIn();
+  await refresh();
+} catch (e) {
+  lastError = e.message;
+  say(e.message);
+  say('will keep trying — the clock page will show this until it works');
+}
+setInterval(async () => {
+  try {
+    if (lastError) await signIn();
+    await refresh();
+  } catch (e) { lastError = e.message; }
+}, REFRESH_MS);
+if (sdk.ready()) watch();

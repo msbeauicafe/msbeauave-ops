@@ -102,14 +102,6 @@ async function start() {
       </section>
 
       <aside class="rail">
-        <!-- Only appears if this door has a scanner. Everywhere else the
-             keypad is the first and only thing in the rail, exactly as now. -->
-        <section class="padside finger" id="byfinger" hidden>
-          <h2>Place your finger</h2>
-          <div class="scan" id="scanmark">☝</div>
-          <p class="hint" id="scanhint">Ready</p>
-        </section>
-
         <section class="padside" id="bypin" open>
           <h2>Type your PIN</h2>
           <div class="dots" id="kdots"></div>
@@ -123,6 +115,14 @@ async function start() {
           <p class="hint">Or tap your name on the left.</p>
         </section>
 
+        <!-- Only appears if this door has a scanner. It sits under the keypad
+             rather than over it: the PIN is what everybody has, and what
+             everybody falls back to when a finger is wet or cut. -->
+        <section class="padside finger" id="byfinger" hidden>
+          <h2>Place your finger</h2>
+          <div class="scan" id="scanmark">☝</div>
+          <p class="hint" id="scanhint">Ready</p>
+        </section>
       </aside>
     </div>`;
 
@@ -209,15 +209,40 @@ async function start() {
 // ---------------------------------------------------------------------------
 const AGENT = 'http://127.0.0.1:9500';
 
+// Adding ?debug=1 to the address makes the page say why it cannot see a
+// scanner. Off by default and deliberately so — a tablet by a door should not
+// display plumbing at people arriving for a shift — but setting one of these
+// up without it means guessing between "the agent is not running" and "the
+// browser refused the request", which look identical from here.
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+
+function complain(what) {
+  if (!DEBUG) return;
+  const panel = $('#byfinger');
+  panel.hidden = false;
+  panel.classList.add('cold');
+  $('#scanhint').innerHTML = what;
+}
+
 async function findScanner() {
   let hello;
   try {
     const r = await fetch(`${AGENT}/hello`, { signal: AbortSignal.timeout(1500) });
     hello = await r.json();
-  } catch {
-    return;               // No agent on this device. Nothing to say about it.
+  } catch (e) {
+    // Two very different problems, one silence. Worth telling apart.
+    complain(e.name === 'TimeoutError'
+      ? `Nothing answered on <b>${AGENT}</b> within a second.<br>`
+        + 'Is TEST-WITHOUT-SCANNER.bat (or START-THE-DOOR.bat) running in a window?'
+      : `Could not reach <b>${AGENT}</b>: ${esc(e.message)}.<br>`
+        + `Open <b>${AGENT}/hello</b> in a tab — if that shows text, the browser `
+        + 'is blocking this page from reaching it; if it does not, the agent is not running.');
+    return;
   }
-  if (!hello || hello.agent !== 'msbeauave-door') return;
+  if (!hello || hello.agent !== 'msbeauave-door') {
+    complain(`Something answered on ${AGENT} but it is not the door agent.`);
+    return;
+  }
 
   const panel = $('#byfinger');
   const hint = $('#scanhint');
