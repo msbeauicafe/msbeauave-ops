@@ -257,7 +257,14 @@ async function findScanner() {
   const hint = $('#scanhint');
   panel.hidden = false;
   const idle = () => {
-    if (!hello.scanner) {
+    // A desk is not a door, and saying "Ready" on one is a small lie: a finger
+    // here is being enrolled, and pressing it expecting to clock on will look
+    // like a fault when it is the machine doing exactly as it was told.
+    if (hello.desk) {
+      panel.querySelector('h2').textContent = 'Enrolment desk';
+      hint.textContent = 'Fingers enrol here. They clock nobody on.';
+      panel.classList.add('cold');
+    } else if (!hello.scanner) {
       hint.textContent = 'Scanner not connected — use your PIN';
       panel.classList.add('cold');
     } else {
