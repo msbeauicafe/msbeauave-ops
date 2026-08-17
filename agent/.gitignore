@@ -1,0 +1,3 @@
+# The door PC's own credentials. Never in the repository.
+door.json
+node_modules/

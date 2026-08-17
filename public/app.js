@@ -3680,6 +3680,27 @@ SCREENS.team = async (page) => {
             ${p.has_pin ? '✅ can clock on' : '⚠️ cannot clock on yet'}</div>
         </div>
 
+        <h3 class="mt">Fingerprints</h3>
+        <div class="dim">The PIN says the four digits were typed. A finger says
+          who typed them. Enrol two, so a cut thumb on a Monday does not cost
+          somebody their hours.</div>
+        <div class="row" style="align-items:flex-end">
+          <div style="flex:0 0 auto"><label for="t_finger">Finger</label>
+            <select id="t_finger">
+              <option value="1">Right index</option>
+              <option value="2">Right thumb</option>
+              <option value="6">Left index</option>
+              <option value="7">Left thumb</option>
+            </select></div>
+          <div style="flex:0 0 auto">
+            <button class="btn quiet sm" id="t_scan">Scan a finger</button></div>
+          <div style="flex:0 0 auto">
+            ${p.fingers ? `<button class="btn quiet sm" id="t_unfinger">Remove all</button>` : ''}</div>
+          <div class="dim" id="t_fingerstate">${p.fingers
+            ? `✅ ${p.fingers} enrolled`
+            : 'none enrolled — this person clocks on with their PIN'}</div>
+        </div>
+
         <h3 class="mt">Photograph</h3>
         <div class="row" style="align-items:center">
           <div style="flex:0 0 auto" id="t_pic">${p.has_photo
@@ -3695,6 +3716,40 @@ SCREENS.team = async (page) => {
       </div>`);
 
     if (!isNew) {
+      // Enrolling needs a scanner on *this* machine, reached through the same
+      // little agent the shop doors run. If nothing answers on loopback, say
+      // so plainly rather than leaving a button that does nothing.
+      $('#t_scan')?.addEventListener('click', async () => {
+        const state = $('#t_fingerstate');
+        const button = $('#t_scan');
+        button.disabled = true;
+        state.textContent = 'Place the finger on the scanner…';
+        try {
+          const got = await fetch('http://127.0.0.1:9500/capture',
+            { signal: AbortSignal.timeout(40000) }).then((r) => r.json());
+          if (got.error) throw new Error(got.error);
+          await POST(`/api/team/${p.id}/finger`,
+            { finger: +$('#t_finger').value, template: got.template, quality: got.quality });
+          notice(`${p.name} — finger enrolled`, 'good');
+          closeDialog();
+          load();
+        } catch (e) {
+          state.textContent = /fetch|timeout|abort/i.test(e.message)
+            ? 'No scanner found on this computer. Is the door agent running?'
+            : e.message;
+          button.disabled = false;
+        }
+      });
+
+      $('#t_unfinger')?.addEventListener('click', async () => {
+        try {
+          const r = await DELETE(`/api/team/${p.id}/fingers`);
+          notice(`${r.removed} removed — ${p.name} clocks on with their PIN now`, 'good');
+          closeDialog();
+          load();
+        } catch (e) { whoops(e); }
+      });
+
       $('#t_branch_save')?.addEventListener('click', async () => {
         try {
           await POST(`/api/team/${p.id}/branch`,

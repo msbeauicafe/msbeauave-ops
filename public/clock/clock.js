@@ -102,6 +102,14 @@ async function start() {
       </section>
 
       <aside class="rail">
+        <!-- Only appears if this door has a scanner. Everywhere else the
+             keypad is the first and only thing in the rail, exactly as now. -->
+        <section class="padside finger" id="byfinger" hidden>
+          <h2>Place your finger</h2>
+          <div class="scan" id="scanmark">☝</div>
+          <p class="hint" id="scanhint">Ready</p>
+        </section>
+
         <section class="padside" id="bypin" open>
           <h2>Type your PIN</h2>
           <div class="dots" id="kdots"></div>
@@ -187,6 +195,63 @@ async function start() {
   // Somebody else may clock on at the other door; the board should not go
   // stale while nobody is touching it.
   refresher = setInterval(() => { if (!$('.veil')) load().catch(() => {}); }, 20000);
+  findScanner();
+}
+
+// ---------------------------------------------------------------------------
+// The fingerprint scanner, if this door has one.
+//
+// A web page cannot read a fingerprint — the reader is a USB device and the
+// matching lives in the manufacturer's native library — so a small agent runs
+// on the same PC and answers here on loopback. If nothing answers, this whole
+// section stays hidden and the door is a PIN pad, which is what every tablet
+// will go on being.
+// ---------------------------------------------------------------------------
+const AGENT = 'http://127.0.0.1:9500';
+
+async function findScanner() {
+  let hello;
+  try {
+    const r = await fetch(`${AGENT}/hello`, { signal: AbortSignal.timeout(1500) });
+    hello = await r.json();
+  } catch {
+    return;               // No agent on this device. Nothing to say about it.
+  }
+  if (!hello || hello.agent !== 'msbeauave-door') return;
+
+  const panel = $('#byfinger');
+  const hint = $('#scanhint');
+  panel.hidden = false;
+  const idle = () => {
+    if (!hello.scanner) {
+      hint.textContent = 'Scanner not connected — use your PIN';
+      panel.classList.add('cold');
+    } else {
+      hint.textContent = `Ready · ${hello.holding} on file`;
+      panel.classList.remove('cold');
+    }
+  };
+  idle();
+
+  // The agent does the waiting and the matching; this only asks what happened.
+  setInterval(async () => {
+    if ($('.veil')) return;
+    let latest;
+    try {
+      latest = await (await fetch(`${AGENT}/latest`, { signal: AbortSignal.timeout(2500) })).json();
+    } catch { return; }
+    if (!latest || latest.at === undefined) return;
+
+    if (latest.ok) {
+      const r = latest.result || {};
+      say(`${latest.person || 'Welcome'} — ${r.action === 'out' ? 'clocked out' : 'clocked in'} ✨`, 'good');
+      panel.classList.add('hit');
+      setTimeout(() => panel.classList.remove('hit'), 1200);
+      load().catch(() => {});
+    } else {
+      say(latest.say || 'That finger was not recognised.', 'bad');
+    }
+  }, 1200);
 }
 
 async function load() {

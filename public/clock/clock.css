@@ -176,3 +176,20 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
 @media (max-width: 820px) {
   .rail { position: static; }
 }
+
+/* The scanner panel, above the keypad — only present when the door has one.
+ *
+ * It sits first because a finger is quicker than four digits, and because the
+ * thing you can do without looking should be nearest the hand. The keypad
+ * stays exactly where it was, because it is what everybody falls back to when
+ * a finger is wet, cut, or simply not being read this morning. */
+.padside.finger { padding-bottom: 14px; }
+.padside.finger .scan {
+  font-size: 3rem; line-height: 1.1; margin: 6px 0 2px;
+  filter: grayscale(0); transition: transform .15s, filter .3s;
+}
+.padside.finger.cold .scan { filter: grayscale(1); opacity: .4; }
+.padside.finger.hit {
+  border-color: var(--good); background: #F3F9F5;
+}
+.padside.finger.hit .scan { transform: scale(1.25); }

@@ -1,0 +1,8 @@
+{
+  "site": "https://msbeauave-ops.vercel.app",
+  "username": "Timekeeper",
+  "password": "1234",
+  "shop": 1,
+  "port": 9500,
+  "refreshMinutes": 10
+}

@@ -2437,3 +2437,151 @@ test('the database refuses anybody but the owner the credit ladder', async () =>
     }
   }
 });
+
+// ---------------------------------------------------------------------------
+// Fingerprints
+//
+// The matching itself belongs to the manufacturer's library at the door, and
+// none of it can be tested here. What can be tested is everything around it:
+// that only the owner enrols, that a door is handed its own shop's templates
+// and no others, and that a door claiming to have recognised somebody has the
+// claim checked rather than believed.
+// ---------------------------------------------------------------------------
+const someTemplate = (seed) =>
+  Buffer.from(Array.from({ length: 64 }, (_, i) => (seed * 7 + i * 13) % 256)).toString('base64');
+
+test('a finger is enrolled, counted, and taken back', async () => {
+  const owner = await signIn('admin');
+  const shop = (await POST(owner, '/api/branches', { name: unique('Door') })).data.id;
+  const who = (await POST(owner, '/api/team',
+    { name: unique('Fingered'), position: 'Cashier', branch_id: shop })).data.id;
+
+  assert.equal((await POST(owner, `/api/team/${who}/finger`,
+    { finger: 1, template: someTemplate(1), quality: 80 })).status, 200);
+  assert.equal((await POST(owner, `/api/team/${who}/finger`,
+    { finger: 2, template: someTemplate(2), quality: 75 })).status, 200);
+
+  const listed = (await GET(owner, '/api/team')).data.team.find((p) => String(p.id) === String(who));
+  assert.equal(listed.fingers, 2, 'both fingers counted');
+
+  // Enrolling the same finger again replaces it rather than adding a second.
+  await POST(owner, `/api/team/${who}/finger`, { finger: 1, template: someTemplate(9) });
+  const again = (await GET(owner, '/api/team')).data.team.find((p) => String(p.id) === String(who));
+  assert.equal(again.fingers, 2, 're-enrolling a finger replaces it');
+
+  const gone = await DELETE(owner, `/api/team/${who}/fingers`);
+  assert.equal(gone.data.removed, 2);
+  const after = (await GET(owner, '/api/team')).data.team.find((p) => String(p.id) === String(who));
+  assert.equal(after.fingers, 0, 'a leaver stops opening the door');
+});
+
+test('an empty scan is refused rather than stored', async () => {
+  const owner = await signIn('admin');
+  const who = (await POST(owner, '/api/team',
+    { name: unique('Empty'), position: 'Cashier' })).data.id;
+  for (const body of [{ finger: 1, template: '' }, { finger: 1 }]) {
+    const no = await POST(owner, `/api/team/${who}/finger`, body);
+    assert.equal(no.status, 400);
+    assert.match(no.data.error, /produced nothing/);
+  }
+  const silly = await POST(owner, `/api/team/${who}/finger`,
+    { finger: 44, template: someTemplate(3) });
+  assert.equal(silly.status, 400);
+});
+
+test('a door is handed its own shop and nobody else', async () => {
+  const owner = await signIn('admin');
+  const here = (await POST(owner, '/api/branches', { name: unique('Here') })).data.id;
+  const there = (await POST(owner, '/api/branches', { name: unique('There') })).data.id;
+
+  const ours = (await POST(owner, '/api/team',
+    { name: unique('Ours'), position: 'Cashier', branch_id: here })).data.id;
+  const theirs = (await POST(owner, '/api/team',
+    { name: unique('Theirs'), position: 'Cashier', branch_id: there })).data.id;
+  await POST(owner, `/api/team/${ours}/finger`, { finger: 1, template: someTemplate(4) });
+  await POST(owner, `/api/team/${theirs}/finger`, { finger: 1, template: someTemplate(5) });
+
+  const door = await GET(owner, `/api/clock/fingers?shop=${here}`);
+  assert.equal(door.status, 200);
+  const ids = door.data.people.map((p) => p.id);
+  assert.ok(ids.includes(ours), 'our own people are handed over');
+  assert.ok(!ids.includes(theirs), "the other shop's people are not");
+
+  // And a door with no shop is given nothing at all.
+  const nowhere = await GET(owner, '/api/clock/fingers');
+  assert.equal(nowhere.status, 400);
+});
+
+test('a template survives the round trip byte for byte', async () => {
+  const owner = await signIn('admin');
+  const shop = (await POST(owner, '/api/branches', { name: unique('Round') })).data.id;
+  const who = (await POST(owner, '/api/team',
+    { name: unique('Trip'), position: 'Cashier', branch_id: shop })).data.id;
+  const sent = someTemplate(6);
+  await POST(owner, `/api/team/${who}/finger`, { finger: 3, template: sent });
+
+  const back = (await GET(owner, `/api/clock/fingers?shop=${shop}`)).data.people
+    .find((p) => p.id === who && p.finger === 3);
+  assert.equal(back.template, sent, 'a template the door cannot trust is worse than none');
+});
+
+test('the door is not believed about somebody who has no finger', async () => {
+  const owner = await signIn('admin');
+  const shop = (await POST(owner, '/api/branches', { name: unique('Claim') })).data.id;
+  const other = (await POST(owner, '/api/branches', { name: unique('Elsewhere') })).data.id;
+
+  const enrolled = (await POST(owner, '/api/team',
+    { name: unique('Enrolled'), position: 'Cashier', branch_id: shop })).data.id;
+  const bare = (await POST(owner, '/api/team',
+    { name: unique('Bare'), position: 'Cashier', branch_id: shop })).data.id;
+  const away = (await POST(owner, '/api/team',
+    { name: unique('Away'), position: 'Cashier', branch_id: other })).data.id;
+  await POST(owner, `/api/team/${enrolled}/finger`, { finger: 1, template: someTemplate(7) });
+  await POST(owner, `/api/team/${away}/finger`, { finger: 1, template: someTemplate(8) });
+
+  const on = await POST(owner, '/api/clock/by-finger',
+    { employeeId: enrolled, branch_id: shop });
+  assert.equal(on.status, 200, 'the enrolled person clocks on');
+
+  // Nobody enrolled this person, so a door naming them is making it up.
+  const invented = await POST(owner, '/api/clock/by-finger',
+    { employeeId: bare, branch_id: shop });
+  assert.equal(invented.status, 400);
+
+  // Enrolled, but at the other shop. This door does not hold their template
+  // and has no business clocking them on.
+  const elsewhere = await POST(owner, '/api/clock/by-finger',
+    { employeeId: away, branch_id: shop });
+  assert.equal(elsewhere.status, 400);
+});
+
+test('the database refuses anybody but the owner a fingerprint', async () => {
+  for (const role of ['supervisor', 'office', 'cashier', 'warehouse', 'timekeeper']) {
+    const client = await db.connect();
+    try {
+      await client.query('begin');
+      await client.query(`select set_config('app.role', $1, true),
+                                 set_config('app.actor', 'door', true)`, [role]);
+      await client.query('set local role app_client');
+      for (const [sql, what] of [
+        [`select enrol_finger(1, 1, '\\x00'::bytea, 50)`, 'enrolling a finger'],
+        ['select clear_fingers(1)', 'taking one back'],
+        ['select count(*) from employee_fingers', 'reading templates directly'],
+      ]) {
+        await client.query('savepoint s');
+        let refused = false;
+        try {
+          const r = await client.query(sql);
+          // Reading is not an error under row-level security; it returns
+          // nothing. Either way the templates must not come out.
+          refused = sql.startsWith('select count') ? Number(r.rows[0].count) === 0 : false;
+        } catch (e) { refused = e.code === '42501'; }
+        await client.query('rollback to savepoint s');
+        assert.ok(refused, `the database must refuse a ${role} ${what}`);
+      }
+    } finally {
+      await client.query('rollback').catch(() => {});
+      client.release();
+    }
+  }
+});

@@ -1,0 +1,12 @@
+{
+  "name": "msbeauave-door-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Holds the fingerprint scanner at one shop door and answers the clock page on localhost",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node door.js",
+    "stub": "SDK_STUB=1 node door.js"
+  }
+}
