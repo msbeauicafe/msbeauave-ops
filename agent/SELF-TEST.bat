@@ -36,6 +36,28 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM node.exe copied into this folder is not the same as Node.js being
+REM installed, and it is an easy mistake: it runs, so it looks right, but the
+REM installer is what brings npm and everything else with it.
+if exist "%~dp0node.exe" (
+  echo   node.exe has been copied into this folder.
+  echo.
+  echo   That is not the same as installing Node.js, and it is why npm is
+  echo   missing — the single .exe is the runtime on its own, with none of the
+  echo   things that come with it.
+  echo.
+  echo   Get the Windows Installer ^(.msi^) from https://nodejs.org, run it, take
+  echo   every default. Then DELETE the node.exe in this folder, close this
+  echo   window, open a new one, and run this again.
+  echo.
+  echo   You can still run TEST-WITHOUT-SCANNER.bat right now with the .exe you
+  echo   have — everything except the scanner works without npm.
+  echo.
+  echo FAIL: node.exe copied into the agent folder instead of installed >> install-log.txt
+  pause
+  exit /b 1
+)
+
 for /f "delims=" %%v in ('node -v 2^>^&1') do set NODEV=%%v
 for /f "delims=" %%v in ('node -p "process.arch" 2^>^&1') do set NODEARCH=%%v
 echo   Node !NODEV!, !NODEARCH!
