@@ -200,6 +200,12 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({
           template: made.template.toString('base64'), quality: made.quality,
         }));
+        // The website saves this a moment from now, and the door has no way of
+        // hearing about it. Waiting out the ten-minute refresh to find out
+        // whether an enrolment took is a miserable way to set fifty people up,
+        // so ask again shortly, and once more in case the first was too quick.
+        setTimeout(() => refresh().catch(() => {}), 3000);
+        setTimeout(() => refresh().catch(() => {}), 15000);
       } catch (e) {
         res.writeHead(400).end(JSON.stringify({ error: e.message }));
       } finally { enrolling = false; }
