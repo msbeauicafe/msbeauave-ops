@@ -23,6 +23,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const STUB = process.env.SDK_STUB === '1';
 
@@ -75,11 +77,12 @@ let fn = {};
 let device = null;      // the scanner
 let cache = null;       // the matcher, holding this shop's templates
 let imageSize = 0;
+let dllPath = null;
 let loadedCount = 0;
 
-function bind(dllPath) {
+function bind(path) {
   koffi = createRequire(import.meta.url)('koffi');
-  lib = koffi.load(dllPath);
+  lib = koffi.load(path);
 
   // Handles stay `void *` rather than plain numbers: on 64-bit a handle does
   // not fit in an int, and a truncated one fails in ways that look like
@@ -130,6 +133,7 @@ export async function open(conf = {}) {
   if (STUB) { device = 'stub'; return 'a pretend scanner (SDK_STUB=1)'; }
 
   const dll = findDll(conf.zkfpPath);
+  dllPath = dll;
   try {
     bind(dll);
   } catch (e) {
@@ -221,6 +225,32 @@ export const forgetCrash = () => { try { fs.unlinkSync(CRASH); } catch { /* alre
 let skipMatching = false;
 export const dontMatch = () => { skipMatching = true; };
 
+// Asked once, of a process that is allowed to die, and then remembered.
+const ORDER_FILE = new URL('./dbadd-order.txt', import.meta.url);
+
+function whichOrder(dll, template) {
+  try {
+    const known = fs.readFileSync(ORDER_FILE, 'utf8').trim();
+    if (known === 'len-first' || known === 'ptr-first') return known;
+  } catch { /* never asked */ }
+
+  const probe = fileURLToPath(new URL('./probe.js', import.meta.url));
+  for (const order of ['len-first', 'ptr-first']) {
+    trace(`probing ZKFPM_DBAdd with ${order} — in a process that may die`);
+    const r = spawnSync(process.execPath, [probe, dll, order, template.toString('base64')],
+      { encoding: 'utf8', timeout: 20000 });
+    const said = (r.stdout || '').trim() || (r.signal ? `killed by ${r.signal}` : 'died');
+    trace(`  ${order}: ${r.status === 0 ? 'good' : 'no'} (${said})`);
+    if (r.status === 0) {
+      fs.writeFileSync(ORDER_FILE, order);
+      return order;
+    }
+  }
+  return null;
+}
+
+let argOrder = null;
+
 export async function load(people) {
   if (STUB) { stubPeople = people; loadedCount = people.length; return people.length; }
   if (skipMatching) { loadedCount = 0; return 0; }
@@ -232,6 +262,22 @@ export async function load(people) {
   // turned "no scanner" into a crash on every refresh.
   if (!device || !cache) { loadedCount = 0; return 0; }
 
+  // Settle the argument order before touching the matcher for real.
+  if (people.length && !argOrder) {
+    argOrder = whichOrder(dllPath, Buffer.from(people[0].template, 'base64'));
+    if (!argOrder) {
+      trace('neither argument order for ZKFPM_DBAdd works — no fingerprint matching.');
+      trace('send door-log.txt; the PIN pad is unaffected.');
+      skipMatching = true;
+      loadedCount = 0;
+      return 0;
+    }
+    trace(`ZKFPM_DBAdd takes its arguments ${argOrder}`);
+    fn.dbAdd = argOrder === 'len-first'
+      ? lib.func('int ZKFPM_DBAdd(void *cache, uint32_t fid, uint32_t size, uint8_t *tmpl)')
+      : lib.func('int ZKFPM_DBAdd(void *cache, uint32_t fid, uint8_t *tmpl, uint32_t size)');
+  }
+
   trace('load: emptying the matcher (ZKFPM_DBClear)');
   fn.dbClear(cache);
   let added = 0;
@@ -242,7 +288,9 @@ export async function load(people) {
       + `  ZKFPM_DBAdd, ${p.name}, finger ${p.finger}, ${t.length} bytes\n`
       + `Delete this file to try again.\n`);
     trace(`load: adding ${p.name} finger ${p.finger}, ${t.length} bytes (ZKFPM_DBAdd)`);
-    const rc = fn.dbAdd(cache, keyFor(p.id, p.finger), t.length, t);
+    const rc = argOrder === 'len-first'
+      ? fn.dbAdd(cache, keyFor(p.id, p.finger), t.length, t)
+      : fn.dbAdd(cache, keyFor(p.id, p.finger), t, t.length);
     trace(`load: added, returned ${rc}`);
     if (rc === OK) added++;
     // One unreadable template must not cost the shop its whole door.
