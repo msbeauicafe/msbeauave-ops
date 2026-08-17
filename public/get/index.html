@@ -141,6 +141,48 @@
     <div class="meta">com.msbeauave.clock · about 0.5 MB</div>
   </div>
 
+  <div class="note" style="margin-top:22px">
+    <b>Fingerprints: this one is for a Windows PC, not a phone.</b> A web page
+    cannot read a USB fingerprint reader — the matching lives in ZKTeco's own
+    library — so a small program sits on the PC at the door, holds the scanner,
+    and answers the clock page. Install it only where a ZK9500 is plugged in.
+  </div>
+
+  <div class="card">
+    <h2>☝️ MBA door agent <span style="font-size:.8rem;color:var(--muted)">Windows</span></h2>
+    <p>The fingerprint half. Run <code>SELF-TEST.bat</code> first — it proves the
+      scanner works before anything else gets blamed — then
+      <code>START-THE-DOOR.bat</code>. The clock page on that PC finds it by
+      itself and grows a “Place your finger” panel above the keypad.</p>
+    <a class="btn" href="/get/mba-door-agent.zip" download>Download the zip</a>
+    <div class="meta">Needs the ZKFinger SDK for Windows and Node.js 20 · about 15 KB</div>
+  </div>
+
+  <div class="card">
+    <h2>Setting up a fingerprint door</h2>
+    <ol>
+      <li><b>ZKFinger SDK for Windows</b> — this carries the ZK9500 driver.
+        Plug the scanner in afterwards and check the SDK's own demo can read a
+        finger. If it cannot, stop there; nothing else will work.</li>
+      <li><b>Node.js 20</b> from nodejs.org. It has to match the SDK —
+        64-bit with 64-bit. The agent checks and says so if they disagree.</li>
+      <li>Unzip the door agent somewhere permanent, like
+        <code>C:\MBA\door</code>.</li>
+      <li>Copy <code>door.example.json</code> to <code>door.json</code> and fill
+        in the four values. <b><code>shop</code> is 1 for Bayan Bayanan and 2
+        for Dao</b> — that number is what stops one shop's machine holding the
+        other shop's staff.</li>
+      <li>Double-click <code>SELF-TEST.bat</code>. Do not go on until every
+        line says <code>ok</code>.</li>
+      <li>Double-click <code>START-THE-DOOR.bat</code> and leave it running.</li>
+      <li>Open <a href="/clock/">the clock</a> in Chrome <b>on that same PC</b>.</li>
+    </ol>
+    <p class="meta">Enrolling is done from the back office: Team → open a person
+      → Fingerprints → Scan a finger. It takes the finger three times and merges
+      them, so lift between presses. Enrol two fingers each — a cut thumb on a
+      Monday should not cost somebody their hours.</p>
+  </div>
+
   <div class="card">
     <h2>Installing on Android</h2>
     <ol>

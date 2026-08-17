@@ -21,6 +21,19 @@
           "value": "public, max-age=300"
         }
       ]
+    },
+    {
+      "source": "/get/(.*).zip",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/zip"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=300"
+        }
+      ]
     }
   ]
 }
