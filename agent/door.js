@@ -323,6 +323,16 @@ async function proxy(req, res, url) {
 }
 
 sdk.traceTo(say);
+
+// Did the last run die loading a fingerprint into the matcher?
+const wreck = sdk.crashedLoading();
+if (wreck) {
+  sdk.dontMatch();
+  say('the last run stopped while loading a fingerprint into the scanner:');
+  for (const line of wreck.trim().split('\n')) say('  ' + line);
+  say('running without fingerprint matching this time — PINs still work.');
+  say('send door-log.txt and matcher-crash.txt to have it fixed.');
+}
 say(`MS BEAU AVE door agent — shop ${conf.shop}, ${conf.site}`);
 try {
   say('scanner:', await sdk.open(conf));

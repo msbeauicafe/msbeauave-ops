@@ -205,8 +205,25 @@ export async function close() {
  *
  * @param {{id:number, name:string, finger:number, template:string}[]} people
  */
+// A crash guard for the one call that cannot be caught.
+//
+// Handing a template to the matcher is a native call, and a native call with
+// its arguments in the wrong order does not raise an error — it takes the
+// process down mid-sentence. A door that dies on start-up, every start-up, is
+// worse than a door with no scanner: the shop loses the PIN pad too.
+//
+// So the intention is written to a file first. If that file is still there
+// next time, the last run died doing it, and this one leaves the matcher
+// alone and serves the clock instead. Deleting the file says "try again".
+const CRASH = new URL('./matcher-crash.txt', import.meta.url);
+export const crashedLoading = () => { try { return fs.readFileSync(CRASH, 'utf8'); } catch { return null; } };
+export const forgetCrash = () => { try { fs.unlinkSync(CRASH); } catch { /* already gone */ } };
+let skipMatching = false;
+export const dontMatch = () => { skipMatching = true; };
+
 export async function load(people) {
   if (STUB) { stubPeople = people; loadedCount = people.length; return people.length; }
+  if (skipMatching) { loadedCount = 0; return 0; }
 
   // No scanner open means no matcher to load into, and that is a normal state
   // rather than a fault: a door whose reader is unplugged still fetches its
@@ -220,6 +237,10 @@ export async function load(people) {
   let added = 0;
   for (const p of people) {
     const t = Buffer.from(p.template, 'base64');
+    fs.writeFileSync(CRASH,
+      `The run before this one stopped here:\n`
+      + `  ZKFPM_DBAdd, ${p.name}, finger ${p.finger}, ${t.length} bytes\n`
+      + `Delete this file to try again.\n`);
     trace(`load: adding ${p.name} finger ${p.finger}, ${t.length} bytes (ZKFPM_DBAdd)`);
     const rc = fn.dbAdd(cache, keyFor(p.id, p.finger), t.length, t);
     trace(`load: added, returned ${rc}`);
@@ -227,6 +248,7 @@ export async function load(people) {
     // One unreadable template must not cost the shop its whole door.
     else console.log(`  could not load ${p.name}'s finger ${p.finger}: ${why(rc)}`);
   }
+  forgetCrash();
   loadedCount = added;
   return added;
 }

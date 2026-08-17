@@ -1,6 +1,4 @@
 door.json
 install-log.txt
 door-log.txt
-
-# node_modules is deliberately committed: koffi ships inside the download so
-# a shop PC needs nothing fetched. Only these two Windows builds are kept.
+matcher-crash.txt
