@@ -12,11 +12,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import * as sdk from './sdk.js';
 
-const tick = (s) => console.log(`  ok    ${s}`);
-const cross = (s) => console.log(`  FAIL  ${s}`);
+// Everything printed here is appended to install-log.txt as well, because the
+// window this runs in is usually closed before anybody thinks to write down
+// what it said.
+const LOG = new URL('./install-log.txt', import.meta.url);
+const write = (line) => {
+  console.log(line);
+  try { fs.appendFileSync(LOG, line.replace(/^\s+/, '') + '\n'); } catch { /* the log is a nicety */ }
+};
+const tick = (s) => write(`  ok    ${s}`);
+const cross = (s) => write(`  FAIL  ${s}`);
 
 console.log('\nMS BEAU AVE — scanner self-test\n');
-console.log(`  Node ${process.version}, ${os.arch() === 'x64' ? '64-bit' : '32-bit'}, on ${os.platform()}`);
+write(`  Node ${process.version}, ${os.arch() === 'x64' ? '64-bit' : '32-bit'}, on ${os.platform()}`);
 if (os.platform() !== 'win32') {
   console.log('\n  Note: this is not Windows. The ZKFinger SDK for Windows will not load here.');
   console.log('  Run SDK_STUB=1 npm start to exercise everything except the scanner.\n');

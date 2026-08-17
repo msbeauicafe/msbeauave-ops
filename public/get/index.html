@@ -164,8 +164,11 @@
       <li><b>ZKFinger SDK for Windows</b> — this carries the ZK9500 driver.
         Plug the scanner in afterwards and check the SDK's own demo can read a
         finger. If it cannot, stop there; nothing else will work.</li>
-      <li><b>Node.js 20</b> from nodejs.org. It has to match the SDK —
-        64-bit with 64-bit. The agent checks and says so if they disagree.</li>
+      <li><b>Node.js 20 or newer</b> — <a href="https://nodejs.org">nodejs.org</a>,
+        the LTS installer, all defaults. <b>This is separate from the ZKTeco
+        driver and it is the step people skip.</b> Without it the self-test
+        cannot run at all. It also has to match the SDK — 64-bit with 64-bit —
+        and the self-test says so if they disagree.</li>
       <li>Unzip the door agent somewhere permanent, like
         <code>C:\MBA\door</code>.</li>
       <li>Copy <code>door.example.json</code> to <code>door.json</code> and fill

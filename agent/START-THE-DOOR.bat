@@ -1,22 +1,44 @@
 @echo off
-REM Starts the door. Leave this window open, or install it as a service
-REM with:  npm install -g node-windows  then  node service-install.js
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
-if not exist node_modules (
-  echo Installing what the agent needs, one moment...
-  call npm install || goto fail
-)
-if not exist door.json (
+title MS BEAU AVE - door
+
+REM Leave this window open. To have it start with the PC instead, run:
+REM   npm install -g node-windows
+REM   node service-install.js
+
+where node >nul 2>&1
+if errorlevel 1 (
   echo.
-  echo door.json is missing. Copy door.example.json to door.json and fill it in first.
+  echo   Node.js is not installed. Get the LTS installer from https://nodejs.org,
+  echo   then run SELF-TEST.bat first.
   echo.
   pause
   exit /b 1
 )
-call npm start
-pause
-exit /b 0
-:fail
+
+if not exist door.json (
+  echo.
+  echo   door.json is missing. Copy door.example.json to door.json and fill it
+  echo   in - shop is 1 for Bayan Bayanan, 2 for Dao.
+  echo.
+  pause
+  exit /b 1
+)
+
+if not exist node_modules (
+  echo   Fetching what the agent needs, one moment...
+  call npm install --no-audit --no-fund
+  if errorlevel 1 (
+    echo.
+    echo   That failed. Run SELF-TEST.bat - it says why.
+    echo.
+    pause
+    exit /b 1
+  )
+)
+
+call node door.js
 echo.
-echo npm install failed. Is Node.js installed? Get it from nodejs.org.
+echo   The door has stopped. Anything above this line is the reason.
 pause
