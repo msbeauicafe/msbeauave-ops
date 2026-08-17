@@ -115,16 +115,20 @@ async function start() {
           <p class="hint">Or tap your name on the left.</p>
         </section>
 
-        <!-- Only appears if this door has a scanner. It sits under the keypad
-             rather than over it: the PIN is what everybody has, and what
-             everybody falls back to when a finger is wet or cut. -->
-        <section class="padside finger" id="byfinger" hidden>
-          <h2>Place your finger</h2>
-          <div class="scan" id="scanmark">☝</div>
-          <p class="hint" id="scanhint">Ready</p>
-        </section>
       </aside>
-    </div>`;
+    </div>
+
+    <!-- The scanner, in the bottom corner and staying there.
+         Only appears if this door has one. Fixed rather than in the flow,
+         because the faces scroll and a prompt that scrolls away is a prompt
+         nobody sees at the moment they need it. -->
+    <section class="fingercorner" id="byfinger" hidden>
+      <div class="scan" id="scanmark">☝</div>
+      <div>
+        <h2>Place your finger</h2>
+        <p class="hint" id="scanhint">Ready</p>
+      </div>
+    </section>`;
 
 
   let typed = '';
