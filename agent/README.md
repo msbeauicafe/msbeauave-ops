@@ -77,6 +77,19 @@ node service-install.js
 
 A shop should not need somebody to remember to start a program.
 
+## Two kinds of machine
+
+**A door.** Sits at a shop, `desk` left `false`. A finger presented to it
+clocks that person on or off. One per door, each with its own `shop` number.
+
+**An enrolment desk.** The office PC, `desk` set to `true`. It holds a scanner
+and serves the back office so people can be enrolled sitting down, and it
+never clocks anybody — which matters, because enrolling sixty-seven people
+means sixty-seven fingers on the glass, and on a door every one of those would
+be somebody's arrival.
+
+Enrol everybody at the desk. The doors only ever have to recognise.
+
 ## Configuration — `door.json`
 
 | Key | What it is |
@@ -86,6 +99,7 @@ A shop should not need somebody to remember to start a program.
 | `password` | its code |
 | `shop` | `1` for Bayan Bayanan, `2` for Dao |
 | `zkfpPath` | leave empty unless the DLL is somewhere unusual |
+| `desk` | `true` on the office PC that enrols; `false` at a shop door |
 
 The `shop` number is what stops the Dao machine holding Bayan Bayanan's
 staff. Get it wrong and the door simply will not recognise anybody.

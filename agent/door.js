@@ -183,7 +183,7 @@ const server = http.createServer((req, res) => {
     // What the clock page asks on load to find out whether this door has a
     // scanner at all. Says nothing about who is enrolled.
     json({
-      agent: 'msbeauave-door', shop: Number(conf.shop),
+      agent: 'msbeauave-door', shop: Number(conf.shop), desk: DESK,
       scanner: sdk.ready(), holding: sdk.holding(),
       lastLoad, error: lastError,
     });
@@ -333,7 +333,18 @@ if (wreck) {
   say('running without fingerprint matching this time — PINs still work.');
   say('send door-log.txt and matcher-crash.txt to have it fixed.');
 }
-say(`MS BEAU AVE door agent — shop ${conf.shop}, ${conf.site}`);
+// A desk is not a door.
+//
+// The machine that enrols people wants the scanner and the back office, and
+// emphatically does not want the clock: sixty-seven people are about to press
+// a finger on it to be enrolled, and every one of those presses would clock
+// somebody in. So a desk holds the scanner, answers the office, and never
+// clocks anybody.
+const DESK = conf.desk === true || String(conf.mode || '').toLowerCase() === 'desk';
+
+say(DESK
+  ? `MS BEAU AVE enrolment desk — enrolling for shop ${conf.shop}, ${conf.site}`
+  : `MS BEAU AVE door agent — shop ${conf.shop}, ${conf.site}`);
 try {
   say('scanner:', await sdk.open(conf));
 } catch (e) {
@@ -364,4 +375,8 @@ setInterval(async () => {
     await refresh();
   } catch (e) { lastError = e.message; }
 }, REFRESH_MS);
-if (sdk.ready()) watch();
+if (sdk.ready() && !DESK) watch();
+if (DESK) {
+  say('desk mode: a finger here enrols. It does not clock anybody on.');
+  say(`open http://127.0.0.1:${PORT}/office to enrol somebody.`);
+}
