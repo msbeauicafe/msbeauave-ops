@@ -3,9 +3,10 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 title MS BEAU AVE - door
 
-REM Leave this window open. To have it start with the PC instead, run:
+REM Leave this window open. To have it start with the PC instead:
 REM   npm install -g node-windows
 REM   node service-install.js
+REM (that one does need npm; running the door by hand does not)
 
 where node >nul 2>&1
 if errorlevel 1 (
@@ -24,18 +25,6 @@ if not exist door.json (
   echo.
   pause
   exit /b 1
-)
-
-if not exist node_modules (
-  echo   Fetching what the agent needs, one moment...
-  call npm install --no-audit --no-fund
-  if errorlevel 1 (
-    echo.
-    echo   That failed. Run SELF-TEST.bat - it says why.
-    echo.
-    pause
-    exit /b 1
-  )
 )
 
 call node door.js

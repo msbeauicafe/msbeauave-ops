@@ -36,26 +36,15 @@ if errorlevel 1 (
   exit /b 1
 )
 
-REM node.exe copied into this folder is not the same as Node.js being
-REM installed, and it is an easy mistake: it runs, so it looks right, but the
-REM installer is what brings npm and everything else with it.
+REM node.exe copied into this folder used to be fatal, because npm was needed
+REM to fetch koffi. koffi now travels inside the download, so a copied .exe
+REM works perfectly well. Worth a word, not a stop.
 if exist "%~dp0node.exe" (
-  echo   node.exe has been copied into this folder.
-  echo.
-  echo   That is not the same as installing Node.js, and it is why npm is
-  echo   missing — the single .exe is the runtime on its own, with none of the
-  echo   things that come with it.
-  echo.
-  echo   Get the Windows Installer ^(.msi^) from https://nodejs.org, run it, take
-  echo   every default. Then DELETE the node.exe in this folder, close this
-  echo   window, open a new one, and run this again.
-  echo.
-  echo   You can still run TEST-WITHOUT-SCANNER.bat right now with the .exe you
-  echo   have — everything except the scanner works without npm.
-  echo.
-  echo FAIL: node.exe copied into the agent folder instead of installed >> install-log.txt
-  pause
-  exit /b 1
+  echo   note: node.exe is sitting in this folder rather than Node being
+  echo         installed. That works — nothing here needs npm — but Settings
+  echo         and the Windows service will not see Node. Installing it
+  echo         properly from https://nodejs.org is tidier.
+  echo node.exe is local to the folder >> install-log.txt
 )
 
 for /f "delims=" %%v in ('node -v 2^>^&1') do set NODEV=%%v
@@ -83,34 +72,6 @@ if /i not "!NODEARCH!"=="x64" (
   echo.
 )
 
-REM npm lives in the same folder as node.exe. If node is found and npm is not,
-REM it was not installed rather than merely missing from PATH — the Node
-REM installer has a tick-box for it, and an install that skipped it looks
-REM exactly like this.
-where npm >nul 2>&1
-if errorlevel 1 (
-  for /f "delims=" %%p in ('where node 2^>nul') do set NODEEXE=%%p
-  echo.
-  echo   Node is installed, but npm is not.
-  echo.
-  echo   node.exe is at:  !NODEEXE!
-  echo   npm.cmd should be in that same folder, and is not — so the Node
-  echo   installer ran with its npm component turned off.
-  echo.
-  echo   To fix it: Settings ^> Apps, find Node.js, choose Modify, and make
-  echo   sure "npm package manager" is ticked. Or just re-run the installer
-  echo   from https://nodejs.org and take every default. Then close this
-  echo   window, open a NEW one, and run this again.
-  echo.
-  echo   MEANWHILE, you can still test everything except the scanner right
-  echo   now: close this and double-click TEST-WITHOUT-SCANNER.bat. That one
-  echo   needs no npm at all.
-  echo.
-  echo FAIL: npm not installed alongside node >> install-log.txt
-  pause
-  exit /b 1
-)
-
 REM --- 2. Settings ------------------------------------------------------------
 if not exist door.json (
   echo.
@@ -127,31 +88,17 @@ if not exist door.json (
 echo   door.json found
 
 REM --- 3. What the agent needs to run ------------------------------------------
-if not exist node_modules (
+REM Nothing to fetch: koffi, the piece that calls into libzkfp.dll, travels
+REM inside the download. This only checks it survived the unzip.
+if not exist node_modules\koffi (
   echo.
-  echo   Fetching what the agent needs. This takes a minute, and needs the
-  echo   internet on this PC.
+  echo   The node_modules folder is missing. The zip was not fully extracted -
+  echo   right-click it, choose "Extract All", and run this from the extracted
+  echo   folder rather than from inside the zip window.
   echo.
-  call npm install --no-audit --no-fund >> install-log.txt 2>&1
-  if errorlevel 1 (
-    echo.
-    echo   That did not work. The reason is in install-log.txt, in this folder.
-    echo   The usual causes, commonest first:
-    echo.
-    echo     - no internet on this PC, or a firewall blocking npm
-    echo     - a company proxy: npm config set proxy http://your-proxy:port
-    echo     - antivirus quarantining the download
-    echo.
-    echo   Send me install-log.txt and I will tell you which.
-    echo.
-    echo   The last few lines of it:
-    echo   ------------------------------------------------------------
-    powershell -NoProfile -Command "Get-Content install-log.txt -Tail 15" 2>nul
-    echo   ------------------------------------------------------------
-    echo.
-    pause
-    exit /b 1
-  )
+  echo FAIL: node_modules missing >> install-log.txt
+  pause
+  exit /b 1
 )
 echo   the agent's parts are installed
 echo.

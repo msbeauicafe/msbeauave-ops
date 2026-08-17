@@ -136,10 +136,15 @@ export async function open(conf = {}) {
     // what lets Node call into the DLL at all, and it arrives with npm.
     if (/Cannot find module 'koffi'/.test(e.message)) {
       throw new Error(
-        'The piece that talks to the scanner has not been fetched yet — run '
-        + '"npm install" in this folder. (If npm is missing, Node was installed '
-        + 'without it, or node.exe was copied here instead of Node being '
-        + 'installed. Everything except the scanner works meanwhile.)');
+        'The node_modules folder is missing beside this program. It ships inside '
+        + 'the download, so the zip was probably not fully extracted — right-click '
+        + 'it, choose Extract All, and run from the extracted folder. Everything '
+        + 'except the scanner works meanwhile.');
+    }
+    if (/native Koffi module/i.test(e.message)) {
+      throw new Error(
+        `No bundled build for ${os.platform()}-${os.arch()}. The download carries `
+        + 'the two Windows builds; this looks like a different machine.');
     }
     if (/cannot open|not found|No such file/i.test(e.message)) {
       throw new Error(

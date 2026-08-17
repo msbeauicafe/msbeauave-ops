@@ -1,16 +1,15 @@
 {
   "name": "msbeauave-door-agent",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "Holds the fingerprint scanner at one shop door and answers the clock page on localhost",
-  "engines": { "node": ">=20" },
+  "description": "Holds the fingerprint scanner at one shop door and answers the clock page on localhost. Self-contained: koffi is bundled, so no npm install is needed.",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node door.js",
     "stub": "SDK_STUB=1 node door.js",
     "selftest": "node selftest.js"
-  },
-  "dependencies": {
-    "koffi": "^2.9.0"
   }
 }

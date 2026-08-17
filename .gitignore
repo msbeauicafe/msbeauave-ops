@@ -1,4 +1,8 @@
 node_modules/
+
+# Except the door agent's, which is vendored on purpose: koffi ships inside
+# the download so a shop PC needs nothing fetched over a counter's wifi.
+!agent/node_modules/
 *.log
 .env
 .env.*
