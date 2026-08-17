@@ -207,7 +207,12 @@ async function start() {
 // section stays hidden and the door is a PIN pad, which is what every tablet
 // will go on being.
 // ---------------------------------------------------------------------------
-const AGENT = 'http://127.0.0.1:9500';
+// Where the scanner answers. When the door serves this page itself — which is
+// how a fingerprint door works, because a browser will not let a page from the
+// internet reach into the machine it is shown on — that is simply here.
+const AGENT = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(location.origin)
+  ? location.origin
+  : 'http://127.0.0.1:9500';
 
 // Adding ?debug=1 to the address makes the page say why it cannot see a
 // scanner. Off by default and deliberately so — a tablet by a door should not

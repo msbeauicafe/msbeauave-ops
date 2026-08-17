@@ -58,8 +58,15 @@ The agent is deliberately the smallest thing that can work:
    it. Do not move on until every line says `ok`.
 6. `npm start`. It prints the shop it is serving and how many templates it
    loaded.
-7. Open the clock page in Chrome **on that same PC**. It finds the agent by
-   itself and shows "Place your finger" above the keypad.
+7. Open **`http://127.0.0.1:9500/`** in Chrome on that PC. That is the clock —
+   served by the door itself, fixed to this door's shop, with "Place your
+   finger" under the keypad.
+
+   Not the vercel.app address. A page served from the public internet is not
+   allowed to reach into the machine it is displayed on; browsers are right
+   about that, and a shop counter is the last place to be turning the
+   protection off in a settings screen. So the door serves the page, and
+   everything the browser needs comes from one address.
 
 ### As a service, so it starts with the PC
 

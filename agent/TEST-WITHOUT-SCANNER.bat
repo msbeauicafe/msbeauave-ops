@@ -49,7 +49,7 @@ if not exist door.js (
 
 echo.
 echo   Starting with a PRETEND scanner. Leave this window open, then open
-echo   https://msbeauave-ops.vercel.app/clock/ in Chrome ON THIS PC.
+echo   http://127.0.0.1:9500/ in Chrome ON THIS PC - not the vercel address.
 echo.
 echo   You should see "Place your finger" appear above the keypad, with a
 echo   count of how many fingerprints this shop has on file. That count comes

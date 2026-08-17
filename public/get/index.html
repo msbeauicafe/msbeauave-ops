@@ -152,8 +152,9 @@
     <h2>☝️ MBA door agent <span style="font-size:.8rem;color:var(--muted)">Windows</span></h2>
     <p>The fingerprint half. Run <code>SELF-TEST.bat</code> first — it proves the
       scanner works before anything else gets blamed — then
-      <code>START-THE-DOOR.bat</code>. The clock page on that PC finds it by
-      itself and grows a “Place your finger” panel above the keypad.</p>
+      <code>START-THE-DOOR.bat</code>, then open <code>http://127.0.0.1:9500/</code>
+      on that PC. The door serves the clock itself, with “Place your finger”
+      under the keypad.</p>
     <a class="btn" href="/get/mba-door-agent.zip" download>Download the zip</a>
     <div class="meta">Needs the ZKFinger SDK for Windows and Node.js 20 · about 0.9 MB ·
       nothing to install, everything it needs is inside</div>
@@ -186,7 +187,11 @@
         many fingerprints the shop has on file — everything except the reading
         of an actual finger. <b>It needs nothing but Node itself</b>: no npm, no
         downloads, so it works even when the rest of the setup is misbehaving.</li>
-      <li>Open <a href="/clock/">the clock</a> in Chrome <b>on that same PC</b>.</li>
+      <li>Open <code>http://127.0.0.1:9500/</code> in Chrome on that PC —
+        <b>not this website's address</b>. The door serves the clock itself,
+        already fixed to its own shop. A page from the internet is not allowed
+        to reach into the machine showing it, so the door hands over the page,
+        the scanner and the data from one place.</li>
     </ol>
     <p class="meta">Enrolling is done from the back office: Team → open a person
       → Fingerprints → Scan a finger. It takes the finger three times and merges

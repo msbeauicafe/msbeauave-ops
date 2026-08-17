@@ -174,16 +174,19 @@ const server = http.createServer((req, res) => {
   }
 
   const url = new URL(req.url, 'http://127.0.0.1');
-  res.setHeader('Content-Type', 'application/json');
+  const json = (o) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(o));
+  };
 
   if (url.pathname === '/hello') {
     // What the clock page asks on load to find out whether this door has a
     // scanner at all. Says nothing about who is enrolled.
-    res.end(JSON.stringify({
+    json({
       agent: 'msbeauave-door', shop: Number(conf.shop),
       scanner: sdk.ready(), holding: sdk.holding(),
       lastLoad, error: lastError,
-    }));
+    });
     return;
   }
 
@@ -193,6 +196,7 @@ const server = http.createServer((req, res) => {
     // nothing else — the website decides whose finger it is, because the
     // agent has no business knowing who is being enrolled.
     if (!sdk.ready()) {
+      res.setHeader('Content-Type', 'application/json');
       res.writeHead(503).end(JSON.stringify({ error: 'No scanner on this machine.' }));
       return;
     }
@@ -202,9 +206,7 @@ const server = http.createServer((req, res) => {
         // Three scans of the one finger, merged. The steps go to the log so
         // whoever is enrolling can be told when to lift and press again.
         const made = await sdk.enrol((step) => say(`enrol: scan ${step} of 3`));
-        res.end(JSON.stringify({
-          template: made.template.toString('base64'), quality: made.quality,
-        }));
+        json({ template: made.template.toString('base64'), quality: made.quality });
         // The website saves this a moment from now, and the door has no way of
         // hearing about it. Waiting out the ten-minute refresh to find out
         // whether an enrolment took is a miserable way to set fifty people up,
@@ -212,6 +214,7 @@ const server = http.createServer((req, res) => {
         setTimeout(() => refresh().catch(() => {}), 3000);
         setTimeout(() => refresh().catch(() => {}), 15000);
       } catch (e) {
+        res.setHeader('Content-Type', 'application/json');
         res.writeHead(400).end(JSON.stringify({ error: e.message }));
       } finally { enrolling = false; }
     })();
@@ -223,12 +226,76 @@ const server = http.createServer((req, res) => {
     // so a reload cannot replay somebody else's clock-in.
     const out = latest && Date.now() - latest.at < 15_000 ? latest : null;
     latest = null;
-    res.end(JSON.stringify(out || {}));
+    json(out || {});
     return;
   }
 
-  res.writeHead(404).end(JSON.stringify({ error: 'No such thing here.' }));
+  // ---------------------------------------------------------------------
+  // Everything else: the clock page itself, and the website behind it.
+  //
+  // This exists because of a rule browsers are right to have. A page served
+  // from the public internet is not allowed to reach into the machine it is
+  // displayed on — otherwise any website could go looking for what is
+  // listening on your own PC. Chrome enforces it, and a shop counter is the
+  // last place to be turning that protection off in a settings screen.
+  //
+  // So the door stops being something the website reaches into, and becomes
+  // where the clock is served from. Open http://127.0.0.1:9500/ and the page,
+  // the scanner and the data all come from one address. There is no line for
+  // the browser to refuse to cross.
+  //
+  // The website still holds everything; this only passes it through, using
+  // the door's own sign-in. Which is also why it listens on loopback alone:
+  // it is the tablet's session, and it never leaves the machine.
+  // ---------------------------------------------------------------------
+  proxy(req, res, url).catch((e) => {
+    if (!res.headersSent) res.writeHead(502);
+    res.end(JSON.stringify({ error: `The website could not be reached: ${e.message}` }));
+  });
 });
+
+async function proxy(req, res, url) {
+  // A door belongs to one shop, and the page decides which from its own
+  // address. Sending the browser to /?shop=N once means the tablet at this
+  // door shows this door's faces and cannot be talked out of it.
+  if (url.pathname === '/' && !url.searchParams.get('shop')) {
+    res.writeHead(302, { Location: `/?shop=${Number(conf.shop)}` }).end();
+    return;
+  }
+
+  const path = url.pathname === '/' ? '/clock/' : url.pathname;
+  const target = conf.site + path + (url.search || '');
+
+  const body = ['GET', 'HEAD'].includes(req.method)
+    ? undefined
+    : await new Promise((done) => {
+        const parts = [];
+        req.on('data', (c) => parts.push(c));
+        req.on('end', () => done(Buffer.concat(parts)));
+      });
+
+  const send = () => fetch(target, {
+    method: req.method,
+    headers: {
+      ...(req.headers['content-type'] ? { 'Content-Type': req.headers['content-type'] } : {}),
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+    body,
+    redirect: 'follow',
+  });
+
+  let out = await send();
+  // The door's session is what the page borrows, so the door renews it.
+  if (out.status === 401) { await signIn(); out = await send(); }
+
+  const type = out.headers.get('content-type');
+  res.writeHead(out.status, {
+    ...(type ? { 'Content-Type': type } : {}),
+    // The page is the door's own now; nothing here should be held on to.
+    'Cache-Control': 'no-store',
+  });
+  res.end(Buffer.from(await out.arrayBuffer()));
+}
 
 say(`MS BEAU AVE door agent — shop ${conf.shop}, ${conf.site}`);
 try {
