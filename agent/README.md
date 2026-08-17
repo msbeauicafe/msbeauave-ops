@@ -94,6 +94,13 @@ staff. Get it wrong and the door simply will not recognise anybody.
 
 ## Enrolling
 
+Open **`http://127.0.0.1:9500/office`** on the door PC and sign in as yourself.
+That is the back office, served through the door for the same reason the clock
+is: enrolling has to reach the scanner, and a page from the internet may not.
+You are signed in as you, not as the door — enrolling a fingerprint takes the
+owner's rights, and the door has none.
+
+
 From the back office: Team → open a person → **Fingerprints** → Scan a finger.
 The scanner takes the finger **three times** and merges the three into one
 registration template, which is how ZKTeco's own algorithm expects to be

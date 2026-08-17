@@ -263,7 +263,13 @@ async function proxy(req, res, url) {
     return;
   }
 
-  const path = url.pathname === '/' ? '/clock/' : url.pathname;
+  // /office is the back office, served from here so that enrolling a
+  // fingerprint can reach the scanner. Same reason the clock is served here:
+  // a page from the internet may not touch this machine, so the machine
+  // hands over the page.
+  const path = url.pathname === '/' ? '/clock/'
+    : (url.pathname === '/office' || url.pathname === '/office/') ? '/'
+    : url.pathname;
   const target = conf.site + path + (url.search || '');
 
   const body = ['GET', 'HEAD'].includes(req.method)
@@ -274,26 +280,45 @@ async function proxy(req, res, url) {
         req.on('end', () => done(Buffer.concat(parts)));
       });
 
-  const send = () => fetch(target, {
+  // Whose session to use.
+  //
+  // The clock has none of its own and borrows the door's — that is the point
+  // of the door being signed in. But the back office reached through here is
+  // somebody signing in as themselves, and they must be themselves: the owner
+  // enrolling a fingerprint needs the owner's rights, not the door's. So a
+  // browser that has signed in speaks for itself, and only a browser that has
+  // not falls back to the door.
+  const theirs = req.headers.cookie;
+  const send = (useTheirs) => fetch(target, {
     method: req.method,
     headers: {
       ...(req.headers['content-type'] ? { 'Content-Type': req.headers['content-type'] } : {}),
-      ...(cookie ? { Cookie: cookie } : {}),
+      ...(useTheirs ? { Cookie: theirs } : (cookie ? { Cookie: cookie } : {})),
     },
     body,
     redirect: 'follow',
   });
 
-  let out = await send();
-  // The door's session is what the page borrows, so the door renews it.
-  if (out.status === 401) { await signIn(); out = await send(); }
+  let mine = !theirs;
+  let out = await send(!mine);
+  // The door's session is what the clock borrows, so the door renews it.
+  if (out.status === 401 && !mine) { mine = true; out = await send(false); }
+  if (out.status === 401 && mine) { await signIn(); out = await send(false); }
 
   const type = out.headers.get('content-type');
-  res.writeHead(out.status, {
+  const head = {
     ...(type ? { 'Content-Type': type } : {}),
     // The page is the door's own now; nothing here should be held on to.
     'Cache-Control': 'no-store',
-  });
+  };
+
+  // Signing in through here has to actually sign the browser in, so the
+  // cookie is passed back — minus Secure, which a cookie set over plain
+  // loopback cannot carry, and which would otherwise be silently dropped.
+  const set = out.headers.getSetCookie?.() ?? [];
+  if (set.length) head['Set-Cookie'] = set.map((c) => c.replace(/;\s*Secure/gi, ''));
+
+  res.writeHead(out.status, head);
   res.end(Buffer.from(await out.arrayBuffer()));
 }
 
