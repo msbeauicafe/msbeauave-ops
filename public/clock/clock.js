@@ -227,7 +227,7 @@ function complain(what) {
 async function findScanner() {
   let hello;
   try {
-    const r = await fetch(`${AGENT}/hello`, { signal: AbortSignal.timeout(1500) });
+    const r = await fetch(`${AGENT}/hello`, { signal: AbortSignal.timeout(4000) });
     hello = await r.json();
   } catch (e) {
     // Two very different problems, one silence. Worth telling apart.

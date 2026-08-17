@@ -163,7 +163,12 @@ const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
   res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') {
+    // Chrome asks permission before letting a page on the public internet talk
+    // to something on the machine itself, and it wants the answer spelled out
+    // rather than implied.
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Max-Age', '600');
     res.writeHead(204).end();
     return;
   }
