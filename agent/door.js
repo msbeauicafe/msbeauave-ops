@@ -322,6 +322,7 @@ async function proxy(req, res, url) {
   res.end(Buffer.from(await out.arrayBuffer()));
 }
 
+sdk.traceTo(say);
 say(`MS BEAU AVE door agent — shop ${conf.shop}, ${conf.site}`);
 try {
   say('scanner:', await sdk.open(conf));

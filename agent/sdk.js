@@ -62,6 +62,13 @@ const TEMPLATE_MAX = 2048;    // the SDK's documented ceiling for one template
 export const keyFor = (employeeId, finger) => employeeId * 10 + finger;
 export const personFrom = (key) => Math.floor(key / 10);
 
+// Said before each library call, not after. A wrong signature in an FFI
+// binding does not raise an error a program can catch; it takes the process
+// down. Which makes the last line written the name of the call that did it —
+// the only way to find one of these from a distance.
+let trace = () => {};
+export const traceTo = (fn) => { trace = fn; };
+
 let koffi = null;
 let lib = null;
 let fn = {};
@@ -208,11 +215,14 @@ export async function load(people) {
   // turned "no scanner" into a crash on every refresh.
   if (!device || !cache) { loadedCount = 0; return 0; }
 
+  trace('load: emptying the matcher (ZKFPM_DBClear)');
   fn.dbClear(cache);
   let added = 0;
   for (const p of people) {
     const t = Buffer.from(p.template, 'base64');
+    trace(`load: adding ${p.name} finger ${p.finger}, ${t.length} bytes (ZKFPM_DBAdd)`);
     const rc = fn.dbAdd(cache, keyFor(p.id, p.finger), t.length, t);
+    trace(`load: added, returned ${rc}`);
     if (rc === OK) added++;
     // One unreadable template must not cost the shop its whole door.
     else console.log(`  could not load ${p.name}'s finger ${p.finger}: ${why(rc)}`);
@@ -262,23 +272,29 @@ export async function enrol(onStep = () => {}) {
 
   const scans = [];
   while (scans.length < 3) {
+    trace(`enrol: waiting for scan ${scans.length + 1}`);
     const got = await capture(30000);
     if (!got) throw new Error('No finger was presented. Try again.');
+    trace(`enrol: scan ${scans.length + 1} read, ${got.template.length} bytes`);
 
     // The same finger, three times — not one finger held down for three. The
     // SDK cannot tell those apart, so wait for the finger to come off.
     if (scans.length) {
+      trace('enrol: comparing against the first scan (ZKFPM_DBMatch)');
       const same = fn.dbMatch(cache, scans[0], scans[0].length, got.template, got.template.length);
+      trace(`enrol: comparison came back ${same}`);
       if (same <= 0) throw new Error('That was a different finger. Start again with one finger.');
     }
     scans.push(got.template);
     onStep(scans.length);
-    if (scans.length < 3) await waitForLift();
+    if (scans.length < 3) { trace('enrol: waiting for the finger to lift'); await waitForLift(); }
   }
 
   const out = Buffer.alloc(TEMPLATE_MAX);
   const len = [TEMPLATE_MAX];
+  trace('enrol: merging the three scans (ZKFPM_DBMerge)');
   const rc = fn.dbMerge(cache, scans[0], scans[1], scans[2], out, len);
+  trace(`enrol: merge came back ${rc}, ${len[0]} bytes`);
   if (rc !== OK) throw new Error(`Those three scans would not combine: ${why(rc)}.`);
   return { template: out.subarray(0, len[0]), quality: 100 };
 }
@@ -310,7 +326,9 @@ export async function identify(template, minScore = 55) {
 
   const fid = [0];
   const score = [0];
+  trace(`identify: matching ${template.length} bytes against ${loadedCount} (ZKFPM_DBIdentify)`);
   const rc = fn.dbIdentify(cache, template, template.length, fid, score);
+  trace(`identify: returned ${rc}, id ${fid[0]}, score ${score[0]}`);
   if (rc !== OK) return null;
   // ZKTeco's own demo treats a low score as no match rather than trusting
   // whatever comes back, and so should we — a wrong name on an attendance
