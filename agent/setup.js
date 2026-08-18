@@ -66,7 +66,7 @@ say('    1   The office PC, for enrolling people');
 say('        (holds the scanner, and clocks nobody on)');
 say();
 say('    2   The door at Bayan Bayanan');
-say('    3   The door at Dao');
+say('    3   The door at Beauty Obsession Ave');
 say();
 
 let choice = '';
@@ -81,7 +81,7 @@ if (choice === '3') conf.shop = 2;
 fs.writeFileSync(FILE, JSON.stringify(conf, null, 2) + '\n');
 
 const what = choice === '1' ? 'the enrolment desk'
-  : choice === '2' ? "Bayan Bayanan's door" : "Dao's door";
+  : choice === '2' ? "Bayan Bayanan's door" : "Beauty Obsession Ave's door";
 const address = choice === '1' ? 'http://127.0.0.1:9500/office' : 'http://127.0.0.1:9500/';
 
 say();

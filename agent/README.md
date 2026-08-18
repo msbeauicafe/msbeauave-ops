@@ -100,12 +100,12 @@ Enrol everybody at the desk. The doors only ever have to recognise.
 | `site` | `https://msbeauave-ops.vercel.app` |
 | `username` | the `Timekeeper` sign-in |
 | `password` | its code |
-| `shop` | `1` for Bayan Bayanan, `2` for Dao |
+| `shop` | `1` for Bayan Bayanan, `2` for Beauty Obsession Ave |
 | `zkfpPath` | leave empty unless the DLL is somewhere unusual |
 | `desk` | `true` on the office PC that enrols; `false` at a shop door |
 
-The `shop` number is what stops the Dao machine holding Bayan Bayanan's
-staff. Get it wrong and the door simply will not recognise anybody.
+The `shop` number is what stops the Beauty Obsession Ave machine holding Bayan
+Bayanan's staff. Get it wrong and the door simply will not recognise anybody.
 
 `door.json` holds the door's password and is git-ignored. Keep it that way.
 

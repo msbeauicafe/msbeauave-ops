@@ -249,10 +249,100 @@ const server = http.createServer((req, res) => {
   // it is the tablet's session, and it never leaves the machine.
   // ---------------------------------------------------------------------
   proxy(req, res, url).catch((e) => {
-    if (!res.headersSent) res.writeHead(502);
+    if (res.headersSent) return res.end();
+    say('proxy failed:', req.method, url.pathname, '-', e.message);
+    // A person asked for a page; give them a page. The raw JSON that used to
+    // come back here said "fetch failed" and nothing else, to somebody standing
+    // at a door wondering whether the shop's system had died.
+    if ((req.headers.accept || '').includes('text/html')) {
+      res.writeHead(502, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(offlinePage(e.message));
+      return;
+    }
+    res.writeHead(502, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: `The website could not be reached: ${e.message}` }));
   });
 });
+
+// What this machine cannot do, and what still works anyway.
+//
+// The door holds the scanner and this shop's templates; the website holds
+// everything else. When the line between them goes down the honest thing is to
+// say which half is missing, rather than to look broken all over.
+const offlinePage = (why) => `<!doctype html><meta charset="utf-8">
+<title>MS BEAU AVE — no line to the website</title>
+<style>
+ body{font:16px/1.6 Inter,system-ui,sans-serif;background:#FBF6F8;color:#45303C;margin:0}
+ .w{max-width:560px;margin:0 auto;padding:56px 22px}
+ h1{font-family:Georgia,serif;color:#A2647E;font-size:23px;letter-spacing:.04em;margin:0 0 6px}
+ .s{color:#92707F;font-size:14px;margin-bottom:24px}
+ .c{background:#fff;border:1px solid #EFCCDA;border-radius:13px;padding:18px 22px;margin-bottom:13px}
+ a.btn{display:inline-block;background:#C98DA4;color:#fff;text-decoration:none;
+   border-radius:9px;padding:10px 19px;font-weight:700;font-size:.94rem}
+ code{background:#F9E9F0;border-radius:5px;padding:1px 7px;color:#A2647E;font-size:.9em}
+ ul{padding-left:1.15rem;margin:8px 0} li{margin-bottom:5px}
+ .q{color:#92707F;font-size:13px;margin-top:22px}
+</style>
+<div class="w">
+<h1>This PC cannot reach the website</h1>
+<div class="s">The door agent is running. The line out to
+  ${conf.site.replace(/^https?:\/\//, '')} is what is down.</div>
+
+<div class="c"><b>The back office does not need this PC.</b> It is on the
+  internet, not on this machine &mdash; open it directly and it works from any
+  device that has a connection.
+  <div style="margin-top:13px"><a class="btn" href="${conf.site}">Open the back office</a></div>
+  <div class="q">Going through <code>127.0.0.1:9500/office</code> is only needed
+    for <b>enrolling a fingerprint</b>, because that has to reach the scanner
+    plugged into this PC.</div></div>
+
+<div class="c"><b>Worth checking, in this order:</b>
+  <ul>
+    <li>Is anything else online on this PC? Open any website.</li>
+    <li>Wi-Fi dropped, or the cable knocked out.</li>
+    <li>Waking from sleep &mdash; give it a few seconds and reload.</li>
+  </ul>
+  It retries by itself. Reload once the PC is back online; nothing needs
+  restarting.</div>
+
+<div class="c"><b>The clock keeps working on PINs.</b> Not from this screen
+  &mdash; this one needs the website too &mdash; but the tablet apps at the
+  doors have their own connection, and nobody's hours are lost.</div>
+
+<div class="q">What went wrong, in full: <code>${String(why).replace(/[<&]/g, '')}</code>
+  <br>Everything the agent has said today is in <code>door-log.txt</code>, beside the program.</div>
+</div>`;
+
+/**
+ * One fetch, with a second and third go at it if the line blinks.
+ *
+ * Shop wifi drops a request now and then, and a PC waking from sleep drops
+ * every request for a second or two. Without this, one blink put an error on
+ * the screen and the person in front of it had no way to tell that from the
+ * system being down.
+ *
+ * Only reads are retried. A POST that failed may still have arrived — the
+ * socket can break after the website has already acted on it — and the POST
+ * this proxy carries is somebody clocking on. Sending that twice would clock
+ * them straight back off, which is worse than showing them the error.
+ */
+async function tryFetch(method, target, opts) {
+  const safe = ['GET', 'HEAD'].includes(method);
+  const goes = safe ? 3 : 1;
+  let last;
+  for (let go = 1; go <= goes; go++) {
+    try {
+      return await fetch(target, opts);
+    } catch (e) {
+      last = e;
+      if (go < goes) {
+        say(`retrying ${method} ${target} — ${e.message}`);
+        await new Promise((r) => setTimeout(r, go * 500));
+      }
+    }
+  }
+  throw last;
+}
 
 async function proxy(req, res, url) {
   // A door belongs to one shop, and the page decides which from its own
@@ -289,7 +379,7 @@ async function proxy(req, res, url) {
   // browser that has signed in speaks for itself, and only a browser that has
   // not falls back to the door.
   const theirs = req.headers.cookie;
-  const send = (useTheirs) => fetch(target, {
+  const send = (useTheirs) => tryFetch(req.method, target, {
     method: req.method,
     headers: {
       ...(req.headers['content-type'] ? { 'Content-Type': req.headers['content-type'] } : {}),

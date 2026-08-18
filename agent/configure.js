@@ -2,7 +2,7 @@
 //
 //     node configure.js desk           this PC enrols people, and clocks nobody
 //     node configure.js door 1         this PC is Bayan Bayanan's door
-//     node configure.js door 2         this PC is Dao's door
+//     node configure.js door 2         this PC is Beauty Obsession Ave's door
 //
 // Editing door.json in Notepad is one missing comma away from a program that
 // will not start, and the person doing it is usually standing in a shop.
@@ -10,7 +10,7 @@ import fs from 'node:fs';
 
 const FILE = new URL('./door.json', import.meta.url);
 const EXAMPLE = new URL('./door.example.json', import.meta.url);
-const SHOPS = { 1: 'Bayan Bayanan', 2: 'Dao' };
+const SHOPS = { 1: 'Bayan Bayanan', 2: 'Beauty Obsession Ave' };
 
 const [what, which] = process.argv.slice(2);
 
@@ -44,6 +44,6 @@ if (what === 'desk') {
   console.log('\n  Say which:');
   console.log('     node configure.js desk        this PC enrols people');
   console.log('     node configure.js door 1      this PC is Bayan Bayanan\'s door');
-  console.log('     node configure.js door 2      this PC is Dao\'s door\n');
+  console.log('     node configure.js door 2      this PC is Beauty Obsession Ave\'s door\n');
   process.exit(1);
 }
