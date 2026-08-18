@@ -23,7 +23,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // second copy that can drift.
 const app = fs.readFileSync(path.join(here, '..', 'public', 'app.js'), 'utf8');
 const source = app.slice(app.indexOf('const nameWords ='), app.indexOf('function photosDialog'));
-for (const needed of ['function scoreName', 'function bestMatch', 'let RARE']) {
+for (const needed of ['function scoreName', 'function bestMatch', 'function rarityAcross', 'let RARE']) {
   assert.ok(source.includes(needed), `the matcher moved (${needed}); this test needs updating`);
 }
 
@@ -31,9 +31,9 @@ for (const needed of ['function scoreName', 'function bestMatch', 'let RARE']) {
 // here re-implements it — a test that carried its own copy of the rule would
 // keep passing while the shipped one broke, which is the failure this exists
 // to prevent.
-const { nameWords, bestMatch, setRare } = new Function(`
+const { nameWords, bestMatch, rarityAcross, setRare } = new Function(`
   ${source}
-  return { nameWords, bestMatch, setRare: (m) => { RARE = m; } };
+  return { nameWords, bestMatch, rarityAcross, setRare: (m) => { RARE = m; } };
 `)();
 
 const TEAM = [
@@ -61,11 +61,7 @@ const TEAM = [
 
 // The weighting the screen works out from the team it is looking at: a word
 // only one person carries is worth more than one four people share.
-const seen = new Map();
-for (const p of TEAM) {
-  for (const w of new Set(nameWords(p.name))) seen.set(w, (seen.get(w) || 0) + 1);
-}
-setRare(new Map([...seen].map(([w, n]) => [w, 1 / n])));
+setRare(rarityAcross(TEAM));
 
 const matchFile = (filename) => bestMatch(filename, TEAM).who?.name ?? null;
 
@@ -128,4 +124,27 @@ test('a single letter in a filename is not treated as a name', () => {
   // "Ibañez, G." must not become Gina on the strength of one letter.
   assert.deepEqual(nameWords('Ibañez, G.jpg'), ['ibanez']);
   assert.equal(matchFile('Ibañez, G.jpg'), null);
+});
+
+test('a name written as one word in one place and two in the other still matches', () => {
+  // The roster says "Marygrace Abagon"; the photograph was filed as
+  // "MARY GRACE ABAGON". On separate words alone the only thing left to go on
+  // is "Mary", which belongs to Mary Germae Mangulabnan — a real wrong match,
+  // caught in a dry run against the live folder before anything was written.
+  assert.equal(matchFile('MARY GRACE ABAGON.png'), 'Marygrace Belarmino Abagon');
+  assert.equal(matchFile('marygrace abagon.jpg'), 'Marygrace Belarmino Abagon');
+  // And the person it was wrongly landing on still finds her own.
+  assert.equal(matchFile('Mangulabnan, Mary Germae Tanwangco.jpg'),
+    'Mary Germae Tanwangco Mangulabnan');
+});
+
+test('running words together does not invent a match that is not there', () => {
+  // Two words belonging to two different people must not become a third person
+  // when they land next to each other. "Cortez" is Carla Jane's and "Soriano"
+  // is Jasmine's; "cortezsoriano" is nobody, so this ties on the real words
+  // and is handed back rather than guessed.
+  assert.equal(matchFile('Cortez Soriano.jpg'), null);
+
+  // A surname only one person has is still enough on its own, joins or not.
+  assert.equal(matchFile('Jane Aquino.jpg'), 'Jasmine Soriano Aquino');
 });
