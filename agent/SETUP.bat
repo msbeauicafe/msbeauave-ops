@@ -10,6 +10,18 @@ REM Anything printed here also lands in setup-log.txt, because a window that
 REM closes takes the reason with it and a file can be sent to somebody.
 echo MS BEAU AVE setup, %DATE% %TIME% > setup-log.txt
 
+REM Take Windows' "downloaded from the internet" mark off this folder.
+REM
+REM Everything here arrived inside a zip, so Windows flags every .bat in it and
+REM puts up "The publisher could not be verified" each time one is run. On a
+REM door PC that means the clock stops at a dialog on every restart, waiting
+REM for somebody to click Run - and the whole point is that nobody has to.
+REM
+REM Quietly, and never fatal: if PowerShell is locked down the mark stays and
+REM the only cost is the dialog we were trying to spare people.
+powershell -NoProfile -Command "Get-ChildItem -Path '%~dp0' -Recurse -File | Unblock-File" >nul 2>&1
+if errorlevel 1 (echo note: could not clear the downloaded-file mark >> setup-log.txt) else (echo cleared the downloaded-file mark >> setup-log.txt)
+
 where node >nul 2>&1
 if errorlevel 1 (
   echo.
