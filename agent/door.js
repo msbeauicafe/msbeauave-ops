@@ -394,6 +394,41 @@ async function proxy(req, res, url) {
     return;
   }
 
+  // The manifest is this door's, not the website's.
+  //
+  // Chrome offers to install the clock as an app, which is what a screen by a
+  // door should be — its own window, no tabs, no address bar. But the website's
+  // manifest starts at /clock/ with no shop in it, so the installed app would
+  // come up asking which shop it was, on a machine whose whole point is that it
+  // never asks. So the door answers for itself: its own start address, its own
+  // shop, and a scope of / because that is where it serves the clock.
+  if (url.pathname === '/clock/manifest.webmanifest' || url.pathname === '/manifest.webmanifest') {
+    const shop = Number(conf.shop);
+    res.writeHead(200, {
+      'Content-Type': 'application/manifest+json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({
+      // No shop in the name: this PC only ever installs its own door, and a
+      // name copied from configure.js would be one more place to go stale.
+      // The page says which shop it is across the top anyway.
+      name: 'MS BEAU AVE — Time clock',
+      short_name: 'Time clock',
+      description: 'Tap your name, type your PIN',
+      start_url: `/?shop=${shop}`,
+      scope: '/',
+      display: 'fullscreen',
+      background_color: '#FBF6F8',
+      theme_color: '#A2647E',
+      icons: [
+        { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+        { src: '/icon-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+    }));
+    return;
+  }
+
   // /office is the back office, served from here so that enrolling a
   // fingerprint can reach the scanner. Same reason the clock is served here:
   // a page from the internet may not touch this machine, so the machine
