@@ -173,33 +173,24 @@
         the SDK — 64-bit with 64-bit — and the self-test says so if they
         disagree.</li>
       <li>Unzip the door agent somewhere permanent, like
-        <code>C:\MBA\door</code>.</li>
-      <li>Copy <code>door.example.json</code> to <code>door.json</code> and fill
-        in the four values. <b><code>shop</code> is 1 for Bayan Bayanan and 2
-        for Dao</b> — that number is what stops one shop's machine holding the
-        other shop's staff.</li>
-      <li>Double-click <code>SELF-TEST.bat</code>. Do not go on until every
-        line says <code>ok</code>.</li>
-      <li>Double-click <code>START-THE-DOOR.bat</code> and leave it running.</li>
-      <li>No scanner on that PC yet — or something above went wrong? Run
-        <code>TEST-WITHOUT-SCANNER.bat</code>. It runs the whole door against a
-        pretend scanner, so you can watch the clock page find it and report how
-        many fingerprints the shop has on file — everything except the reading
-        of an actual finger. <b>It needs nothing but Node itself</b>: no npm, no
-        downloads, so it works even when the rest of the setup is misbehaving.</li>
-      <li>Open <code>http://127.0.0.1:9500/</code> in Chrome on that PC —
-        <b>not this website's address</b>. The door serves the clock itself,
-        already fixed to its own shop. A page from the internet is not allowed
-        to reach into the machine showing it, so the door hands over the page,
-        the scanner and the data from one place.</li>
+        <code>C:\MBA door</code>.</li>
+      <li><b>Double-click <code>SETUP.bat</code></b> and answer its questions.
+        That is the whole setup: what this machine is, which shop, a Desktop
+        shortcut, and whether it starts with Windows. Right-click it and choose
+        <i>Run as administrator</i> if you want that last part.</li>
+      <li>Open the shortcut it made — or
+        <code>http://127.0.0.1:9500/</code> at a door,
+        <code>http://127.0.0.1:9500/office</code> at the desk.</li>
+      <li>Something not working? <code>SELF-TEST.bat</code> checks the scanner
+        one call at a time and says which one failed.</li>
     </ol>
-    <p class="meta"><b>Say what each machine is by double-clicking one file:</b>
-      <code>MAKE-THIS-AN-ENROLMENT-DESK.bat</code> on the office PC,
-      <code>MAKE-THIS-THE-BAYAN-BAYANAN-DOOR.bat</code> or
-      <code>MAKE-THIS-THE-DAO-DOOR.bat</code> at a shop. A desk holds the
-      scanner for enrolling and clocks nobody on — which matters, because
-      enrolling sixty-seven people means sixty-seven fingers on the glass, and
-      at a door every one of those would be somebody's arrival.</p>
+    <p class="meta"><b>Double-click <code>SETUP.bat</code> and answer four
+      questions.</b> It asks whether this machine is the office desk or one of
+      the two doors, writes the settings, puts a shortcut on the Desktop and
+      offers to start it with Windows. A desk holds the scanner for enrolling
+      and clocks nobody on — which matters, because enrolling sixty-seven
+      people means sixty-seven fingers on the glass, and at a door every one of
+      those would be somebody's arrival.</p>
     <p class="meta">Enrolling is done at <code>http://127.0.0.1:9500/office</code>
       on the door PC — the back office, served through the door so it can reach
       the scanner. Sign in as yourself, then Team → Edit → Fingerprints → Scan a

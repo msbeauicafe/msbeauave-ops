@@ -46,7 +46,10 @@ The agent is deliberately the smallest thing that can work:
    ships both a 32-bit and a 64-bit `libzkfp.dll` and they are not
    interchangeable. 64-bit Node with 64-bit SDK is the ordinary case; the
    agent checks and says so plainly if they disagree.
-3. Unzip this folder somewhere permanent. **Nothing needs fetching** — koffi,
+3. Unzip this folder somewhere permanent, then **double-click `SETUP.bat`** —
+   it asks what this machine is, writes the settings, makes a Desktop shortcut
+   and offers to start it with Windows. Everything below is what it does for
+   you, and what to do when something is wrong. **Nothing needs fetching** — koffi,
    the piece that lets Node call into `libzkfp.dll`, travels inside the
    download, for both 64-bit and 32-bit Windows. There is no `npm install`
    step and no internet needed beyond reaching our own website.
