@@ -3900,20 +3900,55 @@ const nameWords = (text) => String(text ?? '')
   .split(' ')
   .filter((w) => w.length > 1);              // initials say too little
 
+// The words, plus each neighbouring pair run together.
+//
+// Whether a name is written as one word or two is not a fact about the person,
+// it is a habit of whoever typed it: the roster says "Marygrace Abagon" and the
+// photograph is filed as "MARY GRACE ABAGON". Without this, "Mary" is the only
+// word left to go on — and it belongs to somebody else entirely, which is
+// exactly the wrong-face-on-the-door-screen all of this exists to avoid.
+const joined = (words) => {
+  const all = new Set(words);
+  for (let i = 0; i < words.length - 1; i++) all.add(words[i] + words[i + 1]);
+  return all;
+};
+
 // How much a filename looks like a person. Counted in whole words rather than
 // letters: "Ma. Beatriz Diane Gochuico Pardo" and "Pardo Beatriz" share two
 // words and mean the same person, while "Jennifer Esplana" and "Jennifer
 // Siguenza" share one and do not.
 function scoreName(words, person) {
-  const theirs = new Set(nameWords(person.name));
+  const theirs = joined(nameWords(person.name));
   if (!theirs.size) return 0;
-  const hits = words.filter((w) => theirs.has(w));
-  if (!hits.length) return 0;
-  // A word both of them have is worth more when it is rare across the team:
-  // sharing "Ibañez" says far more than sharing "Ma".
-  return hits.reduce((sum, w) => sum + (RARE.get(w) ?? 1), 0);
+  let score = 0;
+  for (const w of joined(words)) {
+    if (!theirs.has(w)) continue;
+    // A word both of them have is worth more when it is rare across the team:
+    // sharing "Ibañez" says far more than sharing "Marie". And a run-together
+    // pair counts for more than a single word, because two words falling in
+    // the same order is a great deal harder to hit by accident.
+    const weight = RARE.get(w) ?? 1;
+    score += words.includes(w) ? weight : weight * 1.5;
+  }
+  return score;
 }
 let RARE = new Map();
+
+/**
+ * How much each word tells you, given the team you are looking at.
+ *
+ * A word only one person carries identifies them; one four people share barely
+ * narrows anything. Worked out from the team rather than assumed, so it stays
+ * right as people join and leave — and over the same run-together pairs the
+ * scorer looks at, or the two would disagree about what a word is.
+ */
+function rarityAcross(people) {
+  const seen = new Map();
+  for (const p of people) {
+    for (const w of joined(nameWords(p.name))) seen.set(w, (seen.get(w) || 0) + 1);
+  }
+  return new Map([...seen].map(([w, n]) => [w, 1 / n]));
+}
 
 /**
  * Who a filename belongs to — or nobody, which is a real answer.
@@ -3939,13 +3974,7 @@ function bestMatch(filename, people) {
 function photosDialog(team, reload) {
   const here = team.filter((p) => p.here);
 
-  // How many people carry each word, so the scorer can weigh a shared surname
-  // above a shared "Marie". Worked out once, from the team as it stands.
-  const seen = new Map();
-  for (const p of here) {
-    for (const w of new Set(nameWords(p.name))) seen.set(w, (seen.get(w) || 0) + 1);
-  }
-  RARE = new Map([...seen].map(([w, n]) => [w, 1 / n]));
+  RARE = rarityAcross(here);
 
   const options = (chosen) => `<option value="">— skip —</option>`
     + here.map((p) => `<option value="${p.id}"${String(p.id) === String(chosen)
