@@ -336,6 +336,34 @@ label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3
 }
 .good span.goodpic { display: grid; place-items: center; font-size: 1.8rem; }
 
+/* ---------- everybody's photograph, in one go ----------
+   A wall of faces with a name under each. The two states that matter are the
+   wrong ones: nothing matched, or two files claiming the same person. Both get
+   a colour rather than a line of text further down the page, because the point
+   of a grid is that a mistake is visible without being read. */
+.photogrid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 12px; max-height: 58vh; overflow-y: auto; padding: 2px;
+}
+.photopick {
+  background: var(--card); border: 1px solid var(--rose-soft);
+  border-radius: 11px; padding: 8px;
+}
+.photopick.unsure { border-color: var(--warning); background: #fdfaf3; }
+.photopick.clash  { border-color: var(--danger);  background: #fdf4f4; }
+.photopick img {
+  display: block; width: 100%; aspect-ratio: 1; object-fit: cover;
+  border-radius: 8px; background: var(--rose-blush);
+}
+.photopick .fn {
+  font-size: .7rem; color: var(--muted); margin: 6px 0 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.photopick select { width: 100%; font-size: .78rem; padding: 5px 6px; }
+.photopick .why { font-size: .68rem; color: var(--muted); margin-top: 4px; }
+.photopick .why.bad { color: var(--danger); }
+.warn { color: var(--warning); }
+
 /* ---------- loyalty at the till ---------- */
 .loyalty {
   margin-top: 14px; padding: 12px; border-radius: 10px;
