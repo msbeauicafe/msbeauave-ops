@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { hashPassword } from '../lib/auth.js';
+import { hashPassword, needsRenewing } from '../lib/auth.js';
 import { today, daysAgo } from '../lib/day.js';
 import { server } from '../scripts/dev.js';
 import { pool } from '../lib/db.js';
@@ -1015,6 +1015,30 @@ test('clocking on is the counter\'s job, keeping the list is the owner\'s', asyn
   assert.equal((await POST(store, `/api/team/${id}/clock`, { direction: 'out' })).status, 403);
   assert.equal((await POST(till, '/api/team', { name: 'X', position: 'Y' })).status, 403,
     'but only the owner adds people');
+});
+
+test('a sign-in that is being used stays signed in', async () => {
+  // A screen by a door is touched all day and set up once. If its sign-in only
+  // counted down from the moment somebody typed the password, the clock would
+  // turn into a login box twelve hours later, mid-shift, with nobody there who
+  // knows the password.
+  const HOUR = 3600e3;
+  assert.equal(needsRenewing({ expires: Date.now() + 11 * HOUR }), false,
+    'a fresh sign-in is left alone — most replies carry no cookie at all');
+  assert.equal(needsRenewing({ expires: Date.now() + 5 * HOUR }), true,
+    'past halfway it is re-issued, so a screen in daily use never falls out');
+  assert.equal(needsRenewing({ expires: Date.now() + 60e3 }), true, 'and near the end');
+  assert.equal(needsRenewing({ expires: Date.now() - HOUR }), false,
+    'but one that has already run out is not brought back to life');
+  assert.equal(needsRenewing({}), false);
+  assert.equal(needsRenewing(null), false);
+
+  // A request on a fresh session should not be handing out cookies.
+  const door = await signIn('timekeeper');
+  const res = await fetch(`${base}/api/team`, { headers: { Cookie: door } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.getSetCookie?.().length ?? 0, 0,
+    'nothing to renew yet, so nothing is sent');
 });
 
 test('the door screen can show the faces it lists', async () => {
