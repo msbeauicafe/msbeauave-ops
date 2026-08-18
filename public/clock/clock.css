@@ -199,32 +199,3 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
  * the machine trying to work out why the scanner is not answering. */
 .padside.finger.cold .hint { font-size: .8rem; line-height: 1.5; color: var(--muted); }
 .padside.finger.cold .hint b { color: var(--rose-deep); word-break: break-all; }
-
-/* The scanner prompt, in the bottom-left corner of the screen.
- *
- * Fixed rather than in the flow of the page. A door has more faces than fit on
- * a screen, so anything in the flow scrolls away — and a prompt that has
- * scrolled away is a prompt nobody sees at the moment they want it. In the
- * corner it is there all day, out of the way of both the faces and the keypad.
- */
-.fingercorner {
-  position: fixed; left: 18px; bottom: 18px; z-index: 40;
-  display: flex; align-items: center; gap: 14px;
-  background: #fff; border: 1px solid var(--rose-soft); border-radius: 16px;
-  padding: 14px 20px 14px 16px;
-  box-shadow: 0 10px 30px rgba(69, 48, 60, .14);
-}
-.fingercorner .scan {
-  font-size: 2.6rem; line-height: 1; transition: transform .15s, filter .3s;
-}
-.fingercorner h2 { font-size: 1.05rem; color: var(--rose-deep); }
-.fingercorner .hint { font-size: .8rem; color: var(--muted); }
-.fingercorner.cold .scan { filter: grayscale(1); opacity: .4; }
-.fingercorner.hit { border-color: var(--good); background: #F3F9F5; }
-.fingercorner.hit .scan { transform: scale(1.25); }
-
-/* On a phone it spans the foot of the screen rather than floating in a
-   corner there is not room for. */
-@media (max-width: 560px) {
-  .fingercorner { left: 12px; right: 12px; bottom: 12px; justify-content: center; }
-}
