@@ -3500,6 +3500,7 @@ SCREENS.team = async (page) => {
       <select id="t_branch"><option value="">Every branch</option></select>
       ${owner ? `<button class="btn" id="add">＋ Add someone</button>
         <button class="btn line" id="t_many">👥 Add many</button>
+        <button class="btn line" id="t_photos">📷 Photographs</button>
         <button class="btn line" id="t_pins">🖨️ PINs &amp; slips</button>` : ''}
     </div>
     <div class="tiles" id="tiles"></div>
@@ -3830,6 +3831,7 @@ SCREENS.team = async (page) => {
   if (owner) {
     $('#add', page).addEventListener('click', () => openPerson(null));
     $('#t_many', page).addEventListener('click', () => bulkTeamDialog(load, branches));
+    $('#t_photos', page).addEventListener('click', () => photosDialog(data.team, load));
     $('#t_pins', page).addEventListener('click', () => pinSlipsDialog(load));
 
     $('#h_branch', page).innerHTML = '<option value="">Every branch</option>'
@@ -3869,6 +3871,191 @@ SCREENS.team = async (page) => {
   await load();
   repeat(load, 20000);
 };
+
+// ---------------------------------------------------------------------------
+// Everybody's photograph, in one go
+//
+// Fifty people, one at a time — open the person, choose the file, save, close,
+// find the next one — is fifty of everything, and the sort of job that gets
+// abandoned at number nine.
+//
+// The photographs already know who they are: whoever took them saved
+// "Loberiano, Melmark Tiangco.jpg". So the folder goes in whole, the filenames
+// do the matching, and what is left on screen is only the ones it could not
+// work out. Nothing saves until it has been looked at — a face against the
+// wrong name is worse than no face at all, because the door screen exists to
+// be recognised.
+// ---------------------------------------------------------------------------
+
+// Names arrive in every shape: "Loberiano, Melmark Tiangco", "melmark
+// loberiano", "IBAÑEZ_GINA-A", "03 Esplana Jennifer (1).png". Strip it back to
+// the words, and lose the accents — a filename that has been through Windows,
+// Drive and a zip cannot be trusted to have kept its ñ.
+const nameWords = (text) => String(text ?? '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/\.[a-z0-9]{2,4}$/, '')          // the extension
+  .replace(/\(\d+\)/g, '')                   // Windows' "(1)" on a duplicate
+  .replace(/[^a-z]+/g, ' ')
+  .split(' ')
+  .filter((w) => w.length > 1);              // initials say too little
+
+// How much a filename looks like a person. Counted in whole words rather than
+// letters: "Ma. Beatriz Diane Gochuico Pardo" and "Pardo Beatriz" share two
+// words and mean the same person, while "Jennifer Esplana" and "Jennifer
+// Siguenza" share one and do not.
+function scoreName(words, person) {
+  const theirs = new Set(nameWords(person.name));
+  if (!theirs.size) return 0;
+  const hits = words.filter((w) => theirs.has(w));
+  if (!hits.length) return 0;
+  // A word both of them have is worth more when it is rare across the team:
+  // sharing "Ibañez" says far more than sharing "Ma".
+  return hits.reduce((sum, w) => sum + (RARE.get(w) ?? 1), 0);
+}
+let RARE = new Map();
+
+/**
+ * Who a filename belongs to — or nobody, which is a real answer.
+ *
+ * The whole decision lives here rather than at the call site, because it is
+ * the one rule worth being able to test on its own: a face against the wrong
+ * name goes onto the door screen, which exists to be recognised, and into the
+ * HR record. Being unsure costs one dropdown. Being confidently wrong costs
+ * somebody their face.
+ *
+ * So a match has to be clear of the runner-up rather than merely ahead of it.
+ * "Ibañez.jpg" with three Ibañez on the team ties three ways and picks none.
+ */
+function bestMatch(filename, people) {
+  const words = nameWords(filename);
+  const scored = people.map((p) => ({ p, score: scoreName(words, p) }))
+    .sort((a, b) => b.score - a.score);
+  const [best, second] = scored;
+  const sure = !!best && best.score > 0 && best.score > (second?.score ?? 0) * 1.5;
+  return { who: sure ? best.p : null, sure };
+}
+
+function photosDialog(team, reload) {
+  const here = team.filter((p) => p.here);
+
+  // How many people carry each word, so the scorer can weigh a shared surname
+  // above a shared "Marie". Worked out once, from the team as it stands.
+  const seen = new Map();
+  for (const p of here) {
+    for (const w of new Set(nameWords(p.name))) seen.set(w, (seen.get(w) || 0) + 1);
+  }
+  RARE = new Map([...seen].map(([w, n]) => [w, 1 / n]));
+
+  const options = (chosen) => `<option value="">— skip —</option>`
+    + here.map((p) => `<option value="${p.id}"${String(p.id) === String(chosen)
+        ? ' selected' : ''}>${esc(p.name)}${p.has_photo ? ' (has one)' : ''}</option>`).join('');
+
+  let picked = [];
+
+  const veil = dialog(`
+    <h3>Photographs, all at once</h3>
+    <div class="dim">Choose the whole folder. The filenames do the matching —
+      anything it is unsure about is left for you to set, and nothing is saved
+      until you press the button.</div>
+    <div class="row mt">
+      <div><label for="ph_files">The photographs</label>
+        <input id="ph_files" type="file" accept="image/*" multiple></div>
+    </div>
+    <div id="ph_state" class="dim mt"></div>
+    <div id="ph_grid" class="mt"></div>
+    <div class="mt right">
+      <button class="btn quiet" id="ph_cancel">Close</button>
+      <button class="btn" id="ph_save" disabled>Save the photographs</button>
+    </div>`, 'wide');
+
+  const state = (text, kind = 'dim') => {
+    $('#ph_state', veil).className = `${kind} mt`;
+    $('#ph_state', veil).textContent = text;
+  };
+
+  const draw = () => {
+    // Two files pointed at one person is the mistake this catches: it means a
+    // name was matched twice and somebody else has nothing.
+    const counts = new Map();
+    for (const f of picked) {
+      if (f.who) counts.set(f.who, (counts.get(f.who) || 0) + 1);
+    }
+    const clash = [...counts.values()].some((n) => n > 1);
+
+    $('#ph_grid', veil).innerHTML = `<div class="photogrid">${picked.map((f, i) => `
+      <div class="photopick${f.who ? '' : ' unsure'}${
+          f.who && counts.get(f.who) > 1 ? ' clash' : ''}">
+        <img src="${f.preview}" alt="">
+        <div class="fn" title="${esc(f.file.name)}">${esc(f.file.name)}</div>
+        <select data-pick="${i}">${options(f.who)}</select>
+        ${f.who ? (counts.get(f.who) > 1
+            ? '<div class="why bad">two photographs for this person</div>'
+            : `<div class="why">${f.sure ? 'matched by name' : 'best guess — check it'}</div>`)
+          : '<div class="why bad">no name matched</div>'}
+      </div>`).join('')}</div>`;
+
+    $$('[data-pick]', veil).forEach((s) => s.addEventListener('change', () => {
+      picked[Number(s.dataset.pick)].who = s.value;
+      picked[Number(s.dataset.pick)].sure = true;
+      draw();
+    }));
+
+    const ready = picked.filter((f) => f.who).length;
+    $('#ph_save', veil).disabled = !ready || clash;
+    $('#ph_save', veil).textContent = clash
+      ? 'Two photographs share a name'
+      : `Save ${ready} photograph${ready === 1 ? '' : 's'}`;
+    const unsure = picked.filter((f) => !f.who).length;
+    state(`${picked.length} chosen · ${ready} matched${
+      unsure ? ` · ${unsure} need a name` : ''}`, unsure || clash ? 'warn' : 'dim');
+  };
+
+  $('#ph_files', veil).addEventListener('change', async (e) => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    state(`Reading ${files.length} photographs…`);
+    picked = [];
+    for (const file of files) {
+      let preview;
+      try {
+        preview = await shrink(file, 220, 0.7);
+      } catch { continue; }               // not an image; the folder may hold others
+      const match = bestMatch(file.name, here);
+      picked.push({
+        file, preview,
+        sure: match.sure,
+        who: match.who ? String(match.who.id) : '',
+      });
+    }
+    draw();
+  });
+
+  $('#ph_cancel', veil).addEventListener('click', closeDialog);
+
+  $('#ph_save', veil).addEventListener('click', async () => {
+    const jobs = picked.filter((f) => f.who);
+    const button = $('#ph_save', veil);
+    button.disabled = true;
+    let done = 0;
+    const failed = [];
+    for (const job of jobs) {
+      try {
+        await POST(`/api/team/${job.who}/photo`, { dataUrl: await shrink(job.file, 600) });
+        done++;
+      } catch (e) {
+        failed.push(`${job.file.name}: ${e.message}`);
+      }
+      state(`Saving… ${done + failed.length} of ${jobs.length}`);
+    }
+    closeDialog();
+    notice(failed.length
+      ? `${done} saved, ${failed.length} would not: ${failed[0]}`
+      : `${done} photograph${done === 1 ? '' : 's'} saved 🌸`,
+      failed.length ? 'bad' : 'good');
+    reload();
+  });
+}
 
 // ===========================================================================
 // Customers — who buys, how often, and what they are owed in points
