@@ -30,8 +30,15 @@ if errorlevel 1 (
 
 if not exist door.json (
   echo.
-  echo   door.json is missing. Copy door.example.json to door.json and fill it
-  echo   in - shop is 1 for Bayan Bayanan, 2 for Beauty Obsession Ave.
+  echo   This PC has not been set up yet.
+  echo.
+  echo   Right-click SETUP.bat, choose "Run as administrator", and answer:
+  echo.
+  echo       What is this computer?    2   the door at Bayan Bayanan
+  echo                                 3   the door at Beauty Obsession Ave
+  echo                                 1   the office PC that enrols fingers
+  echo.
+  echo   That writes door.json and starts everything by itself.
   echo.
   pause
   exit /b 1
