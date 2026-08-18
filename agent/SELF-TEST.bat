@@ -78,7 +78,7 @@ if not exist door.json (
   echo   door.json is missing.
   echo.
   echo   Copy door.example.json to door.json, open it in Notepad, and set:
-  echo     shop  -  1 for Bayan Bayanan, 2 for Dao
+  echo     shop  -  1 for Bayan Bayanan, 2 for Beauty Obsession Ave
   echo     password  -  the Timekeeper code
   echo.
   echo FAIL: no door.json >> install-log.txt

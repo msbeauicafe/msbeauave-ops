@@ -31,7 +31,7 @@ if errorlevel 1 (
 if not exist door.json (
   echo.
   echo   door.json is missing. Copy door.example.json to door.json and fill it
-  echo   in - shop is 1 for Bayan Bayanan, 2 for Dao.
+  echo   in - shop is 1 for Bayan Bayanan, 2 for Beauty Obsession Ave.
   echo.
   pause
   exit /b 1

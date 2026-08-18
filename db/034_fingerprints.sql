@@ -16,8 +16,8 @@
 -- That means templates have to travel to the door, which is the uncomfortable
 -- part and the reason for the shape below. A door only ever receives the
 -- templates of people who work at that door: `fingers_for_branch` takes a
--- branch and refuses to hand over anybody else's. If the Dao machine is
--- stolen, what has been taken is Dao's staff, not the company's.
+-- branch and refuses to hand over anybody else's. If one shop's machine is
+-- stolen, what has been taken is that shop's staff, not the company's.
 --
 -- Templates, never images. A template is the manufacturer's derived form; it
 -- is not a picture of anybody's finger and cannot be turned back into one.
