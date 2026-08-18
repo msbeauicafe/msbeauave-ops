@@ -296,12 +296,31 @@ async function load() {
   draw();
 }
 
+// Whoever is on shift comes first, in the order they arrived.
+//
+// The morning only runs one way: people clock on, and the board fills from the
+// top. Everybody still to come stays below in alphabetical order, where a name
+// is found by looking rather than by reading the whole board.
+//
+// It is the evening this really helps. Somebody clocking out finds themselves
+// near the front, beside the people they worked the shift with, instead of
+// hunting through fifty faces for their own.
+//
+// Ties go to the name: two people clocking on in the same second is a queue at
+// the door, not a reason for the board to shuffle.
+const arrivals = (a, b) => {
+  if (!a.on_shift !== !b.on_shift) return a.on_shift ? -1 : 1;
+  if (a.on_shift && a.since !== b.since) return new Date(a.since) - new Date(b.since);
+  return a.name.localeCompare(b.name);
+};
+
 function draw() {
   const q = ($('#find')?.value || '').trim().toLowerCase();
   const here = $('#branch')?.value || '';
   const shown = team
     .filter((p) => !here || String(p.branch_id) === here)
-    .filter((p) => !q || p.name.toLowerCase().includes(q));
+    .filter((p) => !q || p.name.toLowerCase().includes(q))
+    .sort(arrivals);
 
   $('#grid').innerHTML = shown.length ? shown.map((p) => `
     <button class="card ${p.on_shift ? 'on' : ''}" data-who="${p.id}"
