@@ -8,6 +8,16 @@ REM   npm install -g node-windows
 REM   node service-install.js
 REM (that one does need npm; running the door by hand does not)
 
+if not exist sdk.js (
+  echo.
+  echo   The other files are not in this folder, so this was run from inside
+  echo   the zip window. Right-click the download, choose "Extract All", and
+  echo   run it from the extracted folder.
+  echo.
+  pause
+  exit /b 1
+)
+
 where node >nul 2>&1
 if errorlevel 1 (
   echo.
