@@ -116,14 +116,58 @@ function findDll(configured) {
   }
   // The installer normally puts it on PATH, in which case the bare name works.
   // These are where it lands when it does not.
+  //
+  // FPSensor is the one that cost an evening. ZKTeco's own installer does not
+  // use the ZKTeco name at all — it makes C:\Program Files (x86)\FPSensor\bin —
+  // so a door with the SDK correctly installed still reported no scanner, and
+  // the driver showing up in Device Manager made that look like a hardware
+  // fault rather than four hardcoded paths that happened to miss.
   const guesses = [
-    'libzkfp.dll',
     'C:\\Program Files\\ZKTeco\\ZKFinger SDK\\bin\\libzkfp.dll',
     'C:\\Program Files (x86)\\ZKTeco\\ZKFinger SDK\\bin\\libzkfp.dll',
+    'C:\\Program Files\\FPSensor\\bin\\libzkfp.dll',
+    'C:\\Program Files (x86)\\FPSensor\\bin\\libzkfp.dll',
+    'C:\\Program Files\\ZKFinger SDK\\bin\\libzkfp.dll',
+    'C:\\Program Files (x86)\\ZKFinger SDK\\bin\\libzkfp.dll',
     'C:\\Windows\\System32\\libzkfp.dll',
   ];
-  return guesses.find((g) => g === 'libzkfp.dll' || fs.existsSync(g)) || 'libzkfp.dll';
+  const known = guesses.find((g) => fs.existsSync(g));
+  if (known) return known;
+
+  // Nothing at a known address, so go and look before falling back to PATH. A
+  // list of guesses is only ever a list of the installers seen so far, and the
+  // next version lands somewhere else again. One shallow walk of Program Files
+  // costs a fraction of a second at startup and never needs updating.
+  return hunt() ?? 'libzkfp.dll';
 }
+
+/** Both Program Files, two levels down, looking for libzkfp.dll. */
+function hunt() {
+  for (const root of ['C:\\Program Files', 'C:\\Program Files (x86)']) {
+    for (const dir of folders(root)) {
+      // <vendor>\libzkfp.dll and <vendor>\bin\libzkfp.dll cover most of them.
+      const near = [`${root}\\${dir}\\libzkfp.dll`, `${root}\\${dir}\\bin\\libzkfp.dll`]
+        .find((p) => fs.existsSync(p));
+      if (near) return near;
+      // <vendor>\<product>\bin\libzkfp.dll covers the rest. Deeper than this is
+      // somebody's source tree, which is not a thing to load a driver out of.
+      for (const sub of folders(`${root}\\${dir}`)) {
+        const deeper = `${root}\\${dir}\\${sub}\\bin\\libzkfp.dll`;
+        if (fs.existsSync(deeper)) return deeper;
+      }
+    }
+  }
+  return null;
+}
+
+const folders = (dir) => {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return [];                    // unreadable folder: not a reason to stop
+  }
+};
 
 /**
  * Open the scanner. Returns a line for the log, or throws with something
