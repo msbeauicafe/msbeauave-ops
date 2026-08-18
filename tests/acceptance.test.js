@@ -1017,6 +1017,35 @@ test('clocking on is the counter\'s job, keeping the list is the owner\'s', asyn
     'but only the owner adds people');
 });
 
+test('the door screen can show the faces it lists', async () => {
+  // The clock is a wall of faces: that is how somebody finds themselves on it
+  // without reading. It signs in as a timekeeper, and for a while that sign-in
+  // could list the team by name and position but not fetch a single
+  // photograph — so every card on the door rendered as a broken image.
+  const admin = await signIn('admin');
+  const door = await signIn('timekeeper');
+  const id = await newEmployee(admin, unique('Face'));
+
+  // A one-pixel PNG is a photograph as far as any of this is concerned.
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
+    + 'AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  assert.equal((await POST(admin, `/api/team/${id}/photo`, { dataUrl: png })).status, 200);
+
+  const listed = await GET(door, '/api/team');
+  assert.equal(listed.status, 200, 'the door lists the team');
+  assert.ok(listed.data.team.some((p) => Number(p.id) === id));
+
+  const shown = await fetch(`${base}/api/team/${id}/photo`, { headers: { Cookie: door } });
+  assert.equal(shown.status, 200, 'and may show the face beside the name');
+  assert.match(shown.headers.get('content-type'), /^image\//);
+
+  // Still not a public wall, though: a reseller sees neither.
+  const outsider = await signIn('reseller', await newReseller(admin));
+  assert.equal((await GET(outsider, '/api/team')).status, 403);
+  const refused = await fetch(`${base}/api/team/${id}/photo`, { headers: { Cookie: outsider } });
+  assert.equal(refused.status, 403, 'a reseller has no business knowing our staff by sight');
+});
+
 test('someone leaving keeps their hours on the books', async () => {
   const admin = await signIn('admin');
   const id = await newEmployee(admin, unique('Departing'));
