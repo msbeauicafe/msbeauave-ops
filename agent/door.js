@@ -8,7 +8,48 @@ import http from 'node:http';
 import fs from 'node:fs';
 import * as sdk from './sdk.js';
 
-const conf = JSON.parse(fs.readFileSync(new URL('./door.json', import.meta.url), 'utf8'));
+/**
+ * The door's own settings: which shop it is, and how to sign in.
+ *
+ * Written by SETUP.bat, and the first thing a fresh install trips over if that
+ * was skipped. Node's own answer is a stack trace naming a file the person has
+ * never heard of, on a PC by a shop door — nothing anybody can act on. So the
+ * one likely reason gets said out loud instead.
+ */
+function settings() {
+  const path = new URL('./door.json', import.meta.url);
+  let raw;
+  try {
+    raw = fs.readFileSync(path, 'utf8');
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    console.log(`
+  This PC has not been set up yet.
+
+  Right-click SETUP.bat and choose "Run as administrator", then answer:
+
+      What is this computer?    2   the door at Bayan Bayanan
+                                3   the door at Beauty Obsession Ave
+                                1   the office PC that enrols fingers
+
+  That writes door.json beside this program and starts everything by itself.
+  Nothing else in this folder needs touching.
+`);
+    process.exit(1);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.log(`
+  door.json is here but cannot be read — something has damaged it.
+
+  Delete it and run SETUP.bat again; it will write a fresh one.
+`);
+    process.exit(1);
+  }
+}
+
+const conf = settings();
 const PORT = Number(conf.port || 9500);
 const REFRESH_MS = Number(conf.refreshMinutes || 10) * 60_000;
 
