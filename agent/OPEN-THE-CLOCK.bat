@@ -100,32 +100,36 @@ REM that bar sits across the top of the door until somebody dismisses it -
 REM which on a door screen means until somebody notices.
 set "QUIET=--noerrdialogs --disable-session-crashed-bubble --disable-infobars"
 
-REM Find Chrome, then Edge, where each usually lives.
+REM Ask Windows where Chrome is rather than guessing.
 REM
-REM The 32-bit folder is copied into a plain name first, on a line of its own.
-REM %ProgramFiles(x86)% has brackets in the variable NAME, and cmd counts the
-REM closing one as the end of any ( ) block it appears inside - so written
-REM straight into a for list it ends the list early, nothing matches, and the
-REM clock opens in an ordinary browser tab. Which is exactly what it did.
-set "PF=%ProgramFiles%"
-set "PF86=%ProgramFiles(x86)%"
-set "BROWSER="
-if exist "%PF%\Google\Chrome\Application\chrome.exe" set "BROWSER=%PF%\Google\Chrome\Application\chrome.exe"
-if not defined BROWSER if exist "%PF86%\Google\Chrome\Application\chrome.exe" set "BROWSER=%PF86%\Google\Chrome\Application\chrome.exe"
-if not defined BROWSER if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set "BROWSER=%LocalAppData%\Google\Chrome\Application\chrome.exe"
-if not defined BROWSER if exist "%PF86%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%PF86%\Microsoft\Edge\Application\msedge.exe"
-if not defined BROWSER if exist "%PF%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%PF%\Microsoft\Edge\Application\msedge.exe"
+REM "start chrome" goes through the App Paths registry entry, which every
+REM installer writes and which is right whether Chrome went into Program Files,
+REM the 32-bit one, or a single user's profile. Guessing at those three folders
+REM is what put the clock in an ordinary tab on this PC for most of an
+REM afternoon, and it would have done it again on any machine that keeps Chrome
+REM somewhere else.
+REM
+REM start returns immediately either way, so the only way to know it worked is
+REM to ask first whether Windows can resolve the name at all.
+set "APPKEY=HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
+set "EXE="
+reg query "%APPKEY%\chrome.exe" /ve >nul 2>&1 && set "EXE=chrome"
+if not defined EXE reg query "%APPKEY%\msedge.exe" /ve >nul 2>&1 && set "EXE=msedge"
 
-REM Falls back to whatever opens links if neither browser is where it usually
-REM lives, because a clock in a tab still clocks people on. It says so, though:
-REM silently doing the lesser thing is how the last two attempts at this went
-REM unnoticed.
-if defined BROWSER (
+REM A per-user install writes the same entry under HKCU instead.
+set "APPKEY=HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
+if not defined EXE reg query "%APPKEY%\chrome.exe" /ve >nul 2>&1 && set "EXE=chrome"
+if not defined EXE reg query "%APPKEY%\msedge.exe" /ve >nul 2>&1 && set "EXE=msedge"
+
+REM Falls back to whatever opens links if neither is registered, because a
+REM clock in a tab still clocks people on. It says so out loud: silently doing
+REM the lesser thing is how this went unnoticed for three goes.
+if defined EXE (
   echo   Opening the clock full screen...
-  start "" "%BROWSER%" %ARGS% %QUIET%
+  start "" %EXE% %ARGS% %QUIET%
 ) else (
   echo.
-  echo   Neither Chrome nor Edge is where it usually lives, so the clock is
+  echo   Neither Chrome nor Edge is registered with Windows, so the clock is
   echo   opening in an ordinary browser window rather than full screen.
   echo.
   start "" "%PAGE%"

@@ -115,6 +115,38 @@ if (wantLink !== 'n') {
   }
 }
 
+// --- 3b. And open itself when the PC comes back ------------------------------
+//
+// The service below keeps the door running; it does not put the clock on the
+// screen. After a power cut the machine comes back to an empty desktop unless
+// something opens the page, so this writes that something into Startup.
+//
+// It writes a small file of its own rather than a shortcut to OPEN-THE-CLOCK,
+// and that is the whole point. Everything in this folder came out of a zip, so
+// Windows marks it as downloaded and puts up "The publisher could not be
+// verified" every time the shell launches one — a dialog standing between a
+// power cut and the clock coming back, waiting for a click nobody is there to
+// give. A file written here is not marked, and cmd's `call` does not ask.
+say();
+const wantBoot = (await ask.question('  Open it automatically when the PC starts? (Y/n) ', 'y'))
+  .trim().toLowerCase();
+if (wantBoot !== 'n') {
+  const startup = path.join(os.homedir(), 'AppData', 'Roaming', 'Microsoft',
+    'Windows', 'Start Menu', 'Programs', 'Startup');
+  try {
+    fs.mkdirSync(startup, { recursive: true });
+    fs.writeFileSync(path.join(startup, 'MBA time clock.bat'),
+      '@echo off\r\n'
+      + 'REM Written by SETUP.bat. Opens the clock when this PC starts.\r\n'
+      + `cd /d "${here}"\r\n`
+      + 'call OPEN-THE-CLOCK.bat\r\n');
+    say('  Done — it will open by itself from now on, without asking anything.');
+  } catch (e) {
+    say(`  Could not write that (${e.message}).`);
+    say('  Win+R, shell:startup, and put a shortcut to OPEN-THE-CLOCK.bat there.');
+  }
+}
+
 // --- 4. Should it start by itself? ------------------------------------------
 say();
 say('  Should this start automatically when the PC is switched on?');
