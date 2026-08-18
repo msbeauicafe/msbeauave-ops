@@ -98,10 +98,18 @@ say();
 const wantLink = (await ask.question('  Put a shortcut on the Desktop? (Y/n) ', 'y')).trim().toLowerCase();
 if (wantLink !== 'n') {
   const name = choice === '1' ? 'MBA enrolment desk' : 'MBA time clock';
-  const link = path.join(os.homedir(), 'Desktop', `${name}.url`);
+  // A shortcut to the address alone leads to "refused to connect" whenever the
+  // door happens not to be running, which is most mornings. This one starts it
+  // first, then opens it, so the person clicking has one thing to know rather
+  // than two.
+  const link = path.join(os.homedir(), 'Desktop', `${name}.bat`);
   try {
-    fs.writeFileSync(link, `[InternetShortcut]\r\nURL=${address}\r\n`);
-    say(`  Done — "${name}" is on the Desktop.`);
+    fs.writeFileSync(link,
+      '@echo off\r\n'
+      + `cd /d "${here}"\r\n`
+      + 'call OPEN-THE-CLOCK.bat\r\n');
+    say(`  Done — "${name}" is on the Desktop. It starts the door and opens it,`);
+    say('  so there is only ever one thing to click.');
   } catch (e) {
     say(`  Could not write the shortcut (${e.message}). Open ${address} instead.`);
   }
