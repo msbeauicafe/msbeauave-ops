@@ -7,7 +7,7 @@
 // questions and then be finished.
 import fs from 'node:fs';
 import readline from 'node:readline/promises';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
@@ -136,17 +136,38 @@ if (wantService !== 'n') {
   }
 }
 
+// --- 5. Start it, since that is plainly the next thing ----------------------
+//
+// Telling somebody where to click and then not starting the thing they would
+// be clicking on is not a finished job. It was the last step left standing on
+// its own, so it stops standing on its own.
+let started = false;
+if (wantService === 'n') {
+  say();
+  const go = (await ask.question('  Start it now? (Y/n) ', 'n')).trim().toLowerCase();
+  if (go !== 'n') {
+    spawn('cmd', ['/c', 'start', '""', 'START-THE-DOOR.bat'],
+      { cwd: here, detached: true, stdio: 'ignore', shell: false }).unref();
+    started = true;
+    say('  Started, in a window of its own. Leave it open — closing it stops');
+    say('  the scanner. Give it a few seconds before opening the address below.');
+  }
+}
+
 // --- Where to go now --------------------------------------------------------
 say();
 say('  ────────────────────────────────────────────');
 say(`  Open:  ${address}`);
 say();
-if (wantService === 'n') {
-  say('  Start it by double-clicking START-THE-DOOR.bat, and leave that window');
-  say('  open — closing it stops the scanner.');
-} else {
+if (wantService !== 'n') {
   say('  If the service installed, it is already running and will come back on');
   say('  its own after a restart. If it did not, START-THE-DOOR.bat still works.');
+} else if (started) {
+  say('  It is running now. Next time, double-click START-THE-DOOR.bat first —');
+  say('  or run this again and say yes to the service, and it will start itself.');
+} else {
+  say('  Start it by double-clicking START-THE-DOOR.bat, and leave that window');
+  say('  open — closing it stops the scanner.');
 }
 say('  ────────────────────────────────────────────');
 say();
