@@ -122,6 +122,7 @@ say('  A shop opening at nine should not depend on somebody remembering.');
 say();
 const wantService = (await ask.question('  Install it as a Windows service? (Y/n) ', 'n')).trim().toLowerCase();
 
+let serviceInstalled = false;
 if (wantService !== 'n') {
   const admin = run('net', ['session']).status === 0;
   if (!admin) {
@@ -140,6 +141,7 @@ if (wantService !== 'n') {
     } else {
       const made = run(process.execPath, ['service-install.js']);
       say('  ' + (made.stdout || made.stderr || '').trim().split('\n').join('\n  '));
+      serviceInstalled = made.status === 0;
     }
   }
 }
@@ -150,7 +152,7 @@ if (wantService !== 'n') {
 // be clicking on is not a finished job. It was the last step left standing on
 // its own, so it stops standing on its own.
 let started = false;
-if (wantService === 'n') {
+if (!serviceInstalled) {
   say();
   const go = (await ask.question('  Start it now? (Y/n) ', 'n')).trim().toLowerCase();
   if (go !== 'n') {
@@ -167,9 +169,8 @@ say();
 say('  ────────────────────────────────────────────');
 say(`  Open:  ${address}`);
 say();
-if (wantService !== 'n') {
-  say('  If the service installed, it is already running and will come back on');
-  say('  its own after a restart. If it did not, START-THE-DOOR.bat still works.');
+if (serviceInstalled) {
+  say('  It is running now, and will come back on its own after a restart.');
 } else if (started) {
   say('  It is running now. Next time, double-click START-THE-DOOR.bat first —');
   say('  or run this again and say yes to the service, and it will start itself.');
