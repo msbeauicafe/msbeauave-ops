@@ -226,6 +226,11 @@ const server = http.createServer((req, res) => {
     json({
       agent: 'msbeauave-door', shop: Number(conf.shop), desk: DESK,
       scanner: sdk.ready(), holding: sdk.holding(),
+      // Who the matcher refused, by name. "4 on file" out of five is a person
+      // standing at a door pressing a finger that will never work, and until
+      // this was here the only way to learn which person was to go and read a
+      // file on that machine.
+      refused: sdk.problems(),
       lastLoad, error: lastError,
     });
     return;
