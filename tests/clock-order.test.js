@@ -16,7 +16,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // Lifted from the page it runs in rather than copied, so a change to the rule
 // has to come through here.
 const clock = fs.readFileSync(path.join(here, '..', 'public', 'clock', 'clock.js'), 'utf8');
-const source = clock.slice(clock.indexOf('const arrivals ='), clock.indexOf('function draw()'));
+// Two slices rather than one long one. todayLine builds markup and so goes
+// through esc() like everything else on the page, but everything between the
+// two of them touches the DOM and would run on import.
+const escaper = clock.slice(clock.indexOf('const esc ='), clock.indexOf('const GET'));
+const source = escaper
+  + clock.slice(clock.indexOf('const arrivals ='), clock.indexOf('function draw()'));
+assert.ok(escaper.includes('replace('), 'the escaper moved; this test needs updating');
 assert.ok(source.includes('const arrivals'), 'the sort moved; this test needs updating');
 const arrivals = new Function(`${source} return arrivals;`)();
 assert.ok(source.includes('function todayLine'), 'the times line moved; this test needs updating');
@@ -91,6 +97,7 @@ test('somebody on shift is shown when they arrived, and nothing else', () => {
   assert.match(line, /In /);
   assert.match(line, /class="times in"/, 'green, because the board is answering "am I on"');
   assert.doesNotMatch(line, /–/, 'they have not gone anywhere');
+  assert.match(line, /Tue, Aug 18/, 'and the day it happened, so a stalled tab gives itself away');
 });
 
 test('somebody who has gone is shown the stretch they worked', () => {
@@ -117,4 +124,23 @@ test('back from lunch shows the stretch they are in, not the one they finished',
   });
   assert.match(line, /In 1:00/);
   assert.doesNotMatch(line, /–/);
+});
+
+test('the small hours are dated by Manila, not by the server', () => {
+  // Manila is eight hours ahead, so this instant is half past one on the
+  // Thursday morning here and still Wednesday afternoon in UTC. The board
+  // stands in Bayan Bayanan and has to agree with the wall behind it.
+  const line = todayLine({ on_shift: true, since: '2026-08-19T17:30:00.000Z' });
+  assert.match(line, /Thu, Aug 20/);
+  assert.doesNotMatch(line, /Aug 19/, 'the server\'s date is not the shop\'s date');
+  assert.match(line, /In 1:30/);
+});
+
+test('the pair of times is dated from the arrival, not the departure', () => {
+  const line = todayLine({
+    on_shift: false, since: null,
+    today_in: '2026-08-19T13:00:00.000Z', today_out: '2026-08-19T21:00:00.000Z',
+  });
+  assert.match(line, /Wed, Aug 19/, 'the shift belongs to the day it started');
+  assert.doesNotMatch(line, /Thu/, 'even though it ended after midnight');
 });

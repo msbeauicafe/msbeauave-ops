@@ -321,14 +321,29 @@ const arrivals = (a, b) => {
 // somebody has gone the pair reads as the stretch it was. Before anybody
 // arrives there is nothing to show, and an empty line is better than a row of
 // dashes on fifty cards.
+//
+// The day and date sit above the time. The board only ever holds today, so on
+// a screen that is looked at they are the same on every card — which is the
+// point. A door screen is left running for weeks, and a tab that quietly
+// stopped refreshing last Thursday looks exactly like one that is working
+// until a date on it disagrees with the wall.
 const clockTime = (v) => new Date(v).toLocaleTimeString('en-PH', {
   hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila',
 });
+const clockDay = (v) => new Date(v).toLocaleDateString('en-PH', {
+  weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Manila',
+});
 
 function todayLine(p) {
-  if (p.on_shift && p.since) return `<span class="times in">In ${clockTime(p.since)}</span>`;
+  // Dated from the arrival itself rather than from the clock on the wall: a
+  // night shift that runs past midnight belongs to the day it began.
+  const day = (v) => `<span class="day">${esc(clockDay(v))}</span>`;
+  if (p.on_shift && p.since) {
+    return `${day(p.since)}<span class="times in">In ${clockTime(p.since)}</span>`;
+  }
   if (p.today_in && p.today_out) {
-    return `<span class="times">${clockTime(p.today_in)} – ${clockTime(p.today_out)}</span>`;
+    return `${day(p.today_in)}<span class="times">${
+      clockTime(p.today_in)} – ${clockTime(p.today_out)}</span>`;
   }
   return '';
 }
