@@ -190,6 +190,7 @@ const TABS = {
     ['pickups', '📦', 'Pickups'],
     ['promos', '🏷️', 'Promos'],
     ['team', '🧑‍💼', 'Team'],
+    ['hr', '💼', 'HR'],
     ['clock', '⏱️', 'Time clock'],
     ['branches', '🏬', 'Branches'],
     ['crm', '💗', 'Customers'],
@@ -203,6 +204,7 @@ const TABS = {
     ['reports', '📊', 'Reports'],
     ['stockroom', '🔀', 'Stockroom'],
     ['people', '👥', 'Sign-ins'],
+    ['me', '🪪', 'My record'],
   ],
   warehouse: [
     ['workspace', '🗂️', 'Workspace'],
@@ -256,6 +258,13 @@ const TABS = {
     ['clock', '⏱️', 'Time clock'],
     ['workspace', '🗂️', 'Workspace'],
   ],
+  // Somebody who works here and nothing else. Three screens, all of them
+  // about themselves, and no way to reach a fourth.
+  employee: [
+    ['me', '🪪', 'My record'],
+    ['myleave', '🌴', 'My leave'],
+    ['notices', '📢', 'Noticeboard'],
+  ],
   reseller: [
     ['catalog', '🛒', 'Order stock'],
     ['myorders', '🚚', 'My orders'],
@@ -268,7 +277,7 @@ const TABS = {
 const roleName = (r) => ({
   admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier',
   supervisor: 'Supervisor', office: 'Office', timekeeper: 'Timekeeper',
-  reseller: 'Reseller',
+  reseller: 'Reseller', employee: 'Staff',
 }[r] ?? r);
 
 function drawFrame() {
@@ -4399,6 +4408,433 @@ SCREENS.finance = async (page) => {
     });
   });
 
+  await load();
+  repeat(load, 60000);
+};
+
+// ---------------------------------------------------------------------------
+// HR — Adona's workspace
+//
+// Everywhere else in this system the subject is a product, a batch or a
+// takings figure. Here it is a person, and the screen is arranged to read that
+// way: who is here, who has asked for time off, who is being hired, what the
+// month costs. The pay column is the reason this tab exists as its own place
+// and not as three more buttons on Team.
+// ---------------------------------------------------------------------------
+const LEAVE_KINDS = {
+  vacation: 'Vacation', sick: 'Sick', emergency: 'Emergency',
+  unpaid: 'Unpaid', maternity: 'Maternity',
+};
+const STAGES = {
+  applied: 'Applied', screening: 'Screening', interview: 'Interview',
+  offer: 'Offer', hired: 'Hired', rejected: 'Not taken',
+};
+const leaveTag = (s) => tag({
+  pending: 'Waiting', approved: 'Approved',
+  declined: 'Declined', withdrawn: 'Withdrawn',
+}[s] ?? s, { pending: 'amber', approved: 'green', declined: 'grey', withdrawn: 'grey' }[s]);
+
+const stars = (n) => (n == null ? '<span class="dim">—</span>'
+  : '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n)));
+
+const faceOf = (p, size = 34) => (p.has_photo
+  ? `<img class="thumb" style="width:${size}px;height:${size}px;border-radius:50%"
+       loading="lazy" src="/api/team/${p.id}/photo" alt="">`
+  : `<span class="thumb none-photo" style="width:${size}px;height:${size}px;border-radius:50%">🧑</span>`);
+
+SCREENS.hr = async (page) => {
+  const load = async () => {
+    const d = await GET('/api/hr');
+    const waiting = d.leave.filter((l) => l.status === 'pending');
+    const hiring = d.pipeline.filter((a) => !['hired', 'rejected'].includes(a.pipeline_stage));
+
+    page.innerHTML = `
+      <div class="head"><h2>Human resources</h2>
+        <span class="hint">${count(d.figures.headcount)} people, two shops</span></div>
+
+      <div class="tiles">
+        <div class="tile"><div class="big">${count(d.figures.headcount)}</div>
+          <div class="label">On the team today</div></div>
+        <div class="tile ${waiting.length ? 'warn' : 'good'}"><div class="big">${waiting.length}</div>
+          <div class="label">Leave waiting on you</div></div>
+        <div class="tile"><div class="big">${hiring.length}</div>
+          <div class="label">Candidates in play</div></div>
+        <div class="tile good"><div class="big">${peso(d.figures.payroll_monthly)}</div>
+          <div class="label">Monthly payroll on record</div></div>
+        <div class="tile ${d.figures.unpaid ? 'warn' : 'good'}"><div class="big">${d.figures.unpaid}</div>
+          <div class="label">Without a pay figure set</div></div>
+      </div>
+
+      <div class="panel"><h3>🌴 Leave waiting on a decision</h3>
+        ${table(waiting, [
+          { head: 'Who', cell: (l) => `<b>${esc(l.name)}</b>
+              <div class="dim">${esc(l.position || '')}${l.branch ? ' · ' + esc(l.branch) : ''}</div>` },
+          { head: 'Kind', cell: (l) => esc(LEAVE_KINDS[l.leave_type] ?? l.leave_type) },
+          { head: 'From', cell: (l) => onDay(l.start_date) },
+          { head: 'To', cell: (l) => onDay(l.end_date) },
+          { head: 'Days', n: true, cell: (l) => count(l.days) },
+          { head: 'Reason', cell: (l) => esc(l.reason || '—') },
+          { head: '', cell: (l) => `
+              <button class="btn sm" data-yes="${l.id}">Approve</button>
+              <button class="btn line sm" data-no="${l.id}">Decline</button>` },
+        ], 'Nobody is waiting on you 🌸')}</div>
+
+      <div class="panel"><h3>👥 The company</h3>
+        ${table(d.people.filter((p) => p.here), [
+          { head: '', cell: (p) => faceOf(p) },
+          { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>
+              <div class="dim">${esc(p.position)}</div>` },
+          { head: 'Shop', cell: (p) => esc(p.branch || '—') },
+          { head: 'Department', cell: (p) => esc(p.department || '—') },
+          { head: 'Started', cell: (p) => onDay(p.started_on) },
+          { head: 'Pay', n: true, cell: (p) => (p.salary == null
+              ? '<span class="dim">not set</span>'
+              : `${peso(p.salary)}<div class="dim">${esc({
+                  monthly: 'a month', semi_monthly: 'twice a month', daily: 'a day',
+                }[p.pay_period] ?? p.pay_period)}</div>`) },
+          { head: 'Leave', n: true, cell: (p) =>
+              `${count(p.leave_taken)} / ${count(p.leave_entitlement)}` },
+          { head: 'Reviews', cell: (p) => stars(p.avg_rating) },
+          { head: 'Sign-in', cell: (p) => (p.username
+              ? `<code>${esc(p.username)}</code>` : '<span class="dim">none</span>') },
+          { head: '', cell: (p) => `
+              <button class="btn line sm" data-pay="${p.id}">Employment</button>
+              <button class="btn line sm" data-review="${p.id}">Review</button>` },
+        ], 'Nobody on the team yet.')}</div>
+
+      <div class="split">
+        <div class="panel">
+          <div class="head"><h3>🧾 Hiring</h3>
+            <button class="btn sm" id="add_cand">＋ Candidate</button></div>
+          ${table(d.pipeline, [
+            { head: 'Candidate', cell: (a) => `<b>${esc(a.candidate_name)}</b>
+                <div class="dim">${esc(a.phone || a.email || '')}</div>` },
+            { head: 'For', cell: (a) => esc(a.target_role) },
+            { head: 'Stage', cell: (a) => `<select data-stage="${a.id}">${
+                Object.entries(STAGES).map(([v, label]) =>
+                  `<option value="${v}"${v === a.pipeline_stage ? ' selected' : ''}>${esc(label)}</option>`
+                ).join('')}</select>` },
+            { head: 'Notes', cell: (a) => esc(a.notes || '—') },
+          ], 'Nobody has applied yet.')}</div>
+
+        <div class="panel">
+          <div class="head"><h3>📢 Noticeboard</h3>
+            <button class="btn sm" id="add_note">＋ Post</button></div>
+          ${d.announcements.length ? d.announcements.map((a) => `
+            <div class="post" style="display:flex;gap:10px;align-items:flex-start">
+              <div style="flex:1"><b>${esc(a.title)}</b>
+                <div class="dim">${esc(a.body)}</div>
+                <div class="dim">${esc(a.posted_by)} · ${when(a.posted_at)}</div></div>
+              <button class="btn line sm" data-drop="${a.id}">Take down</button>
+            </div>`).join('') : '<div class="none">Nothing posted.</div>'}</div>
+      </div>
+
+      <div class="panel"><h3>⭐ Recent reviews</h3>
+        ${table(d.appraisals, [
+          { head: 'Who', cell: (a) => `<b>${esc(a.name)}</b>` },
+          { head: 'Period', cell: (a) => esc(a.period) },
+          { head: 'Rating', cell: (a) => stars(a.rating) },
+          { head: 'Strengths', cell: (a) => esc(a.strengths || '—') },
+          { head: 'To work on', cell: (a) => esc(a.improvements || '—') },
+          { head: 'By', cell: (a) => `<span class="dim">${esc(a.reviewer)}</span>` },
+        ], 'No reviews written yet.')}</div>`;
+
+    const decide = async (id, status) => {
+      try {
+        await POST(`/api/hr/leave/${id}`, { status });
+        notice(status === 'approved' ? 'Approved 🌸' : 'Declined', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    };
+    $$('[data-yes]', page).forEach((b) =>
+      b.addEventListener('click', () => decide(b.dataset.yes, 'approved')));
+    $$('[data-no]', page).forEach((b) =>
+      b.addEventListener('click', () => decide(b.dataset.no, 'declined')));
+
+    $$('[data-pay]', page).forEach((b) => b.addEventListener('click', () =>
+      employmentDialog(d.people.find((p) => String(p.id) === b.dataset.pay), load)));
+    $$('[data-review]', page).forEach((b) => b.addEventListener('click', () =>
+      reviewDialog(d.people.find((p) => String(p.id) === b.dataset.review), load)));
+
+    $$('[data-stage]', page).forEach((sel) => sel.addEventListener('change', async () => {
+      try {
+        await POST(`/api/hr/pipeline/${sel.dataset.stage}`, { pipeline_stage: sel.value });
+        notice('Moved 🌸', 'good');
+        load();
+      } catch (e) { whoops(e); load(); }
+    }));
+
+    $$('[data-drop]', page).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await DELETE(`/api/hr/announcements/${b.dataset.drop}`);
+        load();
+      } catch (e) { whoops(e); }
+    }));
+
+    $('#add_cand', page).addEventListener('click', () => candidateDialog(load));
+    $('#add_note', page).addEventListener('click', () => announcementDialog(load));
+  };
+
+  await load();
+  repeat(load, 60000);
+};
+
+function employmentDialog(person, done) {
+  if (!person) return;
+  dialog(`
+    <h3>${esc(person.name)}</h3>
+    <div class="dim">${esc(person.position)}${person.branch ? ' · ' + esc(person.branch) : ''}</div>
+    <div class="row mt">
+      <div><label>Department</label>
+        <input id="h_dept" value="${esc(person.department || '')}" placeholder="Retail"></div>
+      <div><label>Pay</label>
+        <input id="h_pay" type="number" step="0.01" value="${person.salary ?? ''}"></div>
+      <div><label>Paid</label>
+        <select id="h_period">
+          ${[['monthly', 'a month'], ['semi_monthly', 'twice a month'], ['daily', 'a day']]
+            .map(([v, l]) => `<option value="${v}"${v === person.pay_period ? ' selected' : ''}>${l}</option>`).join('')}
+        </select></div>
+      <div><label>Leave days a year</label>
+        <input id="h_leave" type="number" value="${person.leave_entitlement ?? 5}"></div>
+    </div>
+    <div class="dim mt">Pay is kept apart from the team list, so nobody but you
+      can read it — not the till, not the stockroom, not the door screen.</div>
+    <div class="mt"><button class="btn" id="h_go">Save</button>
+      <button class="btn line" onclick="this.closest('.veil').remove()">Cancel</button></div>`);
+
+  $('#h_go').addEventListener('click', async () => {
+    try {
+      await POST(`/api/hr/people/${person.id}/employment`, {
+        department: $('#h_dept').value,
+        salary: $('#h_pay').value === '' ? null : Number($('#h_pay').value),
+        pay_period: $('#h_period').value,
+        leave_entitlement: Number($('#h_leave').value),
+      });
+      closeDialog();
+      notice('Saved 🌸', 'good');
+      done();
+    } catch (e) { whoops(e); }
+  });
+}
+
+function reviewDialog(person, done) {
+  if (!person) return;
+  dialog(`
+    <h3>Review — ${esc(person.name)}</h3>
+    <div class="row mt">
+      <div><label>Period</label>
+        <input id="r_period" placeholder="${new Date().getFullYear()} first half"></div>
+      <div><label>Rating</label>
+        <select id="r_rating">${[5, 4, 3, 2, 1].map((n) =>
+          `<option value="${n}"${n === 3 ? ' selected' : ''}>${'★'.repeat(n)}${'☆'.repeat(5 - n)}</option>`).join('')}</select></div>
+    </div>
+    <div class="mt"><label>What they do well</label>
+      <textarea id="r_good" rows="3"></textarea></div>
+    <div class="mt"><label>What to work on</label>
+      <textarea id="r_work" rows="3"></textarea></div>
+    <div class="dim mt">They will read this in their own workspace. A review
+      nobody sees is a note, not a review.</div>
+    <div class="mt"><button class="btn" id="r_go">Save the review</button>
+      <button class="btn line" onclick="this.closest('.veil').remove()">Cancel</button></div>`);
+
+  $('#r_go').addEventListener('click', async () => {
+    try {
+      await POST('/api/hr/appraisals', {
+        employee_id: person.id, period: $('#r_period').value,
+        rating: Number($('#r_rating').value),
+        strengths: $('#r_good').value, improvements: $('#r_work').value,
+      });
+      closeDialog();
+      notice('Saved 🌸', 'good');
+      done();
+    } catch (e) { whoops(e); }
+  });
+}
+
+function candidateDialog(done) {
+  dialog(`
+    <h3>New candidate</h3>
+    <div class="row mt">
+      <div><label>Name</label><input id="c_name" autofocus></div>
+      <div><label>Applying for</label><input id="c_role" placeholder="Beauty Consultant"></div>
+      <div><label>Phone</label><input id="c_phone" inputmode="tel"></div>
+      <div><label>Email</label><input id="c_email" type="email"></div>
+    </div>
+    <div class="mt"><label>Notes</label><textarea id="c_notes" rows="3"></textarea></div>
+    <div class="mt"><button class="btn" id="c_go">Add</button>
+      <button class="btn line" onclick="this.closest('.veil').remove()">Cancel</button></div>`);
+
+  $('#c_go').addEventListener('click', async () => {
+    try {
+      await POST('/api/hr/pipeline', {
+        candidate_name: $('#c_name').value, target_role: $('#c_role').value,
+        phone: $('#c_phone').value, email: $('#c_email').value,
+        notes: $('#c_notes').value,
+      });
+      closeDialog();
+      notice('Added 🌸', 'good');
+      done();
+    } catch (e) { whoops(e); }
+  });
+}
+
+function announcementDialog(done) {
+  dialog(`
+    <h3>Post to the noticeboard</h3>
+    <div class="mt"><label>Title</label><input id="n_title" autofocus></div>
+    <div class="mt"><label>What it says</label><textarea id="n_body" rows="4"></textarea></div>
+    <div class="dim mt">Everybody with a sign-in sees this, in both shops.</div>
+    <div class="mt"><button class="btn" id="n_go">Post</button>
+      <button class="btn line" onclick="this.closest('.veil').remove()">Cancel</button></div>`);
+
+  $('#n_go').addEventListener('click', async () => {
+    try {
+      await POST('/api/hr/announcements',
+        { title: $('#n_title').value, body: $('#n_body').value });
+      closeDialog();
+      notice('Posted 🌸', 'good');
+      done();
+    } catch (e) { whoops(e); }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The staff workspace — one person, about themselves
+//
+// The whole screen is fed by /api/my, which takes no id. There is nothing on
+// this page that could be pointed at somebody else, because there is no field
+// in which somebody else could be named.
+// ---------------------------------------------------------------------------
+SCREENS.me = async (page) => {
+  const load = async () => {
+    const d = await GET('/api/my');
+    const p = d.profile;
+    page.innerHTML = `
+      <div class="head"><h2>My record</h2>
+        <span class="hint">Only you and HR see this page</span></div>
+
+      <div class="panel">
+        <div class="post">
+          <div style="display:flex;gap:14px;align-items:center">
+            ${p.has_photo
+              ? '<img src="/api/my/photo" alt="" style="width:74px;height:74px;border-radius:50%;object-fit:cover">'
+              : '<span class="thumb none-photo" style="width:74px;height:74px;border-radius:50%">🧑</span>'}
+            <div><b style="font-size:1.15rem">${esc(p.name)}</b>
+              <div class="dim">${esc(p.position)}${p.branch ? ' · ' + esc(p.branch) : ''}</div>
+              <div class="dim">With us since ${onDay(p.started_on)}</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tiles">
+        <div class="tile good"><div class="big">${count(p.leave_left)}</div>
+          <div class="label">Leave days left this year</div></div>
+        <div class="tile"><div class="big">${count(p.leave_taken)}</div>
+          <div class="label">Days taken or asked for</div></div>
+        <div class="tile"><div class="big">${esc(p.department || '—')}</div>
+          <div class="label">Department</div></div>
+        <div class="tile"><div class="big">${p.salary == null ? '—' : peso(p.salary)}</div>
+          <div class="label">Your pay, ${esc({
+            monthly: 'a month', semi_monthly: 'twice a month', daily: 'a day',
+          }[p.pay_period] ?? p.pay_period)}</div></div>
+      </div>
+
+      <div class="split">
+        <div class="panel"><h3>⏱️ My recent hours</h3>
+          ${table(d.hours.slice(0, 14), [
+            { head: 'Day', cell: (h) => onDay(h.business_date) },
+            { head: 'On', cell: (h) => when(h.started_at).split(', ').pop() },
+            { head: 'Off', cell: (h) => (h.ended_at ? when(h.ended_at).split(', ').pop()
+              : tag('still on', 'green')) },
+            { head: 'Worked', n: true, cell: (h) => hoursOf(h.worked) },
+          ], 'No shifts recorded yet.')}</div>
+
+        <div class="panel"><h3>⭐ My reviews</h3>
+          ${d.appraisals.length ? d.appraisals.map((a) => `
+            <div class="post"><div>
+              <b>${esc(a.period)}</b> ${stars(a.rating)}
+              ${a.strengths ? `<div class="dim">👍 ${esc(a.strengths)}</div>` : ''}
+              ${a.improvements ? `<div class="dim">🎯 ${esc(a.improvements)}</div>` : ''}
+              <div class="dim">${esc(a.reviewer)} · ${when(a.created_at)}</div>
+            </div></div>`).join('') : '<div class="none">No reviews yet.</div>'}</div>
+      </div>`;
+  };
+  await load();
+  repeat(load, 60000);
+};
+
+SCREENS.myleave = async (page) => {
+  const load = async () => {
+    const d = await GET('/api/my');
+    const p = d.profile;
+    page.innerHTML = `
+      <div class="head"><h2>My leave</h2>
+        <span class="hint">${count(p.leave_left)} of ${count(p.leave_entitlement)} days left</span></div>
+
+      <div class="panel"><h3>Ask for time off</h3>
+        <div class="row">
+          <div><label>Kind</label><select id="l_kind">${
+            Object.entries(LEAVE_KINDS).map(([v, l]) =>
+              `<option value="${v}">${esc(l)}</option>`).join('')}</select></div>
+          <div><label>From</label><input id="l_from" type="date" value="${localDay()}"></div>
+          <div><label>To</label><input id="l_to" type="date" value="${localDay()}"></div>
+        </div>
+        <div class="mt"><label>Why (optional)</label><input id="l_why"></div>
+        <div class="dim mt">HR decides these. Days you have asked for already
+          count against what is left, so the number above is what you can still
+          take rather than what you started the year with.</div>
+        <div class="mt"><button class="btn" id="l_go">Send the request</button></div>
+      </div>
+
+      <div class="panel"><h3>What I have asked for</h3>
+        ${table(d.leave, [
+          { head: 'Kind', cell: (l) => esc(LEAVE_KINDS[l.leave_type] ?? l.leave_type) },
+          { head: 'From', cell: (l) => onDay(l.start_date) },
+          { head: 'To', cell: (l) => onDay(l.end_date) },
+          { head: 'Days', n: true, cell: (l) => count(l.days) },
+          { head: 'Why', cell: (l) => esc(l.reason || '—') },
+          { head: 'Status', cell: (l) => leaveTag(l.status)
+              + (l.decided_by ? `<div class="dim">${esc(l.decided_by)}</div>` : '') },
+          { head: '', cell: (l) => (l.status === 'pending'
+              ? `<button class="btn line sm" data-pull="${l.id}">Withdraw</button>` : '') },
+        ], 'You have not asked for any leave.')}</div>`;
+
+    $('#l_go', page).addEventListener('click', async () => {
+      try {
+        await POST('/api/my/leave', {
+          leave_type: $('#l_kind').value, start_date: $('#l_from').value,
+          end_date: $('#l_to').value, reason: $('#l_why').value,
+        });
+        notice('Sent to HR 🌸', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    });
+    $$('[data-pull]', page).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await DELETE(`/api/my/leave/${b.dataset.pull}`);
+        notice('Withdrawn', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    }));
+  };
+  await load();
+};
+
+SCREENS.notices = async (page) => {
+  const load = async () => {
+    const { announcements } = await GET('/api/noticeboard');
+    page.innerHTML = `
+      <div class="head"><h2>Noticeboard</h2>
+        <span class="hint">From HR, to everybody</span></div>
+      <div class="panel">
+        ${announcements.length ? announcements.map((a) => `
+          <div class="post"><div>
+            <b>${esc(a.title)}</b>
+            <div>${esc(a.body)}</div>
+            <div class="dim">${esc(a.posted_by)} · ${when(a.posted_at)}</div>
+          </div></div>`).join('') : '<div class="none">Nothing posted yet.</div>'}
+      </div>`;
+  };
   await load();
   repeat(load, 60000);
 };
