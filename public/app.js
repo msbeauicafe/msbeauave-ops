@@ -1959,6 +1959,7 @@ SCREENS.people = async (page) => {
           <option value="supervisor">Supervisor (the till and the stockroom)</option>
           <option value="office">Office (the till and the stockroom)</option>
           <option value="timekeeper">Timekeeper (a door tablet — the clock only)</option>
+          <option value="employee">Staff (their own record and nothing else)</option>
           <option value="reseller">Reseller (their own portal)</option></select></div>
         <div id="u_link" style="display:none"><label>Which reseller</label>
           ${resellers.length
@@ -4736,7 +4737,7 @@ SCREENS.me = async (page) => {
         <div class="tile"><div class="big">${p.salary == null ? '—' : peso(p.salary)}</div>
           <div class="label">Your pay, ${esc({
             monthly: 'a month', semi_monthly: 'twice a month', daily: 'a day',
-          }[p.pay_period] ?? p.pay_period)}</div></div>
+          }[p.pay_period] ?? 'a month')}</div></div>
       </div>
 
       <div class="split">
