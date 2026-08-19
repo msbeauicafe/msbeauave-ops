@@ -79,6 +79,11 @@ let cache = null;       // the matcher, holding this shop's templates
 let imageSize = 0;
 let dllPath = null;
 let loadedCount = 0;
+// Which templates the matcher refused, and why. Kept because the count alone
+// says "4 of 5" and never which one — and the one it refused is somebody who
+// presses their finger at a door and watches nothing happen. Reading it used
+// to mean walking to the shop for a log file.
+let loadProblems = [];
 
 function bind(path) {
   koffi = createRequire(import.meta.url)('koffi');
@@ -325,6 +330,7 @@ export async function load(people) {
   trace('load: emptying the matcher (ZKFPM_DBClear)');
   fn.dbClear(cache);
   let added = 0;
+  loadProblems = [];
   for (const p of people) {
     const t = Buffer.from(p.template, 'base64');
     fs.writeFileSync(CRASH,
@@ -332,13 +338,28 @@ export async function load(people) {
       + `  ZKFPM_DBAdd, ${p.name}, finger ${p.finger}, ${t.length} bytes\n`
       + `Delete this file to try again.\n`);
     trace(`load: adding ${p.name} finger ${p.finger}, ${t.length} bytes (ZKFPM_DBAdd)`);
-    const rc = argOrder === 'len-first'
+    const add = () => (argOrder === 'len-first'
       ? fn.dbAdd(cache, keyFor(p.id, p.finger), t.length, t)
-      : fn.dbAdd(cache, keyFor(p.id, p.finger), t, t.length);
+      : fn.dbAdd(cache, keyFor(p.id, p.finger), t, t.length));
+    let rc = add();
     trace(`load: added, returned ${rc}`);
+    // Asked twice before being believed. These refusals come and go between
+    // one refresh and the next on templates that loaded fine an hour ago,
+    // which is not the shape of a bad template — and the cost of being wrong
+    // is somebody's finger silently not working for the rest of the day.
+    if (rc !== OK) {
+      trace(`load: retrying ${p.name} finger ${p.finger}`);
+      rc = add();
+      trace(`load: retry returned ${rc}`);
+    }
     if (rc === OK) added++;
     // One unreadable template must not cost the shop its whole door.
-    else console.log(`  could not load ${p.name}'s finger ${p.finger}: ${why(rc)}`);
+    else {
+      loadProblems.push({
+        name: p.name, finger: p.finger, bytes: t.length, code: rc, why: why(rc),
+      });
+      console.log(`  could not load ${p.name}'s finger ${p.finger}: ${why(rc)}`);
+    }
   }
   forgetCrash();
   loadedCount = added;
@@ -455,3 +476,4 @@ let stubPeople = [];
 
 export const ready = () => device !== null;
 export const holding = () => loadedCount;
+export const problems = () => loadProblems;
