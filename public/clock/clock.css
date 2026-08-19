@@ -63,6 +63,13 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
 }
 .card b { font-size: 1rem; line-height: 1.25; }
 .card span { font-size: .78rem; color: var(--muted); }
+/* Today's hours, under the job. Tabular figures so a column of them lines up
+ * rather than wandering with the width of a 1. */
+.card .times {
+  font-size: .8rem; font-weight: 600; color: var(--rose-deep);
+  font-variant-numeric: tabular-nums;
+}
+.card .times.in { color: var(--good); }
 .none { color: var(--muted); padding: 40px 0; text-align: center; }
 
 /* The PIN pad. Full screen, because a small dialog on a tablet is a mis-tap. */

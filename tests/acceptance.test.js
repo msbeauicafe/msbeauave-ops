@@ -1070,6 +1070,42 @@ test('the door screen can show the faces it lists', async () => {
   assert.equal(refused.status, 403, 'a reseller has no business knowing our staff by sight');
 });
 
+test('the door board carries today\'s arrival and departure', async () => {
+  // What somebody at the door actually wants to know is what time they came in
+  // and what time they went. Both have to reach a timekeeper sign-in, which
+  // gets a cut-down copy of the team row — so this is really a test that the
+  // two columns are on that list and not only in the database.
+  const admin = await signIn('admin');
+  const door = await signIn('timekeeper');
+  const id = await newEmployee(admin, unique('Arriving'));
+
+  const before = (await GET(door, '/api/team')).data.team.find((p) => Number(p.id) === id);
+  assert.ok(before, 'the door lists them');
+  assert.ok('today_in' in before && 'today_out' in before,
+    'the door is told about today, or the board has nothing to show');
+  assert.equal(before.today_in, null, 'nobody has clocked them on yet');
+
+  assert.equal((await POST(admin, `/api/team/${id}/clock`, { direction: 'in' })).status, 200);
+  const on = (await GET(door, '/api/team')).data.team.find((p) => Number(p.id) === id);
+  assert.equal(on.on_shift, true);
+  assert.ok(on.today_in, 'and now there is an arrival to show');
+  assert.equal(on.today_out, null, 'they have not gone anywhere');
+
+  assert.equal((await POST(admin, `/api/team/${id}/clock`, { direction: 'out' })).status, 200);
+  const gone = (await GET(door, '/api/team')).data.team.find((p) => Number(p.id) === id);
+  assert.equal(gone.on_shift, false);
+  assert.ok(gone.today_in, 'the arrival survives clocking out');
+  assert.ok(gone.today_out, 'and the departure is there beside it');
+  assert.ok(new Date(gone.today_out) >= new Date(gone.today_in));
+
+  // Yesterday is not today's business. The board clears itself overnight.
+  await db.query(
+    `update shifts set business_date = business_date - 1 where employee_id = $1`, [id]);
+  const tomorrow = (await GET(door, '/api/team')).data.team.find((p) => Number(p.id) === id);
+  assert.equal(tomorrow.today_in, null, 'a new day starts empty');
+  assert.equal(tomorrow.today_out, null);
+});
+
 test('someone leaving keeps their hours on the books', async () => {
   const admin = await signIn('admin');
   const id = await newEmployee(admin, unique('Departing'));
