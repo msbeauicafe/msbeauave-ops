@@ -146,6 +146,7 @@ async function clock(id) {
 // ---------------------------------------------------------------------------
 let latest = null;
 let enrolling = false;   // the enrolment desk and the door share one scanner
+let lastMissLook = 0;    // when an unknown finger last sent us to look for new ones
 
 async function watch() {
   for (;;) {
@@ -154,7 +155,27 @@ async function watch() {
       const scan = await sdk.capture(3000);
       if (!scan) continue;
 
-      const hit = await sdk.identify(scan.template);
+      let hit = await sdk.identify(scan.template);
+
+      // A finger this door does not know is very often a finger somebody
+      // enrolled ten minutes ago on another machine. Enrolling on this one
+      // makes the door look again straight away; enrolling anywhere else left
+      // it waiting out the full refresh, which is why setting a shop up felt
+      // instant on the desk and broken at a door in another part of the
+      // building. So an unknown finger is a reason to go and look, and then
+      // to try the same scan again — the person gets in on the press they
+      // made, not the one after it.
+      //
+      // Once every twenty seconds at most. A stranger's finger, or a bad
+      // press, must not turn into a request to the website every time
+      // somebody leans on the glass.
+      if (!hit && Date.now() - lastMissLook > 20000) {
+        lastMissLook = Date.now();
+        say('a finger this door does not know — looking for new enrolments');
+        await refresh().catch(() => {});
+        hit = await sdk.identify(scan.template);
+      }
+
       if (!hit) {
         // Deliberately vague, and deliberately the same answer as an unknown
         // finger: a screen by the door is not a place to learn who is on file.
@@ -231,6 +252,9 @@ const server = http.createServer((req, res) => {
       // this was here the only way to learn which person was to go and read a
       // file on that machine.
       refused: sdk.problems(),
+      // For comparing one machine against another when a finger enrolled on
+      // the first is not recognised by the second.
+      settings: sdk.scannerSettings(),
       lastLoad, error: lastError,
     });
     return;

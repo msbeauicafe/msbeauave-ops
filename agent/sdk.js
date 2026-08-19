@@ -84,6 +84,13 @@ let loadedCount = 0;
 // presses their finger at a door and watches nothing happen. Reading it used
 // to mean walking to the shop for a log file.
 let loadProblems = [];
+// What the library says about itself on this machine. Compared between two
+// machines rather than interpreted: a template enrolled on one scanner and
+// refused by another is a format disagreement, and the codes that carry the
+// format differ between SDK versions. Guessing which number means what is how
+// an afternoon goes; reading the same numbers off both machines and looking
+// for the one that differs does not require being right first.
+let settings = {};
 
 function bind(path) {
   koffi = createRequire(import.meta.url)('koffi');
@@ -99,6 +106,7 @@ function bind(path) {
     openDev:    lib.func('void *ZKFPM_OpenDevice(int index)'),
     closeDev:   lib.func('int ZKFPM_CloseDevice(void *handle)'),
     getParam:   lib.func('int ZKFPM_GetParameters(void *handle, int code, _Inout_ uint8_t *value, _Inout_ uint32_t *size)'),
+    setParam:   lib.func('int ZKFPM_SetParameters(void *handle, int code, uint8_t *value, uint32_t size)'),
     acquire:    lib.func('int ZKFPM_AcquireFingerprint(void *handle, _Out_ uint8_t *image, uint32_t imageSize, _Out_ uint8_t *tmpl, _Inout_ uint32_t *tmplSize)'),
 
     dbInit:     lib.func('void *ZKFPM_DBInit()'),
@@ -238,6 +246,19 @@ export async function open(conf = {}) {
   const h = size(PARAM_IMAGE_HEIGHT);
   imageSize = w * h;
   if (!imageSize) throw new Error('The scanner reported an image size of nothing.');
+
+  // Everything the library will admit to, by number. Codes it does not know
+  // simply fail and are left out, so this costs nothing on a machine where
+  // half of them are meaningless.
+  settings = {};
+  for (const code of [1, 2, 3, 4, 5, 106, 1000, 1001, 2002, 2003, 2004, 3001]) {
+    try {
+      const value = Buffer.alloc(4);
+      const len = [4];
+      if (fn.getParam(device, code, value, len) === OK) settings[code] = value.readUInt32LE(0);
+    } catch { /* a code this version has never heard of */ }
+  }
+  trace(`scanner settings: ${JSON.stringify(settings)}`);
 
   cache = fn.dbInit();
   if (!cache) throw new Error('The matching algorithm would not start.');
@@ -477,3 +498,4 @@ let stubPeople = [];
 export const ready = () => device !== null;
 export const holding = () => loadedCount;
 export const problems = () => loadProblems;
+export const scannerSettings = () => settings;
