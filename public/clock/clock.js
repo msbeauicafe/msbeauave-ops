@@ -314,6 +314,25 @@ const arrivals = (a, b) => {
   return a.name.localeCompare(b.name);
 };
 
+// What today looks like on a face at the door.
+//
+// On shift, the arrival is the only thing worth saying and it is said in
+// green, because at a glance the board is answering "am I clocked on". Once
+// somebody has gone the pair reads as the stretch it was. Before anybody
+// arrives there is nothing to show, and an empty line is better than a row of
+// dashes on fifty cards.
+const clockTime = (v) => new Date(v).toLocaleTimeString('en-PH', {
+  hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila',
+});
+
+function todayLine(p) {
+  if (p.on_shift && p.since) return `<span class="times in">In ${clockTime(p.since)}</span>`;
+  if (p.today_in && p.today_out) {
+    return `<span class="times">${clockTime(p.today_in)} – ${clockTime(p.today_out)}</span>`;
+  }
+  return '';
+}
+
 function draw() {
   const q = ($('#find')?.value || '').trim().toLowerCase();
   const here = $('#branch')?.value || '';
@@ -331,6 +350,7 @@ function draw() {
         : '<span class="face">🧑</span>'}
       <b>${esc(p.name)}</b>
       <span>${p.has_pin ? esc(p.position) : 'no PIN yet — ask the owner'}</span>
+      ${todayLine(p)}
     </button>`).join('')
     : '<div class="none">Nobody matches that.</div>';
 

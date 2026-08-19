@@ -19,6 +19,8 @@ const clock = fs.readFileSync(path.join(here, '..', 'public', 'clock', 'clock.js
 const source = clock.slice(clock.indexOf('const arrivals ='), clock.indexOf('function draw()'));
 assert.ok(source.includes('const arrivals'), 'the sort moved; this test needs updating');
 const arrivals = new Function(`${source} return arrivals;`)();
+assert.ok(source.includes('function todayLine'), 'the times line moved; this test needs updating');
+const todayLine = new Function(`${source} return todayLine;`)();
 
 const at = (hhmm) => `2026-08-18T${hhmm}:00.000Z`;
 const on = (name, since) => ({ name, on_shift: true, since });
@@ -74,4 +76,45 @@ test('a missing arrival time never throws the board away', () => {
   assert.equal(shown.length, 3);
   assert.equal(shown[shown.length - 1], 'Basty Costan', 'whoever is off is still last');
   assert.ok(shown.includes('Caila Ang') && shown.includes('Adona Belen'));
+});
+
+// ---------------------------------------------------------------------------
+// The times under a face
+//
+// Manila is UTC+8, and the door board is the one screen in the building where
+// getting that wrong is loud: eight hours out puts the morning shift's arrival
+// in the middle of the night. So these fix the offset as well as the wording.
+// ---------------------------------------------------------------------------
+test('somebody on shift is shown when they arrived, and nothing else', () => {
+  const line = todayLine({ on_shift: true, since: at('01:05'), today_in: at('01:05') });
+  assert.match(line, /9:05/, '01:05 UTC is quarter past nine in Manila');
+  assert.match(line, /In /);
+  assert.match(line, /class="times in"/, 'green, because the board is answering "am I on"');
+  assert.doesNotMatch(line, /–/, 'they have not gone anywhere');
+});
+
+test('somebody who has gone is shown the stretch they worked', () => {
+  const line = todayLine({
+    on_shift: false, since: null, today_in: at('01:02'), today_out: at('09:10'),
+  });
+  assert.match(line, /9:02/);
+  assert.match(line, /5:10/, 'and out at ten past five');
+  assert.match(line, /–/);
+  assert.doesNotMatch(line, /times in/, 'not green — that colour means still here');
+});
+
+test('a face nobody has clocked on today carries no times at all', () => {
+  assert.equal(todayLine({ on_shift: false, since: null, today_in: null, today_out: null }), '');
+});
+
+test('back from lunch shows the stretch they are in, not the one they finished', () => {
+  // Two shifts in a day: out at noon, in again at one. The view hands back the
+  // most recent stretch, so today_out is null again — but if it ever were not,
+  // being on shift has to win. A face reading "9:00 – 12:00" beside a green
+  // dot is the board contradicting itself.
+  const line = todayLine({
+    on_shift: true, since: at('05:00'), today_in: at('05:00'), today_out: at('04:00'),
+  });
+  assert.match(line, /In 1:00/);
+  assert.doesNotMatch(line, /–/);
 });
