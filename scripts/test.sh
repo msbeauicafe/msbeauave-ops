@@ -52,6 +52,9 @@ node --test tests/clock-order.test.js
 echo "==> running the tests"
 node --test tests/acceptance.test.js
 
+echo "==> one person's record and everybody else's"
+node --test tests/hr.test.js
+
 echo "==> going live"
 TEST_DATABASE_URL="postgresql://postgres@localhost:$PGPORT/msbeauave_golive?host=$WORK" \
   node --test tests/golive.test.js
