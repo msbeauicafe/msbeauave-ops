@@ -4859,8 +4859,13 @@ SCREENS.attendance = async (page) => {
   const load = async () => {
     const d = await GET(`/api/hr/attendance?on=${encodeURIComponent(day)}${
       shop ? `&branch=${encodeURIComponent(shop)}` : ''}`);
-    const came = d.people.filter((p) => p.first_in);
-    const missing = d.people.filter((p) => !p.first_in);
+    // The sheet names its people employee_id, because a row here is a day
+    // rather than a person and the id is which person it is about. Everything
+    // that draws a face expects `id`, so the two are reconciled once, here,
+    // rather than at each of the places that show one.
+    const people = d.people.map((p) => ({ ...p, id: p.employee_id }));
+    const came = people.filter((p) => p.first_in);
+    const missing = people.filter((p) => !p.first_in);
     const isToday = day === localDay();
 
     page.innerHTML = `
