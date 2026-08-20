@@ -4439,9 +4439,13 @@ const leaveTag = (s) => tag({
 const stars = (n) => (n == null ? '<span class="dim">—</span>'
   : '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n)));
 
+// Same version trick as a product picture and the board at the door: an
+// address that changes only when the photograph does can be cached, so a
+// screen that redraws on a timer stops re-fetching every face it shows.
 const faceOf = (p, size = 34) => (p.has_photo
   ? `<img class="thumb" style="width:${size}px;height:${size}px;border-radius:50%"
-       loading="lazy" src="/api/team/${p.id}/photo" alt="">`
+       loading="lazy" src="/api/team/${p.id}/photo${
+         p.photo_at ? `?v=${new Date(p.photo_at).getTime()}` : ''}" alt="">`
   : `<span class="thumb none-photo" style="width:${size}px;height:${size}px;border-radius:50%">🧑</span>`);
 
 SCREENS.hr = async (page) => {
