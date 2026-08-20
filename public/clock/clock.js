@@ -38,9 +38,15 @@ function say(text, kind = 'good') {
   setTimeout(() => el.remove(), kind === 'bad' ? 5000 : 4000);
 }
 
+// Manila, not the machine. Every other time on this page is pinned to the
+// shop's clock — the arrivals, the departures, the date under a face — and
+// this one was following whatever the PC happened to be set to. A door whose
+// timezone is wrong then shows one time on the wall while recording another,
+// and the board quietly disagrees with itself in front of the people whose
+// hours it is keeping.
 const tick = () => {
   $('#now').textContent = new Date().toLocaleTimeString('en-PH',
-    { hour: 'numeric', minute: '2-digit' });
+    { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' });
 };
 tick();
 setInterval(tick, 10000);

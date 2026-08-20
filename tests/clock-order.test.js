@@ -144,3 +144,14 @@ test('the pair of times is dated from the arrival, not the departure', () => {
   assert.match(line, /Wed, Aug 19/, 'the shift belongs to the day it started');
   assert.doesNotMatch(line, /Thu/, 'even though it ended after midnight');
 });
+
+test('the clock on the wall is the shop\'s, not the machine\'s', () => {
+  // Found by photographing the door page on a machine set to UTC: every time
+  // on it read Manila except the one in the corner, which read eight hours
+  // earlier. A door with its timezone set wrong would show one time and record
+  // another, which is the worst way for an hours record to be wrong — it looks
+  // right to the person standing there.
+  const header = clock.slice(clock.indexOf('const tick ='), clock.indexOf('setInterval(tick'));
+  assert.match(header, /timeZone: 'Asia\/Manila'/,
+    'the header clock must be pinned to Manila like everything else on the page');
+});

@@ -49,6 +49,9 @@ node --test tests/photo-names.test.js
 echo "==> the order faces appear on the door"
 node --test tests/clock-order.test.js
 
+echo "==> every clock shows Manila"
+node --test tests/manila.test.js
+
 echo "==> running the tests"
 node --test tests/acceptance.test.js
 
