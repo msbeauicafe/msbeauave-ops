@@ -30,13 +30,18 @@ const GET = (p) => api('GET', p);
 const POST = (p, b) => api('POST', p, b ?? {});
 
 // Said out loud and large. Somebody reads this from a step away, holding a bag.
-function say(text, kind = 'good') {
+function say(text, kind = 'good', holdMs = 0) {
   const el = document.createElement('div');
   el.className = `say ${kind}`;
   el.textContent = text;
   $('#notices').replaceChildren(el);
-  setTimeout(() => el.remove(), kind === 'bad' ? 5000 : 4000);
+  setTimeout(() => el.remove(), holdMs || (kind === 'bad' ? 5000 : 4000));
 }
+
+// A clocking result stays up longer than anything else on this page. Somebody
+// walks away the moment they think it worked, and four seconds is not long
+// enough to be sure across a room while taking a bag off your shoulder.
+const CONFIRM_MS = 6500;
 
 // Manila, not the machine. Every other time on this page is pinned to the
 // shop's clock — the arrivals, the departures, the date under a face — and
@@ -125,9 +130,10 @@ async function start() {
              same rail: the PIN is what everybody has and what everybody falls
              back to, and the scanner is the shortcut sitting beneath it. -->
         <section class="padside finger" id="byfinger" hidden>
-          <h2>Place your finger</h2>
+          <h2 id="scantitle">Place your finger</h2>
           <div class="scan" id="scanmark">☝</div>
           <p class="hint" id="scanhint">Ready</p>
+          <p class="wait-note">Hold it still and wait for your name.</p>
         </section>
       </aside>
     </div>`;
@@ -277,22 +283,66 @@ async function findScanner() {
   idle();
 
   // The agent does the waiting and the matching; this only asks what happened.
+  //
+  // Two things are asked for, not one. The result, when there is one — and
+  // whether a finger is on the glass right now, which is the answer during the
+  // second or two before there is anything to report. Without it the screen
+  // said nothing while it worked, and people pressed again; a second press is
+  // not a repeat, because clocking is a toggle and it takes them straight back
+  // out again.
+  let held = 0;
   setInterval(async () => {
     if ($('.veil')) return;
     let latest;
     try {
       latest = await (await fetch(`${AGENT}/latest`, { signal: AbortSignal.timeout(2500) })).json();
     } catch { return; }
-    if (!latest || latest.at === undefined) return;
+    if (!latest) return;
+
+    // A confirmation stays put. Nothing overwrites it with "hold still" while
+    // somebody is still reading it.
+    const showing = Date.now() < held;
+    if (latest.reading && !showing) {
+      panel.classList.add('reading');
+      $('#scantitle', panel).textContent = 'Reading…';
+      hint.textContent = 'Hold still — this takes a moment';
+    } else if (!latest.reading && !showing) {
+      panel.classList.remove('reading');
+      $('#scantitle', panel).textContent = 'Place your finger';
+      idle();
+    }
+
+    if (latest.at === undefined) return;
 
     if (latest.ok) {
       const r = latest.result || {};
-      say(`${latest.person || 'Welcome'} — ${r.action === 'out' ? 'clocked out' : 'clocked in'} ✨`, 'good');
+      const what = r.action === 'out' ? 'clocked out' : 'clocked in';
+      // Pressed twice. Say what already happened rather than nothing, so the
+      // answer to "did it work?" is never silence.
+      say(latest.again
+        ? `${latest.person || 'You'} — already ${what} ✨`
+        : `${latest.person || 'Welcome'} — ${what} ✨`, 'good', CONFIRM_MS);
+      held = Date.now() + CONFIRM_MS;
+      panel.classList.remove('reading');
       panel.classList.add('hit');
-      setTimeout(() => panel.classList.remove('hit'), 1200);
+      $('#scantitle', panel).textContent = what === 'clocked out' ? 'Clocked out' : 'Clocked in';
+      hint.textContent = latest.person || '';
+      setTimeout(() => {
+        panel.classList.remove('hit');
+        $('#scantitle', panel).textContent = 'Place your finger';
+        idle();
+      }, CONFIRM_MS);
       load().catch(() => {});
     } else {
-      say(latest.say || 'That finger was not recognised.', 'bad');
+      say(latest.say || 'That finger was not recognised.', 'bad', CONFIRM_MS);
+      held = Date.now() + CONFIRM_MS;
+      panel.classList.remove('reading');
+      $('#scantitle', panel).textContent = 'Not recognised';
+      hint.textContent = 'Try again, or use your PIN';
+      setTimeout(() => {
+        $('#scantitle', panel).textContent = 'Place your finger';
+        idle();
+      }, CONFIRM_MS);
     }
   }, 1200);
 }
