@@ -1063,6 +1063,23 @@ test('the door screen can show the faces it lists', async () => {
   assert.equal(shown.status, 200, 'and may show the face beside the name');
   assert.match(shown.headers.get('content-type'), /^image\//);
 
+  // The board redraws every twenty seconds. Without a version in the address
+  // and a cache to match it, that is every face on the wall fetched again
+  // every minute, all day, through one agent — and the ones that lose that
+  // race are blank circles with nothing to say why.
+  const row = listed.data.team.find((p) => Number(p.id) === id);
+  assert.ok('photo_at' in row, 'the door is told when the photograph last changed');
+  assert.ok(row.photo_at, 'and it is set for somebody who has one');
+
+  const stamped = await fetch(
+    `${base}/api/team/${id}/photo?v=${new Date(row.photo_at).getTime()}`,
+    { headers: { Cookie: door } });
+  assert.equal(stamped.status, 200);
+  assert.match(stamped.headers.get('cache-control'), /max-age=31536000/,
+    'an address that names its version is safe to keep');
+  assert.doesNotMatch(shown.headers.get('cache-control'), /31536000/,
+    'one that does not must still notice a replaced picture');
+
   // Still not a public wall, though: a reseller sees neither.
   const outsider = await signIn('reseller', await newReseller(admin));
   assert.equal((await GET(outsider, '/api/team')).status, 403);

@@ -314,6 +314,16 @@ const arrivals = (a, b) => {
   return a.name.localeCompare(b.name);
 };
 
+// The version in the address is the moment the photograph was last changed,
+// which is what lets it be cached for a year instead of a minute. A board that
+// redraws every twenty seconds was otherwise re-fetching every face on the
+// wall every minute, all day, and the ones that lost that race showed as blank
+// circles — a person unable to find themselves on a screen full of faces.
+//
+// Somebody with no stamp still gets a picture, just an uncached one.
+const faceSrc = (p) => `/api/team/${p.id}/photo?v=${
+  p.photo_at ? new Date(p.photo_at).getTime() : 'x'}`;
+
 // What today looks like on a face at the door.
 //
 // On shift, the arrival is the only thing worth saying and it is said in
@@ -361,7 +371,10 @@ function draw() {
       ${p.has_pin ? '' : 'disabled'}>
       ${p.on_shift ? '<span class="dot" title="on shift"></span>' : ''}
       ${p.has_photo
-        ? `<img src="/api/team/${p.id}/photo" alt="">`
+        ? `<img src="${faceSrc(p)}" alt="" loading="lazy"
+             onerror="this.dataset.tried ? this.replaceWith(Object.assign(
+               document.createElement('span'), {className:'face', textContent:'🧑'}))
+               : (this.dataset.tried = 1, this.src = this.src + '&again=1')">`
         : '<span class="face">🧑</span>'}
       <b>${esc(p.name)}</b>
       <span>${p.has_pin ? esc(p.position) : 'no PIN yet — ask the owner'}</span>
