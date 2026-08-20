@@ -358,6 +358,13 @@ test('the attendance sheet carries the people who did not come in', async () => 
   const missing = sheet.people.find((p) => Number(p.employee_id) === didnt.id);
 
   assert.ok(present, 'whoever clocked on is on the sheet');
+  // Pinned because the screen draws a face from it. A row here is a day
+  // rather than a person, so the id says which person the day is about and is
+  // named accordingly — and the first version of the screen read `id`, got
+  // undefined, and asked the server for a photograph of nobody. Fifty-one
+  // blank circles, and nothing anywhere that said why.
+  assert.ok('employee_id' in present, 'the sheet says whose day each row is');
+  assert.ok('has_photo' in present, 'and whether there is a face to draw');
   assert.ok(present.first_in, 'with the time they arrived');
   assert.equal(present.still_on, true);
   assert.equal(present.last_out, null, 'no leaving time while they are still here');
