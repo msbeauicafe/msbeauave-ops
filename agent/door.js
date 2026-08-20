@@ -147,6 +147,22 @@ async function clock(id) {
 let latest = null;
 let enrolling = false;   // the enrolment desk and the door share one scanner
 let lastMissLook = 0;    // when an unknown finger last sent us to look for new ones
+let reading = false;     // a finger is on the glass and being dealt with
+
+// How long the same person is answered from memory rather than clocked again.
+//
+// A press takes a second or two to reach the website and come back, and for
+// that second the screen said nothing at all — so people pressed again. The
+// second press is not a repeat of the first: clocking is a toggle, so it
+// clocks them straight back out, and the third puts them back in. The log
+// from Beauty Obsession Ave has somebody in and out four times inside a
+// minute, which is not somebody testing a scanner. It is somebody who could
+// not tell whether it had worked.
+//
+// So a second press from the same finger inside this window is answered with
+// what happened the first time, and nothing is written.
+const SETTLED_MS = 8000;
+const settled = new Map();
 
 async function watch() {
   for (;;) {
@@ -154,6 +170,11 @@ async function watch() {
       if (enrolling) { await new Promise((r) => setTimeout(r, 300)); continue; }
       const scan = await sdk.capture(3000);
       if (!scan) continue;
+
+      // From here until the answer is on the screen, the page says so. The
+      // whole point is that somebody standing there knows the machine has
+      // their finger and is working, rather than guessing at silence.
+      reading = true;
 
       let hit = await sdk.identify(scan.template);
 
@@ -184,16 +205,31 @@ async function watch() {
       }
 
       const who = people.find((p) => p.id === hit.id);
+
+      // Pressed again while the first press was still being read, or just
+      // after. Tell them what already happened; do not toggle them back out.
+      const before = settled.get(hit.id);
+      if (before && Date.now() - before.at < SETTLED_MS) {
+        latest = { at: Date.now(), ok: true, again: true,
+                   person: before.person, result: before.result };
+        continue;
+      }
+
       const done = await clock(hit.id);
       latest = done.status === 200
         ? { at: Date.now(), ok: true, person: who?.name || null, result: done.data }
         : { at: Date.now(), ok: false, say: done.data.error || 'That did not work.' };
+      if (latest.ok) {
+        settled.set(hit.id, { at: Date.now(), person: latest.person, result: latest.result });
+      }
       say(latest.ok ? `${who?.name || hit.id} — ${latest.result?.action || 'clocked'}`
         : `refused: ${latest.say}`);
     } catch (e) {
       lastError = e.message;
       say('scanner:', e.message);
       await new Promise((r) => setTimeout(r, 2000));
+    } finally {
+      reading = false;
     }
   }
 }
@@ -296,7 +332,11 @@ const server = http.createServer((req, res) => {
     // so a reload cannot replay somebody else's clock-in.
     const out = latest && Date.now() - latest.at < 15_000 ? latest : null;
     latest = null;
-    json(out || {});
+    // `reading` goes on every answer, not just the one carrying a result: it
+    // is what the page turns into "hold still" during the second or two when
+    // there is nothing to report yet, which is exactly when somebody decides
+    // the machine is ignoring them.
+    json({ ...(out || {}), reading });
     return;
   }
 

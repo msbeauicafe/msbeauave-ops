@@ -155,3 +155,39 @@ test('the clock on the wall is the shop\'s, not the machine\'s', () => {
   assert.match(header, /timeZone: 'Asia\/Manila'/,
     'the header clock must be pinned to Manila like everything else on the page');
 });
+
+// ---------------------------------------------------------------------------
+// Telling somebody the machine has their finger
+//
+// The fault this fixes was not in the matching. It was a screen that looked
+// exactly the same whether it had read a finger or not, for the second or two
+// a press takes to reach the website and come back. So people pressed again —
+// and clocking is a toggle, so the second press took them straight back out.
+// The door log has somebody in and out four times inside a minute.
+// ---------------------------------------------------------------------------
+const page = clock.slice(clock.indexOf('setInterval(async () => {'), clock.length);
+
+test('the screen says it is reading while a finger is being dealt with', () => {
+  assert.match(page, /latest\.reading/, 'the page has to be told a finger is on the glass');
+  assert.match(page, /Hold still/i, 'and say so in words somebody at a door can act on');
+});
+
+test('a confirmation is not overwritten while somebody is still reading it', () => {
+  // Without this the "hold still" state paints straight over "clocked in" a
+  // second later, and the person walks away having seen nothing.
+  assert.match(page, /const showing = Date\.now\(\) < held/,
+    'a result holds the panel for its own time');
+  assert.match(page, /held = Date\.now\(\) \+ CONFIRM_MS/);
+});
+
+test('pressing twice is answered, not treated as a second clocking', () => {
+  assert.match(page, /latest\.again/, 'a repeat has to be distinguishable');
+  assert.match(page, /already \$\{what\}/, 'and say what already happened');
+});
+
+test('a clocking result stays up longer than an ordinary message', () => {
+  const ms = /const CONFIRM_MS = (\d+);/.exec(clock);
+  assert.ok(ms, 'the hold is a named number, not scattered literals');
+  assert.ok(Number(ms[1]) >= 5000,
+    'five seconds is the least somebody needs to be sure across a room');
+});

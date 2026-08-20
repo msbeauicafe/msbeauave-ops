@@ -206,6 +206,21 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
 }
 .padside.finger .hint { font-size: 1.5rem; line-height: 1.3; }
 .padside.finger.cold .scan { filter: grayscale(1); opacity: .4; }
+
+/* Told to wait, and shown that something is happening. The whole reason
+ * people pressed a second time was a screen that looked identical whether it
+ * had their finger or not. */
+.wait-note { font-size: .95rem; color: var(--muted); margin-top: 6px; }
+.padside.finger.cold .wait-note, .padside.finger.hit .wait-note { display: none; }
+.padside.finger.reading { border-color: var(--rose-dust); background: #FFF7FB; }
+.padside.finger.reading .scan { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: .55; }
+  50%      { transform: scale(1.12); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .padside.finger.reading .scan { animation: none; opacity: .8; }
+}
 .padside.finger.hit {
   border-color: var(--good); background: #F3F9F5;
 }
