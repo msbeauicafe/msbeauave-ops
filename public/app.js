@@ -191,6 +191,7 @@ const TABS = {
     ['promos', '🏷️', 'Promos'],
     ['team', '🧑‍💼', 'Team'],
     ['hr', '💼', 'HR'],
+    ['attendance', '🕒', 'Attendance'],
     ['clock', '⏱️', 'Time clock'],
     ['branches', '🏬', 'Branches'],
     ['crm', '💗', 'Customers'],
@@ -4838,6 +4839,121 @@ SCREENS.notices = async (page) => {
   };
   await load();
   repeat(load, 60000);
+};
+
+// ---------------------------------------------------------------------------
+// Attendance — HR's view of the day
+//
+// Arranged around the question actually being asked, which is not "who is
+// here" but "who is not". Whoever came in is listed in the order they arrived;
+// everybody who did not is underneath, in their own block, because that block
+// is the reason to open this screen at all.
+// ---------------------------------------------------------------------------
+const clockAt = (v) => (v ? new Date(v).toLocaleTimeString('en-PH',
+  { hour: 'numeric', minute: '2-digit', timeZone: TZ }) : '—');
+
+SCREENS.attendance = async (page) => {
+  let day = localDay();
+  let shop = '';
+
+  const load = async () => {
+    const d = await GET(`/api/hr/attendance?on=${encodeURIComponent(day)}${
+      shop ? `&branch=${encodeURIComponent(shop)}` : ''}`);
+    const came = d.people.filter((p) => p.first_in);
+    const missing = d.people.filter((p) => !p.first_in);
+    const isToday = day === localDay();
+
+    page.innerHTML = `
+      <div class="head"><h2>Attendance</h2>
+        <span class="hint">${isToday ? 'Today, updating on its own' : onDay(day)}</span></div>
+
+      <div class="row">
+        <div><label>Day</label><input id="a_day" type="date" value="${esc(day)}"
+          max="${localDay()}"></div>
+        <div><label>Shop</label><select id="a_shop">
+          <option value="">Both shops</option>
+          ${d.branches.map((b) => `<option value="${b.id}"${
+            String(b.id) === String(shop) ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}
+        </select></div>
+        <div style="flex:0 0 auto"><label>&nbsp;</label>
+          <button class="btn line" id="a_yesterday">◀ Day before</button></div>
+        <div style="flex:0 0 auto"><label>&nbsp;</label>
+          <button class="btn line" id="a_today">Today</button></div>
+      </div>
+
+      <div class="tiles mt">
+        <div class="tile good"><div class="big">${count(d.figures.present)}</div>
+          <div class="label">Came in</div></div>
+        <div class="tile ${d.figures.absent ? 'warn' : 'good'}">
+          <div class="big">${count(d.figures.absent)}</div>
+          <div class="label">Did not clock on</div></div>
+        <div class="tile"><div class="big">${count(d.figures.still_on)}</div>
+          <div class="label">Still on shift</div></div>
+        <div class="tile"><div class="big">${count(d.figures.onbooks)}</div>
+          <div class="label">On the books</div></div>
+      </div>
+
+      <div class="panel"><h3>🟢 Came in — ${count(came.length)}</h3>
+        ${table(came, [
+          { head: '', cell: (p) => faceOf(p) },
+          { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>
+              <div class="dim">${esc(p.position)}</div>` },
+          { head: 'Shop', cell: (p) => esc(p.branch || '—') },
+          { head: 'In', cell: (p) => `<b>${esc(clockAt(p.first_in))}</b>` },
+          { head: 'Out', cell: (p) => (p.still_on
+              ? tag('still on', 'green') : `<b>${esc(clockAt(p.last_out))}</b>`) },
+          { head: 'Hours', n: true, cell: (p) => hoursOf(p.worked) },
+          // A day in more than one piece is worth seeing: a break, or somebody
+          // who went home at noon and came back.
+          { head: 'Stretches', n: true, cell: (p) => (p.stretches > 1
+              ? tag(`${p.stretches}×`, 'amber') : '<span class="dim">1</span>') },
+        ], 'Nobody has clocked on.')}</div>
+
+      <div class="panel"><h3>⚪ Did not clock on — ${count(missing.length)}</h3>
+        ${missing.length ? `<div class="dim" style="margin-bottom:10px">
+          Not the same as absent. Somebody may be on leave, or have forgotten
+          the screen by the door.</div>` : ''}
+        ${table(missing, [
+          { head: '', cell: (p) => faceOf(p) },
+          { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>
+              <div class="dim">${esc(p.position)}</div>` },
+          { head: 'Shop', cell: (p) => esc(p.branch || '—') },
+        ], 'Everybody clocked on 🌸')}</div>
+
+      <div class="panel"><h3>🕒 Every press, in order</h3>
+        ${table(d.stretches, [
+          { head: 'In', cell: (s) => esc(clockAt(s.started_at)) },
+          { head: 'Out', cell: (s) => (s.ended_at
+              ? esc(clockAt(s.ended_at)) : tag('open', 'green')) },
+          { head: 'Who', cell: (s) => `<b>${esc(s.name)}</b>` },
+          { head: 'Shop', cell: (s) => esc(s.branch || '—') },
+          { head: 'Worked', n: true, cell: (s) => hoursOf(s.worked) },
+          // Who the screen recorded it as. 'Timekeeper' is the door itself,
+          // which is what a normal day looks like; a person's name here means
+          // somebody entered it from the back office, and that is worth being
+          // able to see when hours are questioned.
+          { head: 'Recorded by', cell: (s) => `<span class="dim">${esc(s.started_by)}${
+              s.ended_by && s.ended_by !== s.started_by ? ` / ${esc(s.ended_by)}` : ''
+            }</span>` },
+          { head: 'Note', cell: (s) => (s.note
+              ? `<span class="dim">${esc(s.note)}</span>` : '') },
+        ], 'Nothing recorded on this day.')}</div>`;
+
+    const go = (d2) => { day = d2; load().catch(whoops); };
+    $('#a_day', page).addEventListener('change', (e) => go(e.target.value || localDay()));
+    $('#a_shop', page).addEventListener('change', (e) => { shop = e.target.value; load().catch(whoops); });
+    $('#a_today', page).addEventListener('click', () => go(localDay()));
+    $('#a_yesterday', page).addEventListener('click', () => {
+      const back = new Date(`${day}T12:00:00`);
+      back.setDate(back.getDate() - 1);
+      go(back.toLocaleDateString('en-CA'));
+    });
+  };
+
+  await load();
+  // Only today moves. Refreshing a day that has already finished would be
+  // redrawing the same rows over somebody trying to read them.
+  repeat(() => (day === localDay() ? load() : Promise.resolve()), 30000);
 };
 
 start();

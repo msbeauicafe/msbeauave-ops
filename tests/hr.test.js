@@ -338,3 +338,74 @@ test('a sign-in that belongs to nobody is told so rather than shown a blank', as
   assert.equal(r.status, 400);
   assert.match(r.data.error, /does not belong to anybody/);
 });
+
+// ---------------------------------------------------------------------------
+// The attendance sheet
+//
+// The reason this is not a query over shifts: the interesting row is the one
+// with no shift behind it. A sheet built from the shift table can only ever
+// list people who turned up, which is the half HR already knows.
+// ---------------------------------------------------------------------------
+test('the attendance sheet carries the people who did not come in', async () => {
+  const hr = await signIn(await newLogin('admin'));
+  const came = await newPerson(unique('Came'));
+  const didnt = await newPerson(unique('Didnt'));
+
+  assert.equal((await POST(hr, `/api/team/${came.id}/clock`, { direction: 'in' })).status, 200);
+
+  const sheet = (await GET(hr, '/api/hr/attendance')).data;
+  const present = sheet.people.find((p) => Number(p.employee_id) === came.id);
+  const missing = sheet.people.find((p) => Number(p.employee_id) === didnt.id);
+
+  assert.ok(present, 'whoever clocked on is on the sheet');
+  assert.ok(present.first_in, 'with the time they arrived');
+  assert.equal(present.still_on, true);
+  assert.equal(present.last_out, null, 'no leaving time while they are still here');
+
+  assert.ok(missing, 'and so is whoever did not — that is the point of the sheet');
+  assert.equal(missing.first_in, null);
+  assert.equal(missing.stretches, 0);
+  assert.equal(missing.still_on, false);
+});
+
+test('leaving fills the out column, and a second stretch is visible as one', async () => {
+  const hr = await signIn(await newLogin('admin'));
+  const me = await newPerson(unique('Twice'));
+
+  await POST(hr, `/api/team/${me.id}/clock`, { direction: 'in' });
+  await POST(hr, `/api/team/${me.id}/clock`, { direction: 'out' });
+  await POST(hr, `/api/team/${me.id}/clock`, { direction: 'in' });
+
+  const row = (await GET(hr, '/api/hr/attendance')).data.people
+    .find((p) => Number(p.employee_id) === me.id);
+  assert.equal(row.stretches, 2, 'a break makes two stretches of one day');
+  assert.equal(row.still_on, true);
+  assert.equal(row.last_out, null,
+    'back from a break is not gone — the earlier leaving time would read as home');
+
+  await POST(hr, `/api/team/${me.id}/clock`, { direction: 'out' });
+  const done = (await GET(hr, '/api/hr/attendance')).data.people
+    .find((p) => Number(p.employee_id) === me.id);
+  assert.ok(done.last_out, 'once they have gone, the last leaving time stands');
+  assert.equal(done.still_on, false);
+});
+
+test('a day nobody worked still lists everybody', async () => {
+  const hr = await signIn(await newLogin('admin'));
+  await newPerson(unique('Quiet'));
+
+  // Far enough back that no test has clocked anybody on it.
+  const sheet = (await GET(hr, '/api/hr/attendance?on=2020-01-02')).data;
+  assert.ok(sheet.people.length, 'the team is listed');
+  assert.equal(sheet.figures.present, 0);
+  assert.equal(sheet.figures.absent, sheet.figures.onbooks);
+  assert.equal(sheet.stretches.length, 0);
+});
+
+test('an employee cannot read the attendance sheet', async () => {
+  const me = await newPerson(unique('Nosy'));
+  const cookie = await signIn(me.username);
+  for (const path of ['/api/hr/attendance', '/api/hr/attendance/summary']) {
+    assert.equal((await GET(cookie, path)).status, 403, path);
+  }
+});
