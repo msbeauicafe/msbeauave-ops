@@ -16,8 +16,12 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => (
 // The shop trades on Manila time and so does the engine. A browser date turned
 // into an ISO string is UTC, which is a different day for eight hours after
 // midnight — long enough for the first shift to be told the shop is empty.
+// Manila spelled out rather than TZ, which is declared a few lines below and
+// would not exist yet. Without it this is the machine's idea of today, and a
+// PC whose clock is set to somewhere else opens every screen on the wrong day.
 const localDay = (offsetDays = 0) =>
-  new Date(Date.now() - offsetDays * 864e5).toLocaleDateString('en-CA');
+  new Date(Date.now() - offsetDays * 864e5)
+    .toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
 const peso = (v) => '₱' + Number(v || 0).toLocaleString('en-PH',
   { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -4955,7 +4959,7 @@ SCREENS.attendance = async (page) => {
     $('#a_yesterday', page).addEventListener('click', () => {
       const back = new Date(`${day}T12:00:00`);
       back.setDate(back.getDate() - 1);
-      go(back.toLocaleDateString('en-CA'));
+      go(back.toLocaleDateString('en-CA', { timeZone: TZ }));
     });
   };
 

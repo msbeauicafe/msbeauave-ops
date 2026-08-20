@@ -14,6 +14,10 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// A pickup is held until a moment at the counter in Manila, not at
+// whatever the customer's phone happens to be set to.
+const TZ = 'Asia/Manila';
+
 const peso = (v) => '₱' + Number(v || 0).toLocaleString('en-PH',
   { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -272,8 +276,7 @@ function alertsView() {
         <div>
           <b>Waiting for you · ${esc(p.code)}</b>
           <span>${(p.lines || []).map((l) => `${esc(l.name)} ×${l.qty}`).join(', ')}</span>
-          <span class="al-when">Hold until ${new Date(p.hold_until).toLocaleString('en-PH',
-            { dateStyle: 'medium', timeStyle: 'short' })} · ${peso(p.total)} to pay</span>
+          <span class="al-when">Hold until ${new Date(p.hold_until).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short', timeZone: TZ })} · ${peso(p.total)} to pay</span>
         </div>
       </button>`).join('')}
 
@@ -283,8 +286,7 @@ function alertsView() {
         <div>
           <b>Collected · ${esc(p.code)}</b>
           <span>${peso(p.total)} · ${p.points_given} point${p.points_given === 1 ? '' : 's'} added</span>
-          <span class="al-when">${new Date(p.collected_at).toLocaleDateString('en-PH',
-            { dateStyle: 'medium' })}</span>
+          <span class="al-when">${new Date(p.collected_at).toLocaleDateString('en-PH', { dateStyle: 'medium', timeZone: TZ })}</span>
         </div>
       </div>`).join('')}
 
@@ -534,8 +536,7 @@ async function openPurchases(which) {
           <div class="pu-foot">
             <b>${peso(r.total)}</b>
             ${r.status === 'reserved'
-              ? `<span>hold until ${new Date(r.hold_until).toLocaleString('en-PH',
-                  { dateStyle: 'medium', timeStyle: 'short' })}</span>`
+              ? `<span>hold until ${new Date(r.hold_until).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short', timeZone: TZ })}</span>`
               : r.status === 'collected'
                 ? `<span>+${r.points_given} points</span>` : '<span></span>'}
           </div>
@@ -676,7 +677,7 @@ function openBasket() {
         await load();
         note(`Reserved · ${out.code}`,
           `We are holding ${peso(out.total)} of stock for you until `
-          + `${new Date(out.hold_until).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}. `
+          + `${new Date(out.hold_until).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short', timeZone: TZ })}. `
           + `Show this code at the counter.`);
       } catch (err) {
         t.disabled = false;
