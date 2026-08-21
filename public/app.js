@@ -174,13 +174,30 @@ async function start() {
   }
 }
 
+// What the sign-in page says it is for.
+//
+// One website serves everybody, so this page cannot know who is about to type
+// their name into it. The app they opened can: each installed app carries its
+// own address, and the one for staff says so. "Stock, till and reseller
+// orders" is true of the back office and means nothing to somebody who has
+// come to look at their own hours.
+const SIGN_IN_LINES = {
+  staff: 'Your record, your leave, your hours',
+  office: 'Stock, till and reseller orders',
+};
+
+function signInLine() {
+  const app = new URLSearchParams(location.search).get('app');
+  return SIGN_IN_LINES[app] ?? SIGN_IN_LINES.office;
+}
+
 function drawSignIn() {
   clearInterval(refreshTimer);
   $('#app').innerHTML = `
     <div class="signin-page"><form class="signin" id="signin">
       <span class="logo-mark"><img src="/logo.jpg" alt="MS BEAU AVE"></span>
       <h1 class="wordmark">MS BEAU AVE</h1>
-      <p class="tag-line" style="margin:.2rem 0 1.4rem">Stock, till and reseller orders</p>
+      <p class="tag-line" style="margin:.2rem 0 1.4rem">${esc(signInLine())}</p>
       <label for="who">Username</label>
       <input id="who" type="text" autocomplete="username" autocapitalize="none" autofocus>
       <label for="secret">Password</label>

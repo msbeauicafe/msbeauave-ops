@@ -22,5 +22,17 @@
         "2F:CE:5E:78:02:38:68:E6:1F:64:C1:A9:A5:19:34:55:0E:5B:77:15:FB:BE:39:0A:80:64:F1:49:21:59:F2:81"
       ]
     }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.msbeauave.staff",
+      "sha256_cert_fingerprints": [
+        "B4:8D:16:15:63:A7:71:82:15:89:38:29:8D:73:B4:A5:60:D4:90:7D:6A:8D:A0:0D:E9:32:25:AB:45:28:5D:2A"
+      ]
+    }
   }
 ]
