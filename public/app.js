@@ -77,6 +77,13 @@ let refreshTimer = null;
 // Talking to the server
 // ---------------------------------------------------------------------------
 async function call(method, path, body) {
+  // A view-only sign-in stops here rather than at the far end. The server
+  // refuses these too — that is the guard, and it is the one that counts —
+  // but a refusal that arrives before the request makes the screen honest
+  // instead of merely safe.
+  if (user?.role === 'observer' && method !== 'GET') {
+    throw new Error('This sign-in can look but not change anything.');
+  }
   const res = await fetch(path, {
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -270,6 +277,29 @@ const TABS = {
     ['myleave', '🌴', 'My leave'],
     ['notices', '📢', 'Noticeboard'],
   ],
+  // Somebody who may look and not touch. The same screens an owner opens, less
+  // Finance, less the till, and less anything whose only purpose is to change
+  // something — Receive and Sign-ins are not read-only screens with the
+  // buttons taken out, they are the buttons.
+  observer: [
+    ['dashboard', '🏠', 'Dashboard'],
+    ['workspace', '🗂️', 'Workspace'],
+    ['pickups', '📦', 'Pickups'],
+    ['promos', '🏷️', 'Promos'],
+    ['team', '🧑‍💼', 'Team'],
+    ['hr', '💼', 'HR'],
+    ['attendance', '🕒', 'Attendance'],
+    ['clock', '⏱️', 'Time clock'],
+    ['branches', '🏬', 'Branches'],
+    ['crm', '💗', 'Customers'],
+    ['products', '🧴', 'Products'],
+    ['orders', '🚚', 'Wholesale'],
+    ['resellers', '🤝', 'Resellers'],
+    ['returns', '↩️', 'Returns'],
+    ['reorder', '📈', 'Reordering'],
+    ['reports', '📊', 'Reports'],
+    ['stockroom', '🔀', 'Stockroom'],
+  ],
   reseller: [
     ['catalog', '🛒', 'Order stock'],
     ['myorders', '🚚', 'My orders'],
@@ -282,7 +312,7 @@ const TABS = {
 const roleName = (r) => ({
   admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier',
   supervisor: 'Supervisor', office: 'Office', timekeeper: 'Timekeeper',
-  reseller: 'Reseller', employee: 'Staff',
+  reseller: 'Reseller', employee: 'Staff', observer: 'View only',
 }[r] ?? r);
 
 function drawFrame() {
@@ -304,7 +334,13 @@ function drawFrame() {
           <button class="${id === tab ? 'on' : ''}" data-tab="${esc(id)}">
             <span aria-hidden="true">${icon}</span> ${esc(label)}</button>`).join('')}
       </nav>
-      <main class="page" id="page"></main>
+      <div class="pagearea">
+        ${user.role === 'observer' ? `
+          <div class="viewonly-note">👀 <b>View only.</b> You can see everything on
+            these screens and change none of it. Pay and the company's money are
+            not shown at all.</div>` : ''}
+        <main class="page" id="page"></main>
+      </div>
     </div>
     <div id="navBackdrop"></div>`;
 

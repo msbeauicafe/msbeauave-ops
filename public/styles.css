@@ -119,7 +119,8 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
   }
   nav.tabs button:hover { background: var(--rose-blush); }
   nav.tabs button.on { background: var(--rose-blush); color: var(--rose-deep); font-weight: 700; }
-  .page { grid-column: 2; grid-row: 2; max-width: none; }
+  .pagearea { grid-column: 2; grid-row: 2; min-width: 0; }
+  .page { max-width: none; }
 }
 
 /* Narrow: the tabs slide in over the page instead of taking a column of it. */
@@ -444,3 +445,12 @@ label.inline input { width: auto; }
 }
 
 .mb { margin-bottom: 12px; }
+
+/* Said once, at the top of every screen a view-only sign-in opens, rather than
+ * discovered by pressing something and being refused. */
+.viewonly-note {
+  background: var(--rose-blush); border: 1px solid var(--rose-soft);
+  border-radius: 10px; padding: 10px 14px; margin: 14px 18px -4px;
+  font-size: .85rem; color: var(--ink);
+}
+.viewonly-note b { color: var(--rose-deep); }
