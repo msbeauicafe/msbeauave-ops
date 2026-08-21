@@ -8,6 +8,9 @@
 // It reads two open endpoints and writes nothing. There is no sign-in and no
 // basket yet — see the note at the bottom of a product for what that means.
 
+// An eye on the password box, same as the back office has.
+import '../reveal.js';
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 

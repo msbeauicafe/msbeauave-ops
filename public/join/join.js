@@ -1,6 +1,10 @@
 // Claiming a wholesale account. The link is single use and dies on a date;
 // this page checks it before showing a form, so somebody following a dead one
 // is told so rather than filling it in for nothing.
+//
+// The eye matters more here than anywhere: this is where a password is chosen,
+// and it has to be typed twice.
+import '../reveal.js';
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
