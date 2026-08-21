@@ -52,11 +52,17 @@ node --test tests/clock-order.test.js
 echo "==> every clock shows Manila"
 node --test tests/manila.test.js
 
+echo "==> pages that are their own"
+node --test tests/public-pages.test.js
+
 echo "==> running the tests"
 node --test tests/acceptance.test.js
 
 echo "==> one person's record and everybody else's"
 node --test tests/hr.test.js
+
+echo "==> a shop signing itself up"
+node --test tests/reseller-signup.test.js
 
 echo "==> going live"
 TEST_DATABASE_URL="postgresql://postgres@localhost:$PGPORT/msbeauave_golive?host=$WORK" \
