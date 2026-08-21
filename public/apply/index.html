@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F9E9F0">
+  <meta name="description" content="Apply for a wholesale account with MS BEAU AVE">
+  <title>MS BEAU AVE — Apply to buy wholesale</title>
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="stylesheet" href="/apply/apply.css">
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <img src="/logo.jpg" alt="">
+    <h1>MS BEAU AVE</h1>
+    <p class="tag">Wholesale accounts</p>
+  </header>
+
+  <section class="card" id="form">
+    <h2>Apply to buy from us</h2>
+    <p class="lede">Leave your details and we will call you back. Nothing is
+      shown here until we have spoken — wholesale prices are for shops we know.</p>
+
+    <form id="apply" novalidate>
+      <label for="business">Business name</label>
+      <input id="business" name="business_name" autocomplete="organization" required>
+
+      <label for="contact">Your name</label>
+      <input id="contact" name="contact_name" autocomplete="name" required>
+
+      <div class="two">
+        <div>
+          <label for="phone">Phone</label>
+          <input id="phone" name="phone" inputmode="tel" autocomplete="tel">
+        </div>
+        <div>
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email">
+        </div>
+      </div>
+      <p class="hint">One of the two is enough — whichever you would rather we used.</p>
+
+      <label for="address">Where is the shop?</label>
+      <input id="address" name="address" autocomplete="street-address">
+
+      <label for="note">Anything else <span class="opt">optional</span></label>
+      <textarea id="note" name="note" rows="3"
+        placeholder="What you sell, how much you usually take, when you are open."></textarea>
+
+      <button class="btn" id="go">Send my details</button>
+      <p class="err" id="err" hidden></p>
+    </form>
+  </section>
+
+  <section class="card done" id="done" hidden>
+    <div class="tick">🌸</div>
+    <h2>Thank you</h2>
+    <p>We have your details and somebody will be in touch. If we go ahead, you
+      will get a link to set up your own account — you choose the password, and
+      nobody here ever sees it.</p>
+  </section>
+
+  <footer>Already have an account? <a href="/portal/">Sign in</a></footer>
+</main>
+<script src="/apply/apply.js" type="module"></script>
+</body>
+</html>

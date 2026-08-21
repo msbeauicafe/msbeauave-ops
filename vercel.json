@@ -4,7 +4,7 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/((?!api/|shop/|shop$|get/|get$|clock/|clock$|portal/|portal$|\\.well-known/).*)",
+      "source": "/((?!api/|shop/|shop$|get/|get$|clock/|clock$|portal/|portal$|apply/|apply$|join/|join$|\\.well-known/).*)",
       "destination": "/index.html"
     }
   ],
