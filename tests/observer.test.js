@@ -10,11 +10,15 @@
 // router, the way a second application or a mistake in a year's time would.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { hashPassword } from '../lib/auth.js';
 import { server } from '../scripts/dev.js';
 import { pool } from '../lib/db.js';
 
+const here = path.dirname(fileURLToPath(import.meta.url));
 const db = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 10 });
 let base;
 
@@ -72,6 +76,38 @@ async function asRole(role, actor, sql, params = []) {
     client.release();
   }
 }
+
+// ---------------------------------------------------------------------------
+// The rule the browser applies before sending anything
+//
+// Manners rather than security — the server refuses these too, and that is the
+// guard that counts. But the first version read the method alone, and signing
+// out is a POST because it clears a cookie. So a view-only sign-in could see
+// everything and could not leave.
+//
+// Lifted out of the shipped file rather than copied, because a copy of a rule
+// is not the rule.
+// ---------------------------------------------------------------------------
+const app = fs.readFileSync(
+  path.join(here, '..', 'public', 'app.js'), 'utf8');
+const ruleSrc = app.slice(app.indexOf('const LEAVING ='), app.indexOf('async function call('));
+assert.ok(ruleSrc.includes('heldBack'), 'the rule moved; this test needs updating');
+const heldBack = new Function(`${ruleSrc.replace('export const', 'const')} return heldBack;`)();
+
+test('a view-only sign-in can always sign out', () => {
+  assert.equal(heldBack('observer', 'POST', '/api/logout'), false,
+    'leaving is not a change to the company');
+  assert.equal(heldBack('observer', 'POST', '/api/team'), true);
+  assert.equal(heldBack('observer', 'PUT', '/api/products/X'), true);
+  assert.equal(heldBack('observer', 'DELETE', '/api/team/1'), true);
+});
+
+test('reading is never held back, and nobody else is held back at all', () => {
+  assert.equal(heldBack('observer', 'GET', '/api/dashboard'), false);
+  for (const role of ['admin', 'employee', 'cashier', undefined]) {
+    assert.equal(heldBack(role, 'POST', '/api/team'), false, String(role));
+  }
+});
 
 // ---------------------------------------------------------------------------
 // What they may see
