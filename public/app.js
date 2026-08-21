@@ -80,15 +80,20 @@ let refreshTimer = null;
 // ---------------------------------------------------------------------------
 // Talking to the server
 // ---------------------------------------------------------------------------
-// Leaving is not a change to the company. Signing out is a POST because it
-// clears a cookie, and the first version of this rule read the method alone
-// and shut the door on somebody trying to walk out of it — a view-only
-// sign-in could not sign out at all.
-const LEAVING = ['/api/logout'];
+// The two POSTs that are nobody's business but the person making them.
+//
+// Signing out is a POST because it clears a cookie, and the first version of
+// this rule read the method alone and shut the door on somebody trying to walk
+// out of it — a view-only sign-in could not sign out at all. Somebody's own
+// password is the same shape of mistake waiting to happen: view-only describes
+// what they may do to the company, and their own way in is not the company's.
+// Leaving a manager who may not change a price stuck with the password they
+// were handed on a printed sheet would be the wrong way round.
+const OWN_BUSINESS = ['/api/logout', '/api/my/password'];
 
 /** Should this request be stopped in the browser, before it is sent? */
 export const heldBack = (role, method, path) =>
-  role === 'observer' && method !== 'GET' && !LEAVING.includes(path);
+  role === 'observer' && method !== 'GET' && !OWN_BUSINESS.includes(path);
 
 async function call(method, path, body) {
   // A view-only sign-in stops here rather than at the far end. The server
@@ -358,6 +363,7 @@ function drawFrame() {
         <span class="badge">${esc(roleName(user.role))}</span>
         <div class="spacer"></div>
         <div class="who"><b>${esc(user.name)}</b></div>
+        <button class="btn line" id="mypw">Password</button>
         <button class="btn line" id="signout">Sign out</button>
       </header>
       <nav class="tabs" id="tabs">
@@ -389,6 +395,7 @@ function drawFrame() {
     tab = b.dataset.tab;
     drawFrame();
   }));
+  $('#mypw').addEventListener('click', changeMyPassword);
   $('#signout').addEventListener('click', async () => {
     await POST('/api/logout');
     user = null;
@@ -398,6 +405,53 @@ function drawFrame() {
   clearInterval(refreshTimer);
   closeDialog();
   SCREENS[tab]?.($('#page')).catch(whoops);
+}
+
+// Everybody's own password, from the header, on every screen there is.
+//
+// In the header rather than on a tab because most roles have no tab about
+// themselves at all — a cashier's screens are the till and the stockroom — and
+// the person most likely to want this is whoever was handed a printed sheet
+// this morning, whatever their role turned out to be.
+//
+// Typed twice, and the one they use now is asked for. A phone left face-up on
+// a counter is a signed-in session, and without that question anybody walking
+// past could lock its owner out of their own record.
+function changeMyPassword() {
+  dialog(`<h3>Change my password</h3>
+    <p class="dim">Nobody here can read it back. If you forget it, an owner
+      issues a new one.</p>
+    <label for="mp_now">The password I use now</label>
+    <input id="mp_now" type="password" autocomplete="current-password" autofocus>
+    <label for="mp_new">My new password</label>
+    <input id="mp_new" type="password" autocomplete="new-password">
+    <label for="mp_again">My new password again</label>
+    <input id="mp_again" type="password" autocomplete="new-password">
+    <p class="dim mt">At least 8 characters.</p>
+    <div class="mt right">
+      <button class="btn quiet" id="mp_no">Cancel</button>
+      <button class="btn" id="mp_go">Change it</button>
+    </div>`);
+
+  $('#mp_no').addEventListener('click', closeDialog);
+  $('#mp_go').addEventListener('click', async () => {
+    const now = $('#mp_now').value;
+    const next = $('#mp_new').value;
+    // Checked here as well as at the far end. Being told the two do not match
+    // after a round trip, with all three boxes cleared, is a small cruelty.
+    if (next !== $('#mp_again').value) {
+      return notice('The two new passwords are not the same.', 'bad');
+    }
+    $('#mp_go').disabled = true;
+    try {
+      await POST('/api/my/password', { current: now, password: next });
+      closeDialog();
+      notice('Your password is changed 🌸', 'good');
+    } catch (e) {
+      whoops(e);
+      $('#mp_go').disabled = false;
+    }
+  });
 }
 
 const SCREENS = {};

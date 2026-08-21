@@ -90,7 +90,7 @@ async function asRole(role, actor, sql, params = []) {
 // ---------------------------------------------------------------------------
 const app = fs.readFileSync(
   path.join(here, '..', 'public', 'app.js'), 'utf8');
-const ruleSrc = app.slice(app.indexOf('const LEAVING ='), app.indexOf('async function call('));
+const ruleSrc = app.slice(app.indexOf('const OWN_BUSINESS ='), app.indexOf('async function call('));
 assert.ok(ruleSrc.includes('heldBack'), 'the rule moved; this test needs updating');
 const heldBack = new Function(`${ruleSrc.replace('export const', 'const')} return heldBack;`)();
 
@@ -100,6 +100,16 @@ test('a view-only sign-in can always sign out', () => {
   assert.equal(heldBack('observer', 'POST', '/api/team'), true);
   assert.equal(heldBack('observer', 'PUT', '/api/products/X'), true);
   assert.equal(heldBack('observer', 'DELETE', '/api/team/1'), true);
+});
+
+test('a view-only sign-in can always change its own password', () => {
+  // The same shape as signing out: their own way in is not the company's, and
+  // a manager who may not change a price should not be stuck for good with the
+  // password somebody printed for them.
+  assert.equal(heldBack('observer', 'POST', '/api/my/password'), false);
+  // And it stays the narrow exception it was written to be.
+  assert.equal(heldBack('observer', 'POST', '/api/users/1/password'), true,
+    'somebody else\'s password is very much the company\'s business');
 });
 
 test('reading is never held back, and nobody else is held back at all', () => {

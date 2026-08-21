@@ -70,6 +70,9 @@ node --test tests/reseller-signup.test.js
 echo "==> somebody who may look and not touch"
 node --test tests/observer.test.js
 
+echo "==> everybody's own password, and nobody else's"
+node --test tests/my-password.test.js
+
 echo "==> going live"
 TEST_DATABASE_URL="postgresql://postgres@localhost:$PGPORT/msbeauave_golive?host=$WORK" \
   node --test tests/golive.test.js
