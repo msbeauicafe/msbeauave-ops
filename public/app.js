@@ -76,12 +76,22 @@ let refreshTimer = null;
 // ---------------------------------------------------------------------------
 // Talking to the server
 // ---------------------------------------------------------------------------
+// Leaving is not a change to the company. Signing out is a POST because it
+// clears a cookie, and the first version of this rule read the method alone
+// and shut the door on somebody trying to walk out of it — a view-only
+// sign-in could not sign out at all.
+const LEAVING = ['/api/logout'];
+
+/** Should this request be stopped in the browser, before it is sent? */
+export const heldBack = (role, method, path) =>
+  role === 'observer' && method !== 'GET' && !LEAVING.includes(path);
+
 async function call(method, path, body) {
   // A view-only sign-in stops here rather than at the far end. The server
   // refuses these too — that is the guard, and it is the one that counts —
   // but a refusal that arrives before the request makes the screen honest
   // instead of merely safe.
-  if (user?.role === 'observer' && method !== 'GET') {
+  if (heldBack(user?.role, method, path)) {
     throw new Error('This sign-in can look but not change anything.');
   }
   const res = await fetch(path, {
@@ -382,8 +392,10 @@ SCREENS.dashboard = async (page) => {
         <span class="hint">Updates on its own</span></div>
 
       <div class="tiles">
+        ${d.takings ? `
         <div class="tile good"><div class="big">${peso(d.takings.total)}</div>
-          <div class="label">Taken at the till today (${d.takings.sales} sale${d.takings.sales === 1 ? '' : 's'})</div></div>
+          <div class="label">Taken at the till today (${d.takings.sales} sale${d.takings.sales === 1 ? '' : 's'})</div></div>`
+        : ''}
         <div class="tile"><div class="big">${d.waitingOrders}</div>
           <div class="label">Wholesale orders waiting</div></div>
         <div class="tile ${d.reorder.length ? 'bad' : 'good'}"><div class="big">${d.reorder.length}</div>
