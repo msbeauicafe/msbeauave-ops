@@ -112,6 +112,18 @@ test('a view-only sign-in can always change its own password', () => {
     'somebody else\'s password is very much the company\'s business');
 });
 
+test('a figure they may not see gets no tile', () => {
+  // It drew "₱0.00 monthly payroll" and the literal word "null" underneath it.
+  // Both numbers were correctly withheld by the server and then rendered
+  // anyway. A zero is worse than a blank, because a zero reads as a fact.
+  const hr = app.slice(app.indexOf('SCREENS.hr ='));
+  const tiles = hr.slice(0, hr.indexOf('</div>\n\n      <div class="panel"'));
+  assert.match(tiles, /payroll_monthly == null \? '' :/,
+    'the pay tiles must be left out entirely when the figure is withheld');
+  assert.ok(tiles.indexOf('figures.payroll_monthly == null') < tiles.indexOf('peso(d.figures.payroll_monthly)'),
+    'the guard has to come before the tile it guards');
+});
+
 test('reading is never held back, and nobody else is held back at all', () => {
   assert.equal(heldBack('observer', 'GET', '/api/dashboard'), false);
   for (const role of ['admin', 'employee', 'cashier', undefined]) {
@@ -233,15 +245,104 @@ test('an observer never sees the company\'s money', async () => {
   assert.ok(owner.takings, 'an owner still gets the takings');
 });
 
-test('an observer is not a way into somebody\'s own record either', async () => {
+// ---------------------------------------------------------------------------
+// Their own record
+//
+// These sixteen are not auditors from outside. They clock on at the same door,
+// take leave from the same allowance and are reviewed like everybody else, and
+// for a while they were the only people in the building who could not see their
+// own hours — the tier was built as a way of reading the company, and their own
+// record got caught in it.
+//
+// So the reading half opened and the writing half did not, and the tests below
+// are about the seam between them.
+// ---------------------------------------------------------------------------
+
+/** A view-only sign-in belonging to somebody who actually works here. */
+async function watcherWhoWorksHere(name) {
   const watcher = await signIn('observer');
-  for (const path of ['/api/my', '/api/my/photo', '/api/noticeboard']) {
-    const r = await GET(watcher, path);
-    assert.equal(r.status, 403, `${path} answered ${r.status}`);
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const person = await db.query(
+    `insert into employees (name, position, branch_id, user_id)
+     values ($1,'Coordinator',$2,(select id from app_users where username = $3))
+     returning id`,
+    [name, branch.id, watcher.username]);
+  return Object.assign(watcher, { employeeId: Number(person.rows[0].id), name });
+}
+
+test('a view-only manager can see their own record', async () => {
+  const watcher = await watcherWhoWorksHere(unique('Caila'));
+
+  const mine = await GET(watcher, '/api/my');
+  assert.equal(mine.status, 200, JSON.stringify(mine.data));
+  assert.equal(mine.data.profile.name, watcher.name);
+  assert.equal(Number(mine.data.profile.id), watcher.employeeId);
+  assert.ok(Array.isArray(mine.data.hours), 'their own hours');
+  assert.ok(Array.isArray(mine.data.leave), 'their own leave');
+  assert.ok(Array.isArray(mine.data.appraisals), 'their own reviews');
+  assert.equal((await GET(watcher, '/api/noticeboard')).status, 200,
+    'a notice pinned up for the whole company is for them too');
+});
+
+test('their own record is their own and nobody else\'s', async () => {
+  const her = await watcherWhoWorksHere(unique('Caila'));
+  const him = await watcherWhoWorksHere(unique('Basty'));
+
+  const hers = (await GET(her, '/api/my')).data.profile;
+  const his = (await GET(him, '/api/my')).data.profile;
+  assert.equal(hers.name, her.name);
+  assert.equal(his.name, him.name);
+  assert.notEqual(Number(hers.id), Number(his.id));
+
+  // There is no id in the route to change, so the shapes somebody would try
+  // are query strings — and none of them may move the answer.
+  for (const q of [`?id=${him.employeeId}`, `?employee_id=${him.employeeId}`,
+    `?employee=${encodeURIComponent(him.name)}`]) {
+    const tried = (await GET(her, `/api/my${q}`)).data.profile;
+    assert.equal(tried.name, her.name, `${q} moved the answer`);
   }
-  // Asking for somebody's leave is a POST route, so a GET is refused before
-  // the role is even looked at. Worth saying out loud: that 405 is the router
-  // being tidy, not the boundary doing anything.
+});
+
+test('reading their record does not open writing to it', async () => {
+  const watcher = await watcherWhoWorksHere(unique('Caila'));
+
+  // Their leave balance shows on their record; asking for the days is still a
+  // conversation with HR, because read-only is what these sixteen were given.
   assert.equal((await POST(watcher, '/api/my/leave',
     { leave_type: 'vacation', start_date: '2027-01-04', end_date: '2027-01-05' })).status, 403);
+  assert.equal((await DELETE(watcher, '/api/my/leave/1')).status, 403);
+
+  // And past the router, which is the guard that counts.
+  for (const [sql, params] of [
+    ['select request_leave($1,$2,$3)', ['vacation', '2027-01-04', '2027-01-05']],
+    ['select withdraw_leave($1)', [1]],
+  ]) {
+    await assert.rejects(() => asRole('observer', watcher.username, sql, params),
+      /FORBIDDEN/, sql);
+  }
+});
+
+test('a view-only sign-in that belongs to nobody is told so, not shown somebody', async () => {
+  // Not every observer has to be on the team. What must never happen is the
+  // lookup coming back empty and the first row of somebody else standing in.
+  const stranger = await signIn('observer');
+  const r = await GET(stranger, '/api/my');
+  assert.notEqual(r.status, 200, JSON.stringify(r.data));
+  assert.match(r.data.error ?? '', /does not belong to anybody/i);
+});
+
+test('their own pay is theirs; the payroll is still not', async () => {
+  const boss = await signIn('admin');
+  const watcher = await watcherWhoWorksHere(unique('Caila'));
+  assert.equal((await POST(boss, `/api/hr/people/${watcher.employeeId}/employment`,
+    { department: 'Retail', salary: 31000 })).status, 200);
+
+  // A cashier already sees their own figure. "Except salaries" means everybody
+  // else's, and the reply to /api/hr proves that half is unchanged.
+  const mine = (await GET(watcher, '/api/my')).data.profile;
+  assert.equal(Number(mine.salary), 31000, 'their own payslip figure');
+
+  const company = (await GET(watcher, '/api/hr')).data;
+  assert.equal(company.figures.payroll_monthly, null, 'the monthly total, still not');
+  assert.ok(company.people.every((p) => !('salary' in p)), 'nobody else\'s, still not');
 });

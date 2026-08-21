@@ -335,6 +335,10 @@ const TABS = {
     ['reorder', '📈', 'Reordering'],
     ['reports', '📊', 'Reports'],
     ['stockroom', '🔀', 'Stockroom'],
+    // They work here as well as watch. Their own hours, their own leave
+    // balance, their own reviews — the same page a cashier gets, and the only
+    // screen on this list that is about them rather than the company.
+    ['me', '🪪', 'My record'],
   ],
   reseller: [
     ['catalog', '🛒', 'Order stock'],
@@ -4592,10 +4596,15 @@ SCREENS.hr = async (page) => {
           <div class="label">Leave waiting on you</div></div>
         <div class="tile"><div class="big">${hiring.length}</div>
           <div class="label">Candidates in play</div></div>
+        ${/* Pay is stripped out of the reply for a view-only sign-in, so these
+             two came through as null and drew "₱0.00" and the word "null" on
+             the screen. A figure they may not see has no tile at all: a zero
+             would be worse than nothing, because it reads as a fact. */
+          d.figures.payroll_monthly == null ? '' : `
         <div class="tile good"><div class="big">${peso(d.figures.payroll_monthly)}</div>
           <div class="label">Monthly payroll on record</div></div>
         <div class="tile ${d.figures.unpaid ? 'warn' : 'good'}"><div class="big">${d.figures.unpaid}</div>
-          <div class="label">Without a pay figure set</div></div>
+          <div class="label">Without a pay figure set</div></div>`}
       </div>
 
       <div class="panel"><h3>🌴 Leave waiting on a decision</h3>
