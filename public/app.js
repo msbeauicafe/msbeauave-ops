@@ -4,6 +4,10 @@
 // Everything interpolated into markup goes through esc(), without exception —
 // a product name is user input and must never be able to become markup.
 
+// Puts an eye on every password box on every screen. Imported for what it
+// does, not for anything it exports.
+import './reveal.js';
+
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------

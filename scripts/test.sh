@@ -55,6 +55,9 @@ node --test tests/manila.test.js
 echo "==> pages that are their own"
 node --test tests/public-pages.test.js
 
+echo "==> an eye on every password box"
+node --test tests/reveal.test.js
+
 echo "==> running the tests"
 node --test tests/acceptance.test.js
 

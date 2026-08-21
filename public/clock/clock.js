@@ -10,6 +10,11 @@
 // device in is still required — the staff list is not something to hand to
 // anybody who finds the address — but it is done once, on the tablet, and then
 // the screen stays on this page.
+//
+// The eye is for that one box: setting a tablet up is a long code typed on a
+// touchscreen by somebody standing at a door, and getting it wrong tells you
+// nothing about which character was wrong.
+import '../reveal.js';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) =>
