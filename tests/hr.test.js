@@ -202,9 +202,17 @@ test('an employee cannot read a colleague\'s photograph', async () => {
   const peek = await GET(cookie, `/api/team/${other.id}/photo`);
   assert.equal(peek.status, 403);
 
-  // And their own is reached without naming anybody.
-  const mine = await fetch(`${base}/api/my/photo`, { headers: { Cookie: cookie } });
-  assert.equal(mine.status, 404, 'they have no photograph, which is a 404 and not a 403');
+  // And their own is reached without naming anybody. Both cases, because a 404
+  // for somebody who has no photograph is also what a broken route returns —
+  // this test passed for a year on a route that could never have found one.
+  const none = await fetch(`${base}/api/my/photo`, { headers: { Cookie: cookie } });
+  assert.equal(none.status, 404, 'no photograph is a 404, not a 403');
+
+  assert.equal((await POST(hr, `/api/team/${me.id}/photo`, { dataUrl: dot })).status, 200);
+  const ours = await fetch(`${base}/api/my/photo`, { headers: { Cookie: cookie } });
+  assert.equal(ours.status, 200, 'and once they have one, they can see it');
+  assert.match(ours.headers.get('content-type'), /^image\//);
+  assert.ok((await ours.arrayBuffer()).byteLength > 0, 'with the picture actually in it');
 });
 
 test('an employee cannot withdraw somebody else\'s leave', async () => {
