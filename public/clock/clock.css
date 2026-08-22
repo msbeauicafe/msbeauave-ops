@@ -311,3 +311,58 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
 :root[data-brand="boa"] .keyfirst .dots { color: var(--boa-pink); }
 :root[data-brand="boa"] .card.on { border-color: var(--boa-cyan); background: #F1FBFE; }
 :root[data-brand="boa"] .dot { background: var(--boa-cyan); }
+
+/* ---------------------------------------------------------------------------
+ * A monitor at a door, not a tablet on a counter
+ *
+ * This screen was drawn for a tablet held at arm's length. Every door here has
+ * a desktop monitor instead — further away, and much bigger — and a layout
+ * capped at 1200px on a 1920px screen leaves a third of the glass empty while
+ * the names on it stay the size they were on a 10in tablet.
+ *
+ * So past 1400px everything that has to be read from across a shop grows, and
+ * the layout takes the room it has been given. Nothing below 1400px moves: a
+ * phone or a tablet opening the same address is unchanged.
+ * ------------------------------------------------------------------------- */
+@media (min-width: 1400px) {
+  body { font-size: 18px; }
+  .two { max-width: 1680px; grid-template-columns: minmax(0, 1fr) 440px; gap: 28px; }
+  main { padding: 22px 28px 48px; }
+
+  /* The faces: the thing somebody is looking for from the doorway. */
+  .grid { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 16px; }
+  .card { padding: 20px 14px; border-radius: 18px; }
+  .card img, .face { width: 88px; height: 88px; font-size: 40px; }
+  .card b { font-size: 1.2rem; }
+  .card span { font-size: .84rem; }
+  .card .times { font-size: .95rem; }
+  .dot { width: 15px; height: 15px; top: 12px; right: 12px; }
+
+  /* The keypad, for whoever is typing rather than presenting a finger. */
+  .keys button { font-size: 1.8rem; padding: 20px 0; }
+  .keyfirst .dots, .padside .dots { font-size: 2.5rem; min-height: 3rem; }
+  .padside h2 { font-size: 1.3rem; }
+  .padside .hint { font-size: .86rem; }
+
+  /* The bar: the shop's name and the time, both read from a distance. */
+  #bar { padding: 14px 26px; }
+  #now { font-size: 1.5rem; }
+  .brand img { width: 52px; height: 52px; }
+  .brand b { font-size: 1.2rem; }
+  .brand span { font-size: .9rem; }
+  :root[data-brand="boa"] .brand img { height: 60px; }
+
+  /* The word said out loud when somebody clocks on. */
+  .say { font-size: 1.35rem; padding: 20px 24px; max-width: 760px; }
+  .tools input, .tools select { font-size: 1.15rem; padding: 14px 16px; }
+}
+
+/* Bigger still — a 24in or 27in monitor at a door is common enough. */
+@media (min-width: 1900px) {
+  body { font-size: 20px; }
+  .two { max-width: 1880px; grid-template-columns: minmax(0, 1fr) 500px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .card img, .face { width: 104px; height: 104px; font-size: 46px; }
+  .keys button { font-size: 2rem; padding: 24px 0; }
+  #now { font-size: 1.7rem; }
+}
