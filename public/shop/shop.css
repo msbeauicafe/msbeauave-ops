@@ -35,11 +35,16 @@ body {
 }
 
 /* ---------- the band at the top ---------- */
+/* Added to an iPhone's home screen, this owns the whole glass — under the
+ * camera at the top and the home bar at the bottom. env() is nothing anywhere
+ * else and falls back to zero, so nothing changes on Android or a desktop. */
 .sh-header {
   background: linear-gradient(135deg, var(--rose-primary), var(--rose-deep));
   padding: 12px; display: flex; gap: 10px; align-items: center;
   position: sticky; top: 0; z-index: 5;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
 }
+.sh-nav { padding-bottom: env(safe-area-inset-bottom, 0px); }
 .sh-header .logo-mark {
   width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none;
   border: 2px solid rgba(255, 255, 255, .75); background: #fff;

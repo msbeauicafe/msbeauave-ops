@@ -21,6 +21,8 @@ body {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 18px; background: var(--rose-blush);
   border-bottom: 1px solid var(--rose-soft); flex: 0 0 auto;
+  /* A door screen added to an iPad's home screen draws under the camera. */
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
@@ -115,7 +117,11 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
   border: none; background: var(--rose-primary); color: #fff; font-weight: 700; cursor: pointer;
 }
 
-#notices { position: fixed; left: 0; right: 0; bottom: 0; padding: 16px; z-index: 60; }
+#notices {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
 .say {
   max-width: 620px; margin: 0 auto; padding: 16px 18px; border-radius: 14px;
   font-size: 1.05rem; font-weight: 600; text-align: center; color: #fff;
