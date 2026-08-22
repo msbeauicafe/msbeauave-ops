@@ -66,6 +66,19 @@ let team = [];
 let refresher = null;
 let fixedBranch = null;
 
+// A finger has been matched and is waiting on the PIN that confirms it.
+//
+// The scanner says who is standing here. It does not say they meant to clock,
+// and a fingerprint is the one thing a person cannot change if it is ever
+// copied — so nothing is recorded until the PIN only they know follows it.
+// Going out as well as coming in: walking past a scanner should not end a
+// shift any more than it should start one.
+//
+// The keypad already on this screen is the thing that asks. There is no second
+// PIN pad and nothing new to learn — the same buttons, under their own name.
+let awaiting = null;      // { ticket, name, until }
+let askTimer = null;
+
 // The tablet's own sign-in. Not a person, and not on the team list.
 const TIMEKEEPER = 'Timekeeper';
 
@@ -97,6 +110,48 @@ function gate() {
       start();
     } catch (err) { say('That code does not match.', 'bad'); }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Asking for the PIN that confirms a finger
+//
+// It turns the keypad that is already there into their keypad, with their name
+// on it, and turns it back when the window closes. Nothing is recorded either
+// way until the PIN arrives — a window that runs out leaves no trace of a
+// shift, only a note that a finger opened one and nothing followed.
+// ---------------------------------------------------------------------------
+function startAsking(name, ticket, seconds) {
+  clearInterval(askTimer);
+  awaiting = { ticket, name, until: Date.now() + (seconds || 90) * 1000 };
+
+  const pad = $('#bypin');
+  if (!pad) return;
+  pad.classList.add('confirming');
+  const left = () => Math.max(0, Math.ceil((awaiting.until - Date.now()) / 1000));
+  const paint = () => {
+    if (!awaiting) return;
+    pad.querySelector('h2').textContent = `${name} — type your PIN`;
+    const hint = pad.querySelector('.hint');
+    if (hint) hint.textContent = `Your finger was recognised. ${left()}s to confirm.`;
+    if (left() <= 0) {
+      stopAsking();
+      say('That took too long. Press your finger again.', 'bad', CONFIRM_MS);
+    }
+  };
+  paint();
+  askTimer = setInterval(paint, 1000);
+}
+
+function stopAsking() {
+  clearInterval(askTimer);
+  askTimer = null;
+  awaiting = null;
+  const pad = $('#bypin');
+  if (!pad) return;
+  pad.classList.remove('confirming');
+  pad.querySelector('h2').textContent = 'Type your PIN';
+  const hint = pad.querySelector('.hint');
+  if (hint) hint.textContent = 'Or tap your name on the left.';
 }
 
 // ---------------------------------------------------------------------------
@@ -157,16 +212,26 @@ async function start() {
   const punch = async () => {
     if (typed.length < 4) return say('Type your four-digit PIN.', 'bad');
     $('#kgo').disabled = true;
+    // Two things the same buttons do. If a finger is waiting on its
+    // confirmation the PIN finishes that; otherwise it is the PIN on its own,
+    // which is what everybody without a fingerprint still uses.
+    const confirming = awaiting && Date.now() < awaiting.until ? awaiting : null;
     try {
-      const r = await POST('/api/clock/by-pin', { pin: typed, branch_id: fixedBranch });
+      const r = confirming
+        ? await POST('/api/clock/confirm', { ticket: confirming.ticket, pin: typed })
+        : await POST('/api/clock/by-pin', { pin: typed, branch_id: fixedBranch });
       say(r.action === 'in'
         ? `Good morning ${r.name} — clocked on 🌸`
         : `${r.name} clocked out after ${(r.worked_minutes / 60).toFixed(2)} hours 🌸`);
       typed = ''; kdots();
+      if (confirming) stopAsking();
       load().catch(() => {});
     } catch (e) {
       say(e.message, 'bad');
       typed = ''; kdots();
+      // A ticket dies after three wrong PINs and after ninety seconds. Once it
+      // is gone the keypad has to stop claiming to be confirming anybody.
+      if (confirming && /expired/i.test(e.message)) stopAsking();
     } finally { $('#kgo').disabled = false; }
   };
   $('#kgo').addEventListener('click', punch);
@@ -321,6 +386,28 @@ async function findScanner() {
 
     if (latest.ok) {
       const r = latest.result || {};
+
+      // Recognised, and nothing written down yet. The finger has named
+      // somebody; the PIN is what says they meant it.
+      if (r.action === 'confirm') {
+        // The door answers a second press from memory for a few seconds, so
+        // the same ticket arrives again while they are still typing. Asking
+        // twice would reset their name and the countdown under their fingers.
+        if (awaiting?.ticket === r.ticket) return;
+        if (!r.has_pin) {
+          say(`${r.name} has no PIN yet — ask the owner to set one.`, 'bad', CONFIRM_MS);
+          held = Date.now() + CONFIRM_MS;
+          return;
+        }
+        startAsking(r.name, r.ticket, r.seconds);
+        say(`Hello ${r.name} — now type your PIN`, 'good', CONFIRM_MS);
+        held = Date.now() + CONFIRM_MS;
+        panel.classList.remove('reading');
+        $('#scantitle', panel).textContent = 'Now your PIN';
+        hint.textContent = r.name;
+        return;
+      }
+
       const what = r.action === 'out' ? 'clocked out' : 'clocked in';
       // Pressed twice. Say what already happened rather than nothing, so the
       // answer to "did it work?" is never silence.

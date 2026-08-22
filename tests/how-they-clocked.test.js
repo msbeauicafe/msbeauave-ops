@@ -71,7 +71,18 @@ async function person({ pin, finger = false } = {}) {
       `insert into employee_fingers (employee_id, finger, template, quality)
        values ($1, 1, $2, 60)`, [id, Buffer.from('not-a-real-template')]);
   }
-  return { id, name, branch, boss };
+  return { id, name, branch, pin, boss };
+}
+
+// What a door does now: a finger names somebody, and the PIN they type
+// confirms it. A match on its own records nothing, which is the point of it —
+// see tests/finger-then-pin.test.js for the boundary itself.
+async function byFinger(door, p) {
+  const matched = await POST(door, '/api/clock/by-finger',
+    { employeeId: p.id, branch_id: p.branch });
+  if (matched.status !== 200) return matched;
+  assert.equal(matched.data.action, 'confirm', JSON.stringify(matched.data));
+  return POST(door, '/api/clock/confirm', { ticket: matched.data.ticket, pin: p.pin });
 }
 
 const shift = async (id) => (await db.query(
@@ -82,19 +93,17 @@ const shift = async (id) => (await db.query(
 // Each door says its own name
 // ---------------------------------------------------------------------------
 test('a finger at the door is recorded as a finger', async () => {
-  const p = await person({ finger: true });
+  const p = await person({ pin: '909192', finger: true });
   const door = await signIn('timekeeper');
 
-  const on = await POST(door, '/api/clock/by-finger',
-    { employeeId: p.id, branch_id: p.branch });
+  const on = await byFinger(door, p);
   assert.equal(on.status, 200, JSON.stringify(on.data));
   assert.equal(on.data.action, 'in');
   assert.equal((await shift(p.id)).started_how, 'finger');
 
   // And on the way out, because somebody can present a finger in the morning
   // and type a PIN at night — which is the thing worth being able to see.
-  const off = await POST(door, '/api/clock/by-finger',
-    { employeeId: p.id, branch_id: p.branch });
+  const off = await byFinger(door, p);
   assert.equal(off.data.action, 'out');
   const done = await shift(p.id);
   assert.equal(done.started_how, 'finger');
@@ -136,7 +145,7 @@ test('a mixed day is recorded as mixed, not as one or the other', async () => {
   const p = await person({ pin: '661423', finger: true });
   const door = await signIn('timekeeper');
 
-  await POST(door, '/api/clock/by-finger', { employeeId: p.id, branch_id: p.branch });
+  await byFinger(door, p);
   await POST(door, '/api/clock/by-pin', { pin: '661423', branch_id: p.branch });
 
   const done = await shift(p.id);
@@ -182,9 +191,9 @@ test('the database refuses a method that is not one of the three', async () => {
 // Reading it back
 // ---------------------------------------------------------------------------
 test('HR sees which way each press was made', async () => {
-  const p = await person({ finger: true });
+  const p = await person({ pin: '939495', finger: true });
   const door = await signIn('timekeeper');
-  await POST(door, '/api/clock/by-finger', { employeeId: p.id, branch_id: p.branch });
+  await byFinger(door, p);
 
   for (const who of [await signIn('admin'), await signIn('observer')]) {
     const sheet = await GET(who, '/api/hr/attendance');
