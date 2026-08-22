@@ -177,22 +177,23 @@ function stopAsking() {
   pad.classList.remove('confirming');
   pad.querySelector('h2').textContent = 'Type your PIN';
   const hint = pad.querySelector('.hint');
-  if (hint) hint.textContent = 'Type on the keyboard, or pick your name on the left.';
+  if (hint) hint.textContent = 'Type your PIN on the keyboard, or pick your face on the left.';
 }
 
 // ---------------------------------------------------------------------------
 // The faces
 // ---------------------------------------------------------------------------
 async function start() {
-  // One job, two ways of doing it: find your face on the left, or type your
-  // four digits on the right. There is deliberately no way into the back office
+  // One job, two ways of doing it: pick your face on the left, or type your
+  // four digits on the right. There is no name search: thirty-odd faces on a
+  // monitor is a thing you find by looking, and a box that has to be clicked
+  // into first is slower than the looking. There is deliberately no way into the back office
   // from here — a screen at a door should not be a way into the till, and a
   // sign-in box on it would leave it signed in as whoever last used it.
   $('#app').innerHTML = `
     <div class="two">
       <section class="clockside">
         <div class="tools">
-          <input id="find" type="search" placeholder="Find your name…" autocomplete="off">
           <select id="branch"></select>
         </div>
         <div class="grid" id="grid"></div>
@@ -209,7 +210,7 @@ async function start() {
             <button data-k="0">0</button>
             <button class="go" id="kgo">✓</button>
           </div>
-          <p class="hint">Type on the keyboard, or pick your name on the left.</p>
+          <p class="hint">Type your PIN on the keyboard, or pick your face on the left.</p>
         </section>
 
         <!-- Only appears if this door has a scanner. Under the keypad, in the
@@ -264,7 +265,7 @@ async function start() {
   // Every door here is a desktop monitor, so the keyboard is the ordinary
   // way in for anybody not using the scanner.
   document.addEventListener('keydown', (e) => {
-    if ($('.veil') || document.activeElement === $('#find')) return;
+    if ($('.veil')) return;
     if (/^[0-9]$/.test(e.key) && typed.length < 8) { typed += e.key; kdots(); }
     else if (e.key === 'Backspace') { typed = typed.slice(0, -1); kdots(); }
     else if (e.key === 'Enter') punch();
@@ -288,7 +289,14 @@ async function start() {
       + branches.filter((b) => b.active).map((b) =>
         `<option value="${b.id}"${String(b.id) === remembered ? ' selected' : ''}>${
           esc(b.name)}</option>`).join('');
-  if (fixed || branches.length < 2) picker.style.display = 'none';
+  // At a door the shop is fixed, so the picker is hidden — and it was the last
+  // thing in that row once the name search went, leaving a strip of nothing
+  // above the faces.
+  if (fixed || branches.length < 2) {
+    picker.style.display = 'none';
+    const tools = document.querySelector('.tools');
+    if (tools) tools.style.display = 'none';
+  }
   const named = fixed || branches.find((b) => String(b.id) === picker.value);
   // The shop the server says this is, which may correct what was remembered.
   const worn = brandOf(named?.name);
@@ -297,7 +305,6 @@ async function start() {
   // beside it in a different typeface. The others still do.
   $('#where').textContent = named && !worn ? `Time clock · ${named.name}` : 'Time clock';
 
-  $('#find').addEventListener('input', draw);
   picker.addEventListener('change', () => {
     localStorage.setItem('clockBranch', picker.value);
     const b = branches.find((x) => String(x.id) === picker.value);
@@ -541,11 +548,9 @@ function todayLine(p) {
 }
 
 function draw() {
-  const q = ($('#find')?.value || '').trim().toLowerCase();
   const here = $('#branch')?.value || '';
   const shown = team
     .filter((p) => !here || String(p.branch_id) === here)
-    .filter((p) => !q || p.name.toLowerCase().includes(q))
     .sort(arrivals);
 
   $('#grid').innerHTML = shown.length ? shown.map((p) => `
@@ -562,29 +567,11 @@ function draw() {
       <span>${p.has_pin ? esc(p.position) : 'no PIN yet — ask the owner'}</span>
       ${todayLine(p)}
     </button>`).join('')
-    : '<div class="none">Nobody matches that.</div>';
+    : '<div class="none">Nobody on the team here yet.</div>';
 
   $$('[data-who]').forEach((b) => b.addEventListener('click',
     () => pad(team.find((p) => String(p.id) === b.dataset.who))));
 
-  // Every door has a keyboard, so typing part of a name and pressing enter is
-  // the quickest way to find yourself among fifty faces — and it is what
-  // anybody who has used a search box already expects. Only when it has
-  // narrowed to one person: enter on a list of six should not open the first
-  // of them.
-  const box = $('#find');
-  if (box && !box.dataset.wired) {
-    box.dataset.wired = '1';
-    box.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      const q2 = box.value.trim().toLowerCase();
-      const hits = team
-        .filter((p) => p.has_pin && (!q2 || p.name.toLowerCase().includes(q2)))
-        .filter((p) => { const h = $('#branch')?.value || '';
-                         return !h || String(p.branch_id) === h; });
-      if (hits.length === 1) { e.preventDefault(); pad(hits[0]); }
-    });
-  }
 }
 
 // ---------------------------------------------------------------------------
