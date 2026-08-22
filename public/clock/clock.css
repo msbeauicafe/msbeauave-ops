@@ -366,3 +366,38 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
   .keys button { font-size: 2rem; padding: 24px 0; }
   #now { font-size: 1.7rem; }
 }
+
+/* ---------------------------------------------------------------------------
+ * A mouse, and a keyboard
+ *
+ * Every door has both and none has a touchscreen. A screen drawn for fingers
+ * has nothing to say to a pointer: the faces and the keys sat inert until they
+ * were clicked, so there was no way to tell a live control from a picture of
+ * one, and no way to see which of fifty faces the mouse was actually over.
+ *
+ * :hover does not exist on a touchscreen and is ignored there, so a phone or a
+ * tablet opening the same address is unchanged.
+ * ------------------------------------------------------------------------- */
+@media (hover: hover) {
+  .card:hover:not([disabled]) {
+    border-color: var(--rose-primary);
+    box-shadow: 0 6px 18px rgba(69, 48, 60, .12);
+  }
+  .keys button:hover { background: var(--rose-soft); }
+  .keys .go:hover { filter: brightness(1.08); }
+  .keys .wipe:hover { background: var(--rose-blush); }
+  .tools input:hover { border-color: var(--rose-dust); }
+  button.quiet:hover { background: var(--rose-blush); }
+}
+
+/* Where the keyboard is, said plainly. Somebody tabbing or typing at a door
+ * should never have to guess which thing is listening. */
+.card:focus-visible,
+.keys button:focus-visible,
+.tools input:focus,
+.gate input:focus {
+  outline: 3px solid var(--rose-primary); outline-offset: 2px;
+}
+:root[data-brand="boa"] .card:focus-visible,
+:root[data-brand="boa"] .keys button:focus-visible,
+:root[data-brand="boa"] .tools input:focus { outline-color: var(--boa-cyan); }

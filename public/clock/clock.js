@@ -177,7 +177,7 @@ function stopAsking() {
   pad.classList.remove('confirming');
   pad.querySelector('h2').textContent = 'Type your PIN';
   const hint = pad.querySelector('.hint');
-  if (hint) hint.textContent = 'Or pick your name on the left.';
+  if (hint) hint.textContent = 'Type on the keyboard, or pick your name on the left.';
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ async function start() {
             <button data-k="0">0</button>
             <button class="go" id="kgo">✓</button>
           </div>
-          <p class="hint">Or pick your name on the left.</p>
+          <p class="hint">Type on the keyboard, or pick your name on the left.</p>
         </section>
 
         <!-- Only appears if this door has a scanner. Under the keypad, in the
@@ -566,6 +566,25 @@ function draw() {
 
   $$('[data-who]').forEach((b) => b.addEventListener('click',
     () => pad(team.find((p) => String(p.id) === b.dataset.who))));
+
+  // Every door has a keyboard, so typing part of a name and pressing enter is
+  // the quickest way to find yourself among fifty faces — and it is what
+  // anybody who has used a search box already expects. Only when it has
+  // narrowed to one person: enter on a list of six should not open the first
+  // of them.
+  const box = $('#find');
+  if (box && !box.dataset.wired) {
+    box.dataset.wired = '1';
+    box.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const q2 = box.value.trim().toLowerCase();
+      const hits = team
+        .filter((p) => p.has_pin && (!q2 || p.name.toLowerCase().includes(q2)))
+        .filter((p) => { const h = $('#branch')?.value || '';
+                         return !h || String(p.branch_id) === h; });
+      if (hits.length === 1) { e.preventDefault(); pad(hits[0]); }
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
