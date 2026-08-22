@@ -1,0 +1,163 @@
+/* Johnny — the schedule hub.
+   Its own dark, court-side look rather than the rose back office, but built on
+   the same tokens so the two never clash if they sit side by side. Mobile
+   first: one column that a phone reads top to bottom, widening to a calmer
+   two-column game row on a tablet and up. */
+:root {
+  --bg:      #0E1220;   /* deep navy, the stands after dark */
+  --panel:   #171C2E;
+  --panel-2: #1F2740;
+  --line:    #2A324E;
+  --ink:     #EEF1F8;
+  --muted:   #97A0BC;
+  --accent:  #C98DA4;   /* the house rose, kept as the through-line */
+  --accent-2:#8FB4FF;
+  --live:    #E5484D;
+  --final:   #7C86A8;
+  --soon:    #8FB4FF;
+  --won:     #7BD88F;
+  --round:   14px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(1200px 600px at 50% -200px, #1B2340 0, transparent 70%),
+    var(--bg);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+a { color: inherit; }
+
+#app { max-width: 720px; margin: 0 auto; padding: 16px 14px 40px; }
+
+/* ---- header ---------------------------------------------------------- */
+.top { padding: 8px 4px 14px; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand h1 {
+  margin: 0; font-size: 30px; letter-spacing: .3px;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.brand .dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--live); box-shadow: 0 0 0 4px rgba(229, 72, 77, .18);
+}
+.tagline { margin: 6px 4px 0; color: var(--muted); font-size: 14px; }
+.meta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 12px; gap: 10px;
+}
+.stamp { color: var(--muted); font-size: 13px; }
+.refresh {
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  width: 38px; height: 38px; border-radius: 10px; font-size: 18px;
+  cursor: pointer; line-height: 1;
+}
+.refresh:active { transform: scale(.94); }
+
+/* ---- tabs (horizontal scroll on a phone) ----------------------------- */
+.tabs {
+  display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 10px;
+  scrollbar-width: none; position: sticky; top: 0; z-index: 5;
+  background: linear-gradient(var(--bg) 70%, transparent);
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: 0 0 auto; border: 1px solid var(--line); background: var(--panel);
+  color: var(--muted); padding: 9px 16px; border-radius: 999px;
+  font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.tab.on { background: var(--accent); border-color: var(--accent); color: #241019; }
+
+/* ---- a league block -------------------------------------------------- */
+.league { margin-top: 18px; }
+.league-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+}
+.league-head h2 { margin: 0; font-size: 18px; }
+.league-head .sport { color: var(--muted); font-size: 13px; font-weight: 400; }
+.watch-home { color: var(--accent-2); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.watch-home:hover { text-decoration: underline; }
+
+.games { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+
+/* ---- a single game --------------------------------------------------- */
+.game {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--round); padding: 14px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.game.live { border-color: rgba(229, 72, 77, .55); }
+.teams { display: grid; gap: 6px; }
+.team {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.team-name { font-weight: 600; }
+.team.won .team-name { color: var(--won); }
+.team.single .team-name { font-weight: 700; font-size: 15.5px; }
+.score { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 17px; }
+.venue, .note { margin: 0; color: var(--muted); font-size: 12.5px; }
+.note { color: var(--accent-2); }
+
+.game-side { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.badge {
+  align-self: flex-start; font-size: 12px; font-weight: 700;
+  padding: 5px 10px; border-radius: 8px; letter-spacing: .2px;
+}
+.badge.live { background: rgba(229, 72, 77, .16); color: #ff8a8d; }
+.badge.final { background: var(--panel-2); color: var(--final); }
+.badge.soon { background: rgba(143, 180, 255, .14); color: var(--soon); }
+
+/* ---- watch links ----------------------------------------------------- */
+.watch { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tv-hint { color: var(--muted); font-size: 12.5px; }
+.btn {
+  display: inline-block; text-decoration: none; cursor: pointer;
+  background: var(--accent); color: #241019; border: 1px solid var(--accent);
+  padding: 9px 14px; border-radius: 10px; font-size: 13.5px; font-weight: 700;
+}
+.btn:active { transform: scale(.98); }
+.btn.ghost { background: transparent; color: var(--accent-2); border-color: var(--line); }
+.watch-btn { white-space: nowrap; }
+
+/* ---- notices, skeletons ---------------------------------------------- */
+.notice {
+  background: var(--panel); border: 1px dashed var(--line);
+  border-radius: var(--round); padding: 18px; text-align: center;
+  display: grid; gap: 10px; justify-items: center; color: var(--muted);
+}
+.notice p { margin: 0; }
+.notice .small { font-size: 12.5px; opacity: .8; }
+.notice.error { border-color: rgba(229, 72, 77, .4); }
+
+.skeletons { display: grid; gap: 10px; margin-top: 10px; }
+.skeleton {
+  height: 78px; border-radius: var(--round);
+  background: linear-gradient(90deg, var(--panel) 25%, var(--panel-2) 37%, var(--panel) 63%);
+  background-size: 400% 100%; animation: shimmer 1.3s ease-in-out infinite;
+}
+@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+/* ---- footer ---------------------------------------------------------- */
+.foot { margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--line); }
+.fb {
+  display: inline-block; text-decoration: none; font-weight: 700;
+  color: var(--accent-2); margin-bottom: 10px;
+}
+.fb:hover { text-decoration: underline; }
+.disclaimer { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+/* ---- wider than a phone --------------------------------------------- */
+@media (min-width: 560px) {
+  .game { flex-direction: row; align-items: center; justify-content: space-between; }
+  .game-main { flex: 1; }
+  .game-side { align-items: flex-end; min-width: 190px; }
+  .watch { justify-content: flex-end; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+  .refresh:active, .btn:active { transform: none; }
+}
