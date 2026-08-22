@@ -85,6 +85,9 @@ node --test tests/finger-then-pin.test.js
 echo "==> one person, opened"
 node --test tests/person-profile.test.js
 
+echo "==> the apps we hand out are whole apps"
+node --test tests/apks.test.js
+
 echo "==> going live"
 TEST_DATABASE_URL="postgresql://postgres@localhost:$PGPORT/msbeauave_golive?host=$WORK" \
   node --test tests/golive.test.js
