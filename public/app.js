@@ -229,6 +229,36 @@ function signInLine() {
   return SIGN_IN_LINES[app] ?? SIGN_IN_LINES.office;
 }
 
+// What the icon is called once it is on an iPhone's home screen.
+//
+// On Android the staff app is its own installed package with its own name. On
+// iOS there is nothing to install: the app is this page, added to the home
+// screen from Safari. Same page and same file for the back office and for
+// staff, so the name has to come from the address — and iOS reads it out of
+// the document at the moment somebody taps Add to Home Screen, which is always
+// after this has run.
+//
+// Left alone when there is no ?app=, so the back office keeps the name it had.
+const HOME_SCREEN_NAMES = { staff: 'MBA Staff' };
+
+(function nameThisApp() {
+  const app = new URLSearchParams(location.search).get('app');
+  const name = HOME_SCREEN_NAMES[app];
+  if (!name) return;
+  document.title = name;
+  let meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.name = 'apple-mobile-web-app-title';
+    document.head.append(meta);
+  }
+  meta.content = name;
+  // And the manifest, for an iPhone new enough to read one, and for Android's
+  // own "add to home screen" outside the installed app.
+  const link = document.querySelector('link[rel="manifest"]');
+  if (link) link.href = `/manifest-staff.webmanifest`;
+})();
+
 function drawSignIn() {
   clearInterval(refreshTimer);
   $('#app').innerHTML = `

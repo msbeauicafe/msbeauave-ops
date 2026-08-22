@@ -70,10 +70,29 @@ a { color: var(--rose-primary); }
 /* ---------- the shell ---------- */
 .shell { min-height: 100vh; }
 
+/* ---------- added to an iPhone's home screen ----------
+ *
+ * A standalone web app on iOS owns the whole glass: it draws under the clock
+ * and the camera at the top and under the home bar at the bottom. Without
+ * these the header sits behind the status bar and the last row of any page is
+ * under the swipe strip — which reads as a broken app rather than a missing
+ * inset.
+ *
+ * env() is nothing anywhere else, and the fallback is zero, so this changes
+ * nothing on Android or a desktop.
+ */
 header.app {
   background: var(--rose-blush); border-bottom: 2px solid var(--rose-dust);
   padding: 12px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  padding-left: calc(20px + env(safe-area-inset-left, 0px));
+  padding-right: calc(20px + env(safe-area-inset-right, 0px));
 }
+.page { padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)); }
+nav.tabs { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.veil { padding-top: calc(16px + env(safe-area-inset-top, 0px));
+        padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+#notices { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 header.app .logo-mark { width: 42px; height: 42px; }
 header.app h1 { font-size: 1.15rem; color: var(--rose-deep); letter-spacing: .04em; margin: 0; }
 header.app .spacer { margin-left: auto; }
