@@ -4608,6 +4608,102 @@ const faceOf = (p, size = 34) => (p.has_photo
          p.photo_at ? `?v=${new Date(p.photo_at).getTime()}` : ''}" alt="">`
   : `<span class="thumb none-photo" style="width:${size}px;height:${size}px;border-radius:50%">🧑</span>`);
 
+// One person, opened.
+//
+// HR's question about somebody is never one thing — their record, their hours,
+// their leave, their reviews — and answering it used to mean four screens and
+// a lot of scrolling. So a face is a thing you click, wherever a face appears,
+// and everything about that person arrives in one panel with their attendance
+// in it.
+//
+// Read-only throughout. The buttons that change somebody live on the HR screen
+// where they always did; this is for looking, which is what it is opened for
+// ninety-nine times out of a hundred.
+async function openProfile(id) {
+  dialog('<h3>Opening…</h3>', 'wide');
+  let d;
+  try {
+    d = await GET(`/api/hr/people/${id}`);
+  } catch (e) { closeDialog(); return whoops(e); }
+  if (!$('#dialog')) return;             // they closed it while it loaded
+
+  const p = d.person;
+  const pay = p.salary == null ? null : `${peso(p.salary)} ${
+    { monthly: 'a month', semi_monthly: 'twice a month', daily: 'a day' }[p.pay_period]
+      ?? 'a month'}`;
+
+  $('#dialog .dialog').innerHTML = `
+    <div class="person-head">
+      ${faceOf({ ...p, id }, 72)}
+      <div>
+        <h3 style="margin:0">${esc(p.name)}</h3>
+        <div class="dim">${esc(p.position || '')}${
+          p.branch ? ` · ${esc(p.branch)}` : ''}</div>
+        <div class="dim">${p.department ? `${esc(p.department)} · ` : ''}With us since ${
+          onDay(p.started_on)}</div>
+        ${p.username ? `<div class="dim">Signs in as <code>${esc(p.username)}</code>
+          · ${esc(roleName(p.signs_in_as))}</div>` : '<div class="dim">No sign-in</div>'}
+      </div>
+      <div style="margin-left:auto"><button class="btn quiet" id="pp_close">Close</button></div>
+    </div>
+
+    <div class="tiles mt">
+      <div class="tile ${d.figures.still_on ? 'good' : ''}">
+        <div class="big">${count(d.figures.days_present)}</div>
+        <div class="label">Days in, last 30</div></div>
+      <div class="tile"><div class="big">${count(d.figures.hours)}</div>
+        <div class="label">Hours, last 30 days</div></div>
+      <div class="tile"><div class="big">${count(p.leave_taken)} / ${count(p.leave_entitlement)}</div>
+        <div class="label">Leave taken this year</div></div>
+      ${pay ? `<div class="tile"><div class="big" style="font-size:1.1rem">${esc(pay)}</div>
+        <div class="label">Pay</div></div>` : ''}
+    </div>
+
+    <div class="panel"><h3>🕒 Attendance — ${onDay(d.from)} to ${onDay(d.to)}</h3>
+      ${table(d.shifts, [
+        { head: 'Day', cell: (s) => onDay(s.business_date) },
+        { head: 'In', cell: (s) => `<b>${esc(clockAt(s.started_at))}</b>` },
+        { head: 'Out', cell: (s) => (s.ended_at
+            ? `<b>${esc(clockAt(s.ended_at))}</b>` : tag('still on', 'green')) },
+        { head: 'Hours', n: true, cell: (s) => hoursOf(s.worked) },
+        { head: 'How', cell: (s) => howTag(s.started_how)
+            + (s.ended_how && s.ended_how !== s.started_how
+               ? ` <span class="dim">→</span> ${howTag(s.ended_how)}` : '') },
+        { head: 'Note', cell: (s) => (s.note
+            ? `<span class="dim">${esc(s.note)}</span>` : '') },
+      ], 'No shifts in the last thirty days.')}</div>
+
+    <div class="split">
+      <div class="panel"><h3>🌴 Leave</h3>
+        ${table(d.leave, [
+          { head: 'Kind', cell: (l) => esc(LEAVE_KINDS[l.leave_type] ?? l.leave_type) },
+          { head: 'From', cell: (l) => onDay(l.start_date) },
+          { head: 'To', cell: (l) => onDay(l.end_date) },
+          { head: 'Days', n: true, cell: (l) => count(l.days) },
+          { head: 'Status', cell: (l) => leaveTag(l.status) },
+        ], 'No leave asked for.')}</div>
+
+      <div class="panel"><h3>⭐ Reviews</h3>
+        ${d.appraisals.length ? d.appraisals.map((a) => `
+          <div class="post"><div>
+            <b>${esc(a.period)}</b> ${stars(a.rating)}
+            ${a.strengths ? `<div class="dim">👍 ${esc(a.strengths)}</div>` : ''}
+            ${a.improvements ? `<div class="dim">🎯 ${esc(a.improvements)}</div>` : ''}
+            <div class="dim">${esc(a.reviewer || '')}</div>
+          </div></div>`).join('') : '<div class="none">No reviews yet.</div>'}</div>
+    </div>`;
+
+  $('#pp_close').addEventListener('click', closeDialog);
+}
+
+// Anything carrying data-person opens that person. Wired once per screen
+// rather than per row, so a table that grows a face next month is covered by
+// having a face.
+const wirePeople = (root) => $$('[data-person]', root).forEach((el) => {
+  el.classList.add('clickable');
+  el.addEventListener('click', () => openProfile(el.dataset.person));
+});
+
 SCREENS.hr = async (page) => {
   const load = async () => {
     const d = await GET('/api/hr');
@@ -4651,10 +4747,12 @@ SCREENS.hr = async (page) => {
         ], 'Nobody is waiting on you 🌸')}</div>
 
       <div class="panel"><h3>👥 The company</h3>
+        <div class="dim" style="margin-bottom:10px">Tap anybody to see their
+          record, their hours and their leave.</div>
         ${table(d.people.filter((p) => p.here), [
-          { head: '', cell: (p) => faceOf(p) },
-          { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>
-              <div class="dim">${esc(p.position)}</div>` },
+          { head: '', cell: (p) => `<span data-person="${p.id}">${faceOf(p)}</span>` },
+          { head: 'Name', cell: (p) => `<span data-person="${p.id}"><b>${esc(p.name)}</b>
+              <div class="dim">${esc(p.position)}</div></span>` },
           { head: 'Shop', cell: (p) => esc(p.branch || '—') },
           { head: 'Department', cell: (p) => esc(p.department || '—') },
           { head: 'Started', cell: (p) => onDay(p.started_on) },
@@ -4744,6 +4842,7 @@ SCREENS.hr = async (page) => {
 
     $('#add_cand', page).addEventListener('click', () => candidateDialog(load));
     $('#add_note', page).addEventListener('click', () => announcementDialog(load));
+    wirePeople(page);
   };
 
   await load();
@@ -5069,9 +5168,9 @@ SCREENS.attendance = async (page) => {
 
       <div class="panel"><h3>🟢 Came in — ${count(came.length)}</h3>
         ${table(came, [
-          { head: '', cell: (p) => faceOf(p) },
-          { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>
-              <div class="dim">${esc(p.position)}</div>` },
+          { head: '', cell: (p) => `<span data-person="${p.id}">${faceOf(p)}</span>` },
+          { head: 'Name', cell: (p) => `<span data-person="${p.id}"><b>${esc(p.name)}</b>
+              <div class="dim">${esc(p.position)}</div></span>` },
           { head: 'Shop', cell: (p) => esc(p.branch || '—') },
           { head: 'In', cell: (p) => `<b>${esc(clockAt(p.first_in))}</b>` },
           { head: 'Out', cell: (p) => (p.still_on
@@ -5088,9 +5187,9 @@ SCREENS.attendance = async (page) => {
           Not the same as absent. Somebody may be on leave, or have forgotten
           the screen by the door.</div>` : ''}
         ${table(missing, [
-          { head: '', cell: (p) => faceOf(p) },
-          { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>
-              <div class="dim">${esc(p.position)}</div>` },
+          { head: '', cell: (p) => `<span data-person="${p.id}">${faceOf(p)}</span>` },
+          { head: 'Name', cell: (p) => `<span data-person="${p.id}"><b>${esc(p.name)}</b>
+              <div class="dim">${esc(p.position)}</div></span>` },
           { head: 'Shop', cell: (p) => esc(p.branch || '—') },
         ], 'Everybody clocked on 🌸')}</div>
 
@@ -5100,7 +5199,8 @@ SCREENS.attendance = async (page) => {
           { head: 'In', cell: (s) => esc(clockAt(s.started_at)) },
           { head: 'Out', cell: (s) => (s.ended_at
               ? esc(clockAt(s.ended_at)) : tag('open', 'green')) },
-          { head: 'Who', cell: (s) => `<b>${esc(s.name)}</b>` },
+          { head: 'Who', cell: (s) => `<span data-person="${s.employee_id}"><b>${
+              esc(s.name)}</b></span>` },
           { head: 'Shop', cell: (s) => esc(s.branch || '—') },
           { head: 'Worked', n: true, cell: (s) => hoursOf(s.worked) },
           // Which way they proved who they were, which is a different question
@@ -5130,6 +5230,7 @@ SCREENS.attendance = async (page) => {
       back.setDate(back.getDate() - 1);
       go(back.toLocaleDateString('en-CA', { timeZone: TZ }));
     });
+    wirePeople(page);
   };
 
   await load();
