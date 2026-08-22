@@ -61,6 +61,32 @@ const tick = () => {
 tick();
 setInterval(tick, 10000);
 
+// Which shop's colours this door wears.
+//
+// A door screen is a fixture in one shop, not a page on a website, so it looks
+// like that shop. Which shop is the server's answer, not the address bar's —
+// the branch list is what says a door belongs to Beauty Obsession Avenue, and
+// a query string could say anything.
+//
+// Remembered so the next morning is instant. The screen is switched on once
+// and left, and a palette that arrives a moment late is a screen that looks
+// briefly broken in front of whoever is standing at it.
+const brandOf = (name) => (/obsession/i.test(name || '') ? 'boa' : null);
+const MARKS = { boa: '/boa-mark.png' };
+
+function wear(brand) {
+  const root = document.documentElement;
+  if (brand) root.dataset.brand = brand; else delete root.dataset.brand;
+  const mark = document.querySelector('.brand img');
+  if (mark) mark.src = MARKS[brand] ?? '/logo.jpg';
+  try {
+    if (brand) localStorage.setItem('clockBrand', brand);
+    else localStorage.removeItem('clockBrand');
+  } catch { /* a locked-down tablet still gets the colours, just not the memory */ }
+}
+
+try { wear(localStorage.getItem('clockBrand')); } catch { /* first morning */ }
+
 let signedIn = false;
 let team = [];
 let refresher = null;
@@ -263,13 +289,20 @@ async function start() {
           esc(b.name)}</option>`).join('');
   if (fixed || branches.length < 2) picker.style.display = 'none';
   const named = fixed || branches.find((b) => String(b.id) === picker.value);
-  $('#where').textContent = named ? `Time clock · ${named.name}` : 'Time clock';
+  // The shop the server says this is, which may correct what was remembered.
+  const worn = brandOf(named?.name);
+  wear(worn);
+  // A shop whose own mark is on the bar does not need its name spelled out
+  // beside it in a different typeface. The others still do.
+  $('#where').textContent = named && !worn ? `Time clock · ${named.name}` : 'Time clock';
 
   $('#find').addEventListener('input', draw);
   picker.addEventListener('change', () => {
     localStorage.setItem('clockBranch', picker.value);
     const b = branches.find((x) => String(x.id) === picker.value);
-    $('#where').textContent = b ? `Time clock · ${b.name}` : 'Time clock';
+    const w = brandOf(b?.name);
+    wear(w);
+    $('#where').textContent = b && !w ? `Time clock · ${b.name}` : 'Time clock';
     draw();
   });
 

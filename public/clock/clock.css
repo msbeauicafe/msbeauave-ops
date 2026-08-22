@@ -247,3 +247,67 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
  * the machine trying to work out why the scanner is not answering. */
 .padside.finger.cold .hint { font-size: .95rem; line-height: 1.5; color: var(--muted); }
 .padside.finger.cold .hint b { color: var(--rose-deep); word-break: break-all; }
+
+/* ---------------------------------------------------------------------------
+ * The door at Beauty Obsession Avenue
+ *
+ * A door screen is not a page on a website — it is a fixture in one shop, on
+ * one wall, in front of that shop's people all day. So it wears that shop's
+ * colours. MS BEAU AVE's door keeps its rose; nothing above this line changes.
+ *
+ * The palette is measured out of the logo rather than guessed at: the hot pink
+ * of BEAUTY, the cyan of Avenue, the orange of OB, and the pale blue the mark
+ * sits on. Only the pink is darkened, and only where it carries words — the
+ * logo's own #F52188 is 3.85:1 on white, which is fine for a mark and not for
+ * a name somebody reads from a step away. Every pair below was measured, and
+ * the lowest is 4.98:1.
+ *
+ * The logo pink and cyan are still here, on the things that are large enough
+ * to take them: the clock, the PIN dots, the arrival times.
+ * ------------------------------------------------------------------------- */
+:root[data-brand="boa"] {
+  --rose-primary: #C4126C;   /* buttons and anything with white words on it  */
+  --rose-deep:    #A80E5C;   /* headings and figures                         */
+  --rose-soft:    #CDEAF8;   /* hairline borders                             */
+  --rose-blush:   #DFF3FE;   /* the bar across the top                       */
+  --rose-dust:    #9FD8F0;
+  --ink:          #26364B;
+  --bg:           #F5FBFF;
+  --muted:        #4F6A7E;
+  --good:         #0C7A5C;
+  --bad:          #C9304A;
+
+  /* Straight off the artwork, for the things big enough to carry them. */
+  --boa-pink: #F52188;
+  --boa-cyan: #03CAF1;
+  --boa-sun:  #F99B05;
+}
+
+/* The bar takes the gradient the logo sits on, top to bottom, as it does in
+ * the artwork itself. */
+:root[data-brand="boa"] #bar {
+  background: linear-gradient(180deg, #DFF3FE, #F5FBFF);
+  border-bottom-color: var(--rose-dust);
+}
+:root[data-brand="boa"] .brand img {
+  /* A wide wordmark, not a round badge — cropped to a circle it loses the
+     word. And bigger than the badge it replaces: at the height of a 40px
+     circle the lettering is there but nobody across a shop can read it, which
+     is the only reason to put a name on a wall in the first place. */
+  width: auto; height: 46px; border-radius: 8px; background: transparent;
+  padding: 0; object-fit: contain;
+}
+:root[data-brand="boa"] #bar { padding-top: calc(8px + env(safe-area-inset-top, 0px)); padding-bottom: 8px; }
+:root[data-brand="boa"] .brand b { display: none; }
+:root[data-brand="boa"] #now { color: var(--boa-cyan); }
+
+/* On shift, and the times under a face: the cyan reads at a distance and is
+ * the shop's own colour rather than a generic green. */
+:root[data-brand="boa"] .card .times.in { color: var(--boa-cyan); }
+:root[data-brand="boa"] .keys .go {
+  background: var(--boa-pink); border-color: var(--boa-pink);
+}
+:root[data-brand="boa"] .dots,
+:root[data-brand="boa"] .keyfirst .dots { color: var(--boa-pink); }
+:root[data-brand="boa"] .card.on { border-color: var(--boa-cyan); background: #F1FBFE; }
+:root[data-brand="boa"] .dot { background: var(--boa-cyan); }

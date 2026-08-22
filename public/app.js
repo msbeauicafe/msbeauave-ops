@@ -242,9 +242,13 @@ function signInLine() {
 // Which is the point: a brand read from the address must never be able to
 // decide anything, so it decides only what is drawn.
 const BRANDS = {
-  boa: { name: 'BEAUTY OBSESSION AVE', logo: '/boa.jpg' },
+  // wordmark: the logo already spells the name, in the company's own
+  // lettering. Setting it beside that in Georgia is two different typefaces
+  // saying the same thing, and the wrong one is the bigger. So the mark
+  // carries the name and the text stays for anything that cannot see it.
+  boa: { name: 'BEAUTY OBSESSION AVE', logo: '/boa-mark.png', wordmark: false },
 };
-const HOUSE = { name: 'MS BEAU AVE', logo: '/logo.jpg' };
+const HOUSE = { name: 'MS BEAU AVE', logo: '/logo.jpg', wordmark: true };
 
 // A mark that will not load falls back to the house one rather than leaving a
 // broken picture where a logo should be. Worth the one line: a brand file is
@@ -255,6 +259,13 @@ const markFailed = "this.onerror=null;this.src='/logo.jpg'";
 function brand() {
   return BRANDS[new URLSearchParams(location.search).get('brand')] ?? HOUSE;
 }
+
+// A round badge and a wide wordmark are different shapes and cannot share one
+// rule. The palette is not touched — see the test that holds that.
+(function shapeTheMark() {
+  const which = new URLSearchParams(location.search).get('brand');
+  if (BRANDS[which]) document.documentElement.dataset.brand = which;
+})();
 
 // What the icon is called once it is on an iPhone's home screen.
 //
@@ -294,7 +305,7 @@ function drawSignIn() {
     <div class="signin-page"><form class="signin" id="signin">
       <span class="logo-mark"><img src="${esc(brand().logo)}" alt="${esc(brand().name)}"
         onerror="${markFailed}"></span>
-      <h1 class="wordmark">${esc(brand().name)}</h1>
+      <h1 class="wordmark"${brand().wordmark ? '' : ' hidden'}>${esc(brand().name)}</h1>
       <p class="tag-line" style="margin:.2rem 0 1.4rem">${esc(signInLine())}</p>
       <label for="who">Username</label>
       <input id="who" type="text" autocomplete="username" autocapitalize="none" autofocus>
@@ -451,9 +462,10 @@ function drawFrame() {
     <div class="shell">
       <header class="app">
         <button id="navToggle" aria-label="Show the menu" aria-expanded="false">☰</button>
-        <span class="logo-mark"><img src="${esc(brand().logo)}" alt=""
+        <span class="logo-mark"><img src="${esc(brand().logo)}"
+          alt="${brand().wordmark ? '' : esc(brand().name)}"
           onerror="${markFailed}"></span>
-        <h1 class="wordmark">${esc(brand().name)}</h1>
+        <h1 class="wordmark"${brand().wordmark ? '' : ' hidden'}>${esc(brand().name)}</h1>
         <span class="badge">${esc(roleName(user.role))}</span>
         <div class="spacer"></div>
         <div class="who"><b>${esc(user.name)}</b></div>
