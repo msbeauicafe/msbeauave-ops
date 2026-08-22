@@ -2,7 +2,7 @@
 # Build the BOA Staff app.
 #
 # Everything is ready except the artwork: drop the Beauty Obsession Avenue logo
-# in as public/logo-boa.png and run this. It cuts the launcher icons from that
+# in as public/boa.jpg and run this. It cuts the launcher icons from that
 # one file, builds the flavour that already exists in the gradle project, and
 # leaves the APK where the download page expects it.
 #
@@ -12,7 +12,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID="${ANDROID_PROJECT:-/home/user/Ms-Beau-Ave/android}"
-LOGO="$ROOT/public/logo-boa.png"
+LOGO="${BOA_LOGO:-$ROOT/public/boa.jpg}"
 KEY="${BOA_KEYSTORE:-$ANDROID/app/boa-staff.jks}"
 PASS="${BOA_KEYSTORE_PASSWORD:-msbeauave}"
 

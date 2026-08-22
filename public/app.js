@@ -242,7 +242,7 @@ function signInLine() {
 // Which is the point: a brand read from the address must never be able to
 // decide anything, so it decides only what is drawn.
 const BRANDS = {
-  boa: { name: 'BEAUTY OBSESSION AVE', logo: '/logo-boa.png' },
+  boa: { name: 'BEAUTY OBSESSION AVE', logo: '/boa.jpg' },
 };
 const HOUSE = { name: 'MS BEAU AVE', logo: '/logo.jpg' };
 

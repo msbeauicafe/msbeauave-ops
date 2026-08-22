@@ -34,5 +34,17 @@
         "BA:95:CF:F4:23:D8:06:18:E1:8D:DB:D3:79:2B:38:1F:A4:27:AC:B8:4A:D3:58:FB:27:B3:EC:F0:C3:51:DD:3A"
       ]
     }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.msbeauave.boastaff",
+      "sha256_cert_fingerprints": [
+        "C4:B6:98:27:CD:24:18:AF:65:03:87:37:06:03:EC:D1:B5:83:6B:07:69:AE:7E:7E:F8:3D:C0:E8:49:89:F9:3E"
+      ]
+    }
   }
 ]
