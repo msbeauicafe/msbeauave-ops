@@ -36,6 +36,7 @@ const POST = (p, b) => api('POST', p, b ?? {});
 
 // Said out loud and large. Somebody reads this from a step away, holding a bag.
 function say(text, kind = 'good', holdMs = 0) {
+  busy(Math.max(holdMs, 8000));
   const el = document.createElement('div');
   el.className = `say ${kind}`;
   el.textContent = text;
@@ -86,6 +87,78 @@ function wear(brand) {
 }
 
 try { wear(localStorage.getItem('clockBrand')); } catch { /* first morning */ }
+
+// ---------------------------------------------------------------------------
+// A door that updates itself
+//
+// This screen is 500 metres from anybody who could refresh it, behind a door,
+// on a PC nothing outside that PC can reach — the agent binds 127.0.0.1 on
+// purpose. So every change to this page waited for somebody to walk over, or
+// for the machine to be restarted, and in between the two doors could be
+// showing two different versions of the same clock.
+//
+// Now it watches its own files, and it watches the bytes rather than the
+// headers. The obvious version of this asks for an ETag — but a door with a
+// scanner does not fetch this page from the website, it fetches it from the
+// agent on its own PC, which passes the website through and hands back the
+// content type and nothing else. No ETag, no Last-Modified. A check built on
+// those would have sat at the one door it was written for and never fired,
+// and the only way to find that out is to have read the agent.
+//
+// So it fetches the files and hashes them. Forty kilobytes every five minutes,
+// over a proxy that already marks everything no-store, which is why a plain
+// fetch always gets today's copy rather than this morning's.
+//
+// The reload waits for a quiet moment, and quiet is defined generously:
+// nothing may be half typed, no pad or dialog open, no finger being read, and
+// nothing said on screen in the last few seconds. A clock that reloaded under
+// somebody's hands would be worse than one that is a day out of date.
+// ---------------------------------------------------------------------------
+const WATCHED = ['/clock/clock.js', '/clock/clock.css'];
+const CHECK_EVERY = 5 * 60 * 1000;
+
+let busyUntil = 0;
+// Somebody is doing something. Hold the reload off. Declared as a function so
+// that say(), which is written above it, can call it — the two ends of this
+// file are a long way apart and the ordering should not be load-bearing.
+function busy(ms = 20000) { busyUntil = Math.max(busyUntil, Date.now() + ms); }
+
+async function stamps() {
+  const out = [];
+  for (const f of WATCHED) {
+    const text = await (await fetch(f, { cache: 'no-store' })).text();
+    // FNV-1a. Not a security hash — this is comparing a file with itself five
+    // minutes ago, and the length goes alongside it so that the one collision
+    // in four billion is not a door that stops updating.
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i += 1) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    out.push(`${(h >>> 0).toString(36)}.${text.length}`);
+  }
+  return out.join('|');
+}
+
+(async function watchForNewer() {
+  let mine;
+  try { mine = await stamps(); } catch { return; }   // offline: try again later
+  setInterval(async () => {
+    let now;
+    try { now = await stamps(); } catch { return; }
+    if (!now || now === mine) return;
+    // The files changed. Wait for a moment when nobody is mid-anything.
+    const quiet = () => Date.now() > busyUntil
+      && !document.querySelector('.veil')
+      && !document.querySelector('#notices .say');
+    if (quiet()) { location.reload(); return; }
+    const waiting = setInterval(() => {
+      if (!quiet()) return;
+      clearInterval(waiting);
+      location.reload();
+    }, 4000);
+  }, CHECK_EVERY);
+})();
 
 let signedIn = false;
 let team = [];
@@ -147,6 +220,9 @@ function gate() {
 // shift, only a note that a finger opened one and nothing followed.
 // ---------------------------------------------------------------------------
 function startAsking(name, ticket, seconds) {
+  // Somebody's finger has been read and they are about to type. Nothing may
+  // reload under them for at least as long as they have to do it.
+  busy(((seconds || 90) + 15) * 1000);
   clearInterval(askTimer);
   awaiting = { ticket, name, until: Date.now() + (seconds || 90) * 1000 };
 
@@ -233,6 +309,7 @@ async function start() {
   kdots();
   $$('[data-k]').forEach((b) => b.addEventListener('click', () => {
     if (typed.length < 8) typed += b.dataset.k;
+    busy();
     kdots();
   }));
   $('#kwipe').addEventListener('click', () => { typed = ''; kdots(); });
@@ -266,9 +343,9 @@ async function start() {
   // way in for anybody not using the scanner.
   document.addEventListener('keydown', (e) => {
     if ($('.veil')) return;
-    if (/^[0-9]$/.test(e.key) && typed.length < 8) { typed += e.key; kdots(); }
-    else if (e.key === 'Backspace') { typed = typed.slice(0, -1); kdots(); }
-    else if (e.key === 'Enter') punch();
+    if (/^[0-9]$/.test(e.key) && typed.length < 8) { typed += e.key; busy(); kdots(); }
+    else if (e.key === 'Backspace') { typed = typed.slice(0, -1); busy(); kdots(); }
+    else if (e.key === 'Enter') { busy(); punch(); }
   });
 
   // A device left by one door shows that door's faces, and remembers which,
