@@ -2,18 +2,18 @@
 //
 // A page of its own, not a tab in the back office. On the till the clock sat
 // next to Finance and Products, so the person clocking on for a morning shift
-// was one mis-tap from the takings — and a tablet left on the counter all day
-// is the least private device in the building.
+// was one mis-tap from the takings — and a screen that stands at a door all
+// day, in front of everybody, is the least private device in the building.
 //
 // So this page can reach exactly two things: who is on the team, and the clock
 // itself. There is no menu, no link out, and nothing else rendered. Signing the
 // device in is still required — the staff list is not something to hand to
-// anybody who finds the address — but it is done once, on the tablet, and then
+// anybody who finds the address — but it is done once, at the door, and then
 // the screen stays on this page.
 //
-// The eye is for that one box: setting a tablet up is a long code typed on a
-// touchscreen by somebody standing at a door, and getting it wrong tells you
-// nothing about which character was wrong.
+// The eye is for that one box: setting a door up is a long code typed by
+// somebody standing at it, and getting it wrong tells you nothing about which
+// character was wrong.
 import '../reveal.js';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -82,7 +82,7 @@ function wear(brand) {
   try {
     if (brand) localStorage.setItem('clockBrand', brand);
     else localStorage.removeItem('clockBrand');
-  } catch { /* a locked-down tablet still gets the colours, just not the memory */ }
+  } catch { /* a locked-down screen still gets the colours, just not the memory */ }
 }
 
 try { wear(localStorage.getItem('clockBrand')); } catch { /* first morning */ }
@@ -105,24 +105,24 @@ let fixedBranch = null;
 let awaiting = null;      // { ticket, name, until }
 let askTimer = null;
 
-// The tablet's own sign-in. Not a person, and not on the team list.
+// The screen's own sign-in. Not a person, and not on the team list.
 const TIMEKEEPER = 'Timekeeper';
 
 // ---------------------------------------------------------------------------
-// Signing the device in — once, by whoever sets the tablet down
+// Signing the device in — once, by whoever sets the door screen up
 // ---------------------------------------------------------------------------
 function gate() {
   clearInterval(refresher);
-  // No username, and nobody's own password. The tablet has a sign-in of its
+  // No username, and nobody's own password. The screen has a sign-in of its
   // own — the timekeeper — which can see the team and work the clock and
   // nothing else at all. Whoever opens the shop types its code once.
   $('#app').innerHTML = `
     <form class="gate" id="in">
-      <h2>Setting up this tablet</h2>
-      <p class="who">Once, when the tablet is first set up.</p>
+      <h2>Setting up this screen</h2>
+      <p class="who">Once, when the screen is first set up.</p>
       <p><b>Clocking on for your shift?</b> Not here. Ask whoever opens the shop
-        to set this screen up — then your name appears and you tap it and type
-        your own PIN.</p>
+        to set this screen up — then your name appears, and you use your finger
+        or type your own PIN.</p>
       <input name="code" type="password" inputmode="numeric" placeholder="Timekeeper code"
         autocomplete="off" required>
       <button>Set up</button>
@@ -177,7 +177,7 @@ function stopAsking() {
   pad.classList.remove('confirming');
   pad.querySelector('h2').textContent = 'Type your PIN';
   const hint = pad.querySelector('.hint');
-  if (hint) hint.textContent = 'Or tap your name on the left.';
+  if (hint) hint.textContent = 'Or pick your name on the left.';
 }
 
 // ---------------------------------------------------------------------------
@@ -186,8 +186,8 @@ function stopAsking() {
 async function start() {
   // One job, two ways of doing it: find your face on the left, or type your
   // four digits on the right. There is deliberately no way into the back office
-  // from here — a tablet on a counter should not be a door to the till, and a
-  // sign-in box on it would leave the tablet as whoever last used it.
+  // from here — a screen at a door should not be a way into the till, and a
+  // sign-in box on it would leave it signed in as whoever last used it.
   $('#app').innerHTML = `
     <div class="two">
       <section class="clockside">
@@ -209,7 +209,7 @@ async function start() {
             <button data-k="0">0</button>
             <button class="go" id="kgo">✓</button>
           </div>
-          <p class="hint">Or tap your name on the left.</p>
+          <p class="hint">Or pick your name on the left.</p>
         </section>
 
         <!-- Only appears if this door has a scanner. Under the keypad, in the
@@ -261,7 +261,8 @@ async function start() {
     } finally { $('#kgo').disabled = false; }
   };
   $('#kgo').addEventListener('click', punch);
-  // A tablet with a keyboard attached, or somebody who prefers typing.
+  // Every door here is a desktop monitor, so the keyboard is the ordinary
+  // way in for anybody not using the scanner.
   document.addEventListener('keydown', (e) => {
     if ($('.veil') || document.activeElement === $('#find')) return;
     if (/^[0-9]$/.test(e.key) && typed.length < 8) { typed += e.key; kdots(); }
@@ -273,7 +274,7 @@ async function start() {
   // because nobody wants to pick the shop every morning.
   //
   // ?shop=<id> in the address fixes it outright, with no picker at all. That is
-  // what the per-branch app icons use: the tablet at one door is that door's
+  // what the per-branch app icons use: the screen at one door is that door's
   // clock and cannot be switched to the other shop by a stray tap.
   const branches = await GET('/api/branches').catch(() => []);
   const pinned = new URLSearchParams(location.search).get('shop');
@@ -319,7 +320,7 @@ async function start() {
 // A web page cannot read a fingerprint — the reader is a USB device and the
 // matching lives in the manufacturer's native library — so a small agent runs
 // on the same PC and answers here on loopback. If nothing answers, this whole
-// section stays hidden and the door is a PIN pad, which is what every tablet
+// section stays hidden and the door is a PIN pad, which is what every screen
 // will go on being.
 // ---------------------------------------------------------------------------
 // Where the scanner answers. When the door serves this page itself — which is
@@ -330,7 +331,7 @@ const AGENT = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(location.origin)
   : 'http://127.0.0.1:9500';
 
 // Adding ?debug=1 to the address makes the page say why it cannot see a
-// scanner. Off by default and deliberately so — a tablet by a door should not
+// scanner. Off by default and deliberately so — a screen by a door should not
 // display plumbing at people arriving for a shift — but setting one of these
 // up without it means guessing between "the agent is not running" and "the
 // browser refused the request", which look identical from here.
