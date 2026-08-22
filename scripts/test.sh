@@ -76,6 +76,9 @@ node --test tests/my-password.test.js
 echo "==> every definer function keeps its search_path"
 node --test tests/search-path.test.js
 
+echo "==> which way somebody clocked"
+node --test tests/how-they-clocked.test.js
+
 echo "==> going live"
 TEST_DATABASE_URL="postgresql://postgres@localhost:$PGPORT/msbeauave_golive?host=$WORK" \
   node --test tests/golive.test.js
