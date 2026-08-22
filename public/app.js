@@ -146,6 +146,35 @@ function repeat(fn, ms = 8000) {
 const tag = (text, kind) => `<span class="tag ${kind}">${esc(text)}</span>`;
 const tierTag = (t) => tag(`Tier ${t}`, t === 3 ? 'green' : t === 2 ? 'pink' : 'grey');
 
+// How somebody proved who they were at the door.
+//
+// A blank rather than a guess for the ones recorded before the clock started
+// keeping this — a shift that says "PIN" because nothing said otherwise is a
+// worse record than one that admits it does not know.
+const HOW = {
+  finger: ['👆 Finger', 'green'],
+  pin: ['🔢 PIN', 'pink'],
+  hand: ['✍️ By hand', 'amber'],
+};
+const howTag = (how) => (HOW[how]
+  ? tag(...HOW[how])
+  : '<span class="dim">—</span>');
+
+// The day in one line: how many presses were fingers, how many were the
+// keypad. It is the question somebody asks about a fingerprint door — is it
+// being used — and reading it off fifty rows is not answering it.
+function howLine(shifts) {
+  const n = (how) => shifts.filter((s) => s.started_how === how).length;
+  const counts = [['finger', n('finger')], ['pin', n('pin')], ['hand', n('hand')]]
+    .filter(([, c]) => c);
+  if (!counts.length) return '';
+  const unknown = shifts.filter((s) => !s.started_how).length;
+  return `<div class="dim" style="margin-bottom:10px">Clocked on by
+    ${counts.map(([how, c]) => `${howTag(how)} <b>${count(c)}</b>`).join(' · ')}${
+      unknown ? ` · <span class="dim">${count(unknown)} recorded before the
+        clock kept this</span>` : ''}</div>`;
+}
+
 // Delivery is a confirmation on top of dispatch, not a different stock state.
 function orderTag(o) {
   if (o.delivered_at) return tag('Delivered', 'green');
@@ -5066,6 +5095,7 @@ SCREENS.attendance = async (page) => {
         ], 'Everybody clocked on 🌸')}</div>
 
       <div class="panel"><h3>🕒 Every press, in order</h3>
+        ${howLine(d.stretches)}
         ${table(d.stretches, [
           { head: 'In', cell: (s) => esc(clockAt(s.started_at)) },
           { head: 'Out', cell: (s) => (s.ended_at
@@ -5073,6 +5103,13 @@ SCREENS.attendance = async (page) => {
           { head: 'Who', cell: (s) => `<b>${esc(s.name)}</b>` },
           { head: 'Shop', cell: (s) => esc(s.branch || '—') },
           { head: 'Worked', n: true, cell: (s) => hoursOf(s.worked) },
+          // Which way they proved who they were, which is a different question
+          // from who wrote the row. A door with a fingerprint reader on it
+          // should be able to show people are actually using it, rather than
+          // going back to the keypad every morning and nobody noticing.
+          { head: 'How', cell: (s) => howTag(s.started_how)
+              + (s.ended_how && s.ended_how !== s.started_how
+                 ? ` <span class="dim">→</span> ${howTag(s.ended_how)}` : '') },
           // Who the screen recorded it as. 'Timekeeper' is the door itself,
           // which is what a normal day looks like; a person's name here means
           // somebody entered it from the back office, and that is worth being
