@@ -84,6 +84,37 @@ test('every app we hand out is named on the download page', () => {
   assert.deepEqual(broken, [], `these are linked but not there: ${broken.join(', ')}`);
 });
 
+test('each app opens the address it is supposed to', () => {
+  // resValue escapes the string it is given, so an & written as &amp; in
+  // build.gradle compiles to &amp; in the app — and the query it opens has a
+  // parameter called "amp;brand" rather than "brand". Nothing fails: the app
+  // starts, loads the site, and quietly shows the wrong company's logo.
+  //
+  // Read out of the built APK rather than the source, because the escaping is
+  // what the build does to the source.
+  const want = {
+    'mba-staff.apk': { app: 'staff' },
+    'boa-staff.apk': { app: 'staff', brand: 'boa' },
+    'clock-bayan-bayanan.apk': { shop: '1' },
+    'clock-dao.apk': { shop: '2' },
+  };
+  for (const [file, params] of Object.entries(want)) {
+    if (!apks.includes(file)) continue;
+    const arsc = execFileSync('unzip', ['-p', path.join(shed, file), 'resources.arsc'],
+      { encoding: 'latin1', maxBuffer: 8 << 20 });
+    // aapt2 writes this pool as UTF-8, so the address is readable as it is.
+    const found = arsc.match(/https:\/\/[\w.\-/]+\?[!-~]{1,80}/);
+    assert.ok(found, `${file}: no start address in the resource table`);
+    const url = new URL(found[0]);
+    for (const [k, v] of Object.entries(params)) {
+      assert.equal(url.searchParams.get(k), v,
+        `${file} opens ${url.search} — "${k}" is not "${v}". `
+        + 'An & escaped twice turns the next parameter into "amp;" + its name.');
+    }
+    assert.doesNotMatch(url.search, /amp;/, `${file}: an ampersand was escaped twice`);
+  }
+});
+
 test('every app that claims a package is signed by the key assetlinks names', () => {
   // A TWA whose signature does not match assetlinks.json still opens, but with
   // Chrome's address bar across the top — which looks like a different, worse

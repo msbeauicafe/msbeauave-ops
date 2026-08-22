@@ -94,3 +94,38 @@ test('the iPhone instructions are on the download page', () => {
   assert.match(page, /Safari/, 'Chrome on iPhone cannot do it, so the page has to say Safari');
   assert.match(page, /\/\?app=staff/, 'the staff address has to be one of the links');
 });
+
+// ---------------------------------------------------------------------------
+// One brand does not disturb the other
+//
+// Beauty Obsession Avenue gets its own mark and its own name. MS BEAU AVE must
+// look exactly as it did — same logo, same wordmark, same rose. The whole
+// mechanism is one query string, and the risk in a mechanism like that is that
+// it quietly becomes the default for everybody.
+// ---------------------------------------------------------------------------
+test('MS BEAU AVE is untouched unless the address asks for another brand', () => {
+  const app = fs.readFileSync(path.join(pub, 'app.js'), 'utf8');
+
+  // The house is what you get when nothing is asked for.
+  assert.match(app, /const HOUSE = \{ name: 'MS BEAU AVE', logo: '\/logo\.jpg' \}/);
+  assert.match(app, /BRANDS\[new URLSearchParams\(location\.search\)\.get\('brand'\)\] \?\? HOUSE/,
+    'the fallback has to be the house brand, not the first entry in the list');
+
+  // And only two things move. A brand read out of a query string must not be
+  // able to decide anything — if it ever grows a colour, a role or a branch,
+  // that is a different and much larger idea than a logo.
+  const brands = app.slice(app.indexOf('const BRANDS = {'), app.indexOf('const HOUSE ='));
+  const keys = [...brands.matchAll(/(\w+):/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(keys)].sort(), ['boa', 'logo', 'name'],
+    `a brand may set a name and a logo and nothing else; found ${keys.join(', ')}`);
+});
+
+test('the rose palette belongs to nobody in particular', () => {
+  // The colours are in one stylesheet with no brand in sight, so no app can
+  // take them away from another by being opened.
+  const css = fs.readFileSync(path.join(pub, 'styles.css'), 'utf8');
+  assert.match(css, /--rose-primary:\s*#C98DA4/);
+  assert.match(css, /--rose-deep:\s*#A2647E/);
+  assert.doesNotMatch(css, /\[data-brand\]|\.brand-boa|--boa-/,
+    'a brand must not be able to restyle the app, only rename it');
+});

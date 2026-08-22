@@ -229,6 +229,33 @@ function signInLine() {
   return SIGN_IN_LINES[app] ?? SIGN_IN_LINES.office;
 }
 
+// Whose name is over the door.
+//
+// Beauty Obsession Avenue Corp is a company of its own, not a branch of MS
+// BEAU AVE, and the people who work there know it by its own logo. Handing
+// them an app with somebody else's name on the sign-in is the sort of small
+// wrongness that makes a system feel like it was built for somewhere else.
+//
+// Only the mark and the name change. It is one system, one database and one
+// set of rules underneath — the brand is a coat of paint on the way in, not a
+// second application, and nothing about what anybody may see turns on it.
+// Which is the point: a brand read from the address must never be able to
+// decide anything, so it decides only what is drawn.
+const BRANDS = {
+  boa: { name: 'BEAUTY OBSESSION AVE', logo: '/boa.jpg' },
+};
+const HOUSE = { name: 'MS BEAU AVE', logo: '/logo.jpg' };
+
+// A mark that will not load falls back to the house one rather than leaving a
+// broken picture where a logo should be. Worth the one line: a brand file is
+// the sort of thing that gets renamed, and a torn icon on the sign-in is the
+// first thing anybody sees.
+const markFailed = "this.onerror=null;this.src='/logo.jpg'";
+
+function brand() {
+  return BRANDS[new URLSearchParams(location.search).get('brand')] ?? HOUSE;
+}
+
 // What the icon is called once it is on an iPhone's home screen.
 //
 // On Android the staff app is its own installed package with its own name. On
@@ -240,10 +267,12 @@ function signInLine() {
 //
 // Left alone when there is no ?app=, so the back office keeps the name it had.
 const HOME_SCREEN_NAMES = { staff: 'MBA Staff' };
+const BRAND_HOME_SCREEN_NAMES = { boa: 'BOA Staff' };
 
 (function nameThisApp() {
-  const app = new URLSearchParams(location.search).get('app');
-  const name = HOME_SCREEN_NAMES[app];
+  const q = new URLSearchParams(location.search);
+  const app = q.get('app');
+  const name = BRAND_HOME_SCREEN_NAMES[q.get('brand')] ?? HOME_SCREEN_NAMES[app];
   if (!name) return;
   document.title = name;
   let meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
@@ -263,8 +292,9 @@ function drawSignIn() {
   clearInterval(refreshTimer);
   $('#app').innerHTML = `
     <div class="signin-page"><form class="signin" id="signin">
-      <span class="logo-mark"><img src="/logo.jpg" alt="MS BEAU AVE"></span>
-      <h1 class="wordmark">MS BEAU AVE</h1>
+      <span class="logo-mark"><img src="${esc(brand().logo)}" alt="${esc(brand().name)}"
+        onerror="${markFailed}"></span>
+      <h1 class="wordmark">${esc(brand().name)}</h1>
       <p class="tag-line" style="margin:.2rem 0 1.4rem">${esc(signInLine())}</p>
       <label for="who">Username</label>
       <input id="who" type="text" autocomplete="username" autocapitalize="none" autofocus>
@@ -421,8 +451,9 @@ function drawFrame() {
     <div class="shell">
       <header class="app">
         <button id="navToggle" aria-label="Show the menu" aria-expanded="false">☰</button>
-        <span class="logo-mark"><img src="/logo.jpg" alt=""></span>
-        <h1 class="wordmark">MS BEAU AVE</h1>
+        <span class="logo-mark"><img src="${esc(brand().logo)}" alt=""
+          onerror="${markFailed}"></span>
+        <h1 class="wordmark">${esc(brand().name)}</h1>
         <span class="badge">${esc(roleName(user.role))}</span>
         <div class="spacer"></div>
         <div class="who"><b>${esc(user.name)}</b></div>
