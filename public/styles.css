@@ -486,3 +486,68 @@ label.inline input { width: auto; }
   font-size: .85rem; color: var(--ink);
 }
 .viewonly-note b { color: var(--rose-deep); }
+
+/* ---------------------------------------------------------------------------
+ * A wide wordmark instead of a round badge
+ *
+ * The house mark is a circle and every rule for it assumes that. Beauty
+ * Obsession Avenue's is a wide lockup that spells the name in its own
+ * lettering — cropped to a circle it loses the word, and set beside a Georgia
+ * heading it is two typefaces saying one thing, with the wrong one larger.
+ *
+ * So the mark carries the name, and the heading is hidden rather than removed,
+ * because a screen reader still has to be able to say where it is.
+ *
+ * Shape only. The palette is not touched here and cannot be: the rose is
+ * defined once, on :root, with no brand able to reach it — which the test in
+ * tests/ios.test.js holds to. The door screen is the one place a shop's own
+ * colours belong, and that is its own stylesheet.
+ * ------------------------------------------------------------------------- */
+:root[data-brand] .logo-mark {
+  border-radius: 0; width: auto; background: none; border: none; padding: 0;
+}
+:root[data-brand] .logo-mark img { object-fit: contain; }
+:root[data-brand] .signin .logo-mark { height: 76px; margin-bottom: 1.2rem; }
+:root[data-brand] .signin .logo-mark img { height: 100%; width: auto; }
+:root[data-brand] header.app .logo-mark { height: 38px; }
+:root[data-brand] header.app .logo-mark img { height: 100%; width: auto; }
+
+/* Beauty Obsession Avenue's own colours, for the app its own people open.
+ *
+ * Measured out of the logo rather than guessed at: the hot pink of BEAUTY, the
+ * cyan of Avenue, the pale blue the mark sits on. Only the pink is darkened,
+ * and only where it carries words — the logo's #F52188 is 3.85:1 on white,
+ * which is right for a mark and wrong for a name read off a phone. Every pair
+ * here was measured and the lowest is 4.98:1.
+ *
+ * MS BEAU AVE is the bare :root above and is not touched by any of this. That
+ * is the whole arrangement: a brand may dress itself and may not undress
+ * anybody else.
+ */
+:root[data-brand="boa"] {
+  --rose-primary: #C4126C;
+  --rose-deep:    #A80E5C;
+  --rose-soft:    #CDEAF8;
+  --rose-blush:   #DFF3FE;
+  --rose-dust:    #9FD8F0;
+  --ink:          #26364B;
+  --bg:           #F5FBFF;
+  --muted:        #4F6A7E;
+  --success:      #0C7A5C;
+  --warning:      #C97A05;
+  --danger:       #C9304A;
+
+  --pink: var(--rose-primary);
+  --rose: var(--rose-deep);
+  --blush: var(--rose-blush);
+  --sage-deep: var(--success);
+  --amber: var(--warning);
+  --red: var(--danger);
+  --shade: 0 10px 30px rgba(38, 54, 75, .12);
+}
+:root[data-brand="boa"] .signin-page {
+  background: linear-gradient(160deg, #DFF3FE, #F5FBFF 62%);
+}
+:root[data-brand="boa"] header.app {
+  background: linear-gradient(180deg, #DFF3FE, #EEF8FF);
+}

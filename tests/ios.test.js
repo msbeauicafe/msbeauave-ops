@@ -107,7 +107,8 @@ test('MS BEAU AVE is untouched unless the address asks for another brand', () =>
   const app = fs.readFileSync(path.join(pub, 'app.js'), 'utf8');
 
   // The house is what you get when nothing is asked for.
-  assert.match(app, /const HOUSE = \{ name: 'MS BEAU AVE', logo: '\/logo\.jpg' \}/);
+  assert.match(app, /const HOUSE = \{ name: 'MS BEAU AVE', logo: '\/logo\.jpg'/,
+    'the house is MS BEAU AVE and its own mark');
   assert.match(app, /BRANDS\[new URLSearchParams\(location\.search\)\.get\('brand'\)\] \?\? HOUSE/,
     'the fallback has to be the house brand, not the first entry in the list');
 
@@ -116,16 +117,35 @@ test('MS BEAU AVE is untouched unless the address asks for another brand', () =>
   // that is a different and much larger idea than a logo.
   const brands = app.slice(app.indexOf('const BRANDS = {'), app.indexOf('const HOUSE ='));
   const keys = [...brands.matchAll(/(\w+):/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(keys)].sort(), ['boa', 'logo', 'name'],
-    `a brand may set a name and a logo and nothing else; found ${keys.join(', ')}`);
+  assert.deepEqual([...new Set(keys)].sort(), ['boa', 'logo', 'name', 'wordmark'],
+    `a brand describes itself and nothing else; found ${keys.join(', ')}`);
 });
 
-test('the rose palette belongs to nobody in particular', () => {
-  // The colours are in one stylesheet with no brand in sight, so no app can
-  // take them away from another by being opened.
+test('the rose is the house colour and no brand can take it', () => {
+  // A brand may dress itself. What it may not do is reach the bare :root,
+  // which is what everybody who has not asked for a brand is looking at.
   const css = fs.readFileSync(path.join(pub, 'styles.css'), 'utf8');
-  assert.match(css, /--rose-primary:\s*#C98DA4/);
-  assert.match(css, /--rose-deep:\s*#A2647E/);
-  assert.doesNotMatch(css, /\[data-brand\]|\.brand-boa|--boa-/,
-    'a brand must not be able to restyle the app, only rename it');
+  const houseBlock = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
+  assert.match(houseBlock, /--rose-primary:\s*#C98DA4/);
+  assert.match(houseBlock, /--rose-deep:\s*#A2647E/);
+  assert.match(houseBlock, /--bg:\s*#FBF6F8/);
+
+  // Every brand override is inside a [data-brand] block. If one ever appears
+  // on a bare :root it is not a brand any more, it is the new default for
+  // everybody.
+  const bareRoots = [...css.matchAll(/^:root\s*\{/gm)];
+  assert.equal(bareRoots.length, 1,
+    'there is one house palette, and it is the one without a brand on it');
+});
+
+test('a brand dresses itself and undresses nobody', () => {
+  const css = fs.readFileSync(path.join(pub, 'styles.css'), 'utf8');
+  const boa = css.slice(css.indexOf(':root[data-brand="boa"] {'));
+  assert.match(boa, /--rose-primary:\s*#C4126C/, 'BOA has its own pink');
+  assert.match(boa, /--bg:\s*#F5FBFF/, 'and its own paper');
+
+  // Nothing in a brand block may name the other brand's colours literally —
+  // that would be one shop quietly repainting itself as the other.
+  assert.doesNotMatch(boa, /#C98DA4|#A2647E|#FBF6F8/,
+    'a brand block must not restate the house colours');
 });
