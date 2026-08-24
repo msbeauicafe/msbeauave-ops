@@ -461,6 +461,100 @@ test('an account with nothing open turns a whole payment straight into credit', 
   assert.equal(Number(account.data.credit), 1000);
 });
 
+test('an order placed on a reseller\'s behalf raises the same invoice their own checkout would',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
+    await receive(store, sku, 24, 10);
+    const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
+
+    const order = await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 4 }] }); // ₱1,000
+    assert.equal(order.status, 200, JSON.stringify(order.data));
+    assert.equal(Number(order.data.invoice.amount), 1000);
+    assert.equal(Number(order.data.invoice.reseller_id), id);
+
+    const account = await GET(admin, `/api/resellers/${id}`);
+    assert.equal(Number(account.data.owed), 1000);
+    assert.ok(account.data.invoices.some((i) => i.id === order.data.invoice.id));
+  });
+
+test('placing an empty order for a reseller is refused, not filed as a ₱0 order', async () => {
+  const admin = await signIn('admin');
+  const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
+  const empty = await POST(admin, `/api/resellers/${id}/orders`, { lines: [] });
+  assert.equal(empty.status, 400);
+});
+
+test('only admin may place an order on a reseller\'s behalf', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
+  await receive(store, sku, 24, 10);
+  const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
+
+  assert.equal((await POST(store, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 1 }] })).status, 403);
+  assert.equal((await POST(till, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 1 }] })).status, 403);
+});
+
+test('confirming a bank payment through chat orders stamps an OR, in the till\'s own series',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
+    await receive(store, sku, 24, 10);
+    const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
+    const buyer = await signIn('reseller', id);
+    const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] }); // ₱2,500
+
+    const paid = await POST(admin, `/api/resellers/${id}/receipt`, { amount: 3000 });
+    assert.equal(paid.status, 200, JSON.stringify(paid.data));
+    assert.match(paid.data.receipt_no, /^OR-\d{8}-\d{5}$/);
+    // Same ledger effect a plain /payment would have had — this route is not
+    // a second way to apply money, only the first way plus a number on it.
+    assert.equal(paid.data.applied.length, 1);
+    assert.equal(Number(paid.data.applied[0].invoice_id), Number(order.data.invoice.id));
+    assert.equal(Number(paid.data.applied[0].applied), 2500);
+    assert.equal(Number(paid.data.credited), 500);
+
+    const listed = await GET(admin, `/api/resellers/${id}/receipts`);
+    assert.equal(listed.status, 200);
+    assert.ok(listed.data.some((r) => r.receipt_no === paid.data.receipt_no));
+
+    const single = await GET(admin, `/api/receipts/${paid.data.receipt_no}`);
+    assert.equal(single.status, 200);
+    assert.equal(Number(single.data.amount), 3000);
+    assert.equal(Number(single.data.credited), 500);
+  });
+
+test('two ORs never share a number, even for the same account back to back', async () => {
+  const admin = await signIn('admin');
+  const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
+  const first = await POST(admin, `/api/resellers/${id}/receipt`, { amount: 100 });
+  const second = await POST(admin, `/api/resellers/${id}/receipt`, { amount: 100 });
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.notEqual(first.data.receipt_no, second.data.receipt_no);
+});
+
+test('only admin may issue or look up a reseller\'s OR', async () => {
+  const admin = await signIn('admin');
+  const till = await signIn('cashier');
+  const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
+  const buyer = await signIn('reseller', id);
+
+  assert.equal((await POST(till, `/api/resellers/${id}/receipt`, { amount: 100 })).status, 403);
+  assert.equal((await POST(buyer, `/api/resellers/${id}/receipt`, { amount: 100 })).status, 403);
+
+  const issued = await POST(admin, `/api/resellers/${id}/receipt`, { amount: 100 });
+  assert.equal(issued.status, 200);
+  // Both lookup routes are admin-only — a reseller reads their own payment
+  // history some other way (their portal orders), never by receipt number.
+  assert.equal((await GET(buyer, `/api/receipts/${issued.data.receipt_no}`)).status, 403);
+  assert.equal((await GET(buyer, `/api/resellers/${id}/receipts`)).status, 403);
+});
+
 test('credit on the account is drawn down the moment the next invoice exists, unasked',
   async () => {
     const admin = await signIn('admin');

@@ -346,6 +346,7 @@ const TABS = {
     ['products', '🧴', 'Products'],
     ['receive', '📦', 'Receive'],
     ['orders', '🚚', 'Wholesale'],
+    ['chatorders', '💬', 'Chat orders'],
     ['resellers', '🤝', 'Resellers'],
     ['returns', '↩️', 'Returns'],
     ['reorder', '📈', 'Reordering'],
@@ -1515,6 +1516,214 @@ async function openOrder(id, reload) {
   act('#a_cancel', 'cancel');
   act('#a_delivered', 'deliver');
 }
+
+// ===========================================================================
+// Chat orders — the FB-Messenger flow: a reseller orders in chat, gets an
+// invoice back in chat, pays the bank, and gets an OR once that is confirmed.
+// One reseller at a time, ordering and payment side by side, so whoever is
+// running the conversation never has to leave this screen to finish it.
+// ===========================================================================
+SCREENS.chatorders = async (page) => {
+  let resellers = [];
+  let picked = null;
+  let catalog = null;
+  const basket = new Map();
+
+  page.innerHTML = `
+    <div class="head"><h2>Chat orders</h2>
+      <span class="hint">For an order that came in over Messenger — place it,
+        then confirm the bank payment and issue the OR</span></div>
+    <div class="tools">
+      <input type="search" id="rs_find" placeholder="Find the reseller by name or email…" autofocus>
+    </div>
+    <div id="rs_hits"></div>
+    <div id="working"></div>`;
+
+  const findBox = $('#rs_find', page);
+  const hitsBox = $('#rs_hits', page);
+  const workingBox = $('#working', page);
+
+  const drawHits = () => {
+    const term = findBox.value.trim().toLowerCase();
+    if (!term) { hitsBox.innerHTML = ''; return; }
+    const hits = resellers.filter((r) => r.name.toLowerCase().includes(term)
+      || (r.email || '').toLowerCase().includes(term)).slice(0, 8);
+    hitsBox.innerHTML = hits.length ? `<div class="panel">${hits.map((r) => `
+      <button class="btn sm quiet" data-pick="${r.id}">${esc(r.name)}
+        ${Number(r.owed) > 0 ? tag(`owes ${peso(r.owed)}`, r.overdue ? 'red' : 'amber') : ''}
+        ${r.blocked ? tag('cannot order', 'red') : ''}</button>`).join(' ')}</div>`
+      : '<div class="dim">Nobody matches that.</div>';
+    $$('[data-pick]', hitsBox).forEach((b) => b.addEventListener('click',
+      () => pick(resellers.find((r) => r.id === +b.dataset.pick))));
+  };
+
+  const pick = (r) => {
+    picked = r;
+    basket.clear();
+    findBox.value = '';
+    hitsBox.innerHTML = '';
+    drawWorking();
+  };
+
+  const drawWorking = () => {
+    if (!picked) { workingBox.innerHTML = ''; return; }
+    workingBox.innerHTML = `
+      <div class="panel">
+        <h3>${esc(picked.name)}
+          ${Number(picked.owed) > 0 ? tag(`owes ${peso(picked.owed)}`, picked.overdue ? 'red' : 'amber') : tag('nothing owed', 'green')}
+          ${picked.blocked ? tag('cannot order', 'red') : ''}</h3>
+        <button class="btn sm quiet" id="rs_change">Change reseller</button>
+      </div>
+      ${picked.blocked ? `<div class="banner bad">This account cannot order right now:
+        ${esc(picked.blocked_reason || 'a past-due invoice')}. Confirming a payment below
+        lifts this by itself once nothing is overdue.</div>` : ''}
+      <div class="split">
+        <div class="panel">
+          <h3>1 · What they ordered</h3>
+          <input type="search" id="ch_find" placeholder="Search products…">
+          <div id="ch_goods" class="scroll" style="max-height:320px;overflow-y:auto"></div>
+          <h4 class="mt">Basket</h4>
+          <div id="ch_basket"></div>
+          <div class="total" id="ch_total">₱0.00</div>
+          <div class="mt right"><button class="btn" id="ch_place">Place order &amp; raise invoice</button></div>
+          <div id="ch_order_out" class="mt"></div>
+        </div>
+        <div class="panel">
+          <h3>2 · Confirm the bank payment</h3>
+          <div class="dim">Settles whatever is open, oldest invoice first, and
+            stamps an OR the moment it does.</div>
+          <div class="row mt">
+            <div><label>Amount received</label>
+              <input id="ch_amt" type="number" step="0.01" min="0.01"></div>
+            <div><label>Received on</label>
+              <input id="ch_on" type="date" value="${localDay()}"></div>
+            <div style="flex:0 0 auto">
+              <button class="btn go" id="ch_pay">Confirm &amp; issue OR</button></div>
+          </div>
+          <div id="ch_pay_out" class="mt"></div>
+        </div>
+      </div>`;
+
+    $('#rs_change', workingBox).addEventListener('click', () => {
+      picked = null;
+      drawWorking();
+      findBox.focus();
+    });
+
+    if (!catalog) {
+      GET('/api/wholesale/catalog').then((rows) => { catalog = rows; drawGoods(); }).catch(whoops);
+    } else drawGoods();
+
+    $('#ch_find', workingBox).addEventListener('input', drawGoods);
+    $('#ch_place', workingBox).addEventListener('click', placeOrder);
+    $('#ch_pay', workingBox).addEventListener('click', confirmPayment);
+    drawBasket();
+  };
+
+  const drawGoods = () => {
+    const box = $('#ch_goods', workingBox);
+    if (!box) return;
+    const term = ($('#ch_find', workingBox)?.value || '').trim().toLowerCase();
+    const rows = (catalog || []).filter((p) => !term
+      || p.name.toLowerCase().includes(term) || (p.brand || '').toLowerCase().includes(term));
+    box.innerHTML = table(rows.slice(0, 40), [
+      { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b> <span class="dim">${esc(p.brand || '')}</span>` },
+      { head: 'Price', n: true, cell: (p) => peso(p.wholesale_price) },
+      { head: 'Have', n: true, cell: (p) => count(p.available) },
+      { head: '', cell: (p) => `<button class="btn sm quiet" data-add="${esc(p.sku)}"
+          ${p.available <= 0 ? 'disabled' : ''}>Add</button>` },
+    ], 'Nothing matches.');
+    $$('[data-add]', box).forEach((b) => b.addEventListener('click', () => {
+      const p = catalog.find((x) => x.sku === b.dataset.add);
+      const line = basket.get(p.sku) ?? { sku: p.sku, name: p.name, price: Number(p.wholesale_price), qty: 0 };
+      line.qty += 1;
+      basket.set(p.sku, line);
+      drawBasket();
+    }));
+  };
+
+  const drawBasket = () => {
+    const box = $('#ch_basket', workingBox);
+    if (!box) return;
+    box.innerHTML = basket.size ? [...basket.values()].map((l) => `
+      <div class="pick">
+        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${peso(l.price)} each</span></span>
+        <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
+        <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
+      </div>`).join('') : '<div class="none">Nothing added yet.</div>';
+    $('#ch_total', workingBox).textContent =
+      peso([...basket.values()].reduce((s, l) => s + l.price * l.qty, 0));
+    $$('[data-qty]', box).forEach((i) => i.addEventListener('change', () => {
+      basket.get(i.dataset.qty).qty = Math.max(1, +i.value || 1);
+      drawBasket();
+    }));
+    $$('[data-drop]', box).forEach((b) => b.addEventListener('click', () => {
+      basket.delete(b.dataset.drop);
+      drawBasket();
+    }));
+  };
+
+  async function placeOrder() {
+    if (!basket.size) return notice('Add what they ordered first.', 'bad');
+    $('#ch_place', workingBox).disabled = true;
+    try {
+      const out = await POST(`/api/resellers/${picked.id}/orders`,
+        { lines: [...basket.values()].map((l) => ({ sku: l.sku, qty: l.qty })) });
+      basket.clear();
+      drawBasket();
+      const inv = out.invoice;
+      $('#ch_order_out', workingBox).innerHTML = `<div class="banner good">
+        Order #${out.orderId} placed${inv ? ` — Invoice #${inv.id},
+        ${peso(inv.amount)} due ${onDay(inv.due_on)}` : ''}.
+        Read this back into the chat.</div>`;
+      notice('Order placed 🌸', 'good');
+    } catch (e) { whoops(e); } finally {
+      $('#ch_place', workingBox).disabled = false;
+    }
+  }
+
+  async function confirmPayment() {
+    const amount = +$('#ch_amt', workingBox).value;
+    if (!(amount > 0)) return notice('Type how much came in.', 'bad');
+    $('#ch_pay', workingBox).disabled = true;
+    try {
+      const out = await POST(`/api/resellers/${picked.id}/receipt`,
+        { amount, paid_on: $('#ch_on', workingBox).value });
+      showOR(out, picked);
+      $('#ch_amt', workingBox).value = '';
+      resellers = await GET('/api/resellers');
+      const fresh = resellers.find((r) => r.id === picked.id);
+      if (fresh) { picked = fresh; drawWorking(); }
+    } catch (e) { whoops(e); } finally {
+      $('#ch_pay', workingBox).disabled = false;
+    }
+  }
+
+  function showOR(r, reseller) {
+    const applied = r.applied || [];
+    const lines = applied.map((a) => `Invoice #${a.invoice_id}${' '.repeat(2)}${peso(a.applied)}`).join('\n');
+    const received = applied.reduce((s, a) => s + a.applied, 0) + (r.credited || 0);
+    dialog(`
+      <h3>Receipt ${esc(r.receipt_no)}</h3>
+      <div class="receipt">MS BEAU AVE
+${esc(r.receipt_no)} · ${when(new Date())}
+${esc(reseller.name)}
+--------------------------------
+${lines || 'Held as credit — nothing was open to apply it to.'}
+--------------------------------
+RECEIVED${' '.repeat(4)}${peso(received)}
+${r.credited > 0 ? `CREDIT LEFT${' '.repeat(1)}${peso(r.credited)}\n` : ''}STILL OWED${' '.repeat(2)}${peso(r.still_owed)}
+--------------------------------
+Salamat po! 🌸</div>
+      <div class="mt right">
+        <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
+        <button class="btn" id="or_done">Done</button></div>`);
+    $('#or_done').addEventListener('click', closeDialog);
+  }
+
+  findBox.addEventListener('input', drawHits);
+  resellers = await GET('/api/resellers');
+};
 
 // ===========================================================================
 // Resellers
