@@ -1668,21 +1668,45 @@ SCREENS.chatorders = async (page) => {
 
   async function placeOrder() {
     if (!basket.size) return notice('Add what they ordered first.', 'bad');
+    const lines = [...basket.values()];
     $('#ch_place', workingBox).disabled = true;
     try {
       const out = await POST(`/api/resellers/${picked.id}/orders`,
-        { lines: [...basket.values()].map((l) => ({ sku: l.sku, qty: l.qty })) });
+        { lines: lines.map((l) => ({ sku: l.sku, qty: l.qty })) });
       basket.clear();
       drawBasket();
-      const inv = out.invoice;
-      $('#ch_order_out', workingBox).innerHTML = `<div class="banner good">
-        Order #${out.orderId} placed${inv ? ` — Invoice #${inv.id},
-        ${peso(inv.amount)} due ${onDay(inv.due_on)}` : ''}.
-        Read this back into the chat.</div>`;
+      $('#ch_order_out', workingBox).innerHTML =
+        '<div class="banner good">Order placed. Here is the invoice to send back.</div>';
       notice('Order placed 🌸', 'good');
+      if (out.invoice) showInvoice(out, lines, picked);
     } catch (e) { whoops(e); } finally {
       $('#ch_place', workingBox).disabled = false;
     }
+  }
+
+  function showInvoice(out, lines, reseller) {
+    const rows = lines.map((l) =>
+      `${l.qty} × ${esc(l.name)}\n    ${peso(l.price)} each${' '.repeat(4)}${peso(l.price * l.qty)}`
+    ).join('\n');
+    const inv = out.invoice;
+    dialog(`
+      <h3>Invoice #${inv.id}</h3>
+      <div class="receipt">MS BEAU AVE
+Invoice #${inv.id} · Order #${out.orderId}
+${esc(reseller.name)}
+Issued ${onDay(inv.issued_on)} · Due ${onDay(inv.due_on)}
+--------------------------------
+${rows}
+--------------------------------
+TOTAL${' '.repeat(6)}${peso(inv.amount)}
+--------------------------------
+Please settle by bank transfer or GCash and send proof of
+payment here — the OR follows once that's confirmed.
+Salamat po! 🌸</div>
+      <div class="mt right">
+        <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
+        <button class="btn" id="inv_done">Done</button></div>`);
+    $('#inv_done').addEventListener('click', closeDialog);
   }
 
   async function confirmPayment() {
