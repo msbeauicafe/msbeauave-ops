@@ -1684,25 +1684,37 @@ SCREENS.chatorders = async (page) => {
     }
   }
 
+  // Same shape as the CUSTOMER ORDER FORM already used for every reseller's
+  // own paperwork — letterhead, the same field labels, PRODUCT DESCRIPTION /
+  // QUANTITY / UNIT TYPE / UNIT PRICE / TOTAL — so an invoice out of a chat
+  // order reads as the same document, not a different one from a computer.
   function showInvoice(out, lines, reseller) {
-    const rows = lines.map((l) =>
-      `${l.qty} × ${esc(l.name)}\n    ${peso(l.price)} each${' '.repeat(4)}${peso(l.price * l.qty)}`
-    ).join('\n');
     const inv = out.invoice;
     dialog(`
-      <h3>Invoice #${inv.id}</h3>
-      <div class="receipt">MS BEAU AVE
-Invoice #${inv.id} · Order #${out.orderId}
-${esc(reseller.name)}
-Issued ${onDay(inv.issued_on)} · Due ${onDay(inv.due_on)}
---------------------------------
-${rows}
---------------------------------
-TOTAL${' '.repeat(6)}${peso(inv.amount)}
---------------------------------
-Please settle by bank transfer or GCash and send proof of
-payment here — the OR follows once that's confirmed.
-Salamat po! 🌸</div>
+      <div>
+        <div style="text-align:center"><b>MS BEAU AVE ENTERPRISES OPC</b><br>
+          <span class="dim">LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
+          MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</span></div>
+        <h3 class="mt" style="text-align:center">CUSTOMER ORDER FORM</h3>
+        <div class="row mt">
+          <div><b>${esc(reseller.name)}</b></div>
+          <div style="flex:0 0 auto">DATE: ${onDay(inv.issued_on)}</div>
+        </div>
+        <div class="row">
+          <div class="dim">Order #${out.orderId}</div>
+          <div class="dim" style="flex:0 0 auto">SALES ORDER NO.: INV-${inv.id}</div>
+        </div>
+        ${table(lines, [
+          { head: 'PRODUCT DESCRIPTION', cell: (l) => esc(l.name) },
+          { head: 'QUANTITY', n: true, cell: (l) => count(l.qty) },
+          { head: 'UNIT PRICE', n: true, cell: (l) => peso(l.price) },
+          { head: 'TOTAL', n: true, cell: (l) => peso(l.price * l.qty) },
+        ], 'Nothing on this order.')}
+        <div class="right mt"><b>Total Due (PHP) ${peso(inv.amount)}</b>
+          <div class="dim">Due ${onDay(inv.due_on)}</div></div>
+        <div class="dim mt">Please settle by bank transfer or GCash and send proof of
+          payment here — the OR follows once that's confirmed.</div>
+      </div>
       <div class="mt right">
         <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
         <button class="btn" id="inv_done">Done</button></div>`);
