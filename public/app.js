@@ -665,7 +665,8 @@ async function openReseller(id, reload) {
       ${r.blocked || r.overdue ? tag('cannot order', 'red') : tag(r.status, 'green')}
       ${r.docs_verified ? tag('papers verified', 'green') : tag('papers pending', 'amber')}
       ${tag(`limit ${peso(r.credit_limit)}`, 'pink')}
-      ${tag(`owes ${peso(r.owed)}`, Number(r.owed) > 0 ? 'amber' : 'green')}</div>
+      ${tag(`owes ${peso(r.owed)}`, Number(r.owed) > 0 ? 'amber' : 'green')}
+      ${Number(r.credit) > 0 ? tag(`${peso(r.credit)} credit on file`, 'green') : ''}</div>
 
     ${r.blocked || r.overdue ? `<div class="banner bad">Cannot order:
       ${esc(r.blocked_reason || 'there is a past-due invoice')}. Recording the payment
@@ -718,6 +719,23 @@ async function openReseller(id, reload) {
           ? `<button class="btn sm" data-pay="${i.id}" data-owed="${i.balance}">Record payment</button>` : '' },
     ], 'No invoices yet.')}
 
+    <h3 class="mt">Pay the account</h3>
+    <div class="dim">One payment settles what's open oldest-first. Anything left over
+      becomes credit, drawn down by itself the next time an invoice is raised.</div>
+    <div class="row mt">
+      <div><label>Amount received</label>
+        <input id="acct_amt" type="number" step="0.01" min="0.01"></div>
+      <div><label>Received on</label>
+        <input id="acct_on" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+      <div style="flex:0 0 auto"><button class="btn go" id="acct_pay">Pay the account</button></div>
+    </div>
+    <div id="acct_result"></div>
+
+    ${Number(r.credit) > 0 || r.credits.length ? `<h3 class="mt">Credit ledger</h3>
+      <div class="dim">${r.credits.map((c) =>
+        `${onDay(c.at)} — ${Number(c.amount) >= 0 ? 'added' : 'spent'} ${peso(Math.abs(c.amount))}
+         (${esc(c.reason)})`).join('<br>') || 'Nothing yet.'}</div>` : ''}
+
     <h3 class="mt">History</h3>
     <div class="dim">${r.events.slice(0, 10).map((e) =>
       `${when(e.at)} — <b>${esc(e.kind)}</b> ${esc(JSON.stringify(e.detail || {}))}`).join('<br>')
@@ -758,6 +776,22 @@ async function openReseller(id, reload) {
       await POST(`/api/resellers/${id}/documents`,
         { kind: $('#d_kind').value, reference: $('#d_ref').value });
       notice('Attached', 'good');
+      openReseller(id, reload);
+    } catch (e) { whoops(e); }
+  });
+
+  $('#acct_pay').addEventListener('click', async () => {
+    const amount = +$('#acct_amt').value;
+    if (!amount || amount <= 0) return whoops(new Error('Enter an amount received.'));
+    try {
+      const result = await POST(`/api/resellers/${id}/payment`,
+        { amount, paid_on: $('#acct_on').value });
+      const lines = (result.applied || []).map((a) =>
+        `Invoice #${a.invoice_id}: ${peso(a.amount)}`);
+      if (Number(result.credited) > 0) lines.push(`Left as credit: ${peso(result.credited)}`);
+      $('#acct_result').innerHTML = `<div class="banner good mt">${
+        lines.join('<br>') || 'Nothing was open to apply it to.'}</div>`;
+      notice('Payment recorded', 'good');
       openReseller(id, reload);
     } catch (e) { whoops(e); }
   });
@@ -1157,7 +1191,14 @@ SCREENS.reports = async (page) => {
           { head: 'Owes', n: true, cell: (c) => peso(c.owed) },
           { head: 'Share', n: true, cell: (c) => `${(c.share * 100).toFixed(1)}%` },
           { head: '', cell: (c) => c.flagged ? tag('over 15%', 'red') : '' },
-        ], 'Nothing outstanding.')}</div>`;
+        ], 'Nothing outstanding.')}</div>
+        <div class="panel"><h3>Money held as credit</h3>
+          <div class="dim">Overpaid accounts — nothing owed, but this comes off their
+            next invoice by itself.</div>${table(d.credit, [
+          { head: 'Reseller', cell: (c) => esc(c.name) },
+          { head: 'Tier', cell: (c) => tierTag(c.tier) },
+          { head: 'Credit', n: true, cell: (c) => peso(c.credit) },
+        ], 'No accounts holding credit.')}</div>`;
     },
     journal: async () => {
       out.innerHTML = `<div class="tools">

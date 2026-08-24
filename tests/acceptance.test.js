@@ -382,6 +382,107 @@ test('clearing the last past-due invoice lets the account order again on its own
 });
 
 // ===========================================================================
+// Paying the whole account at once
+// ===========================================================================
+test('one payment against the account settles what is open, oldest invoice first',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
+    await receive(store, sku, 24, 100);
+
+    const id = await newReseller(admin);
+    const buyer = await signIn('reseller', id);
+    const first = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 4 }] });   // ₱1,000
+    const second = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 2 }] });  // ₱500
+
+    // Enough to clear the first in full and leave the second at ₱300 owed.
+    const paid = await POST(admin, `/api/resellers/${id}/payment`, { amount: 1200 });
+    assert.equal(paid.status, 200, JSON.stringify(paid.data));
+    assert.deepEqual(
+      paid.data.applied.map((a) => [Number(a.invoice_id), Number(a.amount)]),
+      [[Number(first.data.invoice.id), 1000], [Number(second.data.invoice.id), 200]],
+      'the older invoice is paid off completely before a peso touches the newer one');
+    assert.equal(Number(paid.data.credited), 0);
+
+    const account = await GET(admin, `/api/resellers/${id}`);
+    const inv1 = account.data.invoices.find((i) => i.id === first.data.invoice.id);
+    const inv2 = account.data.invoices.find((i) => i.id === second.data.invoice.id);
+    assert.equal(inv1.status, 'paid');
+    assert.equal(inv2.status, 'open');
+    assert.equal(Number(inv2.balance), 300);
+  });
+
+test('paying more than the account owes leaves the rest sitting as credit', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
+  await receive(store, sku, 24, 100);
+
+  const id = await newReseller(admin);
+  const buyer = await signIn('reseller', id);
+  const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 4 }] }); // ₱1,000
+
+  const paid = await POST(admin, `/api/resellers/${id}/payment`, { amount: 1500 });
+  assert.equal(Number(paid.data.applied[0].amount), 1000);
+  assert.equal(Number(paid.data.credited), 500);
+
+  const account = await GET(admin, `/api/resellers/${id}`);
+  assert.equal(Number(account.data.credit), 500);
+  assert.equal(Number(account.data.owed), 0);
+  assert.match(account.data.credits[0].reason, /overpayment/i);
+});
+
+test('an account with nothing open yet can still be paid — it all becomes credit', async () => {
+  const admin = await signIn('admin');
+  const id = await newReseller(admin);
+
+  const paid = await POST(admin, `/api/resellers/${id}/payment`, { amount: 800 });
+  assert.equal(paid.status, 200, JSON.stringify(paid.data));
+  assert.deepEqual(paid.data.applied, []);
+  assert.equal(Number(paid.data.credited), 800);
+
+  const account = await GET(admin, `/api/resellers/${id}`);
+  assert.equal(Number(account.data.credit), 800);
+});
+
+test('standing credit is drawn on automatically the next time an invoice is raised',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
+    await receive(store, sku, 24, 100);
+
+    const id = await newReseller(admin);
+    const buyer = await signIn('reseller', id);
+    await POST(admin, `/api/resellers/${id}/payment`, { amount: 800 }); // pure credit, no invoice yet
+
+    // ₱500 order against ₱800 credit: the invoice should already read paid.
+    const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 2 }] });
+    assert.equal(order.data.invoice.status, 'paid',
+      'the reseller should never see a balance due — the credit covered it before they did');
+
+    const account = await GET(admin, `/api/resellers/${id}`);
+    assert.equal(Number(account.data.credit), 300, '₱800 credit minus the ₱500 invoice');
+    assert.equal(Number(account.data.owed), 0);
+  });
+
+test('an account holding nothing but credit is not invisible to the receivables report',
+  async () => {
+    const admin = await signIn('admin');
+    const credited = await newReseller(admin);
+    await POST(admin, `/api/resellers/${credited}/payment`, { amount: 400 });
+    const plain = await newReseller(admin); // owes nothing, holds no credit either
+
+    const report = await GET(admin, '/api/reports/receivables');
+    const row = report.data.credit.find((c) => Number(c.reseller_id) === credited);
+    assert.ok(row, 'an account sitting on credit belongs in "money held as credit"');
+    assert.equal(Number(row.credit), 400);
+    assert.ok(!report.data.credit.some((c) => Number(c.reseller_id) === plain),
+      'an account with no credit at all must not appear here');
+  });
+
+// ===========================================================================
 // The till
 // ===========================================================================
 test('selling the last unit empties the shelf, raises a task, and blocks the next sale',
