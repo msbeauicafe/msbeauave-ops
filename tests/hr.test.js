@@ -194,7 +194,9 @@ test('an employee cannot reach the HR workspace at all', async () => {
 test('an employee cannot read a colleague\'s photograph', async () => {
   const hr = await signIn(await newLogin('admin'));
   const other = await newPerson(unique('Kim'));
-  const dot = `data:image/png;base64,${Buffer.from('not really a png').toString('base64')}`;
+  // A one-pixel PNG is a photograph as far as any of this is concerned.
+  const dot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
+    + 'AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
   assert.equal((await POST(hr, `/api/team/${other.id}/photo`, { dataUrl: dot })).status, 200);
 
   const me = await newPerson(unique('Tin'));
