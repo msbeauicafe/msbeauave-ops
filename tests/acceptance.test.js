@@ -383,6 +383,110 @@ test('clearing the last past-due invoice lets the account order again on its own
 });
 
 // ===========================================================================
+// One payment, against the account rather than one invoice — the shape of a
+// payment that actually arrives when a reseller sends money whenever it
+// suits them rather than one bank transfer per order.
+// ===========================================================================
+test('one payment against the account settles what is open, oldest invoice first',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    // 45-day terms so the 30-day early-settlement discount never applies —
+    // this test is about which invoice the money goes to, not how much of it.
+    const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
+    await receive(store, sku, 24, 40);
+    const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
+    const buyer = await signIn('reseller', id);
+
+    const first = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });   // ₱2,500
+    const second = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });  // ₱2,500
+    assert.equal(Number(first.data.invoice.amount), 2500);
+    assert.equal(Number(second.data.invoice.amount), 2500);
+
+    const paid = await POST(admin, `/api/resellers/${id}/payment`, { amount: 4000 });
+    assert.equal(paid.status, 200, JSON.stringify(paid.data));
+    assert.equal(paid.data.applied.length, 2, 'both invoices should have been touched');
+    // jsonb_build_object hands the id back as a JSON number; the invoice a
+    // route returns straight off a bigint column comes back as a string —
+    // node-pg's own precaution against losing precision above 2^53. Both name
+    // the same invoice, so the comparison casts rather than caring which.
+    assert.equal(Number(paid.data.applied[0].invoice_id), Number(first.data.invoice.id),
+      'the invoice raised first must be the one paid first');
+    assert.equal(Number(paid.data.applied[0].applied), 2500);
+    assert.equal(Number(paid.data.applied[0].now_owes), 0);
+    assert.equal(Number(paid.data.applied[1].invoice_id), Number(second.data.invoice.id));
+    assert.equal(Number(paid.data.applied[1].applied), 1500);
+    assert.equal(Number(paid.data.applied[1].now_owes), 1000);
+    assert.equal(Number(paid.data.credited), 0, 'every peso had somewhere to go');
+
+    const account = await GET(admin, `/api/resellers/${id}`);
+    assert.equal(account.data.invoices.find((i) => i.id === first.data.invoice.id).status, 'paid');
+    assert.equal(account.data.invoices.find((i) => i.id === second.data.invoice.id).status, 'open');
+    assert.equal(Number(account.data.owed), 1000);
+  });
+
+test('a payment left over once every invoice is closed is credit, not a discrepancy',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
+    await receive(store, sku, 24, 10);
+    const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
+    const buyer = await signIn('reseller', id);
+    const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });  // ₱2,500
+
+    const paid = await POST(admin, `/api/resellers/${id}/payment`, { amount: 3000 });
+    assert.equal(paid.status, 200, JSON.stringify(paid.data));
+    assert.equal(paid.data.applied.length, 1);
+    assert.equal(Number(paid.data.applied[0].applied), 2500);
+    assert.equal(Number(paid.data.credited), 500,
+      'the ₱500 nobody owed for must not simply vanish off an over-full invoice');
+
+    const account = await GET(admin, `/api/resellers/${id}`);
+    assert.equal(account.data.invoices[0].status, 'paid');
+    assert.equal(Number(account.data.credit), 500);
+    assert.equal(Number(account.data.owed), 0);
+  });
+
+test('an account with nothing open turns a whole payment straight into credit', async () => {
+  const admin = await signIn('admin');
+  const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
+
+  const paid = await POST(admin, `/api/resellers/${id}/payment`, { amount: 1000 });
+  assert.equal(paid.status, 200, JSON.stringify(paid.data));
+  assert.deepEqual(paid.data.applied, []);
+  assert.equal(Number(paid.data.credited), 1000);
+
+  const account = await GET(admin, `/api/resellers/${id}`);
+  assert.equal(Number(account.data.credit), 1000);
+});
+
+test('credit on the account is drawn down the moment the next invoice exists, unasked',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
+    await receive(store, sku, 24, 20);
+    const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
+    const buyer = await signIn('reseller', id);
+
+    // Nothing owed yet, so the whole payment becomes credit.
+    await POST(admin, `/api/resellers/${id}/payment`, { amount: 500 });
+    assert.equal(Number((await GET(admin, `/api/resellers/${id}`)).data.credit), 500);
+
+    // The credit is spent the instant an invoice exists — nobody asks for it,
+    // nobody applies it by hand.
+    const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 4 }] }); // ₱1,000
+    assert.equal(order.status, 200, JSON.stringify(order.data));
+
+    const account = await GET(admin, `/api/resellers/${id}`);
+    assert.equal(Number(account.data.credit), 0, 'the credit is gone — it was just spent');
+    const invoice = account.data.invoices.find((i) => i.id === order.data.invoice.id);
+    assert.equal(Number(invoice.balance), 500, 'half the invoice was already covered');
+    assert.equal(invoice.status, 'open', 'half paid is not the same as settled');
+  });
+
+// ===========================================================================
 // The till
 // ===========================================================================
 test('selling the last unit empties the shelf, raises a task, and blocks the next sale',

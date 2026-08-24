@@ -58,6 +58,12 @@ node --test tests/public-pages.test.js
 echo "==> an eye on every password box"
 node --test tests/reveal.test.js
 
+echo "==> the door screen fits on the door's screen"
+node --test tests/door-fits.test.js
+
+echo "==> a door that updates itself"
+node --test tests/door-updates-itself.test.js
+
 echo "==> running the tests"
 node --test tests/acceptance.test.js
 

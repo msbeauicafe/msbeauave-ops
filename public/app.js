@@ -1606,12 +1606,17 @@ async function openReseller(id, reload) {
       ${r.blocked || r.overdue ? tag('cannot order', 'red') : tag(r.status, 'green')}
       ${r.docs_verified ? tag('papers verified', 'green') : tag('papers pending', 'amber')}
       ${tag(`limit ${peso(r.credit_limit)}`, 'pink')}
-      ${tag(`owes ${peso(r.owed)}`, Number(r.owed) > 0 ? 'amber' : 'green')}</div>
+      ${tag(`owes ${peso(r.owed)}`, Number(r.owed) > 0 ? 'amber' : 'green')}
+      ${Number(r.credit) > 0 ? tag(`${peso(r.credit)} in credit`, 'green') : ''}</div>
 
     ${r.blocked || r.overdue ? `<div class="banner bad">Cannot order:
       ${esc(r.blocked_reason || 'there is a past-due invoice')}. Recording the payment
       lifts this by itself — an override below is only for when you have decided to
       let it through anyway.</div>` : ''}
+
+    ${Number(r.credit) > 0 ? `<div class="banner good">Holding ${peso(r.credit)} of
+      theirs — money that arrived with nothing open left to pay. It is taken off
+      their next invoice automatically, the moment it is raised.</div>` : ''}
 
     ${r.status !== 'active' || !r.docs_verified
       ? '<div class="mt"><button class="btn go" id="d_approve">Approve this account</button></div>' : ''}
@@ -1645,6 +1650,19 @@ async function openReseller(id, reload) {
       <div style="flex:0 0 auto"><button class="btn quiet" id="d_attach">Attach</button></div>
     </div>
 
+    <h3 class="mt">Pay the account</h3>
+    <div class="dim">One amount, settled against whatever is open, oldest invoice
+      first — for the ordinary case, one payment covering more than one order.
+      To pay a single invoice on its own, use Record payment on its row below.
+      Anything left over once nothing is open becomes credit, held on the
+      account and taken off their next invoice by itself.</div>
+    <div class="row mt">
+      <div><label>Amount received</label><input id="acct_amt" type="number" step="0.01"></div>
+      <div><label>Received on</label><input id="acct_on" type="date" value="${localDay()}"></div>
+      <div style="flex:0 0 auto"><button class="btn" id="acct_pay">Apply payment</button></div>
+    </div>
+    <div id="acct_out" class="mt"></div>
+
     <h3 class="mt">Invoices</h3>
     ${table(r.invoices, [
       { head: '#', cell: (i) => i.id },
@@ -1662,7 +1680,12 @@ async function openReseller(id, reload) {
     <h3 class="mt">History</h3>
     <div class="dim">${r.events.slice(0, 10).map((e) =>
       `${when(e.at)} — <b>${esc(e.kind)}</b> ${esc(JSON.stringify(e.detail || {}))}`).join('<br>')
-      || 'Nothing yet.'}</div>`);
+      || 'Nothing yet.'}</div>
+
+    ${r.credits?.length ? `<h3 class="mt">Credit ledger</h3>
+      <div class="dim">${r.credits.map((c) =>
+        `${when(c.at)} — <b>${Number(c.amount) > 0 ? '+' : ''}${peso(c.amount)}</b>
+          — ${esc(c.reason)}`).join('<br>')}</div>` : ''}`);
 
   $('#d_approve')?.addEventListener('click', async () => {
     try {
@@ -1701,6 +1724,31 @@ async function openReseller(id, reload) {
       notice('Attached', 'good');
       openReseller(id, reload);
     } catch (e) { whoops(e); }
+  });
+
+  $('#acct_pay').addEventListener('click', async () => {
+    const amount = +$('#acct_amt').value;
+    if (!(amount > 0)) return whoops(new Error('Type how much came in.'));
+    $('#acct_pay').disabled = true;
+    try {
+      const out = await POST(`/api/resellers/${id}/payment`,
+        { amount, paid_on: $('#acct_on').value });
+      const lines = (out.applied || []).map((a) =>
+        `Invoice #${a.invoice_id}: ${peso(a.applied)} applied` +
+        (a.discount > 0 ? ` (plus ${peso(a.discount)} early-payment discount)` : '') +
+        (a.now_owes > 0 ? `, ${peso(a.now_owes)} still owed` : ', now settled'));
+      if (out.credited > 0) {
+        lines.push(`${peso(out.credited)} left over — held as credit on the account.`);
+      }
+      $('#acct_out').innerHTML = lines.length
+        ? `<div class="banner good">${lines.join('<br>')}</div>`
+        : '<div class="dim">Nothing was open to apply this to — the whole amount is now credit.</div>';
+      notice('Payment applied 🌸', 'good');
+      openReseller(id, reload);
+    } catch (e) {
+      whoops(e);
+      $('#acct_pay').disabled = false;
+    }
   });
 
   $$('[data-pay]').forEach((b) => b.addEventListener('click', () => {
@@ -2601,6 +2649,10 @@ function bulkTeamDialog(reload, branches = []) {
 // anybody.
 // ===========================================================================
 async function pinSlipsDialog(reload) {
+  // One shop, or both. Reissuing takes a PIN away from somebody who has already
+  // learned it, so a shop that has never been given theirs has to be reachable
+  // without resetting the shop that is clocking on with theirs this minute.
+  const shops = await branches();
   dialog(`
     <h3>PINs &amp; slips</h3>
     <div class="dim">Gives a PIN to everybody who has not got one, and prints a
@@ -2611,9 +2663,18 @@ async function pinSlipsDialog(reload) {
       this. If somebody loses their slip, give them a new PIN from Edit.</div>
     <div class="row mt">
       <div style="flex:0 0 auto">
+        <label class="dim">Which shop</label><br>
+        <select id="k_shop">
+          <option value="">Both shops</option>
+          ${shops.filter((b) => b.active).map((b) =>
+            `<option value="${b.id}">${esc(b.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="flex:0 0 auto">
         <label class="inline"><input type="checkbox" id="k_all">
           Reissue for <b>everyone</b>, including those who already have one</label></div>
     </div>
+    <div id="k_warn"></div>
     <div class="mt right">
       <button class="btn quiet" id="k_cancel">Cancel</button>
       <button class="btn" id="k_go">Generate</button>
@@ -2622,10 +2683,29 @@ async function pinSlipsDialog(reload) {
 
   $('#k_cancel').addEventListener('click', closeDialog);
 
+  // Said before it happens, not after. Reissuing is the one control here that
+  // takes something away, and the difference between one shop and both is the
+  // difference between handing out slips and locking a shop out mid-shift.
+  const shopNow = () => $('#k_shop').selectedOptions[0].textContent.trim();
+  const warn = () => {
+    if (!$('#k_all').checked) { $('#k_warn').replaceChildren(); return; }
+    $('#k_warn').innerHTML = `<div class="banner warn mt">Everybody at
+      <b>${esc(shopNow())}</b> gets a new PIN, and their old one stops working
+      the moment you press Generate. Only do this if you are handing the new
+      slips out today.</div>`;
+  };
+  $('#k_all').addEventListener('change', warn);
+  $('#k_shop').addEventListener('change', warn);
+
   $('#k_go').addEventListener('click', async () => {
     const everyone = $('#k_all').checked;
+    const branch = $('#k_shop').value || null;
+    // The slip carries the shop somebody actually works at, so a BOA slip does
+    // not tell them to look for a door marked MS BEAU AVE.
+    const slipShop = branch ? shopNow() : null;
     $('#k_go').disabled = true;
     $('#k_all').disabled = true;
+    $('#k_shop').disabled = true;
     const all = [];
     try {
       // The server works in bites because hashing is slow on purpose; keep
@@ -2634,7 +2714,7 @@ async function pinSlipsDialog(reload) {
       // after the first twenty.
       let after = 0;
       for (;;) {
-        const r = await POST('/api/team/pins', { everyone, after });
+        const r = await POST('/api/team/pins', { everyone, after, branch });
         all.push(...r.issued);
         after = r.after ?? after;
         $('#k_out').innerHTML = `<div class="dim mt">${all.length} done${
@@ -2645,14 +2725,16 @@ async function pinSlipsDialog(reload) {
       whoops(e);
       $('#k_go').disabled = false;
       $('#k_all').disabled = false;
+      $('#k_shop').disabled = false;
       return;
     }
 
     if (!all.length) {
-      $('#k_out').innerHTML =
-        '<div class="none mt">Everybody already has a PIN. Tick the box above to reissue.</div>';
+      $('#k_out').innerHTML = `<div class="none mt">Everybody at ${
+        esc(shopNow())} already has a PIN. Tick the box above to reissue.</div>`;
       $('#k_go').disabled = false;
       $('#k_all').disabled = false;
+      $('#k_shop').disabled = false;
       return;
     }
 
@@ -2663,13 +2745,15 @@ async function pinSlipsDialog(reload) {
       <div class="slips" id="k_slips">
         ${all.map((p) => `
           <div class="slip">
-            <div class="slip-shop">MS BEAU AVE</div>
+            <div class="slip-shop">${esc(slipShop || 'MS BEAU AVE')}</div>
             <div class="slip-who">${esc(p.name)}</div>
             <div class="slip-job">${esc(p.position)}</div>
             <div class="slip-pin">${esc(p.pin)}</div>
-            <div class="slip-note">Your clock-in PIN. Tap your name on the
-              tablet by the door, then type this. Keep it to yourself — it is
-              how the shop knows the hours are yours.</div>
+            <div class="slip-note">Your clock-in PIN, coming in and going home.
+              At the door: press your finger, then type this on the keyboard.
+              No fingerprint yet? Find your face on the screen and type it
+              there. Keep it to yourself — it is how the shop knows the hours
+              are yours.</div>
           </div>`).join('')}
       </div>`;
 

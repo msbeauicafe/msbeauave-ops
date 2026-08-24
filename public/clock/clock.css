@@ -320,51 +320,156 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
  * capped at 1200px on a 1920px screen leaves a third of the glass empty while
  * the names on it stay the size they were on a 10in tablet.
  *
- * So past 1400px everything that has to be read from across a shop grows, and
- * the layout takes the room it has been given. Nothing below 1400px moves: a
- * phone or a tablet opening the same address is unchanged.
+ * So past 1400px the layout takes the room it has been given. Nothing below
+ * 1400px moves: a phone or a tablet opening the same address is unchanged.
+ *
+ * The screen also holds still.
+ *
+ * It was drawn bigger than it needed to be, and the page grew past the bottom
+ * of a 1080p monitor: three rows of faces, and the scanner panel cut in half
+ * by the edge of the glass. Nobody arriving with their hands full reaches for
+ * a scroll wheel to find out where the keypad went, and a scanner you have to
+ * scroll to is a scanner nobody knows is there.
+ *
+ * So on a monitor the page is exactly one screen tall. The faces scroll inside
+ * their own pane and everything else stays put: the keypad and the scanner are
+ * always in the same place, always whole, whatever the size of the team.
  * ------------------------------------------------------------------------- */
-@media (min-width: 1400px) {
-  body { font-size: 18px; }
-  .two { max-width: 1680px; grid-template-columns: minmax(0, 1fr) 440px; gap: 28px; }
-  main { padding: 22px 28px 48px; }
+@media (min-width: 1200px) {
+  body { font-size: 17px; }
+  main {
+    /* One screen, and the page itself no longer scrolls. main is a grid of a
+     * single row so whatever it holds — the faces, or the setting-up form —
+     * gets exactly the height that is left under the bar and no more. */
+    display: grid; grid-template-rows: minmax(0, 1fr);
+    overflow: hidden; padding: 16px 22px;
+  }
+  .two {
+    /* The auto margins that centred a 1200px column on a laptop have to go:
+     * an auto margin tells a grid item to be as wide as its contents rather
+     * than as wide as it has been given, which on a 1920px monitor folded the
+     * faces into a single column down the middle. */
+    max-width: none; margin: 0; gap: 20px; min-height: 0;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    align-items: stretch;
+  }
+  /* Setting the screen up is the other thing main ever holds, and it is a
+   * narrow form that was relying on the same auto margins. */
+  .gate { width: min(380px, 100%); }
+  .clockside { display: flex; flex-direction: column; min-height: 0; }
 
-  /* The faces: the thing somebody is looking for from the doorway. */
-  .grid { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 16px; }
-  .card { padding: 20px 14px; border-radius: 18px; }
-  .card img, .face { width: 88px; height: 88px; font-size: 40px; }
-  .card b { font-size: 1.2rem; }
-  .card span { font-size: .84rem; }
-  .card .times { font-size: .95rem; }
-  .dot { width: 15px; height: 15px; top: 12px; right: 12px; }
+  /* The faces: the thing somebody is looking for from the doorway. This is the
+   * one part that scrolls, and the only part that ever needs to — a door with
+   * more people than fit is a door with more people than fit. */
+  .grid {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start;
+    padding-right: 8px;          /* the scrollbar's own lane, off the faces */
+    grid-template-columns: repeat(auto-fill, minmax(186px, 1fr)); gap: 12px;
+  }
+  .card { padding: 10px; border-radius: 14px; gap: 2px; }
+  .card img, .face { width: 56px; height: 56px; font-size: 28px; }
+  .card b { font-size: 1rem; line-height: 1.2; }
+  .card span { font-size: .76rem; line-height: 1.25; }
+  .card .day { font-size: .68rem; margin-bottom: -2px; }
+  .card .times { font-size: .82rem; }
+  .dot { width: 13px; height: 13px; top: 9px; right: 9px; }
 
-  /* The keypad, for whoever is typing rather than presenting a finger. */
-  .keys button { font-size: 1.8rem; padding: 20px 0; }
-  .keyfirst .dots, .padside .dots { font-size: 2.5rem; min-height: 3rem; }
-  .padside h2 { font-size: 1.3rem; }
-  .padside .hint { font-size: .86rem; }
+  /* The keypad and the scanner, both whole.
+   *
+   * They are stacked, and stacked at their old sizes they came to more than
+   * the height of the glass — so the scanner, which is the bottom one, was the
+   * half that fell off. Everything in the rail is tightened until the pair fit
+   * together, because either one alone is not the door. */
+  .rail { position: static; min-height: 0; gap: 12px; }
+  .padside { padding: 14px; }
+  .keys { gap: 8px; margin-top: 8px; }
+  .keys button { font-size: 1.45rem; padding: 12px 0; border-radius: 12px; }
+  .keyfirst .dots, .padside .dots { font-size: 2rem; min-height: 2.2rem; }
+  .padside h2 { font-size: 1.1rem; }
+  .padside .hint { font-size: .78rem; margin-top: 8px; }
+
+  /* The scanner panel keeps its size — it is the thing you are meant to notice
+   * from a step away — but not the size that pushed it off the screen. */
+  .padside.finger { padding-bottom: 14px; }
+  .padside.finger h2 { font-size: 1.5rem; }
+  .padside.finger .scan { font-size: 3.4rem; margin: 4px 0 0; }
+  .padside.finger .hint { font-size: 1.02rem; line-height: 1.25; margin-top: 4px; }
+  .wait-note { font-size: .82rem; margin-top: 4px; }
 
   /* The bar: the shop's name and the time, both read from a distance. */
-  #bar { padding: 14px 26px; }
-  #now { font-size: 1.5rem; }
-  .brand img { width: 52px; height: 52px; }
-  .brand b { font-size: 1.2rem; }
-  .brand span { font-size: .9rem; }
-  :root[data-brand="boa"] .brand img { height: 60px; }
+  #bar { padding: 8px 24px; }
+  #now { font-size: 1.4rem; }
+  .brand img { width: 44px; height: 44px; }
+  .brand b { font-size: 1.1rem; }
+  .brand span { font-size: .85rem; }
+  :root[data-brand="boa"] .brand img { height: 48px; }
 
   /* The word said out loud when somebody clocks on. */
-  .say { font-size: 1.35rem; padding: 20px 24px; max-width: 760px; }
-  .tools input, .tools select { font-size: 1.15rem; padding: 14px 16px; }
+  .say { font-size: 1.3rem; padding: 16px 22px; max-width: 760px; }
+  .tools input, .tools select { font-size: 1.1rem; padding: 12px 14px; }
 }
 
-/* Bigger still — a 24in or 27in monitor at a door is common enough. */
+/* Room to breathe.
+ *
+ * The same monitor is a different screen depending on what is above the page.
+ * Run full-screen — which is how a door should run — there is no tab strip, no
+ * address bar and no row of bookmarks, and a couple of hundred pixels come
+ * back. They go into the faces, because a face read from further away is the
+ * whole point of putting a monitor at a door.
+ *
+ * Keyed on the height rather than the width, so a screen that is merely wide
+ * does not grow past its own bottom edge — and set high enough that a browser
+ * which has merely lost its bookmarks bar stays on the compact sizes above.
+ * Four rows of faces matter more than a bigger face in a third row. */
+@media (min-width: 1200px) and (min-height: 1000px) {
+  body { font-size: 18px; }
+  /* The columns stay as they are. The room goes into the height of a card, not
+   * its width: widening them costs a column, and a column is four people who
+   * were on the screen a moment ago. */
+  .grid { gap: 14px; }
+  .card { padding: 13px 11px; gap: 3px; }
+  .card img, .face { width: 68px; height: 68px; font-size: 32px; }
+  .card b { font-size: 1.05rem; }
+  .keys button { font-size: 1.6rem; padding: 15px 0; }
+  .padside.finger .scan { font-size: 4.2rem; }
+  #now { font-size: 1.55rem; }
+}
+
+/* A shorter monitor — a 1600x900 panel, or a 1080p one with a taskbar and half
+ * the browser's furniture above the page. Everything gives up a little so the
+ * fourth row of faces survives, because a row that is not on the screen is a
+ * person who cannot find themselves on it. */
+@media (min-width: 1200px) and (max-height: 800px) {
+  body { font-size: 16px; }
+  main { padding: 12px 18px; }
+  .two { gap: 16px; grid-template-columns: minmax(0, 1fr) 340px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 10px; }
+  .card { padding: 7px; gap: 1px; }
+  .card img, .face { width: 42px; height: 42px; font-size: 22px; }
+  .card b { font-size: .92rem; }
+  .card span { font-size: .7rem; }
+  .card .day { font-size: .64rem; }
+  .card .times { font-size: .76rem; }
+  .rail { gap: 10px; }
+  .padside { padding: 11px; }
+  .keys { gap: 6px; margin-top: 6px; }
+  .keys button { font-size: 1.25rem; padding: 9px 0; }
+  .keyfirst .dots, .padside .dots { font-size: 1.6rem; min-height: 1.8rem; }
+  .padside .hint { font-size: .72rem; margin-top: 6px; }
+  .padside.finger h2 { font-size: 1.25rem; }
+  .padside.finger .scan { font-size: 2.6rem; }
+  .padside.finger .hint { font-size: .92rem; }
+  #bar { padding: 6px 18px; }
+  .brand img { width: 36px; height: 36px; }
+  :root[data-brand="boa"] .brand img { height: 40px; }
+}
+
+/* A wider monitor: more faces across, and a rail with room for the keypad to
+ * be hit with a mouse without aiming. The heights above are untouched — width
+ * is not what was running out. */
 @media (min-width: 1900px) {
-  body { font-size: 20px; }
-  .two { max-width: 1880px; grid-template-columns: minmax(0, 1fr) 500px; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
-  .card img, .face { width: 104px; height: 104px; font-size: 46px; }
-  .keys button { font-size: 2rem; padding: 24px 0; }
-  #now { font-size: 1.7rem; }
+  .two { grid-template-columns: minmax(0, 1fr) 420px; gap: 24px; }
+  main { padding: 16px 28px; }
 }
 
 /* ---------------------------------------------------------------------------
