@@ -1923,6 +1923,88 @@ test('reissuing PINs covers the whole team, not the first bite', async () => {
     'and no two people may be handed the same PIN');
 });
 
+test('one shop can be reissued without touching the other', async () => {
+  // The case this was written for. One shop had never been given its PINs and
+  // the other had spent the week clocking on with theirs. "Everybody" was the
+  // only reissue there was, so printing the first shop's slips would have
+  // locked the second shop out in the middle of a working evening.
+  const admin = await signIn('admin');
+  const [north, south] = await twoBranches(admin);
+
+  const staff = async (branch, tag) => {
+    const people = Array.from({ length: 3 }, (_, i) =>
+      ({ name: `${unique(tag)}-${i}`, position: 'Cashier' }));
+    assert.equal((await POST(admin, '/api/team/bulk',
+      { people, branch_id: branch })).status, 200);
+    return (await GET(admin, '/api/team')).data.team
+      .filter((p) => String(p.branch_id) === String(branch))
+      .map((p) => String(p.id));
+  };
+  // North is hired first on purpose, so its people hold the lower ids. The
+  // walk goes by id, and the "to go" count asks how many are past where it
+  // stopped — so a count that forgot the shop would sweep up everybody at the
+  // other one. Hire them the other way round and that mistake hides.
+  const northerners = new Set(await staff(north, 'Fresh'));
+  const southerners = new Set(await staff(south, 'Keep'));
+
+  const runThrough = async (body) => {
+    const seen = [];
+    let after = 0;
+    for (let guard = 0; guard < 50; guard += 1) {
+      const r = await POST(admin, '/api/team/pins', { ...body, after });
+      assert.equal(r.status, 200, JSON.stringify(r.data));
+      seen.push(...r.data.issued);
+      after = r.data.after ?? after;
+      if (!r.data.remaining || !r.data.issued.length) break;
+    }
+    return seen;
+  };
+
+  // Give the shop we are protecting a PIN each, and prove one of them works —
+  // otherwise the assertion at the end proves nothing.
+  const before = await runThrough({ branch: south });
+  const guarded = before.find((p) => southerners.has(String(p.id)));
+  assert.ok(guarded, `expected the south shop to be issued to, got ${before.length}`);
+  assert.equal((await POST(admin, '/api/clock',
+    { employeeId: guarded.id, pin: guarded.pin })).status, 200,
+    'their PIN has to work before this test means anything');
+  await POST(admin, '/api/clock', { employeeId: guarded.id, pin: guarded.pin });
+
+  // Now reissue the *other* shop, the way the BOA slips get printed. One bite
+  // holds twenty and the shop holds three, so this is the whole shop at once —
+  // which is what makes the count afterwards worth reading.
+  const bite = await POST(admin, '/api/team/pins', { everyone: true, branch: north });
+  assert.equal(bite.status, 200, JSON.stringify(bite.data));
+  const issued = bite.data.issued;
+  assert.equal(issued.length, northerners.size,
+    `the north shop has ${northerners.size} people and ${issued.length} were issued`);
+  const strayed = issued.filter((p) => !northerners.has(String(p.id)));
+  assert.equal(strayed.length, 0,
+    `reissuing one shop reached ${strayed.length} people who work at the other`);
+
+  // Nobody left to do at that shop. A count that forgot the shop would answer
+  // with the other shop's people — every one of them past this mark — and the
+  // browser would sit there saying "3 to go" and asking for bites it is never
+  // allowed to fill.
+  assert.equal(bite.data.remaining, 0,
+    `the north shop is done, yet ${bite.data.remaining} were counted as still to go`);
+
+  // The whole point: the shop nobody asked about still has its PIN.
+  assert.equal((await POST(admin, '/api/clock',
+    { employeeId: guarded.id, pin: guarded.pin })).status, 200,
+    "reissuing one shop took away the other shop's PIN");
+  await POST(admin, '/api/clock', { employeeId: guarded.id, pin: guarded.pin });
+
+  // A shop that is not a shop is turned away by name, not by letting the
+  // database trip over it. Both refuse; only one of them says something a
+  // person can act on, and this is the destructive button on the page.
+  const nonsense = await POST(admin, '/api/team/pins',
+    { everyone: true, branch: 'all of them' });
+  assert.equal(nonsense.status, 400, JSON.stringify(nonsense.data));
+  assert.match(nonsense.data.error, /not a shop/,
+    `a bad shop should be refused by name, not by accident: ${nonsense.data.error}`);
+});
+
 test('a PIN can be taken back, and then it does not open the clock', async () => {
   const admin = await signIn('admin');
   const [north] = await twoBranches(admin);
