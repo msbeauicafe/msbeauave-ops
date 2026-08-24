@@ -2188,7 +2188,15 @@ SCREENS.reports = async (page) => {
           { head: 'Owes', n: true, cell: (c) => peso(c.owed) },
           { head: 'Share', n: true, cell: (c) => `${(c.share * 100).toFixed(1)}%` },
           { head: '', cell: (c) => c.flagged ? tag('over 15%', 'red') : '' },
-        ], 'Nothing outstanding.')}</div>`;
+        ], 'Nothing outstanding.')}</div>
+        <div class="panel"><h3>Money held as credit</h3>
+          <div class="dim">Paid ahead of what they owed, with nothing open to put it
+            against at the time. It comes off their next invoice by itself.</div>
+          ${table(d.credit, [
+            { head: 'Reseller', cell: (c) => esc(c.name) },
+            { head: 'Tier', cell: (c) => tierTag(c.tier) },
+            { head: 'Held', n: true, cell: (c) => `<b>${peso(c.credit)}</b>` },
+          ], 'Nobody is holding a credit right now.')}</div>`;
     },
     journal: async () => {
       out.innerHTML = `<div class="tools">

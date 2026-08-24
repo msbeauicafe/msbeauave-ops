@@ -486,6 +486,35 @@ test('credit on the account is drawn down the moment the next invoice exists, un
     assert.equal(invoice.status, 'open', 'half paid is not the same as settled');
   });
 
+test('an account holding nothing but credit is not invisible to the receivables report',
+  async () => {
+    // ar_ageing only ever lists a reseller by way of an open invoice — right
+    // for a report about what is owed, wrong for one about the shop's money.
+    // A reseller sitting purely in credit has no open invoice to be found by.
+    const admin = await signIn('admin');
+    const id = await newReseller(admin, { tier: 3, credit_limit: 1_000_000, terms_days: 30 });
+    const named = await GET(admin, `/api/resellers/${id}`);
+    // An account with nothing paid, nothing owed and nothing to it — the
+    // report must not claim it is holding credit either.
+    const plain = await newReseller(admin, { tier: 3, credit_limit: 1_000_000, terms_days: 30 });
+
+    await POST(admin, `/api/resellers/${id}/payment`, { amount: 750 });
+
+    const report = await GET(admin, '/api/reports/receivables');
+    assert.equal(report.status, 200, JSON.stringify(report.data));
+    const holder = report.data.credit.find((c) => Number(c.reseller_id) === id);
+    assert.ok(holder, 'an account holding credit must appear in the credit report');
+    assert.equal(Number(holder.credit), 750);
+    assert.equal(holder.name, named.data.name);
+    assert.equal(report.data.credit.some((c) => Number(c.reseller_id) === plain), false,
+      'an account holding nothing must not be listed as holding credit');
+
+    // And it must not appear as a debt: nothing is owed, so ar_ageing (and
+    // therefore this table) should have nothing to say about this account.
+    assert.equal(report.data.ageing.some((a) => Number(a.reseller_id) === id), false,
+      'a reseller who is owed nothing must not also be listed as owing it');
+  });
+
 // ===========================================================================
 // The till
 // ===========================================================================
