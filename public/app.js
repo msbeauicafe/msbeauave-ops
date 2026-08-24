@@ -1606,12 +1606,17 @@ async function openReseller(id, reload) {
       ${r.blocked || r.overdue ? tag('cannot order', 'red') : tag(r.status, 'green')}
       ${r.docs_verified ? tag('papers verified', 'green') : tag('papers pending', 'amber')}
       ${tag(`limit ${peso(r.credit_limit)}`, 'pink')}
-      ${tag(`owes ${peso(r.owed)}`, Number(r.owed) > 0 ? 'amber' : 'green')}</div>
+      ${tag(`owes ${peso(r.owed)}`, Number(r.owed) > 0 ? 'amber' : 'green')}
+      ${Number(r.credit) > 0 ? tag(`${peso(r.credit)} in credit`, 'green') : ''}</div>
 
     ${r.blocked || r.overdue ? `<div class="banner bad">Cannot order:
       ${esc(r.blocked_reason || 'there is a past-due invoice')}. Recording the payment
       lifts this by itself — an override below is only for when you have decided to
       let it through anyway.</div>` : ''}
+
+    ${Number(r.credit) > 0 ? `<div class="banner good">Holding ${peso(r.credit)} of
+      theirs — money that arrived with nothing open left to pay. It is taken off
+      their next invoice automatically, the moment it is raised.</div>` : ''}
 
     ${r.status !== 'active' || !r.docs_verified
       ? '<div class="mt"><button class="btn go" id="d_approve">Approve this account</button></div>' : ''}
@@ -1645,6 +1650,19 @@ async function openReseller(id, reload) {
       <div style="flex:0 0 auto"><button class="btn quiet" id="d_attach">Attach</button></div>
     </div>
 
+    <h3 class="mt">Pay the account</h3>
+    <div class="dim">One amount, settled against whatever is open, oldest invoice
+      first — for the ordinary case, one payment covering more than one order.
+      To pay a single invoice on its own, use Record payment on its row below.
+      Anything left over once nothing is open becomes credit, held on the
+      account and taken off their next invoice by itself.</div>
+    <div class="row mt">
+      <div><label>Amount received</label><input id="acct_amt" type="number" step="0.01"></div>
+      <div><label>Received on</label><input id="acct_on" type="date" value="${localDay()}"></div>
+      <div style="flex:0 0 auto"><button class="btn" id="acct_pay">Apply payment</button></div>
+    </div>
+    <div id="acct_out" class="mt"></div>
+
     <h3 class="mt">Invoices</h3>
     ${table(r.invoices, [
       { head: '#', cell: (i) => i.id },
@@ -1662,7 +1680,12 @@ async function openReseller(id, reload) {
     <h3 class="mt">History</h3>
     <div class="dim">${r.events.slice(0, 10).map((e) =>
       `${when(e.at)} — <b>${esc(e.kind)}</b> ${esc(JSON.stringify(e.detail || {}))}`).join('<br>')
-      || 'Nothing yet.'}</div>`);
+      || 'Nothing yet.'}</div>
+
+    ${r.credits?.length ? `<h3 class="mt">Credit ledger</h3>
+      <div class="dim">${r.credits.map((c) =>
+        `${when(c.at)} — <b>${Number(c.amount) > 0 ? '+' : ''}${peso(c.amount)}</b>
+          — ${esc(c.reason)}`).join('<br>')}</div>` : ''}`);
 
   $('#d_approve')?.addEventListener('click', async () => {
     try {
@@ -1701,6 +1724,31 @@ async function openReseller(id, reload) {
       notice('Attached', 'good');
       openReseller(id, reload);
     } catch (e) { whoops(e); }
+  });
+
+  $('#acct_pay').addEventListener('click', async () => {
+    const amount = +$('#acct_amt').value;
+    if (!(amount > 0)) return whoops(new Error('Type how much came in.'));
+    $('#acct_pay').disabled = true;
+    try {
+      const out = await POST(`/api/resellers/${id}/payment`,
+        { amount, paid_on: $('#acct_on').value });
+      const lines = (out.applied || []).map((a) =>
+        `Invoice #${a.invoice_id}: ${peso(a.applied)} applied` +
+        (a.discount > 0 ? ` (plus ${peso(a.discount)} early-payment discount)` : '') +
+        (a.now_owes > 0 ? `, ${peso(a.now_owes)} still owed` : ', now settled'));
+      if (out.credited > 0) {
+        lines.push(`${peso(out.credited)} left over — held as credit on the account.`);
+      }
+      $('#acct_out').innerHTML = lines.length
+        ? `<div class="banner good">${lines.join('<br>')}</div>`
+        : '<div class="dim">Nothing was open to apply this to — the whole amount is now credit.</div>';
+      notice('Payment applied 🌸', 'good');
+      openReseller(id, reload);
+    } catch (e) {
+      whoops(e);
+      $('#acct_pay').disabled = false;
+    }
   });
 
   $$('[data-pay]').forEach((b) => b.addEventListener('click', () => {
