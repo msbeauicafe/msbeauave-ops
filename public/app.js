@@ -1692,7 +1692,9 @@ SCREENS.chatorders = async (page) => {
     const inv = out.invoice;
     dialog(`
       <div>
-        <div style="text-align:center"><b>MS BEAU AVE ENTERPRISES OPC</b><br>
+        <div style="text-align:center">
+          <img src="/logo.png" alt="MS Beau Ave" style="height:64px">
+          <div><b>MS BEAU AVE ENTERPRISES OPC</b></div>
           <span class="dim">LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
           MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</span></div>
         <h3 class="mt" style="text-align:center">CUSTOMER ORDER FORM</h3>
