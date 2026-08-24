@@ -1553,8 +1553,11 @@ SCREENS.chatorders = async (page) => {
         ${Number(r.owed) > 0 ? tag(`owes ${peso(r.owed)}`, r.overdue ? 'red' : 'amber') : ''}
         ${r.blocked ? tag('cannot order', 'red') : ''}</button>`).join(' ')}</div>`
       : '<div class="dim">Nobody matches that.</div>';
+    // r.id comes back from the API as a string — a bigint column arrives as
+    // text, node-pg's own precaution against losing precision above 2^53 —
+    // so this has to compare as text too, not coerce one side to a number.
     $$('[data-pick]', hitsBox).forEach((b) => b.addEventListener('click',
-      () => pick(resellers.find((r) => r.id === +b.dataset.pick))));
+      () => pick(resellers.find((r) => String(r.id) === b.dataset.pick))));
   };
 
   const pick = (r) => {
