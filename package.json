@@ -12,6 +12,7 @@
     "test": "bash scripts/test.sh"
   },
   "dependencies": {
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "sharp": "^0.35.3"
   }
 }
