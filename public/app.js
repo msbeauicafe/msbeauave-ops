@@ -1527,46 +1527,174 @@ async function openOrder(id, reload) {
   }));
 }
 
-// Same shape as the CUSTOMER ORDER FORM already used for every reseller's own
-// paperwork — letterhead, the same field labels, PRODUCT DESCRIPTION /
-// QUANTITY / UNIT PRICE / TOTAL — so an invoice reads as the same document
-// wherever it is opened from, not a different one out of a computer.
-//
-// Shared rather than local to Chat orders: a reseller's account is where the
-// record of it lives afterward, so the same view has to be reachable from
-// there too — not just the one moment right after the order was placed.
-function showInvoice({ orderId, invoiceId, issuedOn, dueOn, amount, resellerName, lines }) {
-  dialog(`
+// The letterhead every one of these documents carries.
+const DOC_HEAD = `
+  <div style="border-top:3px solid var(--rose-deep);margin-bottom:10px"></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+    <img src="/logo.png" alt="MS Beau Ave" style="height:52px">
+    <div style="text-align:right">
+      <b style="color:var(--rose-deep);font-size:1.05rem">MS BEAU AVE ENTERPRISES OPC</b>
+      <div style="font-size:.62rem;color:#444;line-height:1.35">
+        LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
+        MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</div>
+    </div>
+  </div>`;
+
+// Where the money is to be sent. On the paper it sits on both the order form
+// and the invoice, because a reseller reading either one is a reseller about
+// to pay.
+const BANK_DETAILS = `
+  <div class="bank">
+    <h5>BANK ACCOUNT DETAILS:</h5>
+    <div class="b">BDO</div>
+    <div>Account Name: MS Beau Ave Enterprises OPC</div>
+    <div>Account Number: 010-338-012-751</div>
+    <div class="b">BPI</div>
+    <div>Account Name: MS Beau Ave Enterprises OPC</div>
+    <div>Account Number: 317-378-3972</div>
+    <div class="b">SECURITY BANK</div>
+    <div>Account Name: MS Beau Ave Enterprises OPC</div>
+    <div>Account Number: 000-006-567-3032</div>
+  </div>`;
+
+const docParty = (name, dateOn, orderNo) => `
+  <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:10px">
     <div>
-      <div style="text-align:center">
-        <img src="/logo.png" alt="MS Beau Ave" style="height:64px">
-        <div><b>MS BEAU AVE ENTERPRISES OPC</b></div>
-        <span class="dim">LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
-        MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</span></div>
-      <h3 class="mt" style="text-align:center">CUSTOMER ORDER FORM</h3>
-      <div class="row mt">
-        <div><b>${esc(resellerName)}</b></div>
-        <div style="flex:0 0 auto">DATE: ${onDay(issuedOn)}</div>
+      <div style="font-weight:700;font-size:1.05rem">${esc(name || 'counter sale')}</div>
+      <div style="font-weight:700;font-size:.68rem">Tax Type:</div>
+      <div style="font-weight:700;font-size:.68rem">Business Trade Name:</div>
+      <div style="font-weight:700;font-size:.68rem">Taxpayer Name:</div>
+      <div style="font-weight:700;font-size:.68rem">TIN Number:</div>
+      <div style="font-weight:700;font-size:.68rem">Business Address:</div>
+    </div>
+    <div style="white-space:nowrap;font-size:.7rem">
+      <div><b>DATE:</b> ${onDay(dateOn)}</div>
+      <div><b>SALES ORDER NO.:</b> ${esc(String(orderNo))}</div>
+    </div>
+  </div>`;
+
+const docLines = (lines, blanks = 12) => `
+  <table class="lines">
+    <thead><tr>
+      <th style="width:74px">PCODE</th><th>PRODUCT DESCRIPTION</th>
+      <th style="width:70px">QUANTITY</th><th style="width:70px">UNIT TYPE</th>
+      <th style="width:80px">UNIT PRICE</th><th style="width:88px">TOTAL</th>
+    </tr></thead>
+    <tbody>
+      ${lines.map((l) => `<tr>
+        <td class="c">${esc(l.sku || '')}</td>
+        <td><b>${esc(l.name)}</b></td>
+        <td class="c">${count(l.qty)}</td>
+        <td class="c"></td>
+        <td class="n">${peso(l.price)}</td>
+        <td class="n">${peso(l.price * l.qty)}</td>
+      </tr>`).join('')}
+      ${Array.from({ length: Math.max(0, blanks - lines.length) },
+        () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
+    </tbody>
+  </table>`;
+
+/**
+ * The CUSTOMER ORDER FORM: what a reseller is sent to agree to, before money.
+ * Prices, the totals, where to pay, and the two reminders the paper carries.
+ */
+function showInvoice({ orderId, issuedOn, amount, resellerName, lines, shipping = 0, others = 0 }) {
+  const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  dialog(`
+    <div class="doc cof">
+      ${DOC_HEAD}
+      <div class="title cof">CUSTOMER ORDER FORM</div>
+      ${docParty(resellerName, issuedOn, orderId)}
+      <div class="duebox">Total Due (PHP)<b>${peso(amount ?? sub)}</b></div>
+      <div style="clear:both"></div>
+      ${docLines(lines)}
+      <div class="foot">
+        <div style="font-size:.68rem">
+          <b>Reminders:</b>
+          <div>1. Please settle payment before delivery date.</div>
+          <div>2. Please settle payment to any bank accounts indicated below.</div>
+          ${BANK_DETAILS}
+        </div>
+        <div class="totals">
+          <div><span>Subtotal:</span><span>${peso(sub)}</span></div>
+          <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
+          <div><span>Others:</span><span>${peso(others)}</span></div>
+          <div class="grand"><span>Grand Total:</span><span>${peso(sub + shipping + others)}</span></div>
+        </div>
       </div>
-      <div class="row">
-        <div class="dim">Order #${orderId}</div>
-        <div class="dim" style="flex:0 0 auto">SALES ORDER NO.: INV-${invoiceId}</div>
+      <div class="sign1">
+        <div class="nm">${esc(user?.name || user?.username || '')}</div>
+        <div>Order Management Coordinator</div>
+        <div class="cap">PREPARED BY:</div>
       </div>
-      ${table(lines, [
-        { head: 'PRODUCT DESCRIPTION', cell: (l) => esc(l.name) },
-        { head: 'QUANTITY', n: true, cell: (l) => count(l.qty) },
-        { head: 'UNIT PRICE', n: true, cell: (l) => peso(l.price) },
-        { head: 'TOTAL', n: true, cell: (l) => peso(l.price * l.qty) },
-      ], 'Nothing on this order.')}
-      <div class="right mt"><b>Total Due (PHP) ${peso(amount)}</b>
-        <div class="dim">Due ${onDay(dueOn)}</div></div>
-      <div class="dim mt">Please settle by bank transfer or GCash and send proof of
-        payment here — the OR follows once that's confirmed.</div>
     </div>
     <div class="mt right">
       <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
-      <button class="btn" id="inv_done">Done</button></div>`);
+      <button class="btn" id="inv_done">Done</button></div>`, 'wide');
   $('#inv_done').addEventListener('click', closeDialog);
+}
+
+/**
+ * The INVOICE: the order form plus the money side of it.
+ *
+ * PAYMENT DETAILS is filled from the ledger rather than left blank — what the
+ * account has already sent, with the OR number to quote against each one. A
+ * payment recorded before ORs existed has no number, and prints blank rather
+ * than borrowing one that means something else. Empty slots follow, because
+ * the paper has five and a payment made after this printed goes in by hand.
+ */
+function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
+                          shipping = 0, others = 0 }) {
+  const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const grand = sub + shipping + others;
+  const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
+  // MOP is the bank the money came through, Details the account it landed in,
+  // and the reference is the bank's own — the number a reseller quotes to say
+  // it left them. Anything not recorded prints blank rather than guessed at.
+  const slot = (p) => `
+    <div class="slot">
+      <b>MOP${p && p.method ? ` &nbsp;&nbsp;&nbsp; ${esc(p.method)}` : ''}</b>
+      <div>Details: ${p ? esc(p.payer_details || '') : ''}</div>
+      <div>Reference no.: ${p ? esc(p.reference_no || '') : ''}</div>
+      <div>Date: ${p ? onDay(p.paid_on) : ''}</div>
+      <div>Amount: ${p ? peso(p.amount) : ''}</div>
+    </div>`;
+  const slots = [...payments.slice(0, 5).map(slot),
+                 ...Array.from({ length: Math.max(0, 5 - payments.length) }, () => slot(null))];
+  dialog(`
+    <div class="doc inv">
+      ${DOC_HEAD}
+      <div class="title inv">INVOICE</div>
+      ${docParty(resellerName, issuedOn, orderId)}
+      <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
+      <div style="clear:both"></div>
+      ${docLines(lines)}
+      <div class="foot">
+        <div class="mop">
+          <div class="hd">PAYMENT DETAILS${payments.length ? '' : ' — TO FOLLOW PAYMENT'}</div>
+          ${slots.join('')}
+        </div>
+        <div>
+          <div class="totals">
+            <div><span>Subtotal:</span><span>${peso(sub)}</span></div>
+            <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
+            <div><span>Others:</span><span>${peso(others)}</span></div>
+            <div class="grand"><span>Grand Total:</span><span>${peso(grand)}</span></div>
+            <div class="bal"><span>Balance:</span><span>${peso(grand - paid)}</span></div>
+          </div>
+          ${BANK_DETAILS}
+        </div>
+      </div>
+      <div class="sign1">
+        <div class="nm">${esc(user?.name || user?.username || '')}</div>
+        <div>Order Management Coordinator</div>
+        <div class="cap">PREPARED BY:</div>
+      </div>
+    </div>
+    <div class="mt right">
+      <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
+      <button class="btn" id="ivd_done">Done</button></div>`, 'wide');
+  $('#ivd_done').addEventListener('click', closeDialog);
 }
 
 /**
@@ -1731,9 +1859,24 @@ SCREENS.chatorders = async (page) => {
               <input id="ch_amt" type="number" step="0.01" min="0.01"></div>
             <div><label>Received on</label>
               <input id="ch_on" type="date" value="${localDay()}"></div>
+          </div>
+          <div class="row">
+            <div><label for="ch_mop">Through (MOP)</label>
+              <input id="ch_mop" type="text" list="ch_banks" placeholder="BANCO DE ORO (BDO)">
+              <datalist id="ch_banks">
+                <option value="BANCO DE ORO (BDO)"></option>
+                <option value="BPI"></option>
+                <option value="SECURITY BANK"></option>
+                <option value="GCASH"></option>
+              </datalist></div>
+            <div><label for="ch_ref">Reference no.</label>
+              <input id="ch_ref" type="text" placeholder="the bank's own reference"></div>
             <div style="flex:0 0 auto">
               <button class="btn go" id="ch_pay">Confirm &amp; issue OR</button></div>
           </div>
+          <div class="dim">The reference is the bank's, off their proof of payment —
+            it is what they quote to say the money left, and what the statement is
+            matched against later. It prints on the invoice.</div>
           <div id="ch_pay_out" class="mt"></div>
         </div>
       </div>`;
@@ -1816,9 +1959,8 @@ SCREENS.chatorders = async (page) => {
         }));
       notice('Order placed 🌸', 'good');
       if (out.invoice) showInvoice({
-        orderId: out.orderId, invoiceId: out.invoice.id,
-        issuedOn: out.invoice.issued_on, dueOn: out.invoice.due_on, amount: out.invoice.amount,
-        resellerName: picked.name, lines,
+        orderId: out.orderId, issuedOn: out.invoice.issued_on,
+        amount: out.invoice.amount, resellerName: picked.name, lines,
       });
     } catch (e) { whoops(e); } finally {
       $('#ch_place', workingBox).disabled = false;
@@ -1830,10 +1972,16 @@ SCREENS.chatorders = async (page) => {
     if (!(amount > 0)) return notice('Type how much came in.', 'bad');
     $('#ch_pay', workingBox).disabled = true;
     try {
-      const out = await POST(`/api/resellers/${picked.id}/receipt`,
-        { amount, paid_on: $('#ch_on', workingBox).value });
+      const out = await POST(`/api/resellers/${picked.id}/receipt`, {
+        amount,
+        paid_on: $('#ch_on', workingBox).value,
+        method: $('#ch_mop', workingBox).value.trim() || null,
+        details: 'MS Beau Ave Enterprises OPC',
+        reference_no: $('#ch_ref', workingBox).value.trim() || null,
+      });
       showOR(out, picked);
       $('#ch_amt', workingBox).value = '';
+      $('#ch_ref', workingBox).value = '';
       resellers = await GET('/api/resellers');
       const fresh = resellers.find((r) => r.id === picked.id);
       if (fresh) { picked = fresh; drawWorking(); }
@@ -2130,13 +2278,18 @@ async function openReseller(id, reload) {
   // The record of what an order actually looked like on paper — the same
   // view a chat order shows the moment it is placed, reachable again later
   // from the account it belongs to, not just the one screen that made it.
+  // Reopened from the account rather than from the moment it was placed, so
+  // the money side is known by now: this is the INVOICE, with what the account
+  // has already paid filled in against it.
   $$('[data-invoice]').forEach((b) => b.addEventListener('click', async () => {
     try {
-      const o = await GET(`/api/orders/${b.dataset.invoice}`);
-      showInvoice({
-        orderId: o.id, invoiceId: o.invoice_id, issuedOn: o.placed_at, dueOn: o.due_on,
-        amount: o.total, resellerName: o.reseller,
-        lines: o.lines.map((l) => ({ name: l.name, qty: l.qty, price: l.unit_price })),
+      const [o, payments] = await Promise.all([
+        GET(`/api/orders/${b.dataset.invoice}`),
+        GET(`/api/resellers/${id}/payments`).catch(() => []),
+      ]);
+      showInvoiceDoc({
+        orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments,
+        lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty, price: l.unit_price })),
       });
     } catch (e) { whoops(e); }
   }));
