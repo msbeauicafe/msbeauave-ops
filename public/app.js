@@ -1517,6 +1517,48 @@ async function openOrder(id, reload) {
   act('#a_delivered', 'deliver');
 }
 
+// Same shape as the CUSTOMER ORDER FORM already used for every reseller's own
+// paperwork — letterhead, the same field labels, PRODUCT DESCRIPTION /
+// QUANTITY / UNIT PRICE / TOTAL — so an invoice reads as the same document
+// wherever it is opened from, not a different one out of a computer.
+//
+// Shared rather than local to Chat orders: a reseller's account is where the
+// record of it lives afterward, so the same view has to be reachable from
+// there too — not just the one moment right after the order was placed.
+function showInvoice({ orderId, invoiceId, issuedOn, dueOn, amount, resellerName, lines }) {
+  dialog(`
+    <div>
+      <div style="text-align:center">
+        <img src="/logo.png" alt="MS Beau Ave" style="height:64px">
+        <div><b>MS BEAU AVE ENTERPRISES OPC</b></div>
+        <span class="dim">LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
+        MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</span></div>
+      <h3 class="mt" style="text-align:center">CUSTOMER ORDER FORM</h3>
+      <div class="row mt">
+        <div><b>${esc(resellerName)}</b></div>
+        <div style="flex:0 0 auto">DATE: ${onDay(issuedOn)}</div>
+      </div>
+      <div class="row">
+        <div class="dim">Order #${orderId}</div>
+        <div class="dim" style="flex:0 0 auto">SALES ORDER NO.: INV-${invoiceId}</div>
+      </div>
+      ${table(lines, [
+        { head: 'PRODUCT DESCRIPTION', cell: (l) => esc(l.name) },
+        { head: 'QUANTITY', n: true, cell: (l) => count(l.qty) },
+        { head: 'UNIT PRICE', n: true, cell: (l) => peso(l.price) },
+        { head: 'TOTAL', n: true, cell: (l) => peso(l.price * l.qty) },
+      ], 'Nothing on this order.')}
+      <div class="right mt"><b>Total Due (PHP) ${peso(amount)}</b>
+        <div class="dim">Due ${onDay(dueOn)}</div></div>
+      <div class="dim mt">Please settle by bank transfer or GCash and send proof of
+        payment here — the OR follows once that's confirmed.</div>
+    </div>
+    <div class="mt right">
+      <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
+      <button class="btn" id="inv_done">Done</button></div>`);
+  $('#inv_done').addEventListener('click', closeDialog);
+}
+
 // ===========================================================================
 // Chat orders — the FB-Messenger flow: a reseller orders in chat, gets an
 // invoice back in chat, pays the bank, and gets an OR once that is confirmed.
@@ -1678,49 +1720,14 @@ SCREENS.chatorders = async (page) => {
       $('#ch_order_out', workingBox).innerHTML =
         '<div class="banner good">Order placed. Here is the invoice to send back.</div>';
       notice('Order placed 🌸', 'good');
-      if (out.invoice) showInvoice(out, lines, picked);
+      if (out.invoice) showInvoice({
+        orderId: out.orderId, invoiceId: out.invoice.id,
+        issuedOn: out.invoice.issued_on, dueOn: out.invoice.due_on, amount: out.invoice.amount,
+        resellerName: picked.name, lines,
+      });
     } catch (e) { whoops(e); } finally {
       $('#ch_place', workingBox).disabled = false;
     }
-  }
-
-  // Same shape as the CUSTOMER ORDER FORM already used for every reseller's
-  // own paperwork — letterhead, the same field labels, PRODUCT DESCRIPTION /
-  // QUANTITY / UNIT TYPE / UNIT PRICE / TOTAL — so an invoice out of a chat
-  // order reads as the same document, not a different one from a computer.
-  function showInvoice(out, lines, reseller) {
-    const inv = out.invoice;
-    dialog(`
-      <div>
-        <div style="text-align:center">
-          <img src="/logo.png" alt="MS Beau Ave" style="height:64px">
-          <div><b>MS BEAU AVE ENTERPRISES OPC</b></div>
-          <span class="dim">LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
-          MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</span></div>
-        <h3 class="mt" style="text-align:center">CUSTOMER ORDER FORM</h3>
-        <div class="row mt">
-          <div><b>${esc(reseller.name)}</b></div>
-          <div style="flex:0 0 auto">DATE: ${onDay(inv.issued_on)}</div>
-        </div>
-        <div class="row">
-          <div class="dim">Order #${out.orderId}</div>
-          <div class="dim" style="flex:0 0 auto">SALES ORDER NO.: INV-${inv.id}</div>
-        </div>
-        ${table(lines, [
-          { head: 'PRODUCT DESCRIPTION', cell: (l) => esc(l.name) },
-          { head: 'QUANTITY', n: true, cell: (l) => count(l.qty) },
-          { head: 'UNIT PRICE', n: true, cell: (l) => peso(l.price) },
-          { head: 'TOTAL', n: true, cell: (l) => peso(l.price * l.qty) },
-        ], 'Nothing on this order.')}
-        <div class="right mt"><b>Total Due (PHP) ${peso(inv.amount)}</b>
-          <div class="dim">Due ${onDay(inv.due_on)}</div></div>
-        <div class="dim mt">Please settle by bank transfer or GCash and send proof of
-          payment here — the OR follows once that's confirmed.</div>
-      </div>
-      <div class="mt right">
-        <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
-        <button class="btn" id="inv_done">Done</button></div>`);
-    $('#inv_done').addEventListener('click', closeDialog);
   }
 
   async function confirmPayment() {
@@ -1923,8 +1930,9 @@ async function openReseller(id, reload) {
       { head: 'State', cell: (i) => i.status === 'paid' ? tag('paid', 'green')
           : i.status === 'void' ? tag('void', 'grey')
           : i.overdue ? tag('past due', 'red') : tag('open', 'amber') },
-      { head: '', cell: (i) => i.status === 'open'
-          ? `<button class="btn sm" data-pay="${i.id}" data-owed="${i.balance}">Record payment</button>` : '' },
+      { head: '', cell: (i) => `${i.status === 'open'
+          ? `<button class="btn sm" data-pay="${i.id}" data-owed="${i.balance}">Record payment</button>` : ''}
+          <button class="btn sm quiet" data-invoice="${i.order_id}">🖨 Invoice</button>` },
     ], 'No invoices yet.')}
 
     <h3 class="mt">History</h3>
@@ -2022,6 +2030,20 @@ async function openReseller(id, reload) {
         openReseller(id, reload);
       } catch (e) { whoops(e); }
     });
+  }));
+
+  // The record of what an order actually looked like on paper — the same
+  // view a chat order shows the moment it is placed, reachable again later
+  // from the account it belongs to, not just the one screen that made it.
+  $$('[data-invoice]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      const o = await GET(`/api/orders/${b.dataset.invoice}`);
+      showInvoice({
+        orderId: o.id, invoiceId: o.invoice_id, issuedOn: o.placed_at, dueOn: o.due_on,
+        amount: o.total, resellerName: o.reseller,
+        lines: o.lines.map((l) => ({ name: l.name, qty: l.qty, price: l.unit_price })),
+      });
+    } catch (e) { whoops(e); }
   }));
 }
 
