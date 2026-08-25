@@ -679,6 +679,7 @@ SCREENS.products = async (page) => {
       <input type="search" id="find" placeholder="Search by code, name or brand…">
       <button class="btn" id="add">＋ New product</button>
       <button class="btn line" id="sheet">📋 Load a price list</button>
+      <button class="btn line" id="pics">🖼️ Pictures, all at once</button>
     </div>
     <div class="panel" id="list"></div>
     ${user.role === 'admin' ? `
@@ -695,6 +696,8 @@ SCREENS.products = async (page) => {
   $('#add', page).addEventListener('click', () => editProduct(null, load));
   $('#sheet', page).addEventListener('click',
     () => priceListDialog(GET('/api/products').catch(() => []), load));
+  $('#pics', page).addEventListener('click',
+    () => GET('/api/products').then((all) => productPhotosDialog(all, load)).catch(whoops));
   $('#erase', page)?.addEventListener('click', () => erasePracticeData(load));
   await load();
   repeat(load, 15000);
@@ -4689,6 +4692,144 @@ function photosDialog(team, reload) {
     notice(failed.length
       ? `${done} saved, ${failed.length} would not: ${failed[0]}`
       : `${done} photograph${done === 1 ? '' : 's'} saved 🌸`,
+      failed.length ? 'bad' : 'good');
+    reload();
+  });
+}
+
+/**
+ * The same job as photosDialog, for products rather than people.
+ *
+ * The difference that matters: a product has a code, and a code in a filename
+ * is not a guess. "MS-TOT001.png" is that product and nothing else, however
+ * the rest of the filename reads. So the code is tried first and exactly;
+ * only a filename without one falls through to matching on the name, where
+ * the same rule as for faces applies — a match has to be clear of the
+ * runner-up, and being unsure costs one dropdown.
+ */
+function productPhotosDialog(products, reload) {
+  const sellable = products.filter((p) => p.active);
+  RARE = rarityAcross(sellable);
+
+  // Longest code first: MS-TOT0011 must not be claimed by MS-TOT001.
+  const codes = sellable.map((p) => p.sku)
+    .sort((a, b) => b.length - a.length);
+
+  const bySku = new Map(sellable.map((p) => [p.sku, p]));
+
+  const matchProduct = (filename) => {
+    const flat = filename.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const hit = codes.find((sku) => flat.includes(sku.toUpperCase().replace(/[^A-Z0-9]/g, '')));
+    if (hit) return { who: bySku.get(hit), sure: true };
+    return bestMatch(filename, sellable);
+  };
+
+  const options = (chosen) => '<option value="">— skip —</option>'
+    + sellable.map((p) => `<option value="${esc(p.sku)}"${p.sku === chosen ? ' selected' : ''}>${
+        esc(p.name)}${p.has_photo ? ' (has one)' : ''}</option>`).join('');
+
+  let picked = [];
+
+  const veil = dialog(`
+    <h3>Pictures, all at once</h3>
+    <div class="dim">Choose the whole folder. A product code in the filename is
+      taken as certain; anything else is matched on the name and left for you to
+      check. Nothing is saved until you press the button. Big pictures are
+      shrunk here before they are sent, so the originals stay on this machine.</div>
+    <div class="row mt">
+      <div><label for="pp_files">The pictures</label>
+        <input id="pp_files" type="file" accept="image/*" multiple></div>
+    </div>
+    <div id="pp_state" class="dim mt"></div>
+    <div id="pp_grid" class="mt"></div>
+    <div class="mt right">
+      <button class="btn quiet" id="pp_cancel">Close</button>
+      <button class="btn" id="pp_save" disabled>Save the pictures</button>
+    </div>`, 'wide');
+
+  const state = (text, kind = 'dim') => {
+    $('#pp_state', veil).className = `${kind} mt`;
+    $('#pp_state', veil).textContent = text;
+  };
+
+  const draw = () => {
+    const counts = new Map();
+    for (const f of picked) {
+      if (f.sku) counts.set(f.sku, (counts.get(f.sku) || 0) + 1);
+    }
+    const clash = [...counts.values()].some((n) => n > 1);
+
+    $('#pp_grid', veil).innerHTML = `<div class="photogrid">${picked.map((f, i) => `
+      <div class="photopick${f.sku ? '' : ' unsure'}${
+          f.sku && counts.get(f.sku) > 1 ? ' clash' : ''}">
+        <img src="${f.preview}" alt="">
+        <div class="fn" title="${esc(f.file.name)}">${esc(f.file.name)}</div>
+        <select data-pick="${i}">${options(f.sku)}</select>
+        ${f.sku ? (counts.get(f.sku) > 1
+            ? '<div class="why bad">two pictures for this product</div>'
+            : `<div class="why">${f.how}</div>`)
+          : '<div class="why bad">nothing matched</div>'}
+      </div>`).join('')}</div>`;
+
+    $$('[data-pick]', veil).forEach((s) => s.addEventListener('change', () => {
+      picked[Number(s.dataset.pick)].sku = s.value;
+      picked[Number(s.dataset.pick)].how = 'set by hand';
+      draw();
+    }));
+
+    const ready = picked.filter((f) => f.sku).length;
+    $('#pp_save', veil).disabled = !ready || clash;
+    $('#pp_save', veil).textContent = clash
+      ? 'Two pictures share a product'
+      : `Save ${ready} picture${ready === 1 ? '' : 's'}`;
+    const unsure = picked.filter((f) => !f.sku).length;
+    state(`${picked.length} chosen · ${ready} matched${
+      unsure ? ` · ${unsure} need a product` : ''}`, unsure || clash ? 'warn' : 'dim');
+  };
+
+  $('#pp_files', veil).addEventListener('change', async (e) => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    picked = [];
+    let read = 0;
+    for (const file of files) {
+      state(`Reading ${++read} of ${files.length}…`);
+      let preview;
+      try {
+        preview = await shrink(file, 220, 0.7);
+      } catch { continue; }               // not an image; the folder may hold others
+      const match = matchProduct(file.name);
+      picked.push({
+        file, preview,
+        sku: match.who ? match.who.sku : '',
+        how: match.who ? (match.sure ? 'matched by code' : 'best guess — check it') : '',
+      });
+    }
+    draw();
+  });
+
+  $('#pp_cancel', veil).addEventListener('click', closeDialog);
+
+  $('#pp_save', veil).addEventListener('click', async () => {
+    const jobs = picked.filter((f) => f.sku);
+    const button = $('#pp_save', veil);
+    button.disabled = true;
+    let done = 0;
+    const failed = [];
+    for (const job of jobs) {
+      try {
+        await POST(`/api/products/${encodeURIComponent(job.sku)}/photo`,
+          { dataUrl: await shrink(job.file) });
+        done++;
+      } catch (e) {
+        failed.push(`${job.file.name}: ${e.message}`);
+      }
+      state(`Saving… ${done + failed.length} of ${jobs.length}`);
+    }
+    closeDialog();
+    notice(failed.length
+      ? `${done} saved, ${failed.length} would not: ${failed[0]}`
+      : `${done} picture${done === 1 ? '' : 's'} saved 🌸`,
       failed.length ? 'bad' : 'good');
     reload();
   });
