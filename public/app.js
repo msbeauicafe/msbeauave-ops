@@ -1497,7 +1497,7 @@ async function openOrder(id, reload) {
     ], 'No lines on this order.')}
     <div class="right mt"><b>Total ${peso(o.total)}</b></div>
     <div class="mt right">
-      <button class="btn quiet" onclick="window.print()">🖨 Print picking slip</button>
+      <button class="btn quiet" id="a_packing">🖨 Packing list</button>
       ${o.status === 'placed' ? '<button class="btn" id="a_pick">Start picking</button>' : ''}
       ${['placed', 'picking'].includes(o.status) ? `
         <button class="btn go" id="a_send">Dispatch</button>
@@ -1518,6 +1518,13 @@ async function openOrder(id, reload) {
   act('#a_send', 'dispatch');
   act('#a_cancel', 'cancel');
   act('#a_delivered', 'deliver');
+
+  // Opened over the order rather than replacing it: the picking view above
+  // carries batch and expiry, which is what the picker works from, and the
+  // packing list is what travels with the box.
+  $('#a_packing')?.addEventListener('click', () => showPackingList({
+    orderId: o.id, resellerName: o.reseller, placedAt: o.placed_at, lines: o.lines,
+  }));
 }
 
 // Same shape as the CUSTOMER ORDER FORM already used for every reseller's own
@@ -1560,6 +1567,85 @@ function showInvoice({ orderId, invoiceId, issuedOn, dueOn, amount, resellerName
       <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
       <button class="btn" id="inv_done">Done</button></div>`);
   $('#inv_done').addEventListener('click', closeDialog);
+}
+
+/**
+ * The warehouse's sheet: what to pick, and a box to tick beside each line.
+ *
+ * The same PACKING LIST already used on paper, so the bench is not asked to
+ * read a new document. It carries no money — the person packing has no need
+ * of what the account pays, and a price on a sheet that travels with the
+ * goods is a price the customer's customer can read.
+ *
+ * Blank rows follow the real lines because the pad it replaces had them: a
+ * substitution or a short-pick gets written where the checker is already
+ * looking, rather than in the margin.
+ */
+function showPackingList({ orderId, resellerName, placedAt, lines }) {
+  const BLANKS = Math.max(0, 16 - lines.length);
+  dialog(`
+    <div class="packing">
+      <div class="rule"></div>
+      <div class="head-row">
+        <img src="/logo.png" alt="MS Beau Ave" style="height:52px">
+        <div class="who">
+          <b>MS BEAU AVE ENTERPRISES OPC</b>
+          <div>LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
+          MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</div>
+        </div>
+      </div>
+      <div class="title">PACKING LIST</div>
+      <div class="party">
+        <div>
+          <div class="lbl" style="font-size:.85rem">${esc(resellerName || 'counter sale')}</div>
+          <div class="lbl">Tax Type: <span class="val"></span></div>
+          <div class="lbl">Business Trade Name: <span class="val"></span></div>
+          <div class="lbl">Taxpayer Name: <span class="val"></span></div>
+          <div class="lbl">TIN Number: <span class="val"></span></div>
+          <div class="lbl">Business Address: <span class="val"></span></div>
+        </div>
+        <div style="white-space:nowrap">
+          <div class="lbl">DATE: <span class="val">${onDay(placedAt)}</span></div>
+          <div class="lbl">SALES ORDER NO.: <span class="val">${orderId}</span></div>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th style="width:34px"></th>
+          <th>PRODUCT DESCRIPTION</th>
+          <th style="width:90px">QUANTITY</th>
+          <th style="width:90px">UNIT TYPE</th>
+        </tr></thead>
+        <tbody>
+          ${lines.map((l) => `<tr>
+            <td class="tick"><span class="box"></span></td>
+            <td><b>${esc(l.name)}</b></td>
+            <td class="qty">${count(l.qty)}</td>
+            <td class="unit"></td>
+          </tr>`).join('')}
+          ${Array.from({ length: BLANKS }, () => `<tr>
+            <td class="tick"><span class="box"></span></td><td></td><td></td><td></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="sign">
+        <div class="who-line">
+          <div class="nm">${esc(user?.name || user?.username || '')}</div>
+          <div class="role">Prepared by</div>
+          <div class="cap">PREPARED BY:</div>
+        </div>
+        <div class="who-line">
+          <div class="nm">&nbsp;</div>
+          <div class="role">Warehouse Checker</div>
+          <div class="cap">CHECKED BY:</div>
+        </div>
+      </div>
+    </div>
+    <div class="mt right">
+      <button class="btn quiet" onclick="window.print()">🖨 Print</button>
+      <button class="btn" id="pk_done">Close</button>
+    </div>`, 'wide');
+  $('#pk_done').addEventListener('click', closeDialog);
 }
 
 // ===========================================================================
@@ -1721,7 +1807,13 @@ SCREENS.chatorders = async (page) => {
       basket.clear();
       drawBasket();
       $('#ch_order_out', workingBox).innerHTML =
-        '<div class="banner good">Order placed. Here is the invoice to send back.</div>';
+        `<div class="banner good">Order placed. Here is the invoice to send back.
+         <button class="btn sm quiet" id="ch_packing">🖨 Packing list</button></div>`;
+      $('#ch_order_out', workingBox).querySelector('#ch_packing')
+        .addEventListener('click', () => showPackingList({
+          orderId: out.orderId, resellerName: picked.name,
+          placedAt: new Date(), lines,
+        }));
       notice('Order placed 🌸', 'good');
       if (out.invoice) showInvoice({
         orderId: out.orderId, invoiceId: out.invoice.id,
