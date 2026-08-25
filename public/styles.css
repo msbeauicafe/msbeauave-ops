@@ -588,3 +588,45 @@ label.inline input { width: auto; }
 .packing .sign .nm { font-weight: 700; border-bottom: 1px solid #000; padding: 0 26px 2px; }
 .packing .sign .role { color: #444; font-size: .62rem; margin-top: 2px; }
 .packing .sign .cap { font-weight: 700; font-size: .64rem; margin-top: 4px; }
+
+/* ---------- the invoice and the order form ----------
+   Two documents off one layout: the order form is what a reseller is sent to
+   agree to, the invoice is what follows it and carries the money already
+   received. Both keep the shape of the paper they replace. */
+.doc { color: #000; font-size: .78rem; }
+.doc .title { text-align: center; font-weight: 700; font-size: 1.2rem; padding: 8px; margin: 10px 0 12px; }
+.doc .title.inv { background: #dbe6f7; color: #2f5fa8; }
+.doc .title.cof { background: #fbe2ee; color: var(--rose-deep); }
+.doc table.lines { width: 100%; border-collapse: collapse; font-size: .72rem; }
+.doc table.lines th {
+  background: #dbe6f7; border: 1px solid #d9d9d9; padding: 4px 6px;
+  font-size: .62rem; letter-spacing: .03em; text-align: center;
+}
+.doc.cof table.lines th { background: #fbe2ee; }
+.doc table.lines td { border: 1px solid #e4e4e4; padding: 4px 6px; }
+.doc table.lines td.n { text-align: right; }
+.doc table.lines td.c { text-align: center; }
+.doc .duebox {
+  float: right; border: 1px solid #ccc; background: #f4f4f4; padding: 4px 10px;
+  font-size: .62rem; text-align: right; margin-bottom: 4px;
+}
+.doc .duebox b { display: block; font-size: .82rem; }
+.doc .foot { display: flex; gap: 16px; margin-top: 14px; align-items: flex-start; }
+.doc .foot > * { flex: 1; }
+.doc .totals { margin-left: auto; font-size: .72rem; }
+.doc .totals div { display: flex; justify-content: space-between; gap: 24px; padding: 2px 6px; }
+.doc .totals .grand {
+  background: #dbe6f7; font-weight: 700; font-size: .95rem; padding: 5px 6px; margin-top: 2px;
+}
+.doc.cof .totals .grand { background: #fbe2ee; }
+.doc .totals .bal { background: #fde8ee; font-weight: 700; color: #c0392b; padding: 4px 6px; }
+.doc .bank { border: 1px solid #c0392b; padding: 8px 10px; font-size: .66rem; margin-top: 10px; }
+.doc .bank h5 { font-size: .68rem; margin-bottom: 5px; letter-spacing: .03em; }
+.doc .bank .b { font-weight: 700; margin-top: 5px; }
+.doc .mop { border: 1px solid #e8b9cc; font-size: .66rem; }
+.doc .mop .hd { text-align: center; font-weight: 700; padding: 4px; border-bottom: 1px solid #e8b9cc; }
+.doc .mop .slot { border-bottom: 1px solid #f0d3de; padding: 4px 8px; }
+.doc .mop .slot b { display: block; }
+.doc .sign1 { text-align: center; margin-top: 20px; font-size: .68rem; }
+.doc .sign1 .nm { font-weight: 700; }
+.doc .sign1 .cap { font-weight: 700; margin-top: 3px; }
