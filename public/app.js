@@ -4733,9 +4733,10 @@ function productPhotosDialog(products, reload) {
   const veil = dialog(`
     <h3>Pictures, all at once</h3>
     <div class="dim">Choose the whole folder. A product code in the filename is
-      taken as certain; anything else is matched on the name and left for you to
-      check. Nothing is saved until you press the button. Big pictures are
-      shrunk here before they are sent, so the originals stay on this machine.</div>
+      taken as certain, and a name it can match beyond doubt is too — anything
+      else is skipped rather than guessed at, and you can set it by hand if you
+      know. Nothing is saved until you press the button. Big pictures are shrunk
+      here before they are sent, so the originals stay on this machine.</div>
     <div class="row mt">
       <div><label for="pp_files">The pictures</label>
         <input id="pp_files" type="file" accept="image/*" multiple></div>
@@ -4767,13 +4768,12 @@ function productPhotosDialog(products, reload) {
         <select data-pick="${i}">${options(f.sku)}</select>
         ${f.sku ? (counts.get(f.sku) > 1
             ? '<div class="why bad">two pictures for this product</div>'
-            : `<div class="why">${f.how}</div>`)
-          : '<div class="why bad">nothing matched</div>'}
+            : '<div class="why">matched by code</div>')
+          : '<div class="why">no certain match — will be skipped</div>'}
       </div>`).join('')}</div>`;
 
     $$('[data-pick]', veil).forEach((s) => s.addEventListener('change', () => {
       picked[Number(s.dataset.pick)].sku = s.value;
-      picked[Number(s.dataset.pick)].how = 'set by hand';
       draw();
     }));
 
@@ -4782,9 +4782,11 @@ function productPhotosDialog(products, reload) {
     $('#pp_save', veil).textContent = clash
       ? 'Two pictures share a product'
       : `Save ${ready} picture${ready === 1 ? '' : 's'}`;
-    const unsure = picked.filter((f) => !f.sku).length;
+    // Skipping is a normal outcome, not a problem to fix: a folder may hold
+    // pictures of things not on the price list at all. Only a clash is amber.
+    const skipped = picked.filter((f) => !f.sku).length;
     state(`${picked.length} chosen · ${ready} matched${
-      unsure ? ` · ${unsure} need a product` : ''}`, unsure || clash ? 'warn' : 'dim');
+      skipped ? ` · ${skipped} skipped` : ''}`, clash ? 'warn' : 'dim');
   };
 
   $('#pp_files', veil).addEventListener('change', async (e) => {
@@ -4798,12 +4800,12 @@ function productPhotosDialog(products, reload) {
       try {
         preview = await shrink(file, 220, 0.7);
       } catch { continue; }               // not an image; the folder may hold others
+      // Only a match it is sure of is chosen for you. bestMatch answers with
+      // nobody when the runner-up is close, and that stays nobody here: a
+      // picture on the wrong product is worse than a product with no picture,
+      // and the dropdown is one click away when you know better than it does.
       const match = matchProduct(file.name);
-      picked.push({
-        file, preview,
-        sku: match.who ? match.who.sku : '',
-        how: match.who ? (match.sure ? 'matched by code' : 'best guess — check it') : '',
-      });
+      picked.push({ file, preview, sku: match.who ? match.who.sku : '' });
     }
     draw();
   });
