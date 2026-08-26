@@ -2037,6 +2037,7 @@ SCREENS.chatorders = async (page) => {
           <h4 class="mt">Basket</h4>
           <div id="ch_basket"></div>
           <div class="total" id="ch_total">₱0.00</div>
+          <div id="ch_nocode"></div>
           <div class="mt right"><button class="btn" id="ch_place">Place order &amp; raise invoice</button></div>
           <div id="ch_order_out" class="mt"></div>
         </div>
@@ -2130,6 +2131,18 @@ SCREENS.chatorders = async (page) => {
     drawPreview();
     // Tapping the code already on is how it comes off again, so a line can go
     // back to the listed price without a blank entry in a list to mean it.
+    const warn = $('#ch_nocode', workingBox);
+    if (warn) {
+      const bare = [...basket.values()].filter((l) => !l.code
+        && Object.keys(l.prices || {}).length);
+      warn.innerHTML = bare.length ? `<div class="banner warn">
+        <b>${count(bare.length)} line${bare.length > 1 ? 's have' : ' has'} no PCODE.</b>
+        ${bare.map((l) => `${esc(l.name)} — ${peso(l.price)}, against ${
+          peso(Math.min(...Object.values(l.prices).map(Number)))} at its cheapest code`)
+          .join('<br>')}
+        <div class="dim mt">Placed as it stands, ${bare.length > 1 ? 'these lines are' : 'this line is'}
+          charged the listed price, which is not a dealer price.</div></div>` : '';
+    }
     drawPreview();
     $$('[data-code]', box).forEach((b) => b.addEventListener('click', () => {
       const line = basket.get(b.dataset.code);
@@ -2139,6 +2152,26 @@ SCREENS.chatorders = async (page) => {
       drawBasket();
     }));
   };
+
+  // Asked once, and answered by pressing the thing that says what will happen
+  // rather than the thing that says yes.
+  const askedAndAnswered = (bare) => new Promise((done) => {
+    dialog(`
+      <h3>Place without a PCODE?</h3>
+      <div class="dim">${count(bare.length)} line${bare.length > 1 ? 's have' : ' has'}
+        no price code, so ${bare.length > 1 ? 'they are' : 'it is'} charged the
+        listed price rather than a dealer's.</div>
+      <div class="mt">${bare.map((l) => `<div class="pick">
+        <span class="nm"><b>${esc(l.name)}</b><br>
+          <span class="dim">${peso(l.price)} listed · ${
+            peso(Math.min(...Object.values(l.prices).map(Number)))} at its cheapest code</span></span>
+      </div>`).join('')}</div>
+      <div class="mt right">
+        <button class="btn quiet" id="nc_back">Go back and pick one</button>
+        <button class="btn stop" id="nc_go">Charge the listed price</button></div>`);
+    $('#nc_back').addEventListener('click', () => { closeDialog(); done(false); });
+    $('#nc_go').addEventListener('click', () => { closeDialog(); done(true); });
+  });
 
   // Its own number until it has one: an order form on screen has not been
   // placed, and putting a plausible number on it invites somebody to quote it.
@@ -2173,6 +2206,8 @@ SCREENS.chatorders = async (page) => {
   async function placeOrder() {
     if (!basket.size) return notice('Add what they ordered first.', 'bad');
     const lines = [...basket.values()];
+    const bare = lines.filter((l) => !l.code && Object.keys(l.prices || {}).length);
+    if (bare.length && !(await askedAndAnswered(bare))) return;
     $('#ch_place', workingBox).disabled = true;
     try {
       const out = await POST(`/api/resellers/${picked.id}/orders`,
