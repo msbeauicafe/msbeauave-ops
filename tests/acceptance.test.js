@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import sharp from 'sharp';
 import { hashPassword, needsRenewing } from '../lib/auth.js';
 import { today, daysAgo } from '../lib/day.js';
 import { server } from '../scripts/dev.js';
@@ -51,6 +52,7 @@ async function request(cookie, method, path, body) {
 const GET = (c, p) => request(c, 'GET', p);
 const POST = (c, p, b) => request(c, 'POST', p, b ?? {});
 const PUT = (c, p, b) => request(c, 'PUT', p, b);
+const DELETE = (c, p) => request(c, 'DELETE', p);
 
 /** A signed-in user of the given role. */
 async function signIn(role, resellerId = null) {
@@ -1764,4 +1766,52 @@ test("a reseller's tax details reach the order they are printed from", async () 
   assert.equal(cleared.data.tax_type, null);
   assert.equal(cleared.data.tin, null);
   assert.equal(cleared.data.trade_name, null, 'a field left out of the form is cleared too');
+});
+
+// ===========================================================================
+// A face on the reseller's card
+//
+// The order screen finds an account by recognising it. What has to hold is
+// that the picture is shrunk on the way in — the lesson that cost this
+// company its egress allowance — and that a reseller cannot reach another
+// account's.
+// ===========================================================================
+test("a reseller's picture is shrunk on the way in, not on the way out", async () => {
+  const admin = await signIn('admin');
+  const id = await newReseller(admin);
+
+  // A deliberately oversized upload: 1400x1400 of noise, well past anything
+  // the card asks for.
+  const big = await sharp({
+    create: { width: 1400, height: 1400, channels: 3, background: { r: 200, g: 140, b: 170 } },
+  }).jpeg({ quality: 100 }).toBuffer();
+
+  const up = await POST(admin, `/api/resellers/${id}/photo`,
+    { dataUrl: `data:image/jpeg;base64,${big.toString('base64')}` });
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+
+  const stored = await db.query(
+    'select length(bytes) as size, mime from reseller_photos where reseller_id = $1', [id]);
+  assert.equal(stored.rows[0].mime, 'image/jpeg');
+  assert.ok(Number(stored.rows[0].size) < big.length / 4,
+    `stored ${stored.rows[0].size} bytes against ${big.length} uploaded`);
+
+  const meta = await sharp(stored.rows[0] && (await db.query(
+    'select bytes from reseller_photos where reseller_id = $1', [id])).rows[0].bytes).metadata();
+  assert.equal(meta.width, 240, 'the card is 3:4, and so is what is kept');
+  assert.equal(meta.height, 320);
+
+  // The list says there is one, and says when, so the address can be cached.
+  const list = await GET(admin, '/api/resellers');
+  const mine = list.data.find((r) => String(r.id) === String(id));
+  assert.ok(mine.photo_at > 0, 'the card knows there is a picture to draw');
+
+  // A reseller's own portal has no business reading another account's.
+  const buyer = await signIn('reseller', await newReseller(admin));
+  const peek = await GET(buyer, `/api/resellers/${id}/photo`);
+  assert.equal(peek.status, 403, JSON.stringify(peek.data));
+
+  await DELETE(admin, `/api/resellers/${id}/photo`);
+  const gone = await db.query('select 1 from reseller_photos where reseller_id = $1', [id]);
+  assert.equal(gone.rowCount, 0);
 });

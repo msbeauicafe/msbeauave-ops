@@ -699,3 +699,12 @@ label.inline input { width: auto; }
 .pick input { order: 2; }
 .pick .btn.stop { order: 3; }
 .pick .codes { order: 4; flex: 1 1 100%; margin-top: 2px; }
+
+/* The same 3:4 frame on the profile, so what is being set is plainly the
+   thing that will appear on the card. */
+.row .face, .row img.face {
+  width: 72px; height: 96px; border-radius: 10px; object-fit: cover;
+  background: var(--rose-blush); color: var(--rose-deep);
+  display: grid; place-items: center; font-size: 1.5rem; font-weight: 600;
+}
+.face-card img.face { object-fit: cover; }

@@ -1948,7 +1948,9 @@ SCREENS.chatorders = async (page) => {
     hitsBox.innerHTML = shown.length ? `<div class="face-grid">${shown.map((r) => `
       <button class="face-card ${r.blocked ? 'stopped' : ''}" data-pick="${r.id}"
         ${r.blocked ? 'disabled' : ''} title="${esc(r.name)}">
-        <span class="face">${esc(initials(r.name))}</span>
+        ${r.photo_at
+          ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
+          : `<span class="face">${esc(initials(r.name))}</span>`}
         <b>${esc(r.name)}</b>
         <span class="under">${r.blocked ? 'cannot order'
           : Number(r.owed) > 0 ? `owes ${peso(r.owed)}` : 'clear'}</span>
@@ -2317,6 +2319,22 @@ async function openReseller(id, reload) {
         <div style="flex:0 0 auto"><button class="btn stop" id="d_override">Override</button></div>
       </div>` : ''}
 
+    <h3 class="mt">Their picture</h3>
+    <div class="dim">Shown on their card on the Customer order screen, so
+      whoever is taking the order finds them by recognising them. A shopfront
+      or a logo does the job as well as a face.</div>
+    <div class="row mt" style="align-items:center">
+      <div style="flex:0 0 auto">
+        ${r.photo_at
+          ? `<img class="face" src="/api/resellers/${id}/photo?v=${r.photo_at}" alt="">`
+          : `<span class="face">${esc((r.name || '?').split(/\s+/).filter(Boolean)
+               .slice(0, 2).map((w) => w[0]).join('').toUpperCase())}</span>`}
+      </div>
+      <div style="flex:2"><label>Choose a picture</label>
+        <input id="d_photo" type="file" accept="image/jpeg,image/png,image/webp"></div>
+      ${r.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="d_photo_x">Remove</button></div>' : ''}
+    </div>
+
     <h3 class="mt">For tax</h3>
     <div class="dim">The block printed at the top of this account's invoices,
       order forms and packing lists. Leave anything blank that they have not
@@ -2397,6 +2415,30 @@ async function openReseller(id, reload) {
       closeDialog();
       reload();
     } catch (e) { whoops(e); }
+  });
+
+  $('#d_photo')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      // Shrunk in the browser first so a phone photograph is not carried
+      // whole across the wire; the server shrinks it again, to the shape of
+      // the card, which is the size that is actually stored.
+      await POST(`/api/resellers/${id}/photo`, { dataUrl: await shrink(file, 900) });
+      notice('Picture saved 🌸', 'good');
+      closeDialog();
+      reload();
+    } catch (err) { whoops(err); }
+    e.target.value = '';
+  });
+
+  $('#d_photo_x')?.addEventListener('click', async () => {
+    try {
+      await DELETE(`/api/resellers/${id}/photo`);
+      notice('Picture removed', 'good');
+      closeDialog();
+      reload();
+    } catch (err) { whoops(err); }
   });
 
   $('#d_tax').addEventListener('click', async () => {
