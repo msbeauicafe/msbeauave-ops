@@ -736,3 +736,43 @@ label.inline input { width: auto; }
   border-radius: 10px;
 }
 .preview .doc { padding: 14px; }
+
+/* ---------- a reseller's name is the way into their account ----------
+   A row with a button at the far end asks somebody to cross the whole row to
+   act on the thing they are already pointing at. The name does it. */
+.nameopen {
+  font: inherit; color: var(--ink); background: none; border: 0; padding: 0;
+  cursor: pointer; text-align: left; display: inline-flex; align-items: center;
+  gap: 7px;
+}
+.nameopen:hover b, .nameopen:focus-visible b {
+  color: var(--rose-deep); text-decoration: underline;
+}
+
+/* An account with an invoice still open. Amber while it is merely unpaid, red
+   once it is past due — the same two states the standing column uses, so the
+   dot never says something the row contradicts. */
+.blip {
+  flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--warning); box-shadow: 0 0 0 0 rgba(201, 150, 63, .55);
+  animation: blip 1.6s ease-out infinite;
+}
+.blip.late {
+  background: var(--danger); box-shadow: 0 0 0 0 rgba(176, 74, 74, .55);
+  animation-name: blip-late;
+}
+@keyframes blip {
+  0%   { box-shadow: 0 0 0 0   rgba(201, 150, 63, .55); }
+  70%  { box-shadow: 0 0 0 7px rgba(201, 150, 63, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(201, 150, 63, 0); }
+}
+@keyframes blip-late {
+  0%   { box-shadow: 0 0 0 0   rgba(176, 74, 74, .55); }
+  70%  { box-shadow: 0 0 0 7px rgba(176, 74, 74, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(176, 74, 74, 0); }
+}
+/* A pulse that will not stop is a poor thing to sit beside all day, and for
+   some people it is worse than that. The dot stays; the pulsing goes. */
+@media (prefers-reduced-motion: reduce) {
+  .blip, .blip.late { animation: none; }
+}
