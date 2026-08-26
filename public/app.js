@@ -2511,35 +2511,39 @@ async function openReseller(id, reload) {
     </div>
 
     <h3 class="mt">Confirm the bank payment</h3>
-    <div class="dim">Settles whatever is open, oldest invoice first, and stamps
-      an OR the moment it does. One amount covering more than one order is the
-      ordinary case; to pay a single invoice on its own, use Record payment on
-      its row below. Anything left over once nothing is open becomes credit,
-      held on the account and taken off their next invoice by itself.</div>
-    <div class="row mt">
-      <div><label>Amount received</label>
-        <input id="acct_amt" type="number" step="0.01" min="0.01"></div>
-      <div><label>Received on</label>
-        <input id="acct_on" type="date" value="${localDay()}"></div>
-    </div>
-    <div class="row">
-      <div><label for="acct_mop">Through (MOP)</label>
-        <input id="acct_mop" type="text" list="acct_banks" placeholder="BANCO DE ORO (BDO)">
-        <datalist id="acct_banks">
-          <option value="BANCO DE ORO (BDO)"></option>
-          <option value="BPI"></option>
-          <option value="SECURITY BANK"></option>
-          <option value="GCASH"></option>
-        </datalist></div>
-      <div><label for="acct_ref">Reference no.</label>
-        <input id="acct_ref" type="text" placeholder="the bank's own reference"></div>
-      <div style="flex:0 0 auto">
-        <button class="btn go" id="acct_pay">Confirm &amp; issue OR</button></div>
-    </div>
+    <div class="dim">A reseller settles in instalments, so there are five rows —
+      fill in as many as have actually landed. Each is applied to whatever is
+      open, oldest invoice first. Anything left once nothing is open becomes
+      credit, held on the account and taken off their next invoice by itself.
+      <b>Confirming is not receipting</b>: the OR is issued separately, below,
+      and one OR covers every transfer confirmed since the last one.</div>
+    ${[0, 1, 2, 3, 4].map((n) => `
+      <div class="row payrow">
+        <div><label${n ? ' class="sr"' : ''}>Amount received</label>
+          <input class="pay_amt" type="number" step="0.01" min="0.01"
+                 placeholder="${n ? '' : '0.00'}"></div>
+        <div><label${n ? ' class="sr"' : ''}>Received on</label>
+          <input class="pay_on" type="date" value="${localDay()}"></div>
+        <div><label${n ? ' class="sr"' : ''}>Through (MOP)</label>
+          <input class="pay_mop" type="text" list="acct_banks"
+                 placeholder="BANCO DE ORO (BDO)"></div>
+        <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
+          <input class="pay_ref" type="text" placeholder="the bank's own reference"></div>
+      </div>`).join('')}
+    <datalist id="acct_banks">
+      <option value="BANCO DE ORO (BDO)"></option>
+      <option value="BPI"></option>
+      <option value="SECURITY BANK"></option>
+      <option value="GCASH"></option>
+    </datalist>
     <div class="dim">The reference is the bank's, off their proof of payment — it
       is what they quote to say the money left, and what the statement is matched
       against later. It prints on the invoice.</div>
+    <div class="mt right"><button class="btn" id="acct_pay">Confirm payments</button></div>
     <div id="acct_out" class="mt"></div>
+
+    <h3 class="mt">Issue the OR</h3>
+    <div id="acct_pending"></div>
 
     <h3 class="mt">Invoices</h3>
     ${table(r.invoices, [
@@ -2642,33 +2646,73 @@ async function openReseller(id, reload) {
     } catch (e) { whoops(e); }
   });
 
-  // The same call the chat screen used to make, from the page that owns the
-  // account: the money arriving is a fact about the reseller, not about the
-  // one order that happened to be on screen when it landed.
+  // What an OR would cover if one were asked for now. Drawn on opening and
+  // again after every confirmation, because the answer is the whole reason
+  // the two acts were separated.
+  const drawPending = async () => {
+    const box = $('#acct_pending');
+    if (!box) return;
+    try {
+      const p = await GET(`/api/resellers/${id}/pending-receipt`);
+      box.innerHTML = p.count ? `
+        <div class="dim">${count(p.count)} payment${p.count > 1 ? 's' : ''} confirmed
+          and not yet receipted, ${peso(p.amount)} in all.</div>
+        <div class="mt">${p.lines.map((l) => `<div class="pick">
+          <span class="nm"><b>${peso(l.amount)}</b> — invoice #${esc(String(l.invoice_id))}
+            <br><span class="dim">${onDay(l.paid_on)}${
+              l.method ? ' · ' + esc(l.method) : ''}${
+              l.reference_no ? ' · ref ' + esc(l.reference_no) : ''}</span></span>
+        </div>`).join('')}</div>
+        <div class="mt right"><button class="btn go" id="acct_or">
+          Issue OR for ${peso(p.amount)}</button></div>`
+        : '<div class="dim">Nothing confirmed is waiting for a receipt.</div>';
+
+      $('#acct_or')?.addEventListener('click', async () => {
+        $('#acct_or').disabled = true;
+        try {
+          const out = await POST(`/api/resellers/${id}/issue-or`, {});
+          notice(`${out.receipt_no} issued 🌸`, 'good');
+          // The OR takes over the dialog, so the list behind it is refreshed
+          // now rather than when it is dismissed.
+          reload();
+          showOR(out, r, { amount: Number(out.amount) });
+        } catch (e) { whoops(e); $('#acct_or').disabled = false; }
+      });
+    } catch (e) { whoops(e); }
+  };
+  drawPending();
+
+  // Confirming records the money and applies it. It puts no number on it —
+  // that is the button below, and it is a separate decision on purpose: four
+  // transfers against one invoice should leave the reseller holding one
+  // receipt, not four.
   $('#acct_pay').addEventListener('click', async () => {
-    const amount = +$('#acct_amt').value;
-    if (!(amount > 0)) return whoops(new Error('Type how much came in.'));
+    const rows = $$('.payrow').map((row) => ({
+      amount: +$('.pay_amt', row).value,
+      paid_on: $('.pay_on', row).value,
+      method: $('.pay_mop', row).value.trim() || null,
+      reference_no: $('.pay_ref', row).value.trim() || null,
+    })).filter((r) => r.amount > 0);
+
+    if (!rows.length) return whoops(new Error('Type how much came in.'));
     $('#acct_pay').disabled = true;
     try {
-      const out = await POST(`/api/resellers/${id}/receipt`, {
-        amount,
-        paid_on: $('#acct_on').value,
-        method: $('#acct_mop').value.trim() || null,
-        details: 'MS Beau Ave Enterprises OPC',
-        reference_no: $('#acct_ref').value.trim() || null,
+      const out = await POST(`/api/resellers/${id}/confirm`, { payments: rows });
+      const said = out.confirmed.flatMap((c) => (c.applied || []).map((a) =>
+        `Invoice #${a.invoice_id}: ${peso(a.applied)} applied` +
+        (a.now_owes > 0 ? `, ${peso(a.now_owes)} still owed` : ', now settled')));
+      const credited = out.confirmed.reduce((t, c) => t + Number(c.credited || 0), 0);
+      if (credited > 0) said.push(`${peso(credited)} left over — held as credit.`);
+      $('#acct_out').innerHTML = said.length
+        ? `<div class="banner good">${said.join('<br>')}</div>`
+        : '<div class="dim">Nothing was open to apply this to — it is all credit now.</div>';
+      notice(`${count(rows.length)} payment${rows.length > 1 ? 's' : ''} confirmed 🌸`, 'good');
+      $$('.payrow').forEach((row) => {
+        $('.pay_amt', row).value = '';
+        $('.pay_ref', row).value = '';
       });
-      notice(`${out.receipt_no} issued 🌸`, 'good');
-      // The OR takes over the dialog, so the list behind it is refreshed now
-      // rather than when it is dismissed — what the account owes has changed.
-      reload();
-      showOR(out, r, {
-        amount,
-        paid_on: $('#acct_on').value,
-        method: $('#acct_mop').value.trim(),
-        reference_no: $('#acct_ref').value.trim(),
-      });
-    } catch (e) {
-      whoops(e);
+      drawPending();
+    } catch (e) { whoops(e); } finally {
       $('#acct_pay').disabled = false;
     }
   });

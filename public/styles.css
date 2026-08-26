@@ -808,3 +808,13 @@ label.inline input { width: auto; }
   text-align: right; margin-top: 10px; font-size: .78rem;
   color: #7a2233; font-weight: 600;
 }
+
+/* Five payment rows, one per instalment. The labels are written once and
+   hidden on the rows below, because four repetitions of "Amount received" is
+   four things to read past — but they are hidden from the eye, not from a
+   screen reader, which has no column heading to fall back on. */
+.payrow + .payrow { margin-top: -2px; }
+label.sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
