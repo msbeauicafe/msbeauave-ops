@@ -647,27 +647,27 @@ label.inline input { width: auto; }
    every account is on screen from the start and typing only narrows what is
    already there.
 
-   The face is 3:4 at an inch wide — the shape of the ID photo everybody in
-   this company already knows, and big enough to hit with a thumb. Resellers
-   have no photograph, so it carries their initials instead: two letters is
-   enough to tell one card from the next at a glance, which a row of identical
-   squares is not. */
+   The face is a square inch: big enough to hit with a thumb and to recognise
+   at a glance, small enough that a couple of hundred accounts are a few
+   scrolls rather than an afternoon. Resellers who have no photograph carry
+   their initials instead — two letters tell one card from the next, which a
+   grid of identical squares does not. */
 .face-grid {
-  display: grid; gap: 12px; margin-top: 4px;
-  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  display: grid; gap: 10px; margin-top: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
 }
 .face-card {
   background: #fff; border: 1px solid var(--rose-soft); border-radius: 14px;
-  padding: 12px 8px 10px; cursor: pointer; text-align: center;
+  padding: 10px 8px 9px; cursor: pointer; text-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 7px;
   font: inherit; color: var(--ink);
 }
 .face-card:hover { border-color: var(--rose-dust); background: var(--rose-blush); }
 .face-card .face {
-  width: 96px; height: 128px;          /* one inch, 3:4 */
+  width: 96px; height: 96px;           /* one inch square */
   border-radius: 10px; background: var(--rose-blush); color: var(--rose-deep);
   display: grid; place-items: center;
-  font-size: 2.1rem; font-weight: 600; letter-spacing: .04em;
+  font-size: 1.9rem; font-weight: 600; letter-spacing: .04em;
 }
 .face-card b { font-size: .84rem; line-height: 1.25; }
 .face-card .under { font-size: .72rem; color: var(--muted); }
@@ -700,10 +700,10 @@ label.inline input { width: auto; }
 .pick .btn.stop { order: 3; }
 .pick .codes { order: 4; flex: 1 1 100%; margin-top: 2px; }
 
-/* The same 3:4 frame on the profile, so what is being set is plainly the
+/* The same square frame on the profile, so what is being set is plainly the
    thing that will appear on the card. */
 .row .face, .row img.face {
-  width: 72px; height: 96px; border-radius: 10px; object-fit: cover;
+  width: 72px; height: 72px; border-radius: 10px; object-fit: cover;
   background: var(--rose-blush); color: var(--rose-deep);
   display: grid; place-items: center; font-size: 1.5rem; font-weight: 600;
 }
