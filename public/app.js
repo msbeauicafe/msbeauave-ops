@@ -1923,7 +1923,8 @@ SCREENS.chatorders = async (page) => {
       const p = catalog.find((x) => x.sku === b.dataset.add);
       const line = basket.get(p.sku)
         ?? { sku: p.sku, name: p.name, price: Number(p.wholesale_price),
-             unit: p.unit_type || 'PCS', code: '', qty: 0 };
+             listed: Number(p.wholesale_price),
+             unit: p.unit_type || 'PCS', code: '', prices: p.prices || {}, qty: 0 };
       line.qty += 1;
       basket.set(p.sku, line);
       drawBasket();
@@ -1936,12 +1937,16 @@ SCREENS.chatorders = async (page) => {
     box.innerHTML = basket.size ? [...basket.values()].map((l) => `
       <div class="pick">
         <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${peso(l.price)}
-          each${l.unit ? ' · ' + esc(l.unit) : ''}</span></span>
+          each${l.unit ? ' · ' + esc(l.unit) : ''}${
+            l.code ? ' · ' + esc(l.code) : ' · no PCODE'}</span></span>
         <select data-code="${esc(l.sku)}" title="PCODE — the price this line is given">
           <option value="">PCODE…</option>
-          ${(codes || []).map((c) => `<option value="${esc(c.code)}"
-            ${c.code === l.code ? 'selected' : ''}>${esc(c.code)}${
-              c.priced ? '' : ' (no price yet)'}</option>`).join('')}
+          ${(codes || []).map((c) => {
+            const has = (l.prices || {})[c.code] != null;
+            return `<option value="${esc(c.code)}" ${has ? '' : 'disabled'}
+              ${c.code === l.code ? 'selected' : ''}>${esc(c.code)}${
+                has ? '' : ' — no price for this one'}</option>`;
+          }).join('')}
         </select>
         <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
         <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
@@ -1957,7 +1962,11 @@ SCREENS.chatorders = async (page) => {
       drawBasket();
     }));
     $$('[data-code]', box).forEach((sel) => sel.addEventListener('change', () => {
-      basket.get(sel.dataset.code).code = sel.value;
+      const line = basket.get(sel.dataset.code);
+      line.code = sel.value;
+      const priced = (line.prices || {})[sel.value];
+      line.price = priced != null ? Number(priced) : Number(line.listed ?? line.price);
+      drawBasket();
     }));
   };
 

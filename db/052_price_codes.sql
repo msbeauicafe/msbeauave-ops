@@ -100,7 +100,11 @@ returns numeric language sql stable as $$
     join product_prices pp
       on pp.sku = p_sku
      and pp.code = coalesce(c.base_code, c.code)
-   where c.code = p_code and c.active;
+   where c.code = p_code and c.active
+     -- An adjustment still at zero has not been set. RD+5 would charge the
+     -- RD price exactly, which is a code that silently does nothing —
+     -- worse than a code that refuses, because nobody finds out.
+     and (c.base_code is null or c.adjust <> 0);
 $$;
 
 comment on function price_for(text, text) is
@@ -342,3 +346,38 @@ update products set unit_type = 'BOX'
 --   RD <- REGIONAL      PD <- PROVINCIAL (the workbook's own glossary says
 --   DD <- DISTRICT DD   so)              CD <- CITY DISTRI   RS <- Reseller
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- What this product costs under every code it is priced under
+--
+-- Whether a code has a price is a fact about the product, not about the code:
+-- RD prices six hundred products and not the other three hundred. The prices
+-- come with it because the person taking the order has to quote a total into
+-- a chat before placing it, and a basket showing the old wholesale price
+-- while the invoice charges the coded one is a number given to a customer
+-- that the company then does not honour.
+--
+-- Adjusted codes are resolved here, so the screen never does the arithmetic.
+--
+-- Appended, again, because create-or-replace can only add a column at the end.
+-- ---------------------------------------------------------------------------
+create or replace view b2b_catalog as
+select p.sku, p.name, p.brand, p.category, p.wholesale_price, p.srp,
+       coalesce(sum(s.on_hand - s.committed), 0)::int as available,
+       p.unit_type,
+       (select coalesce(jsonb_object_agg(c.code, pp.price + c.adjust), '{}'::jsonb)
+          from price_codes c
+          join product_prices pp
+            on pp.sku = p.sku
+           and pp.code = coalesce(c.base_code, c.code)
+         where c.active
+           and (c.base_code is null or c.adjust <> 0)) as prices
+  from products p
+  left join batches b
+    on b.sku = p.sku
+   and b.expiry > (current_date + make_interval(months => p.reseller_floor_months))::date
+  left join stock s on s.batch_id = b.id and s.pool = 'b2b'
+ where p.active
+ group by p.sku, p.name, p.brand, p.category, p.wholesale_price, p.srp, p.unit_type;
+
+grant select on b2b_catalog to app_client;
