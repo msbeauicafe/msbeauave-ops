@@ -932,3 +932,9 @@ label.sr {
 /* A button next to a labelled input sits at the label's height without this,
    which reads as a misalignment even when nothing is wrong. */
 .pushdown { align-self: flex-end; padding-bottom: 2px; }
+
+/* A dialog opened from inside another one stacks on top of it. Only the top
+   veil dims — three of them layered would turn the page to mud, and the one
+   underneath is meant to stay readable, so you can see what you are coming
+   back to. */
+.veil:not(#dialog) { background: transparent; }
