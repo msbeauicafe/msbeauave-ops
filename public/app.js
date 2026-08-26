@@ -1996,7 +1996,8 @@ SCREENS.chatorders = async (page) => {
         <div class="panel">
           <h3>1 · What they ordered</h3>
           <input type="search" id="ch_find" placeholder="Search products…">
-          <div id="ch_goods" class="scroll" style="max-height:320px;overflow-y:auto"></div>
+          <div class="dim" id="ch_count" style="font-size:.72rem;margin:4px 0 2px"></div>
+          <div id="ch_goods" class="scroll" style="max-height:420px;overflow-y:auto"></div>
           <h4 class="mt">Basket</h4>
           <div id="ch_basket"></div>
           <div class="total" id="ch_total">₱0.00</div>
@@ -2056,7 +2057,13 @@ SCREENS.chatorders = async (page) => {
     const term = ($('#ch_find', workingBox)?.value || '').trim().toLowerCase();
     const rows = (catalog || []).filter((p) => !term
       || p.name.toLowerCase().includes(term) || (p.brand || '').toLowerCase().includes(term));
-    box.innerHTML = table(rows.slice(0, 40), [
+    const count = $('#ch_count', workingBox);
+    if (count) {
+      count.textContent = term
+        ? `${rows.length} of ${(catalog || []).length} products match “${term}”`
+        : `All ${rows.length} products — type to narrow it down`;
+    }
+    box.innerHTML = table(rows, [
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b> <span class="dim">${esc(p.brand || '')}</span>` },
       { head: 'Price', n: true, cell: (p) => peso(p.wholesale_price) },
       { head: 'Have', n: true, cell: (p) => count(p.available) },
