@@ -357,6 +357,13 @@ update products set unit_type = 'BOX'
 --
 --   RD <- REGIONAL      PD <- PROVINCIAL (the workbook's own glossary says
 --   DD <- DISTRICT DD   so)              CD <- CITY DISTRI   RS <- Reseller
+--
+-- The 44 were resolved afterwards, on the owner's instruction: where a product
+-- is priced twice, the dearer row stands. That was arrived at rather than
+-- assumed — he named the undated row, which exists for only eleven of the
+-- forty-four, and in all eleven the undated row is also the dearer one and in
+-- none is it the cheaper. So the rule he gave and the rule that covers every
+-- case are the same rule, and 757 products now carry 3,531 prices.
 -- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------
