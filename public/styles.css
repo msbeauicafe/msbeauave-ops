@@ -790,21 +790,21 @@ label.inline input { width: auto; }
 
 /* ---------- the official receipt ----------
    The third sheet, and the last one in the conversation. Same letterhead,
-   same party block, same shape as the order form and the invoice — green
+   same party block, same shape as the order form and the invoice — maroon
    rather than pink or blue, which is the whole difference and is enough:
    somebody scrolling a chat can tell which of the three they are looking at
    without reading a word. */
-.doc .title.or { background: #dcefe2; color: #2f6b45; }
-.doc.or table.lines th { background: #dcefe2; color: #245034; }
-.doc .duebox.or { background: #f2faf5; border-color: #bcdcc8; }
-.doc.or .totals .grand { background: #dcefe2; }
-.doc.or .mop { border-color: #bcdcc8; }
-.doc.or .mop .hd { border-bottom-color: #bcdcc8; }
-.doc.or .mop .slot { border-bottom-color: #d8ece0; }
+.doc .title.or { background: #f0dcdf; color: #7a2233; }
+.doc.or table.lines th { background: #f0dcdf; color: #5e1a27; }
+.doc .duebox.or { background: #fcf4f5; border-color: #ddb9c0; }
+.doc.or .totals .grand { background: #f0dcdf; }
+.doc.or .mop { border-color: #ddb9c0; }
+.doc.or .mop .hd { border-bottom-color: #ddb9c0; }
+.doc.or .mop .slot { border-bottom-color: #eddade; }
 /* Nothing is owed on this sheet in the ordinary case, so the red the invoice
    uses would be shouting at somebody who has just paid. */
-.doc.or .totals .bal { background: #f2faf5; color: #2f6b45; }
+.doc.or .totals .bal { background: #fcf4f5; color: #7a2233; }
 .doc.or .thanks {
   text-align: right; margin-top: 10px; font-size: .78rem;
-  color: #2f6b45; font-weight: 600;
+  color: #7a2233; font-weight: 600;
 }
