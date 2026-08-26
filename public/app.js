@@ -1918,8 +1918,9 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
  *
  * Not an Official Receipt. That is a BIR-registered document with its own
  * rules, and calling this one that would be claiming something the company has
- * not claimed. The number keeps its OR- prefix because it comes from the till's
- * own counter and changing it would renumber receipts already issued.
+ * not claimed. Only the name changes: the number is still the OR number, from
+ * the till's own counter, and is still labelled as one — it is what the office
+ * quotes to each other and what the ledger has always called it.
  *
  * Same letterhead, same party block, same shape as the order form and the
  * invoice, in green rather than pink or blue. The colour is the whole
@@ -1977,7 +1978,7 @@ function officialReceipt({ receiptNo, issuedOn, resellerName, who = {},
     <div class="doc or">
       ${DOC_HEAD}
       <div class="title or">ACKNOWLEDGEMENT RECEIPT</div>
-      ${docParty(resellerName, issuedOn, receiptNo, who, 'RECEIPT NO.')}
+      ${docParty(resellerName, issuedOn, receiptNo, who, 'OR NO.')}
       <div class="duebox or">Amount Received (PHP)<b>${peso(amount ?? received + credited)}</b></div>
       <div style="clear:both"></div>
 
