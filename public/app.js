@@ -1913,8 +1913,13 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
 // own profile, where the bank confirmation happens, and shown the same way
 // wherever it is raised from.
 /**
- * The OFFICIAL RECEIPT: the third of the three sheets, and the last one in the
- * conversation — the reseller has paid, and this is what says so.
+ * The ACKNOWLEDGEMENT RECEIPT: the third of the three sheets, and the last one
+ * in the conversation — the reseller has paid, and this is what says so.
+ *
+ * Not an Official Receipt. That is a BIR-registered document with its own
+ * rules, and calling this one that would be claiming something the company has
+ * not claimed. The number keeps its OR- prefix because it comes from the till's
+ * own counter and changing it would renumber receipts already issued.
  *
  * Same letterhead, same party block, same shape as the order form and the
  * invoice, in green rather than pink or blue. The colour is the whole
@@ -1930,62 +1935,90 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
 function officialReceipt({ receiptNo, issuedOn, resellerName, who = {},
                            applied = [], credited = 0, stillOwed = 0,
                            method, reference, amount }) {
-  const settled = applied.reduce((t, a) => t + Number(a.applied), 0);
+  const received = applied.reduce((t, a) => t + Number(a.applied), 0);
   const discount = applied.reduce((t, a) => t + Number(a.discount || 0), 0);
-  const BLANKS = Math.max(0, 5 - applied.length);
+
+  // The table says which orders this receipt settled, one row each. It used to
+  // say it once per transfer, which put the same invoice on five rows with the
+  // same balance repeated down the side — five statements of one fact.
+  //
+  // And the sales order is the number, on its own. An invoice carries its own
+  // id in the database but no document has ever shown it: the order form says
+  // SALES ORDER NO., the invoice says SALES ORDER NO., and a receipt that
+  // introduced a second number would be the only paper in the company asking
+  // somebody to hold two.
+  const byOrder = new Map();
+  for (const a of applied) {
+    const key = String(a.order_id ?? a.invoice_id);
+    const row = byOrder.get(key) ?? { key, applied: 0, discount: 0, now_owes: 0 };
+    row.applied += Number(a.applied);
+    row.discount += Number(a.discount || 0);
+    row.now_owes = Number(a.now_owes || 0);
+    byOrder.set(key, row);
+  }
+  const orders = [...byOrder.values()];
+
+  // How it was paid, transfer by transfer — the breakdown, in the same five
+  // slots the invoice carries, because it is the same five payments seen from
+  // the other side. A receipt raised in one step has no per-transfer detail to
+  // show, so those slots fall back to what the one payment was made through.
+  const slot = (a) => `
+    <div class="slot">
+      <b>MOP${a?.method || method ? ` &nbsp;&nbsp;&nbsp; ${esc(a?.method || method)}` : ''}</b>
+      <div>Details: MS Beau Ave Enterprises OPC</div>
+      <div>Reference no.: ${esc(a?.reference_no || (a ? '' : reference) || '')}</div>
+      <div>Date: ${a ? onDay(a.paid_on || issuedOn) : ''}</div>
+      <div>Amount: ${a ? peso(a.applied) : ''}</div>
+    </div>`;
+  const slots = [...applied.slice(0, 5).map(slot),
+                 ...Array.from({ length: Math.max(0, 5 - applied.length) }, () => slot(null))];
+
   return `
     <div class="doc or">
       ${DOC_HEAD}
-      <div class="title or">OFFICIAL RECEIPT</div>
-      ${docParty(resellerName, issuedOn, receiptNo, who, 'OR NO.')}
-      <div class="duebox or">Amount Received (PHP)<b>${peso(amount ?? settled + credited)}</b></div>
+      <div class="title or">ACKNOWLEDGEMENT RECEIPT</div>
+      ${docParty(resellerName, issuedOn, receiptNo, who, 'RECEIPT NO.')}
+      <div class="duebox or">Amount Received (PHP)<b>${peso(amount ?? received + credited)}</b></div>
       <div style="clear:both"></div>
 
       <table class="lines">
         <thead><tr>
-          <th style="width:96px">SALES ORDER</th>
-          <th style="width:96px">INVOICE NO.</th>
+          <th style="width:120px">SALES ORDER NO.</th>
           <th>SETTLED AGAINST</th>
           <th style="width:88px">DISCOUNT</th>
-          <th style="width:96px">APPLIED</th>
-          <th style="width:96px">STILL OWED</th>
+          <th style="width:100px">APPLIED</th>
+          <th style="width:104px">STILL OWED</th>
         </tr></thead>
         <tbody>
-          ${applied.map((a) => `<tr>
-            <td class="c">${esc(String(a.order_id ?? ''))}</td>
-            <td class="c">${esc(String(a.invoice_id))}</td>
-            <td><b>Invoice #${esc(String(a.invoice_id))}</b></td>
-            <td class="n">${Number(a.discount) > 0 ? peso(a.discount) : ''}</td>
-            <td class="n">${peso(a.applied)}</td>
-            <td class="n">${Number(a.now_owes) > 0 ? peso(a.now_owes) : 'settled'}</td>
+          ${orders.map((o) => `<tr>
+            <td class="c">${esc(o.key)}</td>
+            <td><b>Invoice for order #${esc(o.key)}</b></td>
+            <td class="n">${o.discount > 0 ? peso(o.discount) : ''}</td>
+            <td class="n">${peso(o.applied)}</td>
+            <td class="n">${o.now_owes > 0 ? peso(o.now_owes) : 'settled'}</td>
           </tr>`).join('')}
-          ${applied.length ? '' : `<tr><td class="c"></td><td class="c"></td>
+          ${orders.length ? '' : `<tr><td class="c"></td>
             <td><b>Nothing was open to apply this to — held as credit.</b></td>
             <td></td><td></td><td></td></tr>`}
-          ${Array.from({ length: BLANKS },
-            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
+          ${Array.from({ length: Math.max(0, 3 - orders.length) },
+            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>').join('')}
         </tbody>
       </table>
 
       <div class="foot">
         <div class="mop">
-          <div class="hd">HOW IT WAS PAID</div>
-          <div class="slot">
-            <b>MOP${method ? ` &nbsp;&nbsp;&nbsp; ${esc(method)}` : ''}</b>
-            <div>Details: MS Beau Ave Enterprises OPC</div>
-            <div>Reference no.: ${esc(reference || '')}</div>
-            <div>Date: ${onDay(issuedOn)}</div>
-            <div>Amount: ${peso(amount ?? settled + credited)}</div>
-          </div>
+          <div class="hd">HOW IT WAS PAID${
+            applied.length > 1 ? ` — ${count(applied.length)} transfers` : ''}</div>
+          ${slots.join('')}
         </div>
         <div>
           <div class="totals">
-            <div><span>Applied to invoices:</span><span>${peso(settled)}</span></div>
+            <div><span>Applied to invoices:</span><span>${peso(received)}</span></div>
             ${discount > 0
               ? `<div><span>Early-settlement discount:</span><span>${peso(discount)}</span></div>` : ''}
             <div><span>Held as credit:</span><span>${peso(credited)}</span></div>
             <div class="grand"><span>Total Received:</span><span>${
-              peso(amount ?? settled + credited)}</span></div>
+              peso(amount ?? received + credited)}</span></div>
             <div class="bal"><span>Still owed on the account:</span><span>${peso(stillOwed)}</span></div>
           </div>
           <div class="thanks">Salamat po! 🌸</div>
