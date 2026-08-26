@@ -7,3 +7,10 @@ node_modules/
 .env
 .env.*
 .vercel
+
+# Output from the document render harness — screenshots and the page they
+# come from, written into the repo root by a script run from here.
+/docs.html
+/cof.png
+/inv.png
+/pack.png
