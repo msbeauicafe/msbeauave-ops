@@ -1921,7 +1921,7 @@ SCREENS.chatorders = async (page) => {
       <span class="hint">For an order that came in over Messenger — place it,
         then confirm the bank payment and issue the OR</span></div>
     <div class="tools">
-      <input type="search" id="rs_find" placeholder="Find the reseller by name or email…" autofocus>
+      <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus>
     </div>
     <div id="rs_hits"></div>
     <div id="working"></div>`;
@@ -1930,15 +1930,29 @@ SCREENS.chatorders = async (page) => {
   const hitsBox = $('#rs_hits', page);
   const workingBox = $('#working', page);
 
+  // Two letters off the name, so a card without a picture is still a card
+  // somebody recognises at a glance rather than a row of identical squares.
+  const initials = (name) => (name || '?')
+    .split(/\s+/).filter(Boolean).slice(0, 2)
+    .map((w) => w[0]).join('').toUpperCase();
+
+  // Everybody, all the time, laid out the way the faces are on the time clock.
+  // Typing filters what is already on screen instead of summoning a list:
+  // whoever is taking the order is looking at a chat window, and reading a
+  // name off it and finding that name is one action, not two.
   const drawHits = () => {
     const term = findBox.value.trim().toLowerCase();
-    if (!term) { hitsBox.innerHTML = ''; return; }
-    const hits = resellers.filter((r) => r.name.toLowerCase().includes(term)
-      || (r.email || '').toLowerCase().includes(term)).slice(0, 8);
-    hitsBox.innerHTML = hits.length ? `<div class="panel">${hits.map((r) => `
-      <button class="btn sm quiet" data-pick="${r.id}">${esc(r.name)}
-        ${Number(r.owed) > 0 ? tag(`owes ${peso(r.owed)}`, r.overdue ? 'red' : 'amber') : ''}
-        ${r.blocked ? tag('cannot order', 'red') : ''}</button>`).join(' ')}</div>`
+    const shown = resellers.filter((r) => !term
+      || r.name.toLowerCase().includes(term)
+      || (r.email || '').toLowerCase().includes(term));
+    hitsBox.innerHTML = shown.length ? `<div class="face-grid">${shown.map((r) => `
+      <button class="face-card ${r.blocked ? 'stopped' : ''}" data-pick="${r.id}"
+        ${r.blocked ? 'disabled' : ''} title="${esc(r.name)}">
+        <span class="face">${esc(initials(r.name))}</span>
+        <b>${esc(r.name)}</b>
+        <span class="under">${r.blocked ? 'cannot order'
+          : Number(r.owed) > 0 ? `owes ${peso(r.owed)}` : 'clear'}</span>
+      </button>`).join('')}</div>`
       : '<div class="dim">Nobody matches that.</div>';
     // r.id comes back from the API as a string — a bigint column arrives as
     // text, node-pg's own precaution against losing precision above 2^53 —
@@ -1953,6 +1967,14 @@ SCREENS.chatorders = async (page) => {
     findBox.value = '';
     hitsBox.innerHTML = '';
     drawWorking();
+  };
+
+  const backToPicker = () => {
+    picked = null;
+    basket.clear();
+    workingBox.innerHTML = '';
+    drawHits();
+    findBox.focus();
   };
 
   const drawWorking = () => {
@@ -2009,11 +2031,7 @@ SCREENS.chatorders = async (page) => {
         </div>
       </div>`;
 
-    $('#rs_change', workingBox).addEventListener('click', () => {
-      picked = null;
-      drawWorking();
-      findBox.focus();
-    });
+    $('#rs_change', workingBox).addEventListener('click', backToPicker);
 
     if (!catalog) {
       GET('/api/wholesale/catalog').then((rows) => { catalog = rows; drawGoods(); }).catch(whoops);
@@ -2062,15 +2080,14 @@ SCREENS.chatorders = async (page) => {
         <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${peso(l.price)}
           each${l.unit ? ' · ' + esc(l.unit) : ''}${
             l.code ? ' · ' + esc(l.code) : ' · no PCODE'}</span></span>
-        <select data-code="${esc(l.sku)}" title="PCODE — the price this line is given">
-          <option value="">PCODE…</option>
-          ${(codes || []).map((c) => {
-            const has = (l.prices || {})[c.code] != null;
-            return `<option value="${esc(c.code)}" ${has ? '' : 'disabled'}
-              ${c.code === l.code ? 'selected' : ''}>${esc(c.code)}${
-                has ? '' : ' — no price for this one'}</option>`;
-          }).join('')}
-        </select>
+        <span class="codes">
+          ${(codes || []).filter((c) => (l.prices || {})[c.code] != null)
+            .map((c) => `<button class="code ${c.code === l.code ? 'on' : ''}"
+              data-code="${esc(l.sku)}" data-value="${esc(c.code)}"
+              title="${esc(c.code)} — ${peso(l.prices[c.code])}">${esc(c.code)}</button>`)
+            .join('')
+            || '<span class="dim" style="font-size:.72rem">no PCODE priced for this one</span>'}
+        </span>
         <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
         <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
       </div>`).join('') : '<div class="none">Nothing added yet.</div>';
@@ -2084,10 +2101,12 @@ SCREENS.chatorders = async (page) => {
       basket.delete(b.dataset.drop);
       drawBasket();
     }));
-    $$('[data-code]', box).forEach((sel) => sel.addEventListener('change', () => {
-      const line = basket.get(sel.dataset.code);
-      line.code = sel.value;
-      const priced = (line.prices || {})[sel.value];
+    // Tapping the code already on is how it comes off again, so a line can go
+    // back to the listed price without a blank entry in a list to mean it.
+    $$('[data-code]', box).forEach((b) => b.addEventListener('click', () => {
+      const line = basket.get(b.dataset.code);
+      line.code = line.code === b.dataset.value ? '' : b.dataset.value;
+      const priced = (line.prices || {})[line.code];
       line.price = priced != null ? Number(priced) : Number(line.listed ?? line.price);
       drawBasket();
     }));
@@ -2171,7 +2190,11 @@ Salamat po! 🌸</div>
   }
 
   findBox.addEventListener('input', drawHits);
-  resellers = await GET('/api/resellers');
+  resellers = (await GET('/api/resellers'))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  // Drawn once the accounts are in hand: the grid is the screen now, not
+  // something a search produces.
+  drawHits();
 };
 
 // ===========================================================================

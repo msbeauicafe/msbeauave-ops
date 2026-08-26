@@ -640,3 +640,62 @@ label.inline input { width: auto; }
 .doc .sign1 { text-align: center; margin-top: 12px; font-size: .68rem; }
 .doc .sign1 .nm { font-weight: 700; }
 .doc .sign1 .cap { font-weight: 700; margin-top: 3px; }
+
+/* ---------- picking a reseller the way you pick a face on the clock ----------
+   The person taking the order is reading a name off a chat window. Typing it
+   into a box to summon a list is two actions where there should be one, so
+   every account is on screen from the start and typing only narrows what is
+   already there.
+
+   The face is 3:4 at an inch wide — the shape of the ID photo everybody in
+   this company already knows, and big enough to hit with a thumb. Resellers
+   have no photograph, so it carries their initials instead: two letters is
+   enough to tell one card from the next at a glance, which a row of identical
+   squares is not. */
+.face-grid {
+  display: grid; gap: 12px; margin-top: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+}
+.face-card {
+  background: #fff; border: 1px solid var(--rose-soft); border-radius: 14px;
+  padding: 12px 8px 10px; cursor: pointer; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  font: inherit; color: var(--ink);
+}
+.face-card:hover { border-color: var(--rose-dust); background: var(--rose-blush); }
+.face-card .face {
+  width: 96px; height: 128px;          /* one inch, 3:4 */
+  border-radius: 10px; background: var(--rose-blush); color: var(--rose-deep);
+  display: grid; place-items: center;
+  font-size: 2.1rem; font-weight: 600; letter-spacing: .04em;
+}
+.face-card b { font-size: .84rem; line-height: 1.25; }
+.face-card .under { font-size: .72rem; color: var(--muted); }
+.face-card.stopped { opacity: .5; cursor: not-allowed; }
+.face-card.stopped .face { background: #f3dddd; color: var(--danger); }
+.face-card.stopped .under { color: var(--danger); }
+
+/* The price a line is given, tapped rather than chosen out of a list — the
+   figure it decides is the one being read into the chat, and a list that has
+   to be opened first hides it. */
+.codes { display: flex; flex-wrap: wrap; gap: 4px; }
+.codes .code {
+  font: inherit; font-size: .7rem; line-height: 1; cursor: pointer;
+  padding: 5px 8px; border-radius: 999px;
+  border: 1px solid var(--rose-soft); background: #fff; color: var(--muted);
+}
+.codes .code:hover { border-color: var(--rose-dust); color: var(--ink); }
+.codes .code.on {
+  background: var(--rose-deep); border-color: var(--rose-deep);
+  color: #fff; font-weight: 600;
+}
+
+/* A basket line is now two rows in a narrow column: what and how many on the
+   first, the prices it can be given on the second. The codes are ordered last
+   rather than written last, so the quantity and the remove button stay beside
+   the name where the hand expects them. */
+.pick { flex-wrap: wrap; }
+.pick .nm { flex: 1 1 120px; order: 1; }
+.pick input { order: 2; }
+.pick .btn.stop { order: 3; }
+.pick .codes { order: 4; flex: 1 1 100%; margin-top: 2px; }
