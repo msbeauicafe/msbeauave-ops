@@ -787,3 +787,24 @@ label.inline input { width: auto; }
 .dotkey span { display: inline-flex; align-items: center; gap: 6px; }
 .dotkey .blip { width: 8px; height: 8px; }
 @media (max-width: 700px) { .dotkey { justify-content: flex-start; } }
+
+/* ---------- the official receipt ----------
+   The third sheet, and the last one in the conversation. Same letterhead,
+   same party block, same shape as the order form and the invoice — green
+   rather than pink or blue, which is the whole difference and is enough:
+   somebody scrolling a chat can tell which of the three they are looking at
+   without reading a word. */
+.doc .title.or { background: #dcefe2; color: #2f6b45; }
+.doc.or table.lines th { background: #dcefe2; color: #245034; }
+.doc .duebox.or { background: #f2faf5; border-color: #bcdcc8; }
+.doc.or .totals .grand { background: #dcefe2; }
+.doc.or .mop { border-color: #bcdcc8; }
+.doc.or .mop .hd { border-bottom-color: #bcdcc8; }
+.doc.or .mop .slot { border-bottom-color: #d8ece0; }
+/* Nothing is owed on this sheet in the ordinary case, so the red the invoice
+   uses would be shouting at somebody who has just paid. */
+.doc.or .totals .bal { background: #f2faf5; color: #2f6b45; }
+.doc.or .thanks {
+  text-align: right; margin-top: 10px; font-size: .78rem;
+  color: #2f6b45; font-weight: 600;
+}

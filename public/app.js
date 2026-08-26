@@ -1679,7 +1679,7 @@ const TAX_LINES = [
   ['Business Address', 'business_address'],
 ];
 
-const docParty = (name, dateOn, orderNo, who = {}) => `
+const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO.') => `
   <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:6px;line-height:1.3">
     <div>
       <div style="font-weight:700;font-size:1.02rem">${esc(name || 'counter sale')}</div>
@@ -1689,7 +1689,7 @@ const docParty = (name, dateOn, orderNo, who = {}) => `
     </div>
     <div style="white-space:nowrap;font-size:.7rem">
       <div><b>DATE:</b> ${onDay(dateOn)}</div>
-      <div><b>SALES ORDER NO.:</b> ${esc(String(orderNo))}</div>
+      <div><b>${numberLabel}</b> ${esc(String(orderNo))}</div>
     </div>
   </div>`;
 
@@ -1912,29 +1912,114 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
 // An official receipt, as the till prints it. Raised from the reseller's
 // own profile, where the bank confirmation happens, and shown the same way
 // wherever it is raised from.
-function showOR(r, reseller) {
-  const applied = r.applied || [];
-  const lines = applied.map((a) => `Invoice #${a.invoice_id}${' '.repeat(2)}${peso(a.applied)}`).join('\n');
-  const received = applied.reduce((s, a) => s + a.applied, 0) + (r.credited || 0);
-  dialog(`
-    <h3>Receipt ${esc(r.receipt_no)}</h3>
-    <div class="receipt">${'MS BEAU AVE'.padStart(21)}
-${esc(r.receipt_no)} · ${when(new Date())}
-${esc(reseller.name)}
---------------------------------
-${lines || 'Held as credit — nothing was open to apply it to.'}
---------------------------------
-RECEIVED${' '.repeat(4)}${peso(received)}
-${r.credited > 0 ? `CREDIT LEFT${' '.repeat(1)}${peso(r.credited)}\n` : ''}STILL OWED${' '.repeat(2)}${peso(r.still_owed)}
---------------------------------
-Salamat po! 🌸</div>
+/**
+ * The OFFICIAL RECEIPT: the third of the three sheets, and the last one in the
+ * conversation — the reseller has paid, and this is what says so.
+ *
+ * Same letterhead, same party block, same shape as the order form and the
+ * invoice, in green rather than pink or blue. The colour is the whole
+ * difference, and it is enough: somebody scrolling a chat can tell which of
+ * the three they are looking at without reading a word of it.
+ *
+ * What the table lists is not products. A payment is not made against goods,
+ * it is made against invoices — oldest first — so the lines are the invoices
+ * it settled, what each one took, and what each one has left. The rest of the
+ * money, if there is any, is theirs: held as credit and shown as held rather
+ * than quietly kept.
+ */
+function officialReceipt({ receiptNo, issuedOn, resellerName, who = {},
+                           applied = [], credited = 0, stillOwed = 0,
+                           method, reference, amount }) {
+  const settled = applied.reduce((t, a) => t + Number(a.applied), 0);
+  const discount = applied.reduce((t, a) => t + Number(a.discount || 0), 0);
+  const BLANKS = Math.max(0, 5 - applied.length);
+  return `
+    <div class="doc or">
+      ${DOC_HEAD}
+      <div class="title or">OFFICIAL RECEIPT</div>
+      ${docParty(resellerName, issuedOn, receiptNo, who, 'OR NO.')}
+      <div class="duebox or">Amount Received (PHP)<b>${peso(amount ?? settled + credited)}</b></div>
+      <div style="clear:both"></div>
+
+      <table class="lines">
+        <thead><tr>
+          <th style="width:96px">SALES ORDER</th>
+          <th style="width:96px">INVOICE NO.</th>
+          <th>SETTLED AGAINST</th>
+          <th style="width:88px">DISCOUNT</th>
+          <th style="width:96px">APPLIED</th>
+          <th style="width:96px">STILL OWED</th>
+        </tr></thead>
+        <tbody>
+          ${applied.map((a) => `<tr>
+            <td class="c">${esc(String(a.order_id ?? ''))}</td>
+            <td class="c">${esc(String(a.invoice_id))}</td>
+            <td><b>Invoice #${esc(String(a.invoice_id))}</b></td>
+            <td class="n">${Number(a.discount) > 0 ? peso(a.discount) : ''}</td>
+            <td class="n">${peso(a.applied)}</td>
+            <td class="n">${Number(a.now_owes) > 0 ? peso(a.now_owes) : 'settled'}</td>
+          </tr>`).join('')}
+          ${applied.length ? '' : `<tr><td class="c"></td><td class="c"></td>
+            <td><b>Nothing was open to apply this to — held as credit.</b></td>
+            <td></td><td></td><td></td></tr>`}
+          ${Array.from({ length: BLANKS },
+            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
+        </tbody>
+      </table>
+
+      <div class="foot">
+        <div class="mop">
+          <div class="hd">HOW IT WAS PAID</div>
+          <div class="slot">
+            <b>MOP${method ? ` &nbsp;&nbsp;&nbsp; ${esc(method)}` : ''}</b>
+            <div>Details: MS Beau Ave Enterprises OPC</div>
+            <div>Reference no.: ${esc(reference || '')}</div>
+            <div>Date: ${onDay(issuedOn)}</div>
+            <div>Amount: ${peso(amount ?? settled + credited)}</div>
+          </div>
+        </div>
+        <div>
+          <div class="totals">
+            <div><span>Applied to invoices:</span><span>${peso(settled)}</span></div>
+            ${discount > 0
+              ? `<div><span>Early-settlement discount:</span><span>${peso(discount)}</span></div>` : ''}
+            <div><span>Held as credit:</span><span>${peso(credited)}</span></div>
+            <div class="grand"><span>Total Received:</span><span>${
+              peso(amount ?? settled + credited)}</span></div>
+            <div class="bal"><span>Still owed on the account:</span><span>${peso(stillOwed)}</span></div>
+          </div>
+          <div class="thanks">Salamat po! 🌸</div>
+        </div>
+      </div>
+
+      <div class="sign1">
+        <div class="nm">${esc(user?.name || user?.username || '')}</div>
+        <div>Order Management Coordinator</div>
+        <div class="cap">RECEIVED BY:</div>
+      </div>
+    </div>`;
+}
+
+function showOR(r, reseller, paid = {}) {
+  dialog(`${officialReceipt({
+    receiptNo: r.receipt_no,
+    issuedOn: paid.paid_on || new Date(),
+    resellerName: reseller?.name,
+    who: reseller || {},
+    applied: r.applied || [],
+    credited: Number(r.credited || 0),
+    stillOwed: Number(r.still_owed || 0),
+    method: paid.method,
+    reference: paid.reference_no,
+    amount: paid.amount,
+  })}
     <div class="mt right">
       <button class="btn quiet" id="or_save">⬇ Download JPEG</button>
-      <button class="btn" id="or_done">Done</button></div>`);
-  // The OR goes back into the same chat the payment was confirmed in, so it
-  // is named after itself rather than the order it settles — one payment
-  // can cover several.
-  wireSave('#or_save', '.receipt', `${r.receipt_no}.jpg`);
+      <button class="btn" id="or_done">Done</button></div>`, 'wide');
+  // The OR goes back into the same chat the payment was confirmed in, so it is
+  // named after itself rather than the order it settles — one payment can
+  // cover several.
+  wireSave('#or_save', '.doc', `${r.receipt_no}.jpg`);
   $('#or_done').addEventListener('click', closeDialog);
 }
 
@@ -2576,7 +2661,12 @@ async function openReseller(id, reload) {
       // The OR takes over the dialog, so the list behind it is refreshed now
       // rather than when it is dismissed — what the account owes has changed.
       reload();
-      showOR(out, r);
+      showOR(out, r, {
+        amount,
+        paid_on: $('#acct_on').value,
+        method: $('#acct_mop').value.trim(),
+        reference_no: $('#acct_ref').value.trim(),
+      });
     } catch (e) {
       whoops(e);
       $('#acct_pay').disabled = false;
