@@ -483,6 +483,11 @@ function drawFrame() {
             <span aria-hidden="true">${icon}</span> ${esc(label)}</button>`).join('')}
       </nav>
       <div class="pagearea">
+        ${tab === 'resellers' ? `
+          <div class="dotkey">
+            <span><i class="blip"></i>owes money, not yet past due</span>
+            <span><i class="blip late"></i>past due</span>
+          </div>` : ''}
         ${user.role === 'observer' ? `
           <div class="viewonly-note">👀 <b>View only.</b> You can see everything on
             these screens and change none of it. Pay and the company's money are
@@ -2246,7 +2251,9 @@ SCREENS.resellers = async (page) => {
 
   page.innerHTML = `
     <div class="head"><h2>Resellers</h2>
-      <span class="hint">Tier 1 pays first · Tier 2 gets terms · Tier 3 gets the best terms</span></div>
+      <span class="hint">Whoever was invoiced most recently is at the top, and
+        stays there until they pay · Tier 1 pays first · Tier 2 gets terms ·
+        Tier 3 gets the best terms</span></div>
     <div class="tools">
       <input type="search" id="find" placeholder="Search name or email…">
       <button class="btn" id="add">＋ New reseller</button>
