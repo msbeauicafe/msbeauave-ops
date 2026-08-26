@@ -649,11 +649,11 @@ label.inline input { width: auto; }
 
    The card is an inch by an inch and a third — a fixed size, not a share of
    the row, because two hundred and forty of them want to be the same card
-   however wide the window is. At that size the picture cannot sit above the
-   name with room to spare, so it IS the card, and the name rides a strip
-   across the bottom of it. An account with no picture shows its initials in
-   the same frame: two letters tell one card from the next at a glance, which
-   a grid of identical squares does not. */
+   however wide the window is. The picture inside it is round, the way every
+   face in this company is shown: the same shape on the clock, on the team
+   board and here, so a reseller reads as somebody the company knows rather
+   than as a record. An account with no picture shows its initials in the same
+   circle. */
 .face-grid {
   display: grid; gap: 10px; margin-top: 4px;
   grid-template-columns: repeat(auto-fill, 96px);
@@ -661,26 +661,20 @@ label.inline input { width: auto; }
 }
 .face-card {
   width: 96px; height: 128px;          /* 1in x 1.33in */
-  padding: 0; border: 1px solid var(--rose-soft); border-radius: 12px;
-  overflow: hidden; position: relative; cursor: pointer;
-  background: var(--rose-blush); font: inherit; color: var(--ink);
-  display: block; text-align: center;
+  padding: 8px 5px 6px; border: 1px solid var(--rose-soft); border-radius: 12px;
+  cursor: pointer; background: #fff; font: inherit; color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  text-align: center; overflow: hidden;
 }
-.face-card:hover { border-color: var(--rose-deep); }
+.face-card:hover { border-color: var(--rose-deep); background: var(--rose-blush); }
 .face-card .face,
 .face-card img.face {
-  position: absolute; inset: 0; width: 100%; height: 100%;
+  flex: 0 0 auto; width: 62px; height: 62px; border-radius: 50%;
   object-fit: cover; background: var(--rose-blush); color: var(--rose-deep);
   display: grid; place-items: center;
-  font-size: 1.9rem; font-weight: 600; letter-spacing: .04em;
+  font-size: 1.35rem; font-weight: 600; letter-spacing: .03em;
 }
-/* Over the picture rather than under it, because the picture is the card.
-   Opaque enough to read a name against a dark photograph. */
-.face-card .strip {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  background: rgba(255, 255, 255, .92); padding: 3px 4px 4px;
-  border-top: 1px solid var(--rose-soft);
-}
+.face-card .strip { display: block; min-width: 0; }
 .face-card .strip b {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; font-size: .58rem; line-height: 1.15; letter-spacing: .01em;
@@ -716,10 +710,10 @@ label.inline input { width: auto; }
 .pick .btn.stop { order: 3; }
 .pick .codes { order: 4; flex: 1 1 100%; margin-top: 2px; }
 
-/* The same square frame on the profile, so what is being set is plainly the
+/* The same round frame on the profile, so what is being set is plainly the
    thing that will appear on the card. */
 .row .face, .row img.face {
-  width: 72px; height: 72px; border-radius: 10px; object-fit: cover;
+  width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
   background: var(--rose-blush); color: var(--rose-deep);
   display: grid; place-items: center; font-size: 1.5rem; font-weight: 600;
 }
