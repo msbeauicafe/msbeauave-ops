@@ -2057,9 +2057,12 @@ SCREENS.chatorders = async (page) => {
     const term = ($('#ch_find', workingBox)?.value || '').trim().toLowerCase();
     const rows = (catalog || []).filter((p) => !term
       || p.name.toLowerCase().includes(term) || (p.brand || '').toLowerCase().includes(term));
-    const count = $('#ch_count', workingBox);
-    if (count) {
-      count.textContent = term
+    // Named for what it is rather than what it holds: `count` is the shared
+    // formatter three lines below, and taking that name here left the table
+    // calling a div.
+    const tally = $('#ch_count', workingBox);
+    if (tally) {
+      tally.textContent = term
         ? `${rows.length} of ${(catalog || []).length} products match “${term}”`
         : `All ${rows.length} products — type to narrow it down`;
     }

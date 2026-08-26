@@ -43,6 +43,9 @@ cd "$ROOT"
 
 # The tests that need nothing but the code go first: they are instant, and a
 # failure there is worth seeing before waiting on a database.
+echo "==> the screen's shared formatters keep their names"
+node --test tests/no-shadowing.test.js
+
 echo "==> matching photographs to names"
 node --test tests/photo-names.test.js
 
