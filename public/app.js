@@ -2218,8 +2218,15 @@ SCREENS.resellers = async (page) => {
       || r.name.toLowerCase().includes(term)
       || (r.email || '').toLowerCase().includes(term));
     $('#list', page).innerHTML = table(rows, [
-      { head: 'Reseller', cell: (r) => `<b>${esc(r.name)}</b>`
-          + (r.email ? `<br><span class="dim">${esc(r.email)}</span>` : '') },
+      // The name is the way in. A row with a button at the far end asks you to
+      // cross it to act on the thing you are already pointing at.
+      { head: 'Reseller', cell: (r) => `
+          <button class="nameopen" data-open="${r.id}">
+            ${Number(r.owed) > 0
+              ? `<span class="blip ${r.overdue ? 'late' : ''}" title="${
+                  r.overdue ? 'has a past-due invoice' : 'has an invoice waiting to be paid'
+                }"></span>` : ''}<b>${esc(r.name)}</b>
+          </button>${r.email ? `<div class="dim">${esc(r.email)}</div>` : ''}` },
       { head: 'Tier', cell: (r) => tierTag(r.tier) },
       { head: 'Standing', cell: (r) => (r.blocked || r.overdue
           ? tag('cannot order', 'red')
@@ -2231,7 +2238,6 @@ SCREENS.resellers = async (page) => {
           r.late_this_quarter > 0
             ? `<span class="tag red">${r.late_this_quarter} late this quarter</span>`
             : 'none late this quarter'}</span>` },
-      { head: '', cell: (r) => `<button class="btn sm quiet" data-open="${r.id}">Open</button>` },
     ], 'No reseller accounts yet.');
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
