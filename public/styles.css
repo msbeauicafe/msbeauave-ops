@@ -175,6 +175,10 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
 .panel { padding: 18px; margin-bottom: 16px; }
 .panel > h2, .panel > h3 { margin-bottom: 12px; }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+/* A grid track is min-content wide by default, so anything inside that is
+   wider than its share drags the column out with it — which a document
+   laid out at page width and then scaled down would do. */
+.split > * { min-width: 0; }
 @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
 
 /* ---------- tables ---------- */
@@ -721,3 +725,14 @@ label.inline input { width: auto; }
   display: grid; place-items: center; font-size: 1.5rem; font-weight: 600;
 }
 .face-card img.face { object-fit: cover; }
+
+/* The order form, live, beside the basket that is filling it.
+   Laid out at the width the page is and then scaled down to the panel, so it
+   is a true miniature of the document rather than the same markup squeezed
+   into half the room and wrapping somewhere else. A scaled element still
+   claims its unscaled height, which the script corrects. */
+.preview {
+  overflow: hidden; background: #fff; border: 1px solid var(--rose-soft);
+  border-radius: 10px;
+}
+.preview .doc { padding: 14px; }

@@ -1718,10 +1718,10 @@ const docLines = (lines, blanks = 5) => `
  * The CUSTOMER ORDER FORM: what a reseller is sent to agree to, before money.
  * Prices, the totals, where to pay, and the two reminders the paper carries.
  */
-function showInvoice({ orderId, issuedOn, amount, resellerName, lines,
-                       who = {}, shipping = 0, others = 0 }) {
+function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
+                            who = {}, shipping = 0, others = 0 }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
-  dialog(`
+  return `
     <div class="doc cof">
       ${DOC_HEAD}
       <div class="title cof">CUSTOMER ORDER FORM</div>
@@ -1748,11 +1748,16 @@ function showInvoice({ orderId, issuedOn, amount, resellerName, lines,
         <div>Order Management Coordinator</div>
         <div class="cap">PREPARED BY:</div>
       </div>
-    </div>
+    </div>`;
+}
+
+// The same sheet, opened over the screen with the buttons that send it.
+function showInvoice(opts) {
+  dialog(`${customerOrderForm(opts)}
     <div class="mt right">
       <button class="btn quiet" id="inv_save">⬇ Download JPEG</button>
       <button class="btn" id="inv_done">Done</button></div>`, 'wide');
-  wireSave('#inv_save', '.doc', `${orderId}.jpg`);
+  wireSave('#inv_save', '.doc', `${opts.orderId}.jpg`);
   $('#inv_done').addEventListener('click', closeDialog);
 }
 
@@ -1904,6 +1909,35 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
   $('#pk_done').addEventListener('click', closeDialog);
 }
 
+// An official receipt, as the till prints it. Raised from the reseller's
+// own profile, where the bank confirmation happens, and shown the same way
+// wherever it is raised from.
+function showOR(r, reseller) {
+  const applied = r.applied || [];
+  const lines = applied.map((a) => `Invoice #${a.invoice_id}${' '.repeat(2)}${peso(a.applied)}`).join('\n');
+  const received = applied.reduce((s, a) => s + a.applied, 0) + (r.credited || 0);
+  dialog(`
+    <h3>Receipt ${esc(r.receipt_no)}</h3>
+    <div class="receipt">${'MS BEAU AVE'.padStart(21)}
+${esc(r.receipt_no)} · ${when(new Date())}
+${esc(reseller.name)}
+--------------------------------
+${lines || 'Held as credit — nothing was open to apply it to.'}
+--------------------------------
+RECEIVED${' '.repeat(4)}${peso(received)}
+${r.credited > 0 ? `CREDIT LEFT${' '.repeat(1)}${peso(r.credited)}\n` : ''}STILL OWED${' '.repeat(2)}${peso(r.still_owed)}
+--------------------------------
+Salamat po! 🌸</div>
+    <div class="mt right">
+      <button class="btn quiet" id="or_save">⬇ Download JPEG</button>
+      <button class="btn" id="or_done">Done</button></div>`);
+  // The OR goes back into the same chat the payment was confirmed in, so it
+  // is named after itself rather than the order it settles — one payment
+  // can cover several.
+  wireSave('#or_save', '.receipt', `${r.receipt_no}.jpg`);
+  $('#or_done').addEventListener('click', closeDialog);
+}
+
 // ===========================================================================
 // Chat orders — the FB-Messenger flow: a reseller orders in chat, gets an
 // invoice back in chat, pays the bank, and gets an OR once that is confirmed.
@@ -1991,8 +2025,9 @@ SCREENS.chatorders = async (page) => {
         <button class="btn sm quiet" id="rs_change">Change reseller</button>
       </div>
       ${picked.blocked ? `<div class="banner bad">This account cannot order right now:
-        ${esc(picked.blocked_reason || 'a past-due invoice')}. Confirming a payment below
-        lifts this by itself once nothing is overdue.</div>` : ''}
+        ${esc(picked.blocked_reason || 'a past-due invoice')}. Confirm their bank
+        payment on their own page, under Invoice — that lifts this by itself once
+        nothing is overdue.</div>` : ''}
       <div class="split">
         <div class="panel">
           <h3>1 · What they ordered</h3>
@@ -2006,33 +2041,11 @@ SCREENS.chatorders = async (page) => {
           <div id="ch_order_out" class="mt"></div>
         </div>
         <div class="panel">
-          <h3>2 · Confirm the bank payment</h3>
-          <div class="dim">Settles whatever is open, oldest invoice first, and
-            stamps an OR the moment it does.</div>
-          <div class="row mt">
-            <div><label>Amount received</label>
-              <input id="ch_amt" type="number" step="0.01" min="0.01"></div>
-            <div><label>Received on</label>
-              <input id="ch_on" type="date" value="${localDay()}"></div>
-          </div>
-          <div class="row">
-            <div><label for="ch_mop">Through (MOP)</label>
-              <input id="ch_mop" type="text" list="ch_banks" placeholder="BANCO DE ORO (BDO)">
-              <datalist id="ch_banks">
-                <option value="BANCO DE ORO (BDO)"></option>
-                <option value="BPI"></option>
-                <option value="SECURITY BANK"></option>
-                <option value="GCASH"></option>
-              </datalist></div>
-            <div><label for="ch_ref">Reference no.</label>
-              <input id="ch_ref" type="text" placeholder="the bank's own reference"></div>
-            <div style="flex:0 0 auto">
-              <button class="btn go" id="ch_pay">Confirm &amp; issue OR</button></div>
-          </div>
-          <div class="dim">The reference is the bank's, off their proof of payment —
-            it is what they quote to say the money left, and what the statement is
-            matched against later. It prints on the invoice.</div>
-          <div id="ch_pay_out" class="mt"></div>
+          <h3>2 · What they will be sent</h3>
+          <div class="dim">The customer order form itself, filled in as you add
+            to the basket — so what goes into the chat is read here first,
+            rather than after it has been raised.</div>
+          <div id="ch_preview" class="preview mt"></div>
         </div>
       </div>`;
 
@@ -2048,7 +2061,6 @@ SCREENS.chatorders = async (page) => {
 
     $('#ch_find', workingBox).addEventListener('input', drawGoods);
     $('#ch_place', workingBox).addEventListener('click', placeOrder);
-    $('#ch_pay', workingBox).addEventListener('click', confirmPayment);
     drawBasket();
   };
 
@@ -2115,8 +2127,10 @@ SCREENS.chatorders = async (page) => {
       basket.delete(b.dataset.drop);
       drawBasket();
     }));
+    drawPreview();
     // Tapping the code already on is how it comes off again, so a line can go
     // back to the listed price without a blank entry in a list to mean it.
+    drawPreview();
     $$('[data-code]', box).forEach((b) => b.addEventListener('click', () => {
       const line = basket.get(b.dataset.code);
       line.code = line.code === b.dataset.value ? '' : b.dataset.value;
@@ -2126,6 +2140,36 @@ SCREENS.chatorders = async (page) => {
     }));
   };
 
+  // Its own number until it has one: an order form on screen has not been
+  // placed, and putting a plausible number on it invites somebody to quote it.
+  let placedAs = null;
+
+  const drawPreview = () => {
+    const box = $('#ch_preview', workingBox);
+    if (!box || !picked) return;
+    const lines = [...basket.values()];
+    box.innerHTML = customerOrderForm({
+      orderId: placedAs ?? '—',
+      issuedOn: new Date(),
+      amount: lines.reduce((t, l) => t + l.price * l.qty, 0),
+      resellerName: picked.name,
+      lines,
+      who: picked,
+    });
+    const doc = box.firstElementChild;
+    if (!doc) return;
+    // Measured before the document is widened, or the widening is what gets
+    // measured.
+    const room = box.clientWidth || 900;
+    doc.style.width = '900px';
+    doc.style.transformOrigin = 'top left';
+    const scale = Math.min(1, room / 900);
+    doc.style.transform = `scale(${scale})`;
+    // A scaled element still claims its unscaled height, which would leave a
+    // page's worth of blank underneath it.
+    box.style.height = `${doc.scrollHeight * scale}px`;
+  };
+
   async function placeOrder() {
     if (!basket.size) return notice('Add what they ordered first.', 'bad');
     const lines = [...basket.values()];
@@ -2133,6 +2177,7 @@ SCREENS.chatorders = async (page) => {
     try {
       const out = await POST(`/api/resellers/${picked.id}/orders`,
         { lines: lines.map((l) => ({ sku: l.sku, qty: l.qty, code: l.code || null })) });
+      placedAs = out.orderId;
       basket.clear();
       drawBasket();
       $('#ch_order_out', workingBox).innerHTML =
@@ -2152,55 +2197,6 @@ SCREENS.chatorders = async (page) => {
     } catch (e) { whoops(e); } finally {
       $('#ch_place', workingBox).disabled = false;
     }
-  }
-
-  async function confirmPayment() {
-    const amount = +$('#ch_amt', workingBox).value;
-    if (!(amount > 0)) return notice('Type how much came in.', 'bad');
-    $('#ch_pay', workingBox).disabled = true;
-    try {
-      const out = await POST(`/api/resellers/${picked.id}/receipt`, {
-        amount,
-        paid_on: $('#ch_on', workingBox).value,
-        method: $('#ch_mop', workingBox).value.trim() || null,
-        details: 'MS Beau Ave Enterprises OPC',
-        reference_no: $('#ch_ref', workingBox).value.trim() || null,
-      });
-      showOR(out, picked);
-      $('#ch_amt', workingBox).value = '';
-      $('#ch_ref', workingBox).value = '';
-      resellers = await GET('/api/resellers');
-      const fresh = resellers.find((r) => r.id === picked.id);
-      if (fresh) { picked = fresh; drawWorking(); }
-    } catch (e) { whoops(e); } finally {
-      $('#ch_pay', workingBox).disabled = false;
-    }
-  }
-
-  function showOR(r, reseller) {
-    const applied = r.applied || [];
-    const lines = applied.map((a) => `Invoice #${a.invoice_id}${' '.repeat(2)}${peso(a.applied)}`).join('\n');
-    const received = applied.reduce((s, a) => s + a.applied, 0) + (r.credited || 0);
-    dialog(`
-      <h3>Receipt ${esc(r.receipt_no)}</h3>
-      <div class="receipt">${'MS BEAU AVE'.padStart(21)}
-${esc(r.receipt_no)} · ${when(new Date())}
-${esc(reseller.name)}
---------------------------------
-${lines || 'Held as credit — nothing was open to apply it to.'}
---------------------------------
-RECEIVED${' '.repeat(4)}${peso(received)}
-${r.credited > 0 ? `CREDIT LEFT${' '.repeat(1)}${peso(r.credited)}\n` : ''}STILL OWED${' '.repeat(2)}${peso(r.still_owed)}
---------------------------------
-Salamat po! 🌸</div>
-      <div class="mt right">
-        <button class="btn quiet" id="or_save">⬇ Download JPEG</button>
-        <button class="btn" id="or_done">Done</button></div>`);
-    // The OR goes back into the same chat the payment was confirmed in, so it
-    // is named after itself rather than the order it settles — one payment
-    // can cover several.
-    wireSave('#or_save', '.receipt', `${r.receipt_no}.jpg`);
-    $('#or_done').addEventListener('click', closeDialog);
   }
 
   findBox.addEventListener('input', drawHits);
@@ -2382,17 +2378,35 @@ async function openReseller(id, reload) {
       <div style="flex:0 0 auto"><button class="btn quiet" id="d_attach">Attach</button></div>
     </div>
 
-    <h3 class="mt">Pay the account</h3>
-    <div class="dim">One amount, settled against whatever is open, oldest invoice
-      first — for the ordinary case, one payment covering more than one order.
-      To pay a single invoice on its own, use Record payment on its row below.
-      Anything left over once nothing is open becomes credit, held on the
-      account and taken off their next invoice by itself.</div>
+    <h3 class="mt">Confirm the bank payment</h3>
+    <div class="dim">Settles whatever is open, oldest invoice first, and stamps
+      an OR the moment it does. One amount covering more than one order is the
+      ordinary case; to pay a single invoice on its own, use Record payment on
+      its row below. Anything left over once nothing is open becomes credit,
+      held on the account and taken off their next invoice by itself.</div>
     <div class="row mt">
-      <div><label>Amount received</label><input id="acct_amt" type="number" step="0.01"></div>
-      <div><label>Received on</label><input id="acct_on" type="date" value="${localDay()}"></div>
-      <div style="flex:0 0 auto"><button class="btn" id="acct_pay">Apply payment</button></div>
+      <div><label>Amount received</label>
+        <input id="acct_amt" type="number" step="0.01" min="0.01"></div>
+      <div><label>Received on</label>
+        <input id="acct_on" type="date" value="${localDay()}"></div>
     </div>
+    <div class="row">
+      <div><label for="acct_mop">Through (MOP)</label>
+        <input id="acct_mop" type="text" list="acct_banks" placeholder="BANCO DE ORO (BDO)">
+        <datalist id="acct_banks">
+          <option value="BANCO DE ORO (BDO)"></option>
+          <option value="BPI"></option>
+          <option value="SECURITY BANK"></option>
+          <option value="GCASH"></option>
+        </datalist></div>
+      <div><label for="acct_ref">Reference no.</label>
+        <input id="acct_ref" type="text" placeholder="the bank's own reference"></div>
+      <div style="flex:0 0 auto">
+        <button class="btn go" id="acct_pay">Confirm &amp; issue OR</button></div>
+    </div>
+    <div class="dim">The reference is the bank's, off their proof of payment — it
+      is what they quote to say the money left, and what the statement is matched
+      against later. It prints on the invoice.</div>
     <div id="acct_out" class="mt"></div>
 
     <h3 class="mt">Invoices</h3>
@@ -2496,25 +2510,26 @@ async function openReseller(id, reload) {
     } catch (e) { whoops(e); }
   });
 
+  // The same call the chat screen used to make, from the page that owns the
+  // account: the money arriving is a fact about the reseller, not about the
+  // one order that happened to be on screen when it landed.
   $('#acct_pay').addEventListener('click', async () => {
     const amount = +$('#acct_amt').value;
     if (!(amount > 0)) return whoops(new Error('Type how much came in.'));
     $('#acct_pay').disabled = true;
     try {
-      const out = await POST(`/api/resellers/${id}/payment`,
-        { amount, paid_on: $('#acct_on').value });
-      const lines = (out.applied || []).map((a) =>
-        `Invoice #${a.invoice_id}: ${peso(a.applied)} applied` +
-        (a.discount > 0 ? ` (plus ${peso(a.discount)} early-payment discount)` : '') +
-        (a.now_owes > 0 ? `, ${peso(a.now_owes)} still owed` : ', now settled'));
-      if (out.credited > 0) {
-        lines.push(`${peso(out.credited)} left over — held as credit on the account.`);
-      }
-      $('#acct_out').innerHTML = lines.length
-        ? `<div class="banner good">${lines.join('<br>')}</div>`
-        : '<div class="dim">Nothing was open to apply this to — the whole amount is now credit.</div>';
-      notice('Payment applied 🌸', 'good');
-      openReseller(id, reload);
+      const out = await POST(`/api/resellers/${id}/receipt`, {
+        amount,
+        paid_on: $('#acct_on').value,
+        method: $('#acct_mop').value.trim() || null,
+        details: 'MS Beau Ave Enterprises OPC',
+        reference_no: $('#acct_ref').value.trim() || null,
+      });
+      notice(`${out.receipt_no} issued 🌸`, 'good');
+      // The OR takes over the dialog, so the list behind it is refreshed now
+      // rather than when it is dismissed — what the account owes has changed.
+      reload();
+      showOR(out, r);
     } catch (e) {
       whoops(e);
       $('#acct_pay').disabled = false;
