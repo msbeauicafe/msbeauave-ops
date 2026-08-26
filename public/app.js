@@ -1582,10 +1582,10 @@ const docLines = (lines, blanks = 5) => `
     </tr></thead>
     <tbody>
       ${lines.map((l) => `<tr>
-        <td class="c">${esc(l.sku || '')}</td>
+        <td class="c">${esc(l.code || '')}</td>
         <td><b>${esc(l.name)}</b></td>
         <td class="c">${count(l.qty)}</td>
-        <td class="c"></td>
+        <td class="c">${esc(l.unit || '')}</td>
         <td class="n">${peso(l.price)}</td>
         <td class="n">${peso(l.price * l.qty)}</td>
       </tr>`).join('')}
@@ -1753,7 +1753,7 @@ function showPackingList({ orderId, resellerName, placedAt, lines }) {
             <td class="tick"><span class="box"></span></td>
             <td><b>${esc(l.name)}</b></td>
             <td class="qty">${count(l.qty)}</td>
-            <td class="unit"></td>
+            <td class="unit">${esc(l.unit || '')}</td>
           </tr>`).join('')}
           ${Array.from({ length: BLANKS }, () => `<tr>
             <td class="tick"><span class="box"></span></td><td></td><td></td><td></td>
@@ -1790,6 +1790,7 @@ SCREENS.chatorders = async (page) => {
   let resellers = [];
   let picked = null;
   let catalog = null;
+  let codes = null;
   const basket = new Map();
 
   page.innerHTML = `
@@ -1894,6 +1895,10 @@ SCREENS.chatorders = async (page) => {
     if (!catalog) {
       GET('/api/wholesale/catalog').then((rows) => { catalog = rows; drawGoods(); }).catch(whoops);
     } else drawGoods();
+    // The codes are the same all day; fetched once and kept.
+    if (!codes) {
+      GET('/api/price-codes').then((rows) => { codes = rows; drawBasket(); }).catch(whoops);
+    }
 
     $('#ch_find', workingBox).addEventListener('input', drawGoods);
     $('#ch_place', workingBox).addEventListener('click', placeOrder);
@@ -1916,7 +1921,10 @@ SCREENS.chatorders = async (page) => {
     ], 'Nothing matches.');
     $$('[data-add]', box).forEach((b) => b.addEventListener('click', () => {
       const p = catalog.find((x) => x.sku === b.dataset.add);
-      const line = basket.get(p.sku) ?? { sku: p.sku, name: p.name, price: Number(p.wholesale_price), qty: 0 };
+      const line = basket.get(p.sku)
+        ?? { sku: p.sku, name: p.name, price: Number(p.wholesale_price),
+             listed: Number(p.wholesale_price),
+             unit: p.unit_type || 'PCS', code: '', prices: p.prices || {}, qty: 0 };
       line.qty += 1;
       basket.set(p.sku, line);
       drawBasket();
@@ -1928,7 +1936,18 @@ SCREENS.chatorders = async (page) => {
     if (!box) return;
     box.innerHTML = basket.size ? [...basket.values()].map((l) => `
       <div class="pick">
-        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${peso(l.price)} each</span></span>
+        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${peso(l.price)}
+          each${l.unit ? ' · ' + esc(l.unit) : ''}${
+            l.code ? ' · ' + esc(l.code) : ' · no PCODE'}</span></span>
+        <select data-code="${esc(l.sku)}" title="PCODE — the price this line is given">
+          <option value="">PCODE…</option>
+          ${(codes || []).map((c) => {
+            const has = (l.prices || {})[c.code] != null;
+            return `<option value="${esc(c.code)}" ${has ? '' : 'disabled'}
+              ${c.code === l.code ? 'selected' : ''}>${esc(c.code)}${
+                has ? '' : ' — no price for this one'}</option>`;
+          }).join('')}
+        </select>
         <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
         <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
       </div>`).join('') : '<div class="none">Nothing added yet.</div>';
@@ -1942,6 +1961,13 @@ SCREENS.chatorders = async (page) => {
       basket.delete(b.dataset.drop);
       drawBasket();
     }));
+    $$('[data-code]', box).forEach((sel) => sel.addEventListener('change', () => {
+      const line = basket.get(sel.dataset.code);
+      line.code = sel.value;
+      const priced = (line.prices || {})[sel.value];
+      line.price = priced != null ? Number(priced) : Number(line.listed ?? line.price);
+      drawBasket();
+    }));
   };
 
   async function placeOrder() {
@@ -1950,7 +1976,7 @@ SCREENS.chatorders = async (page) => {
     $('#ch_place', workingBox).disabled = true;
     try {
       const out = await POST(`/api/resellers/${picked.id}/orders`,
-        { lines: lines.map((l) => ({ sku: l.sku, qty: l.qty })) });
+        { lines: lines.map((l) => ({ sku: l.sku, qty: l.qty, code: l.code || null })) });
       basket.clear();
       drawBasket();
       $('#ch_order_out', workingBox).innerHTML =
@@ -2293,7 +2319,8 @@ async function openReseller(id, reload) {
       ]);
       showInvoiceDoc({
         orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments,
-        lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty, price: l.unit_price })),
+        lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
+          price: l.unit_price, code: l.price_code, unit: l.unit_type })),
       });
     } catch (e) { whoops(e); }
   }));
