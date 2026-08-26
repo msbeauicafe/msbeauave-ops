@@ -1798,8 +1798,8 @@ test("a reseller's picture is shrunk on the way in, not on the way out", async (
 
   const meta = await sharp(stored.rows[0] && (await db.query(
     'select bytes from reseller_photos where reseller_id = $1', [id])).rows[0].bytes).metadata();
-  assert.equal(meta.width, 240, 'the card is 3:4, and so is what is kept');
-  assert.equal(meta.height, 320);
+  assert.equal(meta.width, 240, 'the card is a square, and so is what is kept');
+  assert.equal(meta.height, 240);
 
   // The list says there is one, and says when, so the address can be cached.
   const list = await GET(admin, '/api/resellers');
