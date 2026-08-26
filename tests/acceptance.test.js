@@ -1662,3 +1662,64 @@ test('a delivery of something with no cost recorded does not invent one', async 
   assert.equal(Number(after.stock_bought), Number(before.stock_bought),
     'nothing is recorded rather than a zero-peso entry cluttering the books');
 });
+
+// ===========================================================================
+// PCODE — the price a line was given
+//
+// The column on the paper invoice has never meant the product's code. The two
+// promises worth holding are the ones that decide what a customer is charged:
+// a named code prices the line, and a named code with no price behind it stops
+// the order rather than quietly charging the wholesale price while printing
+// STOCKIST on the document.
+// ===========================================================================
+test('a price code sets the line price, and one without a price refuses the order', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin, { wholesale_price: 250 });
+  await receive(store, sku, 24, 60);
+  const reseller = await newReseller(admin);
+
+  // Nothing priced yet: naming a code is refused rather than guessed at.
+  const blind = await POST(admin, `/api/resellers/${reseller}/orders`,
+    { lines: [{ sku, qty: 2, code: 'STOCKIST' }] });
+  assert.equal(blind.status, 400, JSON.stringify(blind.data));
+  assert.match(JSON.stringify(blind.data), /price/i);
+
+  // The same order with no code at all still works, the way it did before
+  // any of this existed.
+  const plain = await POST(admin, `/api/resellers/${reseller}/orders`,
+    { lines: [{ sku, qty: 2 }] });
+  assert.equal(plain.status, 200, JSON.stringify(plain.data));
+  assert.equal(Number(plain.data.invoice.amount), 500, 'two at the wholesale price');
+
+  // Price the base, and the adjusted code that hangs off it follows.
+  await POST(admin, `/api/products/${sku}/price`, { code: 'PD', price: 180 });
+  await POST(admin, '/api/price-codes/PD-10/adjustment', { adjust: 10 });
+
+  const atBase = await POST(admin, `/api/resellers/${reseller}/orders`,
+    { lines: [{ sku, qty: 2, code: 'PD' }] });
+  assert.equal(atBase.status, 200, JSON.stringify(atBase.data));
+  assert.equal(Number(atBase.data.invoice.amount), 360, 'two at the PD price');
+
+  const adjusted = await POST(admin, `/api/resellers/${reseller}/orders`,
+    { lines: [{ sku, qty: 2, code: 'PD-10' }] });
+  assert.equal(adjusted.status, 200, JSON.stringify(adjusted.data));
+  assert.equal(Number(adjusted.data.invoice.amount), 380, 'PD plus the ten pesos');
+
+  // And the code is on the line afterwards, which is the whole point: the
+  // document is printed from the order, not from what somebody remembers.
+  const reopened = await GET(admin, `/api/orders/${adjusted.data.orderId}`);
+  assert.equal(reopened.data.lines[0].price_code, 'PD-10');
+  assert.equal(reopened.data.lines[0].unit_type, 'PCS');
+});
+
+// A code that adjusts another one cannot carry a price list of its own —
+// otherwise RD+5 drifts away from RD the first time somebody edits one.
+test('only a base code carries a price list', async () => {
+  const admin = await signIn('admin');
+  const sku = await newProduct(admin);
+  const nope = await POST(admin, `/api/products/${sku}/price`,
+    { code: 'RD+5', price: 100 });
+  assert.equal(nope.status, 400, JSON.stringify(nope.data));
+  assert.match(JSON.stringify(nope.data), /price list/i);
+});
