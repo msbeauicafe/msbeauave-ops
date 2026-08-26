@@ -1781,11 +1781,12 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       <div>Date: ${p ? onDay(p.paid_on) : ''}</div>
       <div>Amount: ${p ? peso(p.amount) : ''}</div>
     </div>`;
-  // The paper pad has five of these because a reseller may settle in
-  // instalments. On screen the empty ones were what pushed this sheet onto a
-  // second page, so only enough follow to leave somewhere obvious to write.
+  // Five, as the paper pad has, because a reseller may settle in instalments
+  // and the sheet has to have somewhere to record each one. They were cut to
+  // three when the document ran to two pages; everything else about the sheet
+  // has tightened since, so the five fit and the five stay.
   const slots = [...payments.slice(0, 5).map(slot),
-                 ...Array.from({ length: Math.max(0, 3 - payments.length) }, () => slot(null))];
+                 ...Array.from({ length: Math.max(0, 5 - payments.length) }, () => slot(null))];
   dialog(`
     <div class="doc inv">
       ${DOC_HEAD}
