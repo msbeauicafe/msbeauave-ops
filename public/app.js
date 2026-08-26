@@ -1765,7 +1765,7 @@ function showInvoice(opts) {
  * The INVOICE: the order form plus the money side of it.
  *
  * PAYMENT DETAILS is filled from the ledger rather than left blank — what the
- * account has already sent, with the OR number to quote against each one. A
+ * account has already sent, with the receipt number to quote against each. A
  * payment recorded before ORs existed has no number, and prints blank rather
  * than borrowing one that means something else. Empty slots follow, because
  * the paper has five and a payment made after this printed goes in by hand.
@@ -2072,7 +2072,8 @@ SCREENS.chatorders = async (page) => {
   page.innerHTML = `
     <div class="head"><h2>Chat orders</h2>
       <span class="hint">For an order that came in over Messenger — place it,
-        then confirm the bank payment and issue the OR</span></div>
+        then send them the order form. The payment is confirmed on their own
+        page, under Invoice</span></div>
     <div class="tools">
       <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus>
     </div>
@@ -2548,8 +2549,8 @@ async function openReseller(id, reload) {
       fill in as many as have actually landed. Each is applied to whatever is
       open, oldest invoice first. Anything left once nothing is open becomes
       credit, held on the account and taken off their next invoice by itself.
-      <b>Confirming is not receipting</b>: the OR is issued separately, below,
-      and one OR covers every transfer confirmed since the last one.</div>
+      <b>Confirming is not receipting</b>: the receipt is issued separately,
+      below, and one receipt covers every transfer confirmed since the last.</div>
     ${[0, 1, 2, 3, 4].map((n) => `
       <div class="row payrow">
         <div><label${n ? ' class="sr"' : ''}>Amount received</label>
@@ -2575,7 +2576,7 @@ async function openReseller(id, reload) {
     <div class="mt right"><button class="btn" id="acct_pay">Confirm payments</button></div>
     <div id="acct_out" class="mt"></div>
 
-    <h3 class="mt">Issue the OR</h3>
+    <h3 class="mt">Issue the receipt</h3>
     <div id="acct_pending"></div>
 
     <h3 class="mt">Invoices</h3>
@@ -2697,7 +2698,7 @@ async function openReseller(id, reload) {
               l.reference_no ? ' · ref ' + esc(l.reference_no) : ''}</span></span>
         </div>`).join('')}</div>
         <div class="mt right"><button class="btn go" id="acct_or">
-          Issue OR for ${peso(p.amount)}</button></div>`
+          Issue receipt for ${peso(p.amount)}</button></div>`
         : '<div class="dim">Nothing confirmed is waiting for a receipt.</div>';
 
       $('#acct_or')?.addEventListener('click', async () => {
