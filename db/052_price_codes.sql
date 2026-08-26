@@ -15,10 +15,16 @@
 -- as RD, adjusted.
 --
 -- What the adjustment does to the price is a signed peso figure and nothing
--- cleverer, because the owner will type it and read it back on a real
--- invoice. Every one of them starts at zero: a guess at the sign here would
--- be a wrong price on a document somebody pays against, and zero is visibly
--- unset in a way that -5 is not.
+-- cleverer. The sign is the one written in the name and means what it says:
+-- RD+5 charges five pesos more than RD, PD-15 charges fifteen less than PD.
+-- That was asked rather than assumed — the other reading, where a plus means
+-- a bigger discount, is just as sayable and would have put a wrong figure on
+-- every document quoting one of these codes.
+--
+-- Zero still means unset rather than "no change", in price_for and on the
+-- order screen alike. A code that charges exactly its base is a code that
+-- silently does nothing, which is worse than one that refuses, because
+-- nobody finds out.
 --
 -- A code on a line is optional. Until the price lists are loaded the app
 -- prices the way it always has, and an order placed today still works. But a
@@ -50,24 +56,30 @@ alter table price_codes add constraint price_codes_code_is_base_key
   unique (code, is_base);
 
 insert into price_codes (code, base_code, adjust, sort) values
-  ('RD',       null, 0,  10),
-  ('RD+5',     'RD', 0,  11),
-  ('RD+8',     'RD', 0,  12),
-  ('RD+10',    'RD', 0,  13),
-  ('SUB RD',   null, 0,  20),
-  ('PD',       null, 0,  30),
-  ('PD+5',     'PD', 0,  31),
-  ('PD+10',    'PD', 0,  32),
-  ('PD-5',     'PD', 0,  33),
-  ('PD-10',    'PD', 0,  34),
-  ('PD-15',    'PD', 0,  35),
-  ('CD',       null, 0,  40),
-  ('DD',       null, 0,  50),
-  ('VIP',      null, 0,  60),
-  ('RS',       null, 0,  70),
-  ('STOCKIST', null, 0,  80),
-  ('EXEC',     null, 0,  90)
+  ('RD',       null,   0,  10),
+  ('RD+5',     'RD',   5,  11),
+  ('RD+8',     'RD',   8,  12),
+  ('RD+10',    'RD',  10,  13),
+  ('SUB RD',   null,   0,  20),
+  ('PD',       null,   0,  30),
+  ('PD+5',     'PD',   5,  31),
+  ('PD+10',    'PD',  10,  32),
+  ('PD-5',     'PD',  -5,  33),
+  ('PD-10',    'PD', -10,  34),
+  ('PD-15',    'PD', -15,  35),
+  ('CD',       null,   0,  40),
+  ('DD',       null,   0,  50),
+  ('VIP',      null,   0,  60),
+  ('RS',       null,   0,  70),
+  ('STOCKIST', null,   0,  80),
+  ('EXEC',     null,   0,  90)
 on conflict (code) do nothing;
+
+-- Set on a database seeded before the owner settled the direction.
+update price_codes set adjust = v.adj
+  from (values ('RD+5',5),('RD+8',8),('RD+10',10),('PD+5',5),('PD+10',10),
+               ('PD-5',-5),('PD-10',-10),('PD-15',-15)) v(code, adj)
+ where price_codes.code = v.code and price_codes.adjust = 0;
 
 -- The price list: one peso figure per product per base code.
 create table if not exists product_prices (
