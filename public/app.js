@@ -1523,7 +1523,9 @@ async function openOrder(id, reload) {
   // carries batch and expiry, which is what the picker works from, and the
   // packing list is what travels with the box.
   $('#a_packing')?.addEventListener('click', () => showPackingList({
-    orderId: o.id, resellerName: o.reseller, placedAt: o.placed_at, lines: o.lines,
+    orderId: o.id, resellerName: o.reseller, placedAt: o.placed_at, who: o,
+    // The board names the column unit_type; the document asks for unit.
+    lines: o.lines.map((l) => ({ ...l, unit: l.unit_type })),
   }));
 }
 
@@ -1557,15 +1559,19 @@ const BANK_DETAILS = `
     <div>Account Number: 000-006-567-3032</div>
   </div>`;
 
-const docParty = (name, dateOn, orderNo) => `
+const TAX_LINES = [
+  ['Tax Type', 'tax_type'], ['Business Trade Name', 'trade_name'],
+  ['Taxpayer Name', 'taxpayer_name'], ['TIN Number', 'tin'],
+  ['Business Address', 'business_address'],
+];
+
+const docParty = (name, dateOn, orderNo, who = {}) => `
   <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:6px;line-height:1.3">
     <div>
       <div style="font-weight:700;font-size:1.02rem">${esc(name || 'counter sale')}</div>
-      <div style="font-weight:700;font-size:.68rem">Tax Type:</div>
-      <div style="font-weight:700;font-size:.68rem">Business Trade Name:</div>
-      <div style="font-weight:700;font-size:.68rem">Taxpayer Name:</div>
-      <div style="font-weight:700;font-size:.68rem">TIN Number:</div>
-      <div style="font-weight:700;font-size:.68rem">Business Address:</div>
+      ${TAX_LINES.map(([label, key]) => `
+        <div style="font-size:.68rem"><b>${label}:</b>
+          ${esc(who?.[key] || '')}</div>`).join('')}
     </div>
     <div style="white-space:nowrap;font-size:.7rem">
       <div><b>DATE:</b> ${onDay(dateOn)}</div>
@@ -1598,13 +1604,14 @@ const docLines = (lines, blanks = 5) => `
  * The CUSTOMER ORDER FORM: what a reseller is sent to agree to, before money.
  * Prices, the totals, where to pay, and the two reminders the paper carries.
  */
-function showInvoice({ orderId, issuedOn, amount, resellerName, lines, shipping = 0, others = 0 }) {
+function showInvoice({ orderId, issuedOn, amount, resellerName, lines,
+                       who = {}, shipping = 0, others = 0 }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   dialog(`
     <div class="doc cof">
       ${DOC_HEAD}
       <div class="title cof">CUSTOMER ORDER FORM</div>
-      ${docParty(resellerName, issuedOn, orderId)}
+      ${docParty(resellerName, issuedOn, orderId, who)}
       <div class="duebox">Total Due (PHP)<b>${peso(amount ?? sub)}</b></div>
       <div style="clear:both"></div>
       ${docLines(lines)}
@@ -1644,7 +1651,7 @@ function showInvoice({ orderId, issuedOn, amount, resellerName, lines, shipping 
  * the paper has five and a payment made after this printed goes in by hand.
  */
 function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
-                          shipping = 0, others = 0 }) {
+                          who = {}, shipping = 0, others = 0 }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   const grand = sub + shipping + others;
   const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
@@ -1668,7 +1675,7 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
     <div class="doc inv">
       ${DOC_HEAD}
       <div class="title inv">INVOICE</div>
-      ${docParty(resellerName, issuedOn, orderId)}
+      ${docParty(resellerName, issuedOn, orderId, who)}
       <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
       <div style="clear:both"></div>
       ${docLines(lines)}
@@ -1712,7 +1719,7 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
  * substitution or a short-pick gets written where the checker is already
  * looking, rather than in the margin.
  */
-function showPackingList({ orderId, resellerName, placedAt, lines }) {
+function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
   const BLANKS = Math.max(0, 8 - lines.length);
   dialog(`
     <div class="packing">
@@ -1730,11 +1737,9 @@ function showPackingList({ orderId, resellerName, placedAt, lines }) {
       <div class="party">
         <div>
           <div class="lbl" style="font-size:.85rem">${esc(resellerName || 'counter sale')}</div>
-          <div class="lbl">Tax Type: <span class="val"></span></div>
-          <div class="lbl">Business Trade Name: <span class="val"></span></div>
-          <div class="lbl">Taxpayer Name: <span class="val"></span></div>
-          <div class="lbl">TIN Number: <span class="val"></span></div>
-          <div class="lbl">Business Address: <span class="val"></span></div>
+          ${TAX_LINES.map(([label, key]) => `
+            <div class="lbl">${label}:
+              <span class="val">${esc(who?.[key] || '')}</span></div>`).join('')}
         </div>
         <div style="white-space:nowrap">
           <div class="lbl">DATE: <span class="val">${onDay(placedAt)}</span></div>
@@ -1985,12 +1990,13 @@ SCREENS.chatorders = async (page) => {
       $('#ch_order_out', workingBox).querySelector('#ch_packing')
         .addEventListener('click', () => showPackingList({
           orderId: out.orderId, resellerName: picked.name,
-          placedAt: new Date(), lines,
+          placedAt: new Date(), lines, who: picked,
         }));
       notice('Order placed 🌸', 'good');
       if (out.invoice) showInvoice({
         orderId: out.orderId, issuedOn: out.invoice.issued_on,
         amount: out.invoice.amount, resellerName: picked.name, lines,
+        who: picked,
       });
     } catch (e) { whoops(e); } finally {
       $('#ch_place', workingBox).disabled = false;
@@ -2166,6 +2172,27 @@ async function openReseller(id, reload) {
         <div style="flex:0 0 auto"><button class="btn stop" id="d_override">Override</button></div>
       </div>` : ''}
 
+    <h3 class="mt">For tax</h3>
+    <div class="dim">The block printed at the top of this account's invoices,
+      order forms and packing lists. Leave anything blank that they have not
+      given you — a blank line prints blank, the same as the paper does.</div>
+    <div class="row mt">
+      <div><label>Tax Type</label>
+        <input id="d_taxtype" type="text" list="taxtypes" value="${esc(r.tax_type || '')}">
+        <datalist id="taxtypes"><option>VAT</option><option>Non-VAT</option></datalist></div>
+      <div style="flex:2"><label>Business Trade Name</label>
+        <input id="d_trade" type="text" value="${esc(r.trade_name || '')}"></div>
+      <div style="flex:2"><label>Taxpayer Name</label>
+        <input id="d_taxpayer" type="text" value="${esc(r.taxpayer_name || '')}"></div>
+    </div>
+    <div class="row">
+      <div><label>TIN Number</label>
+        <input id="d_tin" type="text" value="${esc(r.tin || '')}"></div>
+      <div style="flex:3"><label>Business Address</label>
+        <input id="d_addr" type="text" value="${esc(r.business_address || '')}"></div>
+      <div style="flex:0 0 auto"><button class="btn" id="d_tax">Save</button></div>
+    </div>
+
     <h3 class="mt">Papers</h3>
     ${r.documents.length
       ? `<div class="dim">${r.documents.map((d) =>
@@ -2222,6 +2249,19 @@ async function openReseller(id, reload) {
     try {
       await POST(`/api/resellers/${id}/approve`);
       notice('Approved 🌸', 'good');
+      closeDialog();
+      reload();
+    } catch (e) { whoops(e); }
+  });
+
+  $('#d_tax').addEventListener('click', async () => {
+    try {
+      await POST(`/api/resellers/${id}/tax`, {
+        tax_type: $('#d_taxtype').value, trade_name: $('#d_trade').value,
+        taxpayer_name: $('#d_taxpayer').value, tin: $('#d_tin').value,
+        business_address: $('#d_addr').value,
+      });
+      notice('Saved 🌸', 'good');
       closeDialog();
       reload();
     } catch (e) { whoops(e); }
@@ -2318,7 +2358,7 @@ async function openReseller(id, reload) {
         GET(`/api/resellers/${id}/payments`).catch(() => []),
       ]);
       showInvoiceDoc({
-        orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments,
+        orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments, who: o,
         lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
           price: l.unit_price, code: l.price_code, unit: l.unit_type })),
       });

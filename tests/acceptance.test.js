@@ -1723,3 +1723,45 @@ test('only a base code carries a price list', async () => {
   assert.equal(nope.status, 400, JSON.stringify(nope.data));
   assert.match(JSON.stringify(nope.data), /price list/i);
 });
+
+// ===========================================================================
+// Who the customer is for tax
+//
+// Five lines at the top of every document. What matters is that they reach
+// the document from the account, and that a reopened order still carries
+// them — a customer's registration is exactly the sort of thing later
+// disputed, and the answer has to be what the paper said on the day.
+// ===========================================================================
+test("a reseller's tax details reach the order they are printed from", async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+  await receive(store, sku, 24, 20);
+  const id = await newReseller(admin);
+
+  const saved = await POST(admin, `/api/resellers/${id}/tax`, {
+    tax_type: 'Non-VAT', trade_name: '  Lai Sen Beauty  ',
+    taxpayer_name: 'Lai Sen', tin: '123-456-789-000',
+    business_address: '12 Bayan Bayanan Ave, Marikina',
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+
+  const back = await GET(admin, `/api/resellers/${id}`);
+  assert.equal(back.data.trade_name, 'Lai Sen Beauty', 'stored without the stray spaces');
+  assert.equal(back.data.tin, '123-456-789-000', 'the TIN is kept exactly as typed');
+
+  const order = await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 1 }] });
+  assert.equal(order.status, 200, JSON.stringify(order.data));
+  const reopened = await GET(admin, `/api/orders/${order.data.orderId}`);
+  assert.equal(reopened.data.tax_type, 'Non-VAT');
+  assert.equal(reopened.data.taxpayer_name, 'Lai Sen');
+  assert.equal(reopened.data.business_address, '12 Bayan Bayanan Ave, Marikina');
+
+  // Blank is a real answer, and clearing means clearing rather than storing
+  // an empty string that prints as nothing but is not nothing.
+  await POST(admin, `/api/resellers/${id}/tax`, { tax_type: '   ', tin: '' });
+  const cleared = await GET(admin, `/api/resellers/${id}`);
+  assert.equal(cleared.data.tax_type, null);
+  assert.equal(cleared.data.tin, null);
+  assert.equal(cleared.data.trade_name, null, 'a field left out of the form is cleared too');
+});
