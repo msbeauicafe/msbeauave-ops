@@ -635,7 +635,10 @@ label.inline input { width: auto; }
 .doc .bank .b { font-weight: 700; margin-top: 3px; }
 .doc .mop { border: 1px solid #e8b9cc; font-size: .66rem; }
 .doc .mop .hd { text-align: center; font-weight: 700; padding: 4px; border-bottom: 1px solid #e8b9cc; }
-.doc .mop .slot { border-bottom: 1px solid #f0d3de; padding: 3px 8px; line-height: 1.35; }
+.doc .mop .slot { border-bottom: 1px solid #f0d3de; padding: 2px 8px; line-height: 1.2; }
+/* Five slots, because the paper has five and a reseller settles in
+   instalments. They are the tallest thing on the sheet, so they are also
+   where the room for a longer order has to come from. */
 .doc .mop .slot b { display: block; }
 .doc .sign1 { text-align: center; margin-top: 12px; font-size: .68rem; }
 .doc .sign1 .nm { font-weight: 700; }
