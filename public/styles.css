@@ -776,3 +776,14 @@ label.inline input { width: auto; }
 @media (prefers-reduced-motion: reduce) {
   .blip, .blip.late { animation: none; }
 }
+
+/* What the dot beside a reseller's name means, under the buttons at the top
+   right where the eye already is. Only on the screen that uses it: a key to a
+   mark that is not on the page is a thing to work out the absence of. */
+.dotkey {
+  display: flex; gap: 18px; margin-left: auto; align-items: center;
+  font-size: .72rem; color: var(--muted);
+}
+.dotkey span { display: inline-flex; align-items: center; gap: 6px; }
+.dotkey .blip { width: 8px; height: 8px; }
+@media (max-width: 700px) { .dotkey { justify-content: flex-start; } }
