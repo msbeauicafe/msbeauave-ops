@@ -315,3 +315,30 @@ update products set unit_type = 'SET'
  where name ~* '(^|[^a-z])(sets?|kits?)([^a-z]|$)' and unit_type = 'PCS';
 update products set unit_type = 'BOX'
  where name ~* '(^|[^a-z])box([^a-z]|$)' and unit_type = 'PCS';
+
+-- ---------------------------------------------------------------------------
+-- Where the price lists came from
+--
+-- The prices are data and live in the database rather than here, but the
+-- account of where they came from belongs with the schema, because whoever
+-- loads the next price list will meet the same three questions.
+--
+-- Source: "MS BEAU PRICE LIST (PRODUCT LIST).xlsx", sheet NEW DEPOT PRICE,
+-- dated 18 Jul 2026 — chosen by the owner over the SKU-keyed sheet, which is
+-- eight months older and disagrees with it on about one price in five.
+--
+-- That sheet has no SKU column, so each row was keyed through the exact
+-- product name in MS BEAU PRODUCT SKU, where 848 names each name exactly one
+-- SKU. 713 products came through and carry 3,317 prices.
+--
+-- Three things were deliberately not loaded rather than guessed:
+--   * 44 products the depot sheet prices twice, differently, one row dated
+--     and one not. There is no rule that says which is current.
+--   * 274 depot rows whose name matches no SKU.
+--   * SUB RD, VIP, STOCKIST and EXEC, which no sheet in the workbook prices.
+--     VIP appears on two sheets that disagree with each other and neither
+--     carries a SKU.
+--
+--   RD <- REGIONAL      PD <- PROVINCIAL (the workbook's own glossary says
+--   DD <- DISTRICT DD   so)              CD <- CITY DISTRI   RS <- Reseller
+-- ---------------------------------------------------------------------------
