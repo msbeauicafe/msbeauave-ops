@@ -1951,9 +1951,10 @@ SCREENS.chatorders = async (page) => {
         ${r.photo_at
           ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
           : `<span class="face">${esc(initials(r.name))}</span>`}
-        <b>${esc(r.name)}</b>
-        <span class="under">${r.blocked ? 'cannot order'
-          : Number(r.owed) > 0 ? `owes ${peso(r.owed)}` : 'clear'}</span>
+        <span class="strip"><b>${esc(r.name)}</b>
+          <span class="under ${!r.blocked && Number(r.owed) > 0 ? 'owing' : ''}">${
+            r.blocked ? 'cannot order'
+            : Number(r.owed) > 0 ? `owes ${peso(r.owed)}` : 'clear'}</span></span>
       </button>`).join('')}</div>`
       : '<div class="dim">Nobody matches that.</div>';
     // r.id comes back from the API as a string — a bigint column arrives as
