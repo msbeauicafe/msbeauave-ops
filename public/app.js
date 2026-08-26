@@ -1529,15 +1529,15 @@ async function openOrder(id, reload) {
 
 // The letterhead every one of these documents carries.
 const DOC_HEAD = `
-  <div style="border-top:3px solid var(--rose-deep);margin-bottom:10px"></div>
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
-    <img src="/logo.png" alt="MS Beau Ave" style="height:52px">
-    <div style="text-align:right">
-      <b style="color:var(--rose-deep);font-size:1.05rem">MS BEAU AVE ENTERPRISES OPC</b>
-      <div style="font-size:.62rem;color:#444;line-height:1.35">
-        LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
-        MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</div>
+  <div class="rule"></div>
+  <div class="head-row">
+    <img src="/logo.png" alt="MS Beau Ave">
+    <div class="who">
+      <b>MS BEAU AVE ENTERPRISES OPC</b>
+      <div>LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
+      MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</div>
     </div>
+    <span></span>
   </div>`;
 
 // Where the money is to be sent. On the paper it sits on both the order form
@@ -1558,9 +1558,9 @@ const BANK_DETAILS = `
   </div>`;
 
 const docParty = (name, dateOn, orderNo) => `
-  <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:10px">
+  <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:6px;line-height:1.3">
     <div>
-      <div style="font-weight:700;font-size:1.05rem">${esc(name || 'counter sale')}</div>
+      <div style="font-weight:700;font-size:1.02rem">${esc(name || 'counter sale')}</div>
       <div style="font-weight:700;font-size:.68rem">Tax Type:</div>
       <div style="font-weight:700;font-size:.68rem">Business Trade Name:</div>
       <div style="font-weight:700;font-size:.68rem">Taxpayer Name:</div>
@@ -1573,10 +1573,10 @@ const docParty = (name, dateOn, orderNo) => `
     </div>
   </div>`;
 
-const docLines = (lines, blanks = 12) => `
+const docLines = (lines, blanks = 5) => `
   <table class="lines">
     <thead><tr>
-      <th style="width:74px">PCODE</th><th>PRODUCT DESCRIPTION</th>
+      <th style="width:88px">PCODE</th><th>PRODUCT DESCRIPTION</th>
       <th style="width:70px">QUANTITY</th><th style="width:70px">UNIT TYPE</th>
       <th style="width:80px">UNIT PRICE</th><th style="width:88px">TOTAL</th>
     </tr></thead>
@@ -1659,8 +1659,11 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       <div>Date: ${p ? onDay(p.paid_on) : ''}</div>
       <div>Amount: ${p ? peso(p.amount) : ''}</div>
     </div>`;
+  // The paper pad has five of these because a reseller may settle in
+  // instalments. On screen the empty ones were what pushed this sheet onto a
+  // second page, so only enough follow to leave somewhere obvious to write.
   const slots = [...payments.slice(0, 5).map(slot),
-                 ...Array.from({ length: Math.max(0, 5 - payments.length) }, () => slot(null))];
+                 ...Array.from({ length: Math.max(0, 3 - payments.length) }, () => slot(null))];
   dialog(`
     <div class="doc inv">
       ${DOC_HEAD}
@@ -1710,17 +1713,18 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
  * looking, rather than in the margin.
  */
 function showPackingList({ orderId, resellerName, placedAt, lines }) {
-  const BLANKS = Math.max(0, 16 - lines.length);
+  const BLANKS = Math.max(0, 8 - lines.length);
   dialog(`
     <div class="packing">
       <div class="rule"></div>
       <div class="head-row">
-        <img src="/logo.png" alt="MS Beau Ave" style="height:52px">
+        <img src="/logo.png" alt="MS Beau Ave">
         <div class="who">
           <b>MS BEAU AVE ENTERPRISES OPC</b>
           <div>LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
           MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</div>
         </div>
+        <span></span>
       </div>
       <div class="title">PACKING LIST</div>
       <div class="party">
@@ -1996,7 +2000,7 @@ SCREENS.chatorders = async (page) => {
     const received = applied.reduce((s, a) => s + a.applied, 0) + (r.credited || 0);
     dialog(`
       <h3>Receipt ${esc(r.receipt_no)}</h3>
-      <div class="receipt">MS BEAU AVE
+      <div class="receipt">${'MS BEAU AVE'.padStart(21)}
 ${esc(r.receipt_no)} · ${when(new Date())}
 ${esc(reseller.name)}
 --------------------------------
