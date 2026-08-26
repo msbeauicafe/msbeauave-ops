@@ -1815,3 +1815,80 @@ test("a reseller's picture is shrunk on the way in, not on the way out", async (
   const gone = await db.query('select 1 from reseller_photos where reseller_id = $1', [id]);
   assert.equal(gone.rowCount, 0);
 });
+
+// ===========================================================================
+// Paying in instalments, and one receipt for the lot
+//
+// A reseller settles an invoice over several transfers. Confirming records
+// each one; issuing the OR is a separate act afterwards. What must hold is
+// that confirming puts no number on anything, that one OR covers every
+// transfer since the last one, and that nothing is ever receipted twice.
+// ===========================================================================
+test('four transfers are confirmed separately and receipted once', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin, { wholesale_price: 250 });
+  await receive(store, sku, 24, 40);
+  const id = await newReseller(admin);
+
+  const order = await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 4 }] });
+  assert.equal(order.status, 200, JSON.stringify(order.data));   // ₱1,000
+
+  // Nothing has been paid, so nothing is waiting for a receipt.
+  const idle = await GET(admin, `/api/resellers/${id}/pending-receipt`);
+  assert.equal(idle.data.count, 0);
+  const early = await POST(admin, `/api/resellers/${id}/issue-or`, {});
+  assert.equal(early.status, 400, 'an OR over nothing is refused');
+
+  // Three transfers in one go, a fourth after.
+  const first = await POST(admin, `/api/resellers/${id}/confirm`, {
+    payments: [
+      { amount: 250, method: 'BDO',           reference_no: 'A1' },
+      { amount: 250, method: 'BPI',           reference_no: 'B2' },
+      { amount: 250, method: 'SECURITY BANK', reference_no: 'C3' },
+    ],
+  });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  assert.equal(first.data.confirmed.length, 3);
+  assert.ok(!JSON.stringify(first.data).includes('OR-'), 'confirming issues no receipt');
+  assert.equal(Number(first.data.pending.amount), 750);
+
+  await POST(admin, `/api/resellers/${id}/confirm`, {
+    payments: [{ amount: 250, method: 'GCASH', reference_no: 'D4' }],
+  });
+
+  const waiting = await GET(admin, `/api/resellers/${id}/pending-receipt`);
+  assert.equal(waiting.data.count, 4, 'all four are waiting on one receipt');
+  assert.equal(Number(waiting.data.amount), 1000);
+  assert.deepEqual(waiting.data.lines.map((l) => l.reference_no), ['A1', 'B2', 'C3', 'D4']);
+
+  const or = await POST(admin, `/api/resellers/${id}/issue-or`, {});
+  assert.equal(or.status, 200, JSON.stringify(or.data));
+  assert.match(or.data.receipt_no, /^OR-\d{8}-\d{5}$/);
+  assert.equal(Number(or.data.amount), 1000, 'one number over the whole thousand');
+  assert.equal(or.data.applied.length, 4);
+
+  // And never twice.
+  const after = await GET(admin, `/api/resellers/${id}/pending-receipt`);
+  assert.equal(after.data.count, 0, 'receipting empties the queue');
+  const again = await POST(admin, `/api/resellers/${id}/issue-or`, {});
+  assert.equal(again.status, 400, 'there is nothing left to receipt');
+});
+
+// The one-step call is still there, and must close off its own payments or
+// Issue OR would offer to receipt them a second time.
+test('paying and receipting in one step leaves nothing waiting', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin, { wholesale_price: 250 });
+  await receive(store, sku, 24, 20);
+  const id = await newReseller(admin);
+  await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 2 }] });
+
+  const out = await POST(admin, `/api/resellers/${id}/receipt`, { amount: 500 });
+  assert.equal(out.status, 200, JSON.stringify(out.data));
+  assert.match(out.data.receipt_no, /^OR-/);
+
+  const waiting = await GET(admin, `/api/resellers/${id}/pending-receipt`);
+  assert.equal(waiting.data.count, 0, 'the one-step call receipts what it takes');
+});
