@@ -818,3 +818,19 @@ label.sr {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
 }
+
+/* The way out of a dialog. Sticky rather than absolute, because the dialog
+   scrolls and a way out that scrolls off the top is not one. Floated so the
+   content beside it does not shift to make room. */
+.dialog { position: relative; }
+.dialog-x {
+  position: sticky; top: -4px; float: right; z-index: 2;
+  margin: -8px -6px 0 10px; width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--rose-soft); background: #fff; color: var(--muted);
+  font: inherit; font-size: .9rem; line-height: 1; cursor: pointer;
+}
+.dialog-x:hover, .dialog-x:focus-visible {
+  border-color: var(--rose-deep); color: var(--rose-deep); background: var(--rose-blush);
+}
+/* The documents print and download; the button that closes them does not. */
+@media print { .dialog-x { display: none !important; } }

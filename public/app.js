@@ -131,11 +131,23 @@ function dialog(html, extra = '') {
   const veil = document.createElement('div');
   veil.className = 'veil';
   veil.id = 'dialog';
-  veil.innerHTML = `<div class="dialog ${extra}">${html}</div>`;
-  veil.addEventListener('click', (e) => { if (e.target === veil) closeDialog(); });
+  // A way out that is a button, because a click anywhere outside used to be
+  // one: a reseller's tax block half typed in, a stray click on the list
+  // behind it, and the lot was gone with nothing to say so. Nothing that
+  // holds typing should be closed by missing it.
+  veil.innerHTML = `<div class="dialog ${extra}">
+    <button class="dialog-x" aria-label="Close">✕</button>${html}</div>`;
+  veil.querySelector('.dialog-x').addEventListener('click', closeDialog);
   document.body.append(veil);
   return veil;
 }
+
+// Escape still closes — it is deliberate in a way a misplaced click is not,
+// and somebody who reaches for it has decided to leave.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeDialog();
+});
+
 const closeDialog = () => $('#dialog')?.remove();
 
 function repeat(fn, ms = 8000) {
