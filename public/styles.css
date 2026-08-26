@@ -886,3 +886,49 @@ label.sr {
 }
 .doc.po .sign3 .role { font-size: .6rem; color: #444; margin-top: 2px; }
 .doc.po .sign3 .cap { font-weight: 700; font-size: .64rem; margin-top: 3px; }
+
+/* The receiving form wears the same bones as the purchase order and a
+   different colour, because they are two halves of one transaction and the
+   only question anybody asks across a stockroom is which one they are holding.
+   Orange went out; green came back. */
+.doc.po.rf .rule { border-top-color: #2e7d4f; }
+.doc.po.rf .po-title h2 { color: #2e7d4f; }
+.doc.po.rf .barhd { background: #2e7d4f; }
+.doc.po.rf table.lines th { background: #2e7d4f; border-color: #2e7d4f; }
+.doc.po.rf table.lines td { border-color: #cfe4d7; }
+.doc.po.rf table.lines td i { font-style: normal; color: #2e7d4f; font-weight: 700; }
+.doc.po.rf .notes { border-color: #cfe4d7; width: auto; }
+.doc.po.rf .notes .wrote { border-bottom-color: #cfe4d7; }
+.doc.po .po-parties.four {
+  grid-template-rows: auto auto; row-gap: 10px;
+}
+/* The footer is the one place the two papers differ in shape: the order has a
+   comments box beside nothing, this has the gate's own record — boxes, guard,
+   time — beside the three people who sign for it. */
+.doc.po.rf .rf-foot {
+  display: grid; grid-template-columns: 320px 1fr; gap: 28px;
+  align-items: start; margin-top: 14px;
+}
+.doc.po.rf .rf-foot .tally { padding: 6px 8px; }
+.doc.po.rf .rf-foot .tally .fld span { min-width: 108px; }
+.doc.po.rf .rf-foot .sign3 { margin-top: 22px; gap: 18px; }
+
+/* Entering a delivery. Each product is a small block of its own with its
+   packings stacked under it, because that is the shape of the question being
+   asked: what is it, then how did it come. */
+.rfitem {
+  border: 1px solid var(--line, #e6d8dc); border-radius: 10px;
+  padding: 10px 12px 6px; margin-bottom: 10px;
+}
+.rfitem .fixed {
+  padding: 7px 0; line-height: 1.25; font-size: .84rem;
+}
+.rfitem .fixed .dim { display: block; font-size: .72rem; }
+.rfitem .packrow { padding-left: 22px; border-left: 3px solid #e9dfe2; margin-left: 4px; }
+.rfitem .packfoot {
+  display: flex; align-items: center; gap: 12px; padding: 2px 0 4px 26px;
+}
+.rfitem .packfoot .i-total { font-weight: 700; color: var(--ink, #3b2b30); }
+/* A button next to a labelled input sits at the label's height without this,
+   which reads as a misalignment even when nothing is wrong. */
+.pushdown { align-self: flex-end; padding-bottom: 2px; }
