@@ -126,8 +126,31 @@ function notice(text, kind = '') {
 }
 const whoops = (e) => notice(e.message, 'bad');
 
-function dialog(html, extra = '') {
-  closeDialog();
+// Dialogs opened from inside another one are stacked, not swapped. Reading an
+// invoice from an account should put the account back when it is closed —
+// having to find the name in the list again is the sort of thing that makes a
+// person stop opening the invoice.
+//
+// Only the top one answers to #dialog, so everything that asks whether a
+// dialog is open still gets the right answer. The ones underneath stay exactly
+// where they were, scrolled where they were, dimmed by the veil above them.
+//
+// Opening `over` something is deliberate per call, because a dialog that
+// reopens the screen it just saved from — several of them do — would otherwise
+// pile up behind itself.
+const dialogsUnder = [];
+
+function dialog(html, extra = '', over = false) {
+  const showing = $('#dialog');
+  if (over && showing) {
+    showing.removeAttribute('id');
+    // Out of reach of the keyboard as well as the mouse while it waits: the
+    // veil above stops clicks by covering them, but nothing stops a tab key.
+    showing.inert = true;
+    dialogsUnder.push(showing);
+  } else {
+    closeAllDialogs();
+  }
   const veil = document.createElement('div');
   veil.className = 'veil';
   veil.id = 'dialog';
@@ -143,12 +166,24 @@ function dialog(html, extra = '') {
 }
 
 // Escape still closes — it is deliberate in a way a misplaced click is not,
-// and somebody who reaches for it has decided to leave.
+// and somebody who reaches for it has decided to leave. It leaves one step,
+// the same as the ✕ does.
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeDialog();
 });
 
-const closeDialog = () => $('#dialog')?.remove();
+// One step back: the invoice closes onto the account it was opened from, and
+// the account closes onto the list.
+const closeDialog = () => {
+  $('#dialog')?.remove();
+  const back = dialogsUnder.pop();
+  if (back) { back.id = 'dialog'; back.inert = false; }
+};
+
+const closeAllDialogs = () => {
+  $('#dialog')?.remove();
+  while (dialogsUnder.length) dialogsUnder.pop().remove();
+};
 
 function repeat(fn, ms = 8000) {
   clearInterval(refreshTimer);
@@ -313,6 +348,7 @@ const BRAND_HOME_SCREEN_NAMES = { boa: 'BOA Staff' };
 
 function drawSignIn() {
   clearInterval(refreshTimer);
+  closeAllDialogs();
   $('#app').innerHTML = `
     <div class="signin-page"><form class="signin" id="signin">
       <span class="logo-mark"><img src="${esc(brand().logo)}" alt="${esc(brand().name)}"
@@ -526,7 +562,7 @@ function drawFrame() {
   });
 
   clearInterval(refreshTimer);
-  closeDialog();
+  closeAllDialogs();
   SCREENS[tab]?.($('#page')).catch(whoops);
 }
 
@@ -1322,12 +1358,12 @@ SCREENS.receive = async (page) => {
     };
     drawLines();
 
-    $('#po_sheet').addEventListener('click', () => showPurchaseOrder(po));
+    $('#po_sheet').addEventListener('click', () => showPurchaseOrder(po, true));
     $('#po_rf')?.addEventListener('click', async () => {
       const catalogue = await GET('/api/products?q=').catch(() => []);
       receiveDelivery(po, catalogue, () => {
         recent(); undoable().catch(() => {}); drawPOs(); drawRFs();
-      });
+      }, true);
     });
     $('#po_cancel')?.addEventListener('click', async () => {
       try {
@@ -1364,7 +1400,7 @@ SCREENS.receive = async (page) => {
       </div>
       <div class="dim">More than was ordered is recorded, not refused — a
         supplier who sends a hundred against an order for ninety-six has sent a
-        hundred.</div>`);
+        hundred.</div>`, '', true);
 
     $('#pr_go').addEventListener('click', async () => {
       const qty = +$('#pr_qty').value;
@@ -1392,7 +1428,7 @@ SCREENS.receive = async (page) => {
   // the same receive_stock underneath, once per product, and where it is
   // answering a purchase order it ticks that order off as it goes.
   // -------------------------------------------------------------------------
-  function receiveDelivery(po, catalogue, done) {
+  function receiveDelivery(po, catalogue, done, over = false) {
     // A purchase order's outstanding lines are what you expect to be holding,
     // so they are what the form opens with — already counted, still editable,
     // because what a supplier sends and what was asked for are two things.
@@ -1455,7 +1491,7 @@ SCREENS.receive = async (page) => {
       </div>
       <div class="mt right">
         <b id="rf_sum" class="dim"></b>
-        <button class="btn" id="rf_go">Record the delivery</button></div>`, 'wide');
+        <button class="btn" id="rf_go">Record the delivery</button></div>`, 'wide', over);
 
     $('#rf_skus').innerHTML = catalogue.map((c) =>
       `<option value="${esc(c.sku)}">${esc(c.name)}</option>`).join('');
@@ -1600,7 +1636,7 @@ SCREENS.receive = async (page) => {
         closeDialog();
         done();
         const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
-        if (full) showReceivingForm(full);
+        if (full) showReceivingForm(full, true);
       } catch (e) { whoops(e); $('#rf_go').disabled = false; }
     });
   }
@@ -2285,11 +2321,11 @@ function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
 }
 
 // The same sheet, opened over the screen with the buttons that send it.
-function showInvoice(opts) {
+function showInvoice(opts, over = false) {
   dialog(`${customerOrderForm(opts)}
     <div class="mt right">
       <button class="btn quiet" id="inv_save">⬇ Download JPEG</button>
-      <button class="btn" id="inv_done">Done</button></div>`, 'wide');
+      <button class="btn" id="inv_done">Done</button></div>`, 'wide', over);
   wireSave('#inv_save', '.doc', `${opts.orderId}.jpg`);
   $('#inv_done').addEventListener('click', closeDialog);
 }
@@ -2304,7 +2340,7 @@ function showInvoice(opts) {
  * the paper has five and a payment made after this printed goes in by hand.
  */
 function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
-                          who = {}, shipping = 0, others = 0 }) {
+                          who = {}, shipping = 0, others = 0, over = false }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   const grand = sub + shipping + others;
   const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
@@ -2357,7 +2393,7 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
     </div>
     <div class="mt right">
       <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
-      <button class="btn" id="ivd_done">Done</button></div>`, 'wide');
+      <button class="btn" id="ivd_done">Done</button></div>`, 'wide', over);
   wireSave('#ivd_save', '.doc', `${orderId} INVOICE.jpg`);
   $('#ivd_done').addEventListener('click', closeDialog);
 }
@@ -2664,7 +2700,7 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note,
     </div>`;
 }
 
-function showPurchaseOrder(po) {
+function showPurchaseOrder(po, over = false) {
   dialog(`${purchaseOrder({
     poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
     lines: po.lines || [], note: po.note,
@@ -2672,7 +2708,7 @@ function showPurchaseOrder(po) {
   })}
     <div class="mt right">
       <button class="btn quiet" id="po_save">⬇ Download JPEG</button>
-      <button class="btn" id="po_done">Done</button></div>`, 'wide');
+      <button class="btn" id="po_done">Done</button></div>`, 'wide', over);
   wireSave('#po_save', '.doc', `${po.po_no}.jpg`);
   $('#po_done').addEventListener('click', closeDialog);
 }
@@ -2812,7 +2848,7 @@ function rfGroups(lines = []) {
   return [...by.values()];
 }
 
-function showReceivingForm(f) {
+function showReceivingForm(f, over = false) {
   dialog(`${receivingForm({
     rfNo: f.rf_no, poNo: f.po_no, receivedOn: f.received_on,
     receivedAt: f.received_at, supplier: f, courier: f,
@@ -2820,12 +2856,12 @@ function showReceivingForm(f) {
   })}
     <div class="mt right">
       <button class="btn quiet" id="rf_save">⬇ Download JPEG</button>
-      <button class="btn" id="rf_done">Done</button></div>`, 'wide');
+      <button class="btn" id="rf_done">Done</button></div>`, 'wide', over);
   wireSave('#rf_save', '.doc', `${f.rf_no}.jpg`);
   $('#rf_done').addEventListener('click', closeDialog);
 }
 
-function showOR(r, reseller, paid = {}) {
+function showOR(r, reseller, paid = {}, over = false) {
   dialog(`${officialReceipt({
     receiptNo: r.receipt_no,
     issuedOn: paid.paid_on || new Date(),
@@ -2840,7 +2876,7 @@ function showOR(r, reseller, paid = {}) {
   })}
     <div class="mt right">
       <button class="btn quiet" id="or_save">⬇ Download JPEG</button>
-      <button class="btn" id="or_done">Done</button></div>`, 'wide');
+      <button class="btn" id="or_done">Done</button></div>`, 'wide', over);
   // The OR goes back into the same chat the payment was confirmed in, so it is
   // named after itself rather than the order it settles — one payment can
   // cover several.
@@ -3498,10 +3534,10 @@ async function openReseller(id, reload) {
         try {
           const out = await POST(`/api/resellers/${id}/issue-or`, {});
           notice(`${out.receipt_no} issued 🌸`, 'good');
-          // The OR takes over the dialog, so the list behind it is refreshed
-          // now rather than when it is dismissed.
+          // The list behind both of them is refreshed now rather than when
+          // they are dismissed, so it is already right whenever that happens.
           reload();
-          showOR(out, r, { amount: Number(out.amount) });
+          showOR(out, r, { amount: Number(out.amount) }, true);
         } catch (e) { whoops(e); $('#acct_or').disabled = false; }
       });
     } catch (e) { whoops(e); }
@@ -3579,6 +3615,7 @@ async function openReseller(id, reload) {
         GET(`/api/resellers/${id}/payments`).catch(() => []),
       ]);
       showInvoiceDoc({
+        over: true,
         orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments, who: o,
         lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
           price: l.unit_price, code: l.price_code, unit: l.unit_type })),
