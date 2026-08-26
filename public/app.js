@@ -345,9 +345,13 @@ const TABS = {
     ['finance', '💰', 'Finance'],
     ['products', '🧴', 'Products'],
     ['receive', '📦', 'Receive'],
-    ['orders', '🚚', 'Wholesale'],
-    ['chatorders', '💬', 'Chat orders'],
-    ['resellers', '🤝', 'Resellers'],
+    // Named after the document each one produces, in the order the work
+    // happens: the customer orders, the warehouse packs it, the account is
+    // invoiced. Staff look for the paper they are trying to produce, not for
+    // the part of the system it lives in.
+    ['chatorders', '💬', 'Customer order'],
+    ['orders', '🚚', 'Packing list'],
+    ['resellers', '🤝', 'Invoice'],
     ['returns', '↩️', 'Returns'],
     ['reorder', '📈', 'Reordering'],
     ['reports', '📊', 'Reports'],
