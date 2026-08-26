@@ -1155,7 +1155,20 @@ SCREENS.receive = async (page) => {
         shrinkage report and money that never moved into the loss column. This
         only works while nothing has happened to the lot yet.</div>
       <div id="r_undo" class="mt"></div></div>
-    <div class="panel"><h3>Just received</h3><div id="r_recent"></div></div>`;
+    <div class="panel"><h3>Just received</h3><div id="r_recent"></div></div>
+
+    <div class="panel"><h3>Purchase orders</h3>
+      <div class="dim">What has been asked of a supplier and what is still
+        short. Receiving against a line records the batch and the cost exactly
+        as receiving anything does — it also notes how much of the order that
+        delivery covered.</div>
+      <div class="row mt">
+        <div style="flex:2"><label>Supplier</label>
+          <select id="po_supplier"></select></div>
+        <div style="flex:0 0 auto"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
+        <div style="flex:0 0 auto"><button class="btn" id="po_new">＋ Raise a purchase order</button></div>
+      </div>
+      <div id="po_list" class="mt"></div></div>`;
 
   GET('/api/products?q=').then((rows) => {
     $('#skus', page).innerHTML = rows.map((p) =>
@@ -1226,8 +1239,248 @@ SCREENS.receive = async (page) => {
     () => deliveryDialog(GET('/api/products?q=').catch(() => []), recent,
       branchOf(page, 'r_branch')));
 
+  // ---- buying: suppliers, and the orders put to them --------------------
+  let suppliers = [];
+
+  const drawSuppliers = async () => {
+    suppliers = await GET('/api/suppliers').catch(() => []);
+    $('#po_supplier', page).innerHTML = suppliers.length
+      ? suppliers.map((v) => `<option value="${v.id}">${esc(v.name)}${
+          v.brand_name ? ` — ${esc(v.brand_name)}` : ''}</option>`).join('')
+      : '<option value="">No suppliers yet</option>';
+  };
+
+  const drawPOs = async () => {
+    const rows = await GET('/api/purchase-orders').catch(() => []);
+    $('#po_list', page).innerHTML = table(rows, [
+      { head: 'No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
+      { head: 'Raised', cell: (o) => onDay(o.ordered_on) },
+      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${
+          o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
+      { head: 'Lines', n: true, cell: (o) => count(o.lines) },
+      { head: 'Still short', n: true, cell: (o) => o.still_short > 0
+          ? `<b>${count(o.still_short)}</b>` : '—' },
+      { head: 'State', cell: (o) => o.status === 'closed' ? tag('all in', 'green')
+          : o.status === 'part' ? tag('part delivered', 'amber')
+          : o.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink') },
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
+    ], 'No purchase orders yet.');
+    $$('[data-po]', page).forEach((b) => b.addEventListener('click',
+      () => openPO(+b.dataset.po).catch(whoops)));
+  };
+
+  // Opened rather than printed straight away: the sheet is one of the things
+  // in here, but so is receiving against it, and both belong to the order.
+  async function openPO(poId) {
+    const po = await GET(`/api/purchase-orders/${poId}`);
+    const shops = await branches();
+    dialog(`
+      <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span></h3>
+      <div class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}${
+        po.note ? ` · ${esc(po.note)}` : ''}</div>
+      <div class="mt right">
+        <button class="btn quiet" id="po_sheet">🧾 The purchase order</button>
+        ${po.status === 'open' || po.status === 'part'
+          ? '<button class="btn line stop" id="po_cancel">Cancel this order</button>' : ''}
+      </div>
+      <div id="po_lines" class="mt"></div>`, 'wide');
+
+    const drawLines = () => {
+      $('#po_lines').innerHTML = table(po.lines, [
+        { head: 'Product', cell: (l) => `<b>${esc(l.name)}</b>
+            <div class="dim">${esc(l.sku)}</div>` },
+        { head: 'Ordered', n: true, cell: (l) => `${count(l.qty)} ${esc(l.unit)}` },
+        { head: 'In', n: true, cell: (l) => count(l.received) },
+        { head: 'Short', n: true, cell: (l) => l.qty - l.received > 0
+            ? `<b>${count(l.qty - l.received)}</b>` : tag('all in', 'green') },
+        { head: '', cell: (l) => l.qty - l.received > 0
+            ? `<button class="btn sm" data-recv="${l.id}">Receive</button>` : '' },
+      ], 'Nothing on this order.');
+
+      $$('[data-recv]').forEach((b) => b.addEventListener('click', () => {
+        const line = po.lines.find((l) => String(l.id) === b.dataset.recv);
+        receiveLine(po, line, shops, async () => {
+          const fresh = await GET(`/api/purchase-orders/${poId}`);
+          po.lines = fresh.lines;
+          po.status = fresh.status;
+          drawLines();
+          recent(); undoable().catch(() => {}); drawPOs();
+        });
+      }));
+    };
+    drawLines();
+
+    $('#po_sheet').addEventListener('click', () => showPurchaseOrder(po));
+    $('#po_cancel')?.addEventListener('click', async () => {
+      try {
+        await POST(`/api/purchase-orders/${poId}/cancel`, {});
+        notice('Purchase order cancelled', 'good');
+        closeDialog();
+        drawPOs();
+      } catch (e) { whoops(e); }
+    });
+  }
+
+  // The delivery itself. Batch, expiry and cost are the same three things
+  // receiving has always asked for, because this is the same receiving.
+  function receiveLine(po, line, shops, done) {
+    const short = line.qty - line.received;
+    dialog(`
+      <h3>Receive against ${esc(po.po_no)}</h3>
+      <div class="dim"><b>${esc(line.name)}</b> — ${count(short)} of
+        ${count(line.qty)} ${esc(line.unit)} still to come.</div>
+      <div class="row mt">
+        <div><label>Batch number</label><input id="pr_batch" type="text" autofocus></div>
+        <div><label>Expiry date</label><input id="pr_exp" type="date"></div>
+        <div><label>How many arrived</label>
+          <input id="pr_qty" type="number" min="1" value="${short}"></div>
+        <div><label>Cost each</label>
+          <input id="pr_cost" type="number" step="0.01" min="0" placeholder="unchanged"></div>
+      </div>
+      <div class="row">
+        <div><label>Paid by</label><select id="pr_method">
+          <option value="bank">Bank transfer</option><option value="cash">Cash</option>
+          <option value="gcash">GCash</option><option value="card">Card</option></select></div>
+        ${branchPicker(shops, 'pr_branch', 'Arrived at')}
+        <div style="flex:0 0 auto"><button class="btn" id="pr_go">Receive</button></div>
+      </div>
+      <div class="dim">More than was ordered is recorded, not refused — a
+        supplier who sends a hundred against an order for ninety-six has sent a
+        hundred.</div>`);
+
+    $('#pr_go').addEventListener('click', async () => {
+      const qty = +$('#pr_qty').value;
+      if (!(qty > 0)) return whoops(new Error('How many arrived?'));
+      $('#pr_go').disabled = true;
+      try {
+        const out = await POST(`/api/purchase-orders/lines/${line.id}/receive`, {
+          batch_no: $('#pr_batch').value, expiry: $('#pr_exp').value, qty,
+          unit_cost: $('#pr_cost').value, method: $('#pr_method').value,
+          branch_id: branchOf(document, 'pr_branch'),
+        });
+        notice(`${count(out.received)} of ${count(out.ordered)} in 🌸`, 'good');
+        closeDialog();
+        done();
+      } catch (e) { whoops(e); $('#pr_go').disabled = false; }
+    });
+  }
+
+  $('#po_newsup', page).addEventListener('click', () => {
+    dialog(`
+      <h3>New supplier</h3>
+      <div class="row">
+        <div style="flex:2"><label>Company name</label><input id="s_name" type="text" autofocus></div>
+        <div style="flex:2"><label>Brand name</label><input id="s_brand" type="text"></div>
+      </div>
+      <div class="row">
+        <div><label>TIN no.</label><input id="s_tin" type="text"></div>
+        <div style="flex:2"><label>Address</label><input id="s_addr" type="text"></div>
+        <div><label>Contact #</label><input id="s_contact" type="text"></div>
+      </div>
+      <div class="dim mt">All of it prints on the purchase order. Leave blank
+        what they have not given you.</div>
+      <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
+    $('#s_save').addEventListener('click', async () => {
+      try {
+        await POST('/api/suppliers', {
+          name: $('#s_name').value, brand_name: $('#s_brand').value,
+          tin: $('#s_tin').value, address: $('#s_addr').value,
+          contact: $('#s_contact').value,
+        });
+        notice('Supplier saved 🌸', 'good');
+        closeDialog();
+        drawSuppliers();
+      } catch (e) { whoops(e); }
+    });
+  });
+
+  $('#po_new', page).addEventListener('click', async () => {
+    const supplier = $('#po_supplier', page).value;
+    if (!supplier) return notice('Add a supplier first.', 'bad');
+    const catalogue = await GET('/api/products?q=').catch(() => []);
+    const basket = new Map();
+
+    dialog(`
+      <h3>Raise a purchase order</h3>
+      <div class="dim">To <b>${esc(($('#po_supplier', page).selectedOptions[0] || {}).text || '')}</b>.
+        No prices: a purchase order says what is wanted and how much of it, and
+        what it costs lands when the goods are received.</div>
+      <input type="search" id="pn_find" class="mt" placeholder="Search products…">
+      <div class="dim" id="pn_count" style="font-size:.72rem;margin:4px 0 2px"></div>
+      <div id="pn_goods" class="scroll" style="max-height:280px;overflow-y:auto"></div>
+      <h4 class="mt">On this order</h4>
+      <div id="pn_basket"></div>
+      <div class="row mt"><div style="flex:3"><label>Comments or special instructions</label>
+        <input id="pn_note" type="text"></div></div>
+      <div class="mt right"><button class="btn" id="pn_go">Raise it</button></div>`, 'wide');
+
+    const drawGoods = () => {
+      const term = ($('#pn_find').value || '').trim().toLowerCase();
+      const rows = catalogue.filter((p) => !term
+        || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term));
+      $('#pn_count').textContent = term
+        ? `${rows.length} of ${catalogue.length} products match “${term}”`
+        : `All ${rows.length} products — type to narrow it down`;
+      $('#pn_goods').innerHTML = table(rows, [
+        { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>
+            <span class="dim">${esc(p.sku)}</span>` },
+        { head: '', cell: (p) => `<button class="btn sm quiet"
+            data-add="${esc(p.sku)}">Add</button>` },
+      ], 'Nothing matches.');
+      $$('[data-add]', $('#pn_goods')).forEach((b) => b.addEventListener('click', () => {
+        const prod = catalogue.find((x) => x.sku === b.dataset.add);
+        const at = basket.get(prod.sku)
+          ?? { sku: prod.sku, name: prod.name, unit: prod.unit_type || 'PCS', qty: 0 };
+        at.qty += 1;
+        basket.set(prod.sku, at);
+        drawBasket();
+      }));
+    };
+
+    const drawBasket = () => {
+      $('#pn_basket').innerHTML = basket.size ? [...basket.values()].map((l) => `
+        <div class="pick">
+          <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${esc(l.sku)}</span></span>
+          <input type="number" min="1" value="${l.qty}" data-q="${esc(l.sku)}">
+          <input type="text" value="${esc(l.unit)}" data-u="${esc(l.sku)}" style="width:74px">
+          <button class="btn sm stop" data-x="${esc(l.sku)}">✕</button>
+        </div>`).join('') : '<div class="none">Nothing added yet.</div>';
+      $$('[data-q]', $('#pn_basket')).forEach((i) => i.addEventListener('change', () => {
+        basket.get(i.dataset.q).qty = Math.max(1, +i.value || 1);
+      }));
+      $$('[data-u]', $('#pn_basket')).forEach((i) => i.addEventListener('change', () => {
+        basket.get(i.dataset.u).unit = i.value.trim() || 'PCS';
+      }));
+      $$('[data-x]', $('#pn_basket')).forEach((b) => b.addEventListener('click', () => {
+        basket.delete(b.dataset.x);
+        drawBasket();
+      }));
+    };
+
+    $('#pn_find').addEventListener('input', drawGoods);
+    drawGoods();
+    drawBasket();
+
+    $('#pn_go').addEventListener('click', async () => {
+      if (!basket.size) return notice('Add what is being ordered first.', 'bad');
+      $('#pn_go').disabled = true;
+      try {
+        const out = await POST('/api/purchase-orders', {
+          supplier_id: supplier, note: $('#pn_note').value,
+          lines: [...basket.values()],
+        });
+        notice(`${out.po_no} raised 🌸`, 'good');
+        closeDialog();
+        await drawPOs();
+        openPO(Number(out.id)).catch(whoops);
+      } catch (e) { whoops(e); $('#pn_go').disabled = false; }
+    });
+  });
+
   await recent();
   await undoable().catch(() => {});
+  await drawSuppliers();
+  await drawPOs();
   repeat(recent, 15000);
 };
 
@@ -2044,6 +2297,116 @@ function officialReceipt({ receiptNo, issuedOn, resellerName, who = {},
         <div class="cap">RECEIVED BY:</div>
       </div>
     </div>`;
+}
+
+/**
+ * The PURCHASE ORDER: the first sheet in this system that goes out rather than
+ * back. Everything else here is the company selling; this is the company
+ * buying, and the reader is a supplier, not a reseller.
+ *
+ * It carries no prices, because the paper it replaces carries none. A purchase
+ * order is a request — what is wanted and how much of it — and what a case
+ * costs is settled between the office and the supplier and lands when the
+ * goods are received, which is where this system has always recorded cost.
+ *
+ * Two parties across the top rather than one: who is being asked, and where it
+ * is to be sent. And three signatures rather than one, because buying is the
+ * one thing here that nobody does alone — it is prepared, recorded and
+ * acknowledged, and the boxes down the left are what the warehouse ticks when
+ * the delivery is checked against it.
+ */
+function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note,
+                         preparedBy, recordedBy, acknowledgedBy }) {
+  const BLANKS = Math.max(0, 8 - lines.length);
+  const field = (label, value) => `
+    <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
+  return `
+    <div class="doc po">
+      <div class="rule"></div>
+      <div class="po-head">
+        <img src="/logo.png" alt="MS Beau Ave">
+        <div class="po-title">
+          <h2>PURCHASE ORDER</h2>
+          <div class="po-nums">
+            ${field('DATE', onDay(orderedOn))}
+            ${field('PURCHASE ORDER', poNo)}
+          </div>
+        </div>
+      </div>
+
+      <div class="po-parties">
+        <div>
+          <div class="barhd">SUPPLIER INFORMATION</div>
+          ${field('COMPANY NAME:', supplier.supplier || supplier.name)}
+          ${field('BRAND NAME', supplier.brand_name)}
+          ${field('TIN NO.:', supplier.tin)}
+          ${field('ADDRESS', supplier.address)}
+        </div>
+        <div>
+          <div class="barhd">SHIP TO</div>
+          ${field('COMPANY NAME:', 'MS BEAU AVE')}
+          ${field('TIN NO.:', '010-794-089-00000')}
+          ${field('ADDRESS', 'MARIKINA CITY')}
+          ${field('CONTACT #', '9274054805')}
+        </div>
+      </div>
+
+      <table class="lines">
+        <thead><tr>
+          <th style="width:52px">No.</th>
+          <th>PRODUCT DESCRIPTION</th>
+          <th style="width:110px">QUANTITY</th>
+          <th style="width:90px">UNIT</th>
+        </tr></thead>
+        <tbody>
+          ${lines.map((l, i) => `<tr>
+            <td class="c">${i + 1}</td>
+            <td>${esc(l.name)}</td>
+            <td class="c">${count(l.qty)}</td>
+            <td class="c">${esc(l.unit || l.unit_type || 'PCS')}</td>
+          </tr>`).join('')}
+          ${Array.from({ length: BLANKS },
+            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>').join('')}
+        </tbody>
+      </table>
+
+      <div class="po-foot">
+        <div class="notes">
+          <div class="barhd">Comments or Special Instructions</div>
+          <div class="wrote">${esc(note || '')}</div>
+          <div class="ticks">
+            <span><i></i>COMPLETED</span>
+            <span><i></i>LACKINGS</span>
+            <span><i></i>RECORDED</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sign3">
+        <div><div class="nm">${esc(preparedBy || user?.name || '')}</div>
+          <div class="role">Signature Over Printed Name</div>
+          <div class="cap">PREPARED BY:</div></div>
+        <div><div class="nm">${esc(recordedBy || '')}</div>
+          <div class="role">Signature Over Printed Name</div>
+          <div class="cap">RECORDED BY:</div></div>
+        <div><div class="nm">${esc(acknowledgedBy || '')}</div>
+          <div class="role">Signature Over Printed Name</div>
+          <div class="cap">ACKNOWLEDGED BY:</div></div>
+      </div>
+    </div>`;
+}
+
+function showPurchaseOrder(po) {
+  dialog(`${purchaseOrder({
+    poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
+    lines: po.lines || [], note: po.note,
+    preparedBy: po.raised_by,
+  })}
+    <div class="mt right">
+      <button class="btn quiet" id="po_save">⬇ Download JPEG</button>
+      <button class="btn" id="po_done">Done</button></div>`, 'wide');
+  wireSave('#po_save', '.doc', `${po.po_no}.jpg`);
+  $('#po_done').addEventListener('click', closeDialog);
 }
 
 function showOR(r, reseller, paid = {}) {
