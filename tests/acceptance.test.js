@@ -1892,3 +1892,159 @@ test('paying and receipting in one step leaves nothing waiting', async () => {
   const waiting = await GET(admin, `/api/resellers/${id}/pending-receipt`);
   assert.equal(waiting.data.count, 0, 'the one-step call receipts what it takes');
 });
+
+// ===========================================================================
+// Buying: the order out, the delivery back
+//
+// The two papers are one transaction, and the thing worth checking is that
+// they stay joined — that receiving in boxes lands as units against the order
+// that asked for them, and that a short delivery says so rather than closing.
+// ===========================================================================
+test('a purchase order is raised, half-delivered, then finished off', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+
+  const sup = await POST(admin, '/api/suppliers', {
+    name: unique('Maker'), brand_name: 'Beau Glow', tin: '000-111-222',
+    address: 'Quezon City', contact: '09170000000',
+  });
+  assert.equal(sup.status, 200, JSON.stringify(sup.data));
+
+  const po = await POST(admin, '/api/purchase-orders', {
+    supplier_id: sup.data.id, note: 'ship by Friday',
+    lines: [{ sku, qty: 96, unit: 'PCS' }],
+  });
+  assert.equal(po.status, 200, JSON.stringify(po.data));
+  assert.match(po.data.po_no, /^PVE\d{2}-\d{2}-\d{3}$/, 'the house numbering');
+
+  const opened = await GET(admin, `/api/purchase-orders/${po.data.id}`);
+  assert.equal(opened.data.status, 'open');
+  assert.equal(opened.data.lines.length, 1);
+  const lineId = opened.data.lines[0].id;
+
+  // Half of it arrives: three boxes of sixteen. The order is part-delivered,
+  // not closed, because forty-eight is not ninety-six.
+  const half = await POST(store, '/api/receiving-forms', {
+    po_id: po.data.id,
+    courier: {
+      driver_name: 'R. Santos', plate_no: 'ABC 1234', pickup: 'Cainta',
+      contact: '09180000000', shipping_fee: '350', shipping_mop: 'cash',
+      received_at: '26/08 3:40 PM',
+    },
+    foot: { guard_on_duty: 'M. Cruz', checked_by: 'A. Reyes', approved_by: 'S. Lorica' },
+    lines: [{
+      sku, unit: 'PCS', po_line_id: lineId,
+      batch_no: unique('L'), expiry: monthsOut(24), unit_cost: 210,
+      packs: [{ pack: 'BOX', qty_per_box: 16, boxes: 3 }],
+    }],
+  });
+  assert.equal(half.status, 200, JSON.stringify(half.data));
+  assert.match(half.data.rf_no, /^RFC\d{2}-\d{2}-\d{3}$/, 'the house numbering');
+  assert.equal(half.data.units, 48, 'three boxes of sixteen is forty-eight');
+  assert.equal(half.data.boxes, 3);
+
+  const mid = await GET(admin, `/api/purchase-orders/${po.data.id}`);
+  assert.equal(mid.data.status, 'part', 'still short, so still open-ish');
+  assert.equal(mid.data.lines[0].received, 48);
+
+  // The rest, in two packings: two boxes of sixteen and one plastic of sixteen.
+  const rest = await POST(store, '/api/receiving-forms', {
+    po_id: po.data.id,
+    lines: [{
+      sku, unit: 'PCS', po_line_id: lineId,
+      batch_no: unique('L'), expiry: monthsOut(24),
+      packs: [
+        { pack: 'BOX', qty_per_box: 16, boxes: 2 },
+        { pack: 'PLASTIC', qty_per_box: 16, boxes: 1 },
+      ],
+    }],
+  });
+  assert.equal(rest.status, 200, JSON.stringify(rest.data));
+  assert.equal(rest.data.units, 48);
+
+  const done = await GET(admin, `/api/purchase-orders/${po.data.id}`);
+  assert.equal(done.data.status, 'closed', 'nothing short, so closed');
+  assert.equal(done.data.lines[0].received, 96);
+
+  // And the stock is really there: ninety-six units across the three pools.
+  const stock = await GET(admin, `/api/products?q=${sku}`);
+  assert.equal(stock.data[0].total_on_hand, 96);
+});
+
+test('a receiving form keeps what the paper says and gives it back', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+  const sup = await POST(admin, '/api/suppliers', { name: unique('Maker') });
+
+  const rf = await POST(store, '/api/receiving-forms', {
+    supplier_id: sup.data.id,
+    courier: { driver_name: 'R. Santos', shipping_fee: '350', shipping_mop: 'cash' },
+    foot: { guard_on_duty: 'M. Cruz', others: 'one carton dented' },
+    lines: [{
+      sku, unit: 'PCS', batch_no: unique('L'), expiry: monthsOut(24),
+      packs: [
+        { pack: 'BOX', qty_per_box: 16, boxes: 3 },
+        { pack: 'PLASTIC', qty_per_box: 9, boxes: 1 },
+      ],
+    }],
+  });
+  assert.equal(rf.status, 200, JSON.stringify(rf.data));
+  assert.equal(rf.data.units, 57, 'forty-eight and nine');
+  assert.equal(rf.data.boxes, 4);
+
+  const back = await GET(admin, `/api/receiving-forms/${rf.data.id}`);
+  assert.equal(back.status, 200);
+  assert.equal(Number(back.data.shipping_fee), 350);
+  assert.equal(back.data.guard_on_duty, 'M. Cruz');
+  assert.equal(back.data.others, 'one carton dented');
+  assert.equal(back.data.total_boxes, 4, 'counted from the packings when not written');
+  assert.equal(back.data.po_no, null, 'this one answers no order');
+  assert.equal(back.data.lines.length, 2, 'two packings of one product');
+  assert.deepEqual(back.data.lines.map((l) => l.qty), [48, 9]);
+  assert.deepEqual(back.data.lines.map((l) => l.line_no), [1, 1], 'one product');
+});
+
+test('a delivery nobody can account for is refused whole', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+  const sup = await POST(admin, '/api/suppliers', { name: unique('Maker') });
+
+  const before = await GET(admin, `/api/products?q=${sku}`);
+  const started = before.data[0].total_on_hand;
+
+  // A first product that is fine, a second with no expiry on the carton. The
+  // whole form goes back, not half of it — otherwise the good half is in stock
+  // with no paper to explain it.
+  const bad = await POST(store, '/api/receiving-forms', {
+    supplier_id: sup.data.id,
+    lines: [
+      { sku, unit: 'PCS', batch_no: unique('L'), expiry: monthsOut(24),
+        packs: [{ pack: 'BOX', qty_per_box: 10, boxes: 1 }] },
+      { sku, unit: 'PCS', batch_no: unique('L'),
+        packs: [{ pack: 'BOX', qty_per_box: 10, boxes: 1 }] },
+    ],
+  });
+  assert.equal(bad.status, 400, JSON.stringify(bad.data));
+
+  const after = await GET(admin, `/api/products?q=${sku}`);
+  assert.equal(after.data[0].total_on_hand, started, 'nothing of it stuck');
+
+  const forms = await GET(admin, '/api/receiving-forms');
+  assert.ok(!forms.data.some((f) => String(f.supplier_id) === String(sup.data.id)),
+    'and no form was left behind either');
+});
+
+test('buying is the stockroom’s business, not a reseller’s', async () => {
+  const admin = await signIn('admin');
+  const sup = await POST(admin, '/api/suppliers', { name: unique('Maker') });
+  assert.equal(sup.status, 200);
+
+  const seller = await signIn('reseller', await newReseller(admin));
+  assert.equal((await GET(seller, '/api/suppliers')).status, 403);
+  assert.equal((await GET(seller, '/api/purchase-orders')).status, 403);
+  assert.equal((await GET(seller, '/api/receiving-forms')).status, 403);
+  assert.equal((await POST(seller, '/api/receiving-forms', { lines: [] })).status, 403);
+});

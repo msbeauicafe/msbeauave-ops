@@ -1168,7 +1168,17 @@ SCREENS.receive = async (page) => {
         <div style="flex:0 0 auto"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
         <div style="flex:0 0 auto"><button class="btn" id="po_new">＋ Raise a purchase order</button></div>
       </div>
-      <div id="po_list" class="mt"></div></div>`;
+      <div id="po_list" class="mt"></div></div>
+
+    <div class="panel"><h3>Receiving forms</h3>
+      <div class="dim">The paper the stockroom fills in while the delivery is
+        still on the floor — counted in boxes, with the courier, the shipping
+        and the guard on it. It receives the stock as it records itself, and
+        where it answers a purchase order it ticks that order off too.</div>
+      <div class="row mt">
+        <div style="flex:0 0 auto"><button class="btn" id="rf_new">＋ Record a delivery</button></div>
+      </div>
+      <div id="rf_list" class="mt"></div></div>`;
 
   GET('/api/products?q=').then((rows) => {
     $('#skus', page).innerHTML = rows.map((p) =>
@@ -1281,6 +1291,8 @@ SCREENS.receive = async (page) => {
       <div class="mt right">
         <button class="btn quiet" id="po_sheet">🧾 The purchase order</button>
         ${po.status === 'open' || po.status === 'part'
+          ? '<button class="btn line" id="po_rf">📗 Receive the whole delivery</button>' : ''}
+        ${po.status === 'open' || po.status === 'part'
           ? '<button class="btn line stop" id="po_cancel">Cancel this order</button>' : ''}
       </div>
       <div id="po_lines" class="mt"></div>`, 'wide');
@@ -1311,6 +1323,12 @@ SCREENS.receive = async (page) => {
     drawLines();
 
     $('#po_sheet').addEventListener('click', () => showPurchaseOrder(po));
+    $('#po_rf')?.addEventListener('click', async () => {
+      const catalogue = await GET('/api/products?q=').catch(() => []);
+      receiveDelivery(po, catalogue, () => {
+        recent(); undoable().catch(() => {}); drawPOs(); drawRFs();
+      });
+    });
     $('#po_cancel')?.addEventListener('click', async () => {
       try {
         await POST(`/api/purchase-orders/${poId}/cancel`, {});
@@ -1364,6 +1382,255 @@ SCREENS.receive = async (page) => {
       } catch (e) { whoops(e); $('#pr_go').disabled = false; }
     });
   }
+
+  // -------------------------------------------------------------------------
+  // The receiving form: the whole delivery at once, counted in boxes
+  //
+  // receiveLine above takes one product because sometimes one product is what
+  // turned up. This takes the van: every product on it, each in the packings it
+  // came in, and the courier, the shipping and the guard around them. It posts
+  // the same receive_stock underneath, once per product, and where it is
+  // answering a purchase order it ticks that order off as it goes.
+  // -------------------------------------------------------------------------
+  function receiveDelivery(po, catalogue, done) {
+    // A purchase order's outstanding lines are what you expect to be holding,
+    // so they are what the form opens with — already counted, still editable,
+    // because what a supplier sends and what was asked for are two things.
+    const items = (po?.lines || [])
+      .filter((l) => l.qty - l.received > 0)
+      .map((l) => ({
+        sku: l.sku, name: l.name, unit: l.unit || 'PCS', po_line_id: l.id,
+        batch_no: '', expiry: '', unit_cost: '',
+        packs: [{ pack: 'BOX', qty_per_box: l.qty - l.received, boxes: 1 }],
+      }));
+
+    dialog(`
+      <h3>Receiving form${po ? ` <span class="dim">· against ${esc(po.po_no)}</span>` : ''}</h3>
+      <div class="dim">Counted the way it arrives: how many to a box, and how
+        many boxes. A product can have more than one packing — three boxes of
+        sixteen and one plastic of nine is one product and fifty-seven bottles.</div>
+
+      <div class="row mt">
+        ${po ? `<div style="flex:2"><label>Supplier</label>
+                 <div class="fixed">${esc(po.supplier)}</div></div>`
+             : `<div style="flex:2"><label>Supplier</label>
+                 <select id="rf_supplier">${suppliers.map((v) =>
+                   `<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></div>`}
+        <div><label>Date received</label><input id="rf_on" type="date"></div>
+        <div><label>Date and time on the gate</label>
+          <input id="rf_at" type="text" placeholder="e.g. 26/08 3:40 PM"></div>
+        ${branchPicker(shops, 'rf_branch', 'Arrived at')}
+      </div>
+
+      <div class="row">
+        <div><label>Drivers name</label><input id="rf_driver" type="text"></div>
+        <div><label>Plate no.</label><input id="rf_plate" type="text"></div>
+        <div style="flex:2"><label>Address — pickup</label><input id="rf_pickup" type="text"></div>
+        <div><label>Contact #</label><input id="rf_contact" type="text"></div>
+      </div>
+
+      <div class="row">
+        <div><label>Shipping fee</label>
+          <input id="rf_fee" type="number" step="0.01" min="0" placeholder="0.00"></div>
+        <div><label>MOP</label><input id="rf_mop" type="text" placeholder="cash, GCash…"></div>
+        <div><label>Total of boxes</label>
+          <input id="rf_boxes" type="number" min="0" placeholder="counted below"></div>
+        <div><label>Guard on duty</label><input id="rf_guard" type="text"></div>
+      </div>
+
+      <div class="row">
+        <div style="flex:2"><label>Add a product</label>
+          <input id="rf_add" type="text" list="rf_skus" placeholder="scan or type a code">
+          <datalist id="rf_skus"></datalist></div>
+        <div style="flex:0 0 auto" class="pushdown">
+          <button class="btn line" id="rf_addgo">＋ Add</button></div>
+      </div>
+
+      <div id="rf_items" class="mt"></div>
+
+      <div class="row mt">
+        <div><label>Checked by</label><input id="rf_checked" type="text"></div>
+        <div><label>Approved by</label><input id="rf_approved" type="text"></div>
+        <div style="flex:2"><label>Others</label><input id="rf_others" type="text"></div>
+      </div>
+      <div class="mt right">
+        <b id="rf_sum" class="dim"></b>
+        <button class="btn" id="rf_go">Record the delivery</button></div>`, 'wide');
+
+    $('#rf_skus').innerHTML = catalogue.map((c) =>
+      `<option value="${esc(c.sku)}">${esc(c.name)}</option>`).join('');
+    $('#rf_on').value = new Date().toISOString().slice(0, 10);
+
+    // The inputs are the truth between redraws — read them back before any
+    // redraw, or a half-typed batch number vanishes when a packing is added.
+    const harvest = () => {
+      $$('[data-item]').forEach((box) => {
+        const it = items[+box.dataset.item];
+        if (!it) return;
+        it.unit = $('.i-unit', box).value.trim().toUpperCase() || 'PCS';
+        it.batch_no = $('.i-batch', box).value;
+        it.expiry = $('.i-exp', box).value;
+        it.unit_cost = $('.i-cost', box).value;
+        it.packs = $$('[data-pack]', box).map((row) => ({
+          pack: $('.p-pack', row).value.trim().toUpperCase() || 'BOX',
+          qty_per_box: +$('.p-per', row).value || 0,
+          boxes: +$('.p-boxes', row).value || 0,
+        }));
+      });
+    };
+
+    const totalOf = (it) => it.packs.reduce((n, k) => n + k.qty_per_box * k.boxes, 0);
+    const boxesOf = (it) => it.packs.reduce((n, k) => n + k.boxes, 0);
+
+    const retally = () => {
+      harvest();
+      const units = items.reduce((n, it) => n + totalOf(it), 0);
+      const cartons = items.reduce((n, it) => n + boxesOf(it), 0);
+      $$('[data-item]').forEach((box) => {
+        const it = items[+box.dataset.item];
+        $('.i-total', box).textContent = it ? `${count(totalOf(it))} ${it.unit}` : '';
+      });
+      $('#rf_sum').textContent = items.length
+        ? `${count(units)} units in ${count(cartons)} boxes  `
+        : '';
+      if (!$('#rf_boxes').value) $('#rf_boxes').placeholder = String(cartons || 0);
+    };
+
+    const drawItems = () => {
+      $('#rf_items').innerHTML = items.length ? items.map((it, i) => `
+        <div class="rfitem" data-item="${i}">
+          <div class="row">
+            <div style="flex:2"><label>Product</label>
+              <div class="fixed"><b>${esc(it.name)}</b>
+                <span class="dim">${esc(it.sku)}</span></div></div>
+            <div style="flex:0 0 90px"><label>Unit</label>
+              <input class="i-unit" type="text" value="${esc(it.unit || 'PCS')}"></div>
+            <div><label>Batch number</label>
+              <input class="i-batch" type="text" value="${esc(it.batch_no)}"></div>
+            <div><label>Expiry date</label>
+              <input class="i-exp" type="date" value="${esc(it.expiry)}"></div>
+            <div><label>Cost each</label>
+              <input class="i-cost" type="number" step="0.01" min="0"
+                     placeholder="unchanged" value="${esc(it.unit_cost)}"></div>
+            <div style="flex:0 0 auto" class="pushdown">
+              <button class="btn sm line stop" data-drop="${i}">Remove</button></div>
+          </div>
+          ${it.packs.map((k, j) => `
+            <div class="row packrow" data-pack="${j}">
+              <div><label>Packing</label>
+                <input class="p-pack" type="text" value="${esc(k.pack)}"></div>
+              <div><label>Qty per box</label>
+                <input class="p-per" type="number" min="1" value="${k.qty_per_box || ''}"></div>
+              <div><label>No. of boxes</label>
+                <input class="p-boxes" type="number" min="1" value="${k.boxes || ''}"></div>
+              <div style="flex:0 0 auto" class="pushdown">
+                ${it.packs.length > 1
+                  ? `<button class="btn sm quiet" data-droppack="${i}:${j}">✕</button>` : ''}
+              </div>
+            </div>`).join('')}
+          <div class="row packfoot">
+            <button class="btn sm quiet" data-addpack="${i}">＋ another packing</button>
+            <span class="dim">comes to <b class="i-total"></b></span>
+          </div>
+        </div>`).join('')
+        : '<div class="dim">Nothing on this delivery yet.</div>';
+
+      $$('[data-drop]').forEach((b) => b.addEventListener('click', () => {
+        harvest(); items.splice(+b.dataset.drop, 1); drawItems();
+      }));
+      $$('[data-addpack]').forEach((b) => b.addEventListener('click', () => {
+        harvest();
+        items[+b.dataset.addpack].packs.push({ pack: 'BOX', qty_per_box: 0, boxes: 1 });
+        drawItems();
+      }));
+      $$('[data-droppack]').forEach((b) => b.addEventListener('click', () => {
+        harvest();
+        const [i, j] = b.dataset.droppack.split(':').map(Number);
+        items[i].packs.splice(j, 1);
+        drawItems();
+      }));
+      $$('#rf_items input').forEach((el) => el.addEventListener('input', retally));
+      retally();
+    };
+    drawItems();
+
+    const addProduct = () => {
+      const sku = $('#rf_add').value.trim().toUpperCase();
+      if (!sku) return;
+      const found = catalogue.find((c) => c.sku.toUpperCase() === sku);
+      if (!found) return notice('No product with that code.', 'bad');
+      harvest();
+      items.push({
+        sku: found.sku, name: found.name, unit: found.unit_type || 'PCS',
+        po_line_id: po?.lines?.find((l) => l.sku === found.sku)?.id || null,
+        batch_no: '', expiry: '', unit_cost: '',
+        packs: [{ pack: 'BOX', qty_per_box: 0, boxes: 1 }],
+      });
+      $('#rf_add').value = '';
+      drawItems();
+    };
+    $('#rf_addgo').addEventListener('click', addProduct);
+    $('#rf_add').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addProduct(); }
+    });
+
+    $('#rf_go').addEventListener('click', async () => {
+      harvest();
+      if (!items.length) return notice('Nothing on this delivery yet.', 'bad');
+      $('#rf_go').disabled = true;
+      try {
+        const out = await POST('/api/receiving-forms', {
+          po_id: po?.id || null,
+          supplier_id: po ? null : $('#rf_supplier')?.value || null,
+          branch_id: branchOf(document, 'rf_branch'),
+          lines: items,
+          courier: {
+            driver_name: $('#rf_driver').value, plate_no: $('#rf_plate').value,
+            pickup: $('#rf_pickup').value, contact: $('#rf_contact').value,
+            shipping_fee: $('#rf_fee').value, shipping_mop: $('#rf_mop').value,
+            received_at: $('#rf_at').value,
+          },
+          foot: {
+            received_on: $('#rf_on').value, total_boxes: $('#rf_boxes').value,
+            others: $('#rf_others').value, guard_on_duty: $('#rf_guard').value,
+            checked_by: $('#rf_checked').value, approved_by: $('#rf_approved').value,
+          },
+        });
+        notice(`${esc(out.rf_no)} — ${count(out.units)} units in 🌸`, 'good');
+        closeDialog();
+        done();
+        const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
+        if (full) showReceivingForm(full);
+      } catch (e) { whoops(e); $('#rf_go').disabled = false; }
+    });
+  }
+
+  const drawRFs = async () => {
+    const rows = await GET('/api/receiving-forms').catch(() => []);
+    $('#rf_list', page).innerHTML = table(rows, [
+      { head: 'No.', cell: (f) => `<b>${esc(f.rf_no)}</b>` },
+      { head: 'Received', cell: (f) => onDay(f.received_on) },
+      { head: 'Supplier', cell: (f) => `${esc(f.supplier)}${
+          f.brand_name ? `<div class="dim">${esc(f.brand_name)}</div>` : ''}` },
+      { head: 'Against', cell: (f) => f.po_no ? esc(f.po_no) : tag('no order', 'grey') },
+      { head: 'Products', n: true, cell: (f) => count(f.products) },
+      { head: 'Units', n: true, cell: (f) => count(f.units) },
+      { head: 'Boxes', n: true, cell: (f) => count(f.total_boxes) },
+      { head: '', cell: (f) => `<button class="btn sm quiet" data-rf="${f.id}">Open</button>` },
+    ], 'No receiving forms yet.');
+    $$('[data-rf]', page).forEach((b) => b.addEventListener('click', async () => {
+      try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rf}`)); }
+      catch (e) { whoops(e); }
+    }));
+  };
+
+  $('#rf_new', page).addEventListener('click', async () => {
+    if (!suppliers.length) return notice('Add a supplier first.', 'bad');
+    const catalogue = await GET('/api/products?q=').catch(() => []);
+    receiveDelivery(null, catalogue, () => {
+      recent(); undoable().catch(() => {}); drawRFs(); drawPOs();
+    });
+  });
 
   $('#po_newsup', page).addEventListener('click', () => {
     dialog(`
@@ -1481,6 +1748,7 @@ SCREENS.receive = async (page) => {
   await undoable().catch(() => {});
   await drawSuppliers();
   await drawPOs();
+  await drawRFs();
   repeat(recent, 15000);
 };
 
@@ -2407,6 +2675,154 @@ function showPurchaseOrder(po) {
       <button class="btn" id="po_done">Done</button></div>`, 'wide');
   wireSave('#po_save', '.doc', `${po.po_no}.jpg`);
   $('#po_done').addEventListener('click', closeDialog);
+}
+
+// ---------------------------------------------------------------------------
+// The receiving form — what actually came off the van
+//
+// The purchase order went out in units, because that is how you ask for
+// something. This comes back in boxes, because that is how it arrives and how
+// somebody standing next to it counts it: three boxes of sixteen and one
+// plastic of nine, which is fifty-seven bottles, which is the number that
+// matters to stock and to nobody on the loading bay.
+//
+// So a product here is a group of rows, one per packing, and the group's
+// quantity is what they come to. Green, to sit beside the orange order it
+// answers.
+// ---------------------------------------------------------------------------
+function receivingForm({ rfNo, poNo, receivedOn, receivedAt, supplier = {},
+                         courier = {}, groups = [], foot = {} }) {
+  const BLANKS = Math.max(0, 8 - groups.reduce((n, g) => n + g.packs.length, 0));
+  const field = (label, value) => `
+    <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
+
+  const body = groups.map((g) => {
+    const total = g.packs.reduce((n, k) => n + k.qty_per_box * k.boxes, 0);
+    const span = g.packs.length;
+    return g.packs.map((k, i) => `<tr>
+      ${i === 0 ? `
+        <td class="c" rowspan="${span}"><b>${count(total)}</b></td>
+        <td class="c" rowspan="${span}">${esc(g.unit || 'PCS')}</td>
+        <td rowspan="${span}">${esc(g.name || g.sku)}</td>` : ''}
+      <td class="c">${count(k.qty_per_box)}</td>
+      <td class="c">${count(k.boxes)}${k.pack && k.pack !== 'BOX'
+        ? ` <i>${esc(k.pack)}</i>` : ''}</td>
+      <td class="c">${count(k.qty_per_box * k.boxes)}</td>
+    </tr>`).join('');
+  }).join('');
+
+  return `
+    <div class="doc po rf">
+      <div class="rule"></div>
+      <div class="po-head">
+        <img src="/logo.png" alt="MS Beau Ave">
+        <div class="po-title">
+          <h2>RECEIVING FORM</h2>
+          <div class="po-nums">
+            ${field('DATE', onDay(receivedOn))}
+            ${field('RECEIVING FORM', rfNo)}
+            ${poNo ? field('PURCHASE ORDER', poNo) : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="po-parties four">
+        <div>
+          <div class="barhd">SHIP TO</div>
+          ${field('COMPANY NAME:', 'MS BEAU AVE')}
+          ${field('TIN NO.:', '010-794-089-00000')}
+          ${field('ADDRESS', 'MARIKINA CITY')}
+          ${field('CONTACT #', '9274054805')}
+        </div>
+        <div>
+          <div class="barhd">RECEIVED FROM (COURIER)</div>
+          ${field('DRIVERS NAME:', courier.driver_name)}
+          ${field('PLATE NO.:', courier.plate_no)}
+          ${field('ADDRESS-PICKUP', courier.pickup)}
+          ${field('CONTACT #', courier.contact)}
+        </div>
+        <div>
+          <div class="barhd">SUPPLIER INFORMATION</div>
+          ${field('SUPPLIER NAME:', supplier.supplier || supplier.name)}
+          ${field('BRAND NAME', supplier.brand_name)}
+        </div>
+        <div>
+          <div class="barhd">SHIPPING FEE</div>
+          ${field('AMOUNT:', Number(courier.shipping_fee || 0) > 0
+            ? peso(courier.shipping_fee) : '')}
+          ${field('MOP', courier.shipping_mop)}
+        </div>
+      </div>
+
+      <table class="lines">
+        <thead><tr>
+          <th style="width:78px">QUANTITY</th>
+          <th style="width:62px">UNIT</th>
+          <th>PRODUCT DESCRIPTION</th>
+          <th style="width:86px">QTY PER BOX</th>
+          <th style="width:92px">NO. OF BOXES</th>
+          <th style="width:70px">TOTAL</th>
+        </tr></thead>
+        <tbody>
+          ${body}
+          ${Array.from({ length: BLANKS },
+            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
+        </tbody>
+      </table>
+
+      <div class="rf-foot">
+        <div class="notes">
+          <div class="barhd">OTHERS</div>
+          <div class="wrote">${esc(foot.others || '')}</div>
+          <div class="tally">
+            ${field('TOTAL OF BOXES', foot.total_boxes == null ? '' : count(foot.total_boxes))}
+            ${field('GUARD ON DUTY', foot.guard_on_duty)}
+            ${field('DATE AND TIME', receivedAt
+              || (receivedOn ? onDay(receivedOn) : ''))}
+          </div>
+        </div>
+        <div class="sign3">
+          <div><div class="nm">${esc(foot.checked_by || '')}</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">CHECKED BY:</div></div>
+          <div><div class="nm">${esc(foot.approved_by || '')}</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">APPROVED BY:</div></div>
+          <div><div class="nm">${esc(foot.recorded_by || '')}</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">RECORDED BY:</div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// The stored form comes back as one row per packing; the paper wants them
+// gathered back into the products they were packings of.
+function rfGroups(lines = []) {
+  const by = new Map();
+  for (const l of lines) {
+    const key = String(l.line_no);
+    if (!by.has(key)) {
+      by.set(key, { sku: l.sku, name: l.name, unit: l.unit, packs: [] });
+    }
+    by.get(key).packs.push({
+      pack: l.pack, qty_per_box: Number(l.qty_per_box), boxes: Number(l.boxes),
+    });
+  }
+  return [...by.values()];
+}
+
+function showReceivingForm(f) {
+  dialog(`${receivingForm({
+    rfNo: f.rf_no, poNo: f.po_no, receivedOn: f.received_on,
+    receivedAt: f.received_at, supplier: f, courier: f,
+    groups: f.groups || rfGroups(f.lines || []), foot: f,
+  })}
+    <div class="mt right">
+      <button class="btn quiet" id="rf_save">⬇ Download JPEG</button>
+      <button class="btn" id="rf_done">Done</button></div>`, 'wide');
+  wireSave('#rf_save', '.doc', `${f.rf_no}.jpg`);
+  $('#rf_done').addEventListener('click', closeDialog);
 }
 
 function showOR(r, reseller, paid = {}) {
