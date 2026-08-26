@@ -834,3 +834,55 @@ label.sr {
 }
 /* The documents print and download; the button that closes them does not. */
 @media print { .dialog-x { display: none !important; } }
+
+/* ---------- the purchase order ----------
+   The one sheet in this system that goes out rather than back: the company
+   buying rather than selling, read by a supplier rather than a reseller. So
+   it is the one that does not wear the house rose — orange, and laid out as
+   the paper it replaces is, with two parties across the top instead of one
+   and three signatures instead of one, because buying is the one thing here
+   nobody does alone. */
+.doc.po { color: #000; }
+.doc.po .rule { border-top: 6px solid #f5a623; margin-bottom: 12px; }
+.doc.po .po-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.doc.po .po-head img { height: 86px; }
+.doc.po .po-title { text-align: left; min-width: 300px; }
+.doc.po .po-title h2 {
+  color: #f5a623; font-size: 1.7rem; letter-spacing: .01em; text-align: right;
+  margin: 6px 0 16px;
+}
+.doc.po .fld { display: flex; gap: 8px; font-size: .68rem; line-height: 1.5; }
+.doc.po .fld span { color: #333; min-width: 118px; }
+.doc.po .fld b { font-weight: 700; }
+.doc.po .barhd {
+  background: #f5a623; color: #fff; font-weight: 700; font-size: .68rem;
+  padding: 2px 8px; display: inline-block; margin-bottom: 3px;
+}
+.doc.po .po-parties {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 6px 0 12px;
+}
+.doc.po table.lines th {
+  background: #f5a623; color: #fff; border-color: #f5a623;
+  font-size: .66rem; letter-spacing: .03em;
+}
+.doc.po table.lines td { border-color: #f6dfba; height: 17px; }
+.doc.po .po-foot { margin-top: 14px; }
+.doc.po .notes { width: 260px; border: 1px solid #f6dfba; }
+.doc.po .notes .barhd { display: block; margin: 0; }
+.doc.po .notes .wrote {
+  min-height: 34px; padding: 5px 8px; font-size: .68rem;
+  border-bottom: 1px solid #f6dfba;
+}
+.doc.po .ticks { padding: 6px 8px; font-size: .66rem; }
+.doc.po .ticks span { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.doc.po .ticks i { width: 10px; height: 10px; border: 1px solid #555; display: inline-block; }
+.doc.po .sign3 {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px;
+  margin-top: 30px; text-align: center;
+}
+.doc.po .sign3 .nm {
+  font-weight: 700; font-size: .7rem; border-bottom: 1px solid #000;
+  padding-bottom: 2px; min-height: 18px;
+}
+.doc.po .sign3 .role { font-size: .6rem; color: #444; margin-top: 2px; }
+.doc.po .sign3 .cap { font-weight: 700; font-size: .64rem; margin-top: 3px; }
