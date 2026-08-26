@@ -1529,6 +1529,116 @@ async function openOrder(id, reload) {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// A document as a file, rather than a screenshot of a screen
+//
+// These sheets are sent to a reseller over Messenger. Print-to-PDF meant
+// somebody screenshotting their own browser, which is why the whole thing had
+// to be made to fit one screen. This hands them the picture directly, drawn at
+// twice the screen's resolution so the small print survives being read on a
+// phone.
+//
+// Drawn by putting the document inside an SVG foreignObject and rasterising
+// that: the browser's own layout engine, no library. Everything the document
+// needs has to travel inside that SVG — the stylesheet inlined, the logo as a
+// data URI, and :root rewritten to the wrapper, because inside the SVG the
+// wrapper IS the root and every colour in the house style is declared there.
+// Anything still pointing outside taints the canvas, and a tainted canvas
+// cannot be saved at all.
+// ---------------------------------------------------------------------------
+let sheetCss = null;    // fetched once; it does not change while signed in
+let logoData = null;
+
+const asDataUri = async (url) => {
+  const blob = await (await fetch(url)).blob();
+  return new Promise((done, fail) => {
+    const r = new FileReader();
+    r.onload = () => done(r.result);
+    r.onerror = fail;
+    r.readAsDataURL(blob);
+  });
+};
+
+async function saveDocument(node, filename, scale = 2) {
+  if (!node) throw new Error('There is no document open to save.');
+  sheetCss ??= await (await fetch('/styles.css')).text();
+  logoData ??= await asDataUri('/logo.png');
+
+  const width = Math.ceil(node.getBoundingClientRect().width);
+  const clone = node.cloneNode(true);
+  clone.querySelectorAll('img').forEach((img) => { img.setAttribute('src', logoData); });
+
+  const shot = document.createElement('div');
+  shot.id = 'shot';
+  // The brand decides the palette, and the palette lives on :root.
+  if (document.documentElement.dataset.brand) {
+    shot.dataset.brand = document.documentElement.dataset.brand;
+  }
+  shot.setAttribute('style',
+    `width:${width}px;background:#fff;padding:18px;box-sizing:border-box;` +
+    'font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px');
+  shot.append(clone);
+
+  // Measured on the page, because a foreignObject does not report its own
+  // height back and an SVG cut short simply loses the bottom of the sheet.
+  document.body.append(shot);
+  const height = Math.ceil(shot.getBoundingClientRect().height);
+  const body = new XMLSerializer().serializeToString(shot);
+  shot.remove();
+
+  const css = sheetCss.replace(/:root/g, '#shot')
+                      .replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+    `<foreignObject x="0" y="0" width="${width}" height="${height}">` +
+    `<div xmlns="http://www.w3.org/1999/xhtml"><style>${css}</style>${body}</div>` +
+    '</foreignObject></svg>';
+
+  const img = new Image();
+  await new Promise((done, fail) => {
+    img.onload = done;
+    img.onerror = () => fail(new Error('The document could not be drawn.'));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext('2d');
+  // JPEG has no transparency; without this the sheet comes out on black.
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise((done) => canvas.toBlob(done, 'image/jpeg', 0.92));
+  if (!blob) throw new Error('The document could not be saved.');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+// The button that does it, with the wait shown on the button itself — a big
+// sheet takes a moment and a button that looks idle gets pressed twice.
+const wireSave = (btnId, selector, filename) => {
+  const b = $(btnId);
+  if (!b) return;
+  b.addEventListener('click', async () => {
+    const was = b.textContent;
+    b.disabled = true;
+    b.textContent = 'Saving…';
+    try {
+      await saveDocument($(selector, $('#dialog')), filename);
+      notice(`Saved as ${filename} 🌸`, 'good');
+    } catch (e) { whoops(e); } finally {
+      b.disabled = false;
+      b.textContent = was;
+    }
+  });
+};
+
 // The letterhead every one of these documents carries.
 const DOC_HEAD = `
   <div class="rule"></div>
@@ -1636,8 +1746,9 @@ function showInvoice({ orderId, issuedOn, amount, resellerName, lines,
       </div>
     </div>
     <div class="mt right">
-      <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
+      <button class="btn quiet" id="inv_save">⬇ Download JPEG</button>
       <button class="btn" id="inv_done">Done</button></div>`, 'wide');
+  wireSave('#inv_save', '.doc', `${orderId}.jpg`);
   $('#inv_done').addEventListener('click', closeDialog);
 }
 
@@ -1702,8 +1813,9 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       </div>
     </div>
     <div class="mt right">
-      <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
+      <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
       <button class="btn" id="ivd_done">Done</button></div>`, 'wide');
+  wireSave('#ivd_save', '.doc', `${orderId} INVOICE.jpg`);
   $('#ivd_done').addEventListener('click', closeDialog);
 }
 
@@ -1779,9 +1891,11 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
       </div>
     </div>
     <div class="mt right">
+      <button class="btn quiet" id="pk_save">⬇ Download JPEG</button>
       <button class="btn quiet" onclick="window.print()">🖨 Print</button>
       <button class="btn" id="pk_done">Close</button>
     </div>`, 'wide');
+  wireSave('#pk_save', '.packing', `${orderId} PACKING LIST.jpg`);
   $('#pk_done').addEventListener('click', closeDialog);
 }
 
@@ -2043,8 +2157,12 @@ ${r.credited > 0 ? `CREDIT LEFT${' '.repeat(1)}${peso(r.credited)}\n` : ''}STILL
 --------------------------------
 Salamat po! 🌸</div>
       <div class="mt right">
-        <button class="btn quiet" onclick="window.print()">🖨 Print / screenshot this</button>
+        <button class="btn quiet" id="or_save">⬇ Download JPEG</button>
         <button class="btn" id="or_done">Done</button></div>`);
+    // The OR goes back into the same chat the payment was confirmed in, so it
+    // is named after itself rather than the order it settles — one payment
+    // can cover several.
+    wireSave('#or_save', '.receipt', `${r.receipt_no}.jpg`);
     $('#or_done').addEventListener('click', closeDialog);
   }
 
