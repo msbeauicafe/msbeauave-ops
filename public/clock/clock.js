@@ -131,13 +131,16 @@ let cheerTimer = null;
 const MOVES = ['m-pop', 'm-swing', 'm-drop', 'm-spin', 'm-rise', 'm-flip',
                'm-wobble', 'm-zoom'];
 
-// And how it behaves once it has arrived. A photograph is still, so the
-// movement has to be borrowed: the head turns on one rhythm and the shoulders
-// carry on another, slightly slower, so the two drift out of step. That drift
-// is the whole trick — two things moving in lockstep read as a picture being
-// wobbled, and two things moving independently read as somebody standing
-// there.
-const ALIVE = ['a-nod', 'a-sway', 'a-breathe', 'a-lean'];
+// And how it behaves once it has arrived: it looks somewhere, then it looks
+// at you.
+//
+// Sliding a photograph about reads as a picture being moved. Turning it about
+// its own vertical axis, under perspective, reads as a head — because that is
+// the one thing a head does that nothing else in a frame does. So each of
+// these is a glance: away, and then back to whoever is standing there, ending
+// square on. The shoulders follow a beat late, the way a body follows a head
+// rather than leading it.
+const ALIVE = ['a-look-left', 'a-look-right', 'a-double-take', 'a-look-up'];
 
 function cheer({ name, photo, action, minutes }) {
   clearTimeout(cheerTimer);
