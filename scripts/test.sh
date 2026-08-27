@@ -58,6 +58,9 @@ node --test tests/manila.test.js
 echo "==> pages that are their own"
 node --test tests/public-pages.test.js
 
+echo "==> the shop window shows the whole shop"
+node --test tests/shop-shows-everything.test.js
+
 echo "==> an eye on every password box"
 node --test tests/reveal.test.js
 
