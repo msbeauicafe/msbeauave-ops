@@ -2621,11 +2621,16 @@ test('the door is not believed about somebody who has no finger', async () => {
   await POST(owner, `/api/team/${enrolled}/finger`, { finger: 1, template: someTemplate(7) });
   await POST(owner, `/api/team/${away}/finger`, { finger: 1, template: someTemplate(8) });
 
+  // The PIN opens the window and the finger closes it, so a door's claim about
+  // somebody now buys it nothing on its own — whoever it names, enrolled or
+  // invented, at this shop or the other one.
   const on = await POST(owner, '/api/clock/by-finger',
     { employeeId: enrolled, branch_id: shop });
-  assert.equal(on.status, 200, 'the enrolled person clocks on');
+  assert.equal(on.status, 400, 'a finger with no window behind it records nothing');
+  assert.match(on.data.error, /PIN first/i);
 
-  // Nobody enrolled this person, so a door naming them is making it up.
+  // Nobody enrolled this person, so a door naming them is making it up. It is
+  // refused at the finger for want of a window, and no window can be opened.
   const invented = await POST(owner, '/api/clock/by-finger',
     { employeeId: bare, branch_id: shop });
   assert.equal(invented.status, 400);
@@ -2635,6 +2640,13 @@ test('the door is not believed about somebody who has no finger', async () => {
   const elsewhere = await POST(owner, '/api/clock/by-finger',
     { employeeId: away, branch_id: shop });
   assert.equal(elsewhere.status, 400);
+
+  // And nothing was written down for any of the three.
+  for (const id of [enrolled, bare, away]) {
+    assert.equal(Number((await db.query(
+      'select count(*) as n from shifts where employee_id = $1', [id])).rows[0].n), 0,
+      'a finger alone starts no shift for anybody');
+  }
 });
 
 test('the database refuses anybody but the owner a fingerprint', async () => {
