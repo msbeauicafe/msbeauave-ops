@@ -121,24 +121,49 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
 .head { display: flex; align-items: baseline; gap: .9rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .head .hint { color: var(--muted); font-size: .87rem; }
 
-/* Wide enough for a standing column of tabs: the Bitrix arrangement. */
+/* Wide enough for a standing column of tabs: the Bitrix arrangement.
+ *
+ * Two columns that scroll on their own, rather than one page that scrolls
+ * behind both. Twenty-four menu entries are longer than a monitor, and
+ * reaching the bottom of them used to drag the screen you were reading up and
+ * out of the way — you looked away to find a menu entry and came back to a
+ * page somewhere else.
+ *
+ * So the shell is exactly the height of the glass and never scrolls itself.
+ * The menu keeps its own scrollbar and the page keeps its own, and neither
+ * knows the other is moving. overscroll-behavior stops the menu handing its
+ * last few pixels of momentum to whatever is behind it. */
 @media (min-width: 1000px) {
   .shell {
     display: grid; grid-template-columns: 236px 1fr; grid-template-rows: auto 1fr;
+    height: 100vh; height: 100dvh; overflow: hidden;
   }
-  header.app { grid-column: 1 / 3; grid-row: 1; position: sticky; top: 0; z-index: 40; }
+  header.app { grid-column: 1 / 3; grid-row: 1; z-index: 40; }
   nav.tabs {
     grid-column: 1; grid-row: 2; flex-direction: column; align-items: stretch; gap: 2px;
     padding: 16px 10px; background: #fff; border-right: 1px solid var(--rose-soft);
     align-self: stretch;
+    overflow-y: auto; overscroll-behavior: contain;
+    /* Both of these matter now that the column has a fixed height. The base
+     * rule wraps — which for a row of tabs is right, and for a standing column
+     * means the menu silently folds into a second column half the width. And a
+     * flex item shrinks by default, so without the second line the entries
+     * squeeze themselves thinner and thinner rather than letting the column
+     * scroll. Neither showed up until the height stopped being whatever the
+     * content wanted. */
+    flex-wrap: nowrap;
   }
+  nav.tabs button { flex: 0 0 auto; }
   nav.tabs button {
     border-radius: 10px; text-align: left; padding: 11px 14px;
     display: flex; align-items: center; gap: 9px;
   }
   nav.tabs button:hover { background: var(--rose-blush); }
   nav.tabs button.on { background: var(--rose-blush); color: var(--rose-deep); font-weight: 700; }
-  .pagearea { grid-column: 2; grid-row: 2; min-width: 0; }
+  .pagearea {
+    grid-column: 2; grid-row: 2; min-width: 0;
+    overflow-y: auto; overscroll-behavior: contain;
+  }
   .page { max-width: none; }
 }
 
