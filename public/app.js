@@ -3418,7 +3418,8 @@ async function openReseller(id, reload) {
           : i.status === 'void' ? tag('void', 'grey')
           : i.overdue ? tag('past due', 'red') : tag('open', 'amber') },
       { head: '', cell: (i) => `${i.status === 'open'
-          ? `<button class="btn sm" data-pay="${i.id}" data-owed="${i.balance}">Record payment</button>` : ''}
+          ? `<button class="btn sm" data-pay="${i.id}" data-owed="${i.balance}"
+                     data-order="${esc(i.order_id)}">Record payment</button>` : ''}
           <button class="btn sm quiet" data-invoice="${i.order_id}">🖨 Invoice</button>` },
     ], 'No invoices yet.')}
 
@@ -3579,26 +3580,87 @@ async function openReseller(id, reload) {
     }
   });
 
+  // Recording against ONE invoice, in as many pieces as it actually arrived in.
+  //
+  // The account-level confirm above takes the same five rows but applies them
+  // oldest-invoice-first, which is right when somebody has sent money and not
+  // said what for. This is the other case: the bill is on the screen, whoever
+  // is looking at it knows the money is for that bill, and the five rows are
+  // there so the breakdown — BDO, then BPI, then GCash — survives into the
+  // ledger and onto the invoice, instead of one anonymous lump nobody can
+  // trace back to a bank statement.
   $$('[data-pay]').forEach((b) => b.addEventListener('click', () => {
-    const owed = b.dataset.owed;
+    const owed = Number(b.dataset.owed);
+    const invoiceNo = b.dataset.pay;
+    const orderNo = b.dataset.order;
     dialog(`
-      <h3>Record a payment</h3>
-      <div class="row">
-        <div><label>Amount received</label>
-          <input id="p_amt" type="number" step="0.01" value="${owed}" autofocus></div>
-        <div><label>Received on</label>
-          <input id="p_on" type="date" value="${localDay()}"></div>
-      </div>
-      <div class="dim mt">Paying a 30-day invoice within 10 days takes 2% off by itself.
-        Clearing the last past-due invoice lets the account order again.</div>
-      <div class="mt right"><button class="btn" id="p_save">Record</button></div>`);
+      <h3>Record a payment — invoice #${esc(invoiceNo)}</h3>
+      <div class="dim">${orderNo && orderNo !== invoiceNo
+        ? `Sales order no. ${esc(orderNo)} · ` : ''}<b>${peso(owed)}</b> still on it.
+        All five rows go against this invoice and no other, so fill in as many
+        as it actually arrived in — a BDO transfer, a BPI transfer and GCash is
+        three rows, not one. <b>Confirming is not receipting</b>: the receipt is
+        issued from the account above, and one covers every transfer confirmed
+        since the last.</div>
+      ${[0, 1, 2, 3, 4].map((n) => `
+        <div class="row payrow">
+          <div><label${n ? ' class="sr"' : ''}>Amount received</label>
+            <input class="ip_amt" type="number" step="0.01" min="0.01"
+                   placeholder="${n ? '' : '0.00'}"${n ? '' : ` value="${owed}"`}></div>
+          <div><label${n ? ' class="sr"' : ''}>Received on</label>
+            <input class="ip_on" type="date" value="${localDay()}"></div>
+          <div><label${n ? ' class="sr"' : ''}>Through (MOP)</label>
+            <input class="ip_mop" type="text" list="inv_banks"
+                   placeholder="BANCO DE ORO (BDO)"></div>
+          <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
+            <input class="ip_ref" type="text" placeholder="the bank's own reference"></div>
+        </div>`).join('')}
+      <datalist id="inv_banks">
+        <option value="BANCO DE ORO (BDO)"></option>
+        <option value="BPI"></option>
+        <option value="SECURITY BANK"></option>
+        <option value="GCASH"></option>
+      </datalist>
+      <div class="dim">Paying a 30-day invoice within 10 days takes 2% off by
+        itself. Clearing the last past-due invoice lets the account order again.
+        The reference is the bank's own — what they quote to say the money left,
+        and what the statement is matched against later. It prints on the invoice.</div>
+      <div class="row mt"><div class="dim" id="ip_sum"></div></div>
+      <div class="mt right"><button class="btn" id="p_save">Record</button></div>`, 'wide');
+
+    // Running total against what is left, because five boxes of pesos is
+    // exactly where a nought goes astray, and the message afterwards is a
+    // worse place to find out than the moment it is typed.
+    const retotal = () => {
+      const taken = $$('.ip_amt').reduce((n, el) => n + (+el.value || 0), 0);
+      const over = taken > owed + 0.005;
+      $('#ip_sum').innerHTML = taken
+        ? `${peso(taken)} of ${peso(owed)}${over
+            ? ' — <b class="over">more than this invoice owes</b>'
+            : taken >= owed - 0.005 ? ' — settles it' : `, leaving ${peso(owed - taken)}`}`
+        : '';
+      $('#p_save').disabled = over;
+    };
+    $$('.ip_amt').forEach((el) => el.addEventListener('input', retotal));
+    retotal();
+
     $('#p_save').addEventListener('click', async () => {
+      const payments = $$('.payrow').map((row) => ({
+        amount: $('.ip_amt', row).value,
+        paid_on: $('.ip_on', row).value,
+        method: $('.ip_mop', row).value.trim() || null,
+        reference_no: $('.ip_ref', row).value.trim() || null,
+      })).filter((p) => Number(p.amount) > 0);
+      if (!payments.length) return notice('How much actually landed?', 'bad');
+      $('#p_save').disabled = true;
       try {
-        await POST(`/api/invoices/${b.dataset.pay}/payment`,
-          { amount: +$('#p_amt').value, paid_on: $('#p_on').value });
-        notice('Payment recorded', 'good');
+        const out = await POST(`/api/invoices/${invoiceNo}/payments`, { payments });
+        notice(out.status === 'paid'
+          ? `Invoice #${out.invoice_id} settled 🌸`
+          : `${peso(out.taken)} recorded — ${peso(out.balance)} left on #${out.invoice_id}`,
+          'good');
         openReseller(id, reload);
-      } catch (e) { whoops(e); }
+      } catch (e) { whoops(e); $('#p_save').disabled = false; }
     });
   }));
 
@@ -3612,7 +3674,7 @@ async function openReseller(id, reload) {
     try {
       const [o, payments] = await Promise.all([
         GET(`/api/orders/${b.dataset.invoice}`),
-        GET(`/api/resellers/${id}/payments`).catch(() => []),
+        GET(`/api/resellers/${id}/payments?order_id=${b.dataset.invoice}`).catch(() => []),
       ]);
       showInvoiceDoc({
         over: true,

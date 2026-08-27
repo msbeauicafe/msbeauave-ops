@@ -938,3 +938,8 @@ label.sr {
    underneath is meant to stay readable, so you can see what you are coming
    back to. */
 .veil:not(#dialog) { background: transparent; }
+
+/* Typing more than the invoice owes into five boxes of pesos: said in the
+   running total, in the colour everything else here says "no" in, before the
+   Record button is reached rather than after it. */
+.dim .over { color: var(--danger); }
