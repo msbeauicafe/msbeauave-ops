@@ -67,6 +67,9 @@ node --test tests/door-fits.test.js
 echo "==> a door that updates itself"
 node --test tests/door-updates-itself.test.js
 
+echo "==> a scanner that comes back"
+node --test tests/scanner-comes-back.test.js
+
 echo "==> coming back to where you were"
 node --test tests/dialogs-stack.test.js
 

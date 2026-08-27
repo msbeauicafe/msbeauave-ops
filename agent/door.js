@@ -70,6 +70,13 @@ let lastError = null;
 let scannerError = null;
 let lastLoad = null;
 
+// Which door.js this is, said out loud in /hello.
+//
+// The agent lives on the shop PCs and does not update itself the way the clock
+// screen does — somebody copies a file in. Asking a machine over the counter
+// whether the copy took beats walking to it and reading a date in Explorer.
+const VERSION = '1.3.0';
+
 // Everything this says also goes to door-log.txt beside the program.
 //
 // A window that closes takes its reason with it, and the reason is the only
@@ -293,7 +300,7 @@ const server = http.createServer((req, res) => {
     // What the clock page asks on load to find out whether this door has a
     // scanner at all. Says nothing about who is enrolled.
     json({
-      agent: 'msbeauave-door', shop: Number(conf.shop), desk: DESK,
+      agent: 'msbeauave-door', version: VERSION, shop: Number(conf.shop), desk: DESK,
       scanner: sdk.ready(), holding: sdk.holding(),
       // Who the matcher refused, by name. "4 on file" out of five is a person
       // standing at a door pressing a finger that will never work, and until
@@ -316,14 +323,23 @@ const server = http.createServer((req, res) => {
     // screen gets a template out of it. It hands back the template and
     // nothing else — the website decides whose finger it is, because the
     // agent has no business knowing who is being enrolled.
-    if (!sdk.ready()) {
-      res.setHeader('Content-Type', 'application/json');
-      res.writeHead(503).end(JSON.stringify({ error: 'No scanner on this machine.' }));
-      return;
-    }
     enrolling = true;
     (async () => {
       try {
+        // Somebody is standing here with a finger out. Ask the scanner now
+        // rather than repeating a verdict reached hours ago, and if it still
+        // will not open, say why — the reason used to live only in
+        // door-log.txt, on a machine nobody was sitting at.
+        if (!sdk.ready()) await openScanner();
+        if (!sdk.ready()) {
+          res.setHeader('Content-Type', 'application/json');
+          res.writeHead(503).end(JSON.stringify({
+            error: scannerError
+              ? `No scanner on this machine — ${scannerError}`
+              : 'No scanner on this machine.',
+          }));
+          return;
+        }
         // Three scans of the one finger, merged. The steps go to the log so
         // whoever is enrolling can be told when to lift and press again.
         const made = await sdk.enrol((step) => say(`enrol: scan ${step} of 3`));
@@ -592,17 +608,65 @@ if (wreck) {
 // clocks anybody.
 const DESK = conf.desk === true || String(conf.mode || '').toLowerCase() === 'desk';
 
+// The scanner is asked for again until it answers.
+//
+// It used to be asked exactly once, at startup, and a no was final: the
+// program then ran all day reporting no scanner with a perfectly good reader
+// plugged into it. That cost an afternoon the day Windows decided the SDK's
+// helper file had arrived from the internet and refused to load it. The file
+// was unblocked in a minute; the door went on saying no until somebody
+// thought to restart it.
+//
+// None of the reasons it says no are permanent. A cable goes in late. A
+// reader wakes slower than Windows. A policy is lifted. So ask again,
+// quietly, and pick up the moment the answer changes.
+//
+// Half a minute is nothing to a door and long enough that a reader which
+// will never open is not asked about constantly. Settable so a test can
+// watch a whole cycle without sitting through one.
+const SCANNER_RETRY_MS = Number(process.env.SCANNER_RETRY_MS || 30000);
+let watching = false;
+
+const startWatching = () => {
+  if (watching || DESK || !sdk.ready()) return;
+  watching = true;
+  watch();
+};
+
+async function openScanner() {
+  if (sdk.ready()) return true;
+  try {
+    say('scanner:', await sdk.open(conf));
+    scannerError = null;
+    return true;
+  } catch (e) {
+    // Said once per reason, not every thirty seconds. The same sentence a
+    // hundred times an hour is how a log stops being read, and this log is
+    // the only thing anybody has when a door will not work.
+    if (e.message !== scannerError) say('scanner:', e.message);
+    scannerError = e.message;
+    return false;
+  }
+}
+
+async function keepScanner() {
+  for (;;) {
+    await new Promise((r) => setTimeout(r, SCANNER_RETRY_MS));
+    if (sdk.ready() || !(await openScanner())) continue;
+    say('the scanner answered this time — carrying on as if it had been there all along');
+    // A scanner that opens late has an empty matcher sitting behind it, so
+    // this shop's fingers have to go in before a finger means anything.
+    await refresh();
+    startWatching();
+  }
+}
+
 say(DESK
   ? `MS BEAU AVE enrolment desk — enrolling for shop ${conf.shop}, ${conf.site}`
   : `MS BEAU AVE door agent — shop ${conf.shop}, ${conf.site}`);
-try {
-  say('scanner:', await sdk.open(conf));
-} catch (e) {
-  // Not fatal. The clock page falls back to PINs, and the shop keeps working
-  // while somebody sorts the driver out.
-  scannerError = e.message;
-  say('scanner:', e.message);
-}
+// Not fatal when it says no. The clock page falls back to PINs, the shop
+// keeps working, and openScanner goes on asking in the background.
+await openScanner();
 // Start listening first, and sign in afterwards.
 //
 // The old order killed the agent outright if the website could not be reached
@@ -625,7 +689,10 @@ setInterval(async () => {
     await refresh();
   } catch (e) { lastError = e.message; }
 }, REFRESH_MS);
-if (sdk.ready() && !DESK) watch();
+startWatching();
+// Never let this one die silently: an unhandled rejection takes the whole
+// program down, and a door that vanishes is worse than a door with no reader.
+keepScanner().catch((e) => say('the scanner retry stopped:', e.message));
 if (DESK) {
   say('desk mode: a finger here enrols. It does not clock anybody on.');
   say(`open http://127.0.0.1:${PORT}/office to enrol somebody.`);
