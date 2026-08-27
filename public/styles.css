@@ -720,27 +720,31 @@ label.inline input { width: auto; }
 /* The price a line is given, tapped rather than chosen out of a list — the
    figure it decides is the one being read into the chat, and a list that has
    to be opened first hides it. */
-.codes { display: flex; flex-wrap: wrap; gap: 4px; }
-.codes .code {
-  font: inherit; font-size: .7rem; line-height: 1; cursor: pointer;
-  padding: 5px 8px; border-radius: 999px;
-  border: 1px solid var(--rose-soft); background: #fff; color: var(--muted);
-}
-.codes .code:hover { border-color: var(--rose-dust); color: var(--ink); }
-.codes .code.on {
-  background: var(--rose-deep); border-color: var(--rose-deep);
-  color: #fff; font-weight: 600;
-}
+/* A price code is one of thirteen, so it is a list rather than a row of
+   buttons. As buttons they wrapped onto three lines and made every basket line
+   tall enough to push the running total off the bottom of the panel.
 
-/* A basket line is now two rows in a narrow column: what and how many on the
-   first, the prices it can be given on the second. The codes are ordered last
-   rather than written last, so the quantity and the remove button stay beside
-   the name where the hand expects them. */
+   The unit price sits beside it and is typed into directly, for the price a
+   reseller talked somebody into over Messenger that no code covers. It is
+   wider than the quantity box because it holds pesos, centavos and a comma. */
+.pick .pcode {
+  font: inherit; font-size: .72rem; padding: 4px 6px; max-width: 176px;
+  border: 1px solid var(--rose-soft); border-radius: 8px;
+  background: #fff; color: var(--ink);
+}
+.pick input.unit { width: 92px; text-align: right; }
+
+/* A basket line is two rows, because the panel it sits in is half a page wide
+   and a product name is not short. The name takes the first row whole rather
+   than being squeezed into a column narrow enough to break it over three
+   lines; the controls take the second, left to right in the order somebody
+   reads them — which price, what price, how many, and take it off again. */
 .pick { flex-wrap: wrap; }
-.pick .nm { flex: 1 1 120px; order: 1; }
-.pick input { order: 2; }
-.pick .btn.stop { order: 3; }
-.pick .codes { order: 4; flex: 1 1 100%; margin-top: 2px; }
+.pick .nm { flex: 1 1 100%; order: 1; }
+.pick .pcode { order: 2; }
+.pick input.unit { order: 3; }
+.pick input[data-qty] { order: 4; }
+.pick .btn.stop { order: 5; margin-left: auto; }
 
 /* The same round frame on the profile, so what is being set is plainly the
    thing that will appear on the card. */

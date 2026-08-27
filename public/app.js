@@ -3095,19 +3095,33 @@ SCREENS.chatorders = async (page) => {
   const drawBasket = () => {
     const box = $('#ch_basket', workingBox);
     if (!box) return;
+    // Thirteen codes was a row of thirteen buttons, which wrapped onto three
+    // lines and made every basket line tall enough to push the total off the
+    // screen. A list that is thirteen long is a list, not a set of buttons.
+    //
+    // Beside it, the price itself. A code covers the prices the office has
+    // agreed in advance; it does not cover the one a reseller talked somebody
+    // into on Messenger this morning, and until now that order could not be
+    // taken here at all. Typing a price is therefore a third state, not a
+    // broken version of the first two: it clears the code, because the number
+    // is no longer what that code means, and it silences the no-PCODE warning,
+    // because the price was chosen rather than defaulted to.
+    const plain = (v) => peso(v).replace('₱', '');
     box.innerHTML = basket.size ? [...basket.values()].map((l) => `
       <div class="pick">
-        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${peso(l.price)}
-          each${l.unit ? ' · ' + esc(l.unit) : ''}${
-            l.code ? ' · ' + esc(l.code) : ' · no PCODE'}</span></span>
-        <span class="codes">
+        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${
+          l.typed ? 'typed price' : l.code ? esc(l.code) : 'no PCODE'
+          }${l.unit ? ' · ' + esc(l.unit) : ''} · ${peso(l.price * l.qty)} for ${count(l.qty)}</span></span>
+        <select class="pcode" data-code="${esc(l.sku)}"
+          title="Which agreed price this line is charged at">
+          <option value="">${l.typed ? 'typed price' : `no PCODE — ${plain(l.listed ?? l.price)}`}</option>
           ${(codes || []).filter((c) => (l.prices || {})[c.code] != null)
-            .map((c) => `<button class="code ${c.code === l.code ? 'on' : ''}"
-              data-code="${esc(l.sku)}" data-value="${esc(c.code)}"
-              title="${esc(c.code)} — ${peso(l.prices[c.code])}">${esc(c.code)}</button>`)
-            .join('')
-            || '<span class="dim" style="font-size:.72rem">no PCODE priced for this one</span>'}
-        </span>
+            .map((c) => `<option value="${esc(c.code)}"
+              ${!l.typed && c.code === l.code ? 'selected' : ''}>${esc(c.code)} — ${
+              plain(l.prices[c.code])}</option>`).join('')}
+        </select>
+        <input class="unit" type="text" inputmode="decimal" data-price="${esc(l.sku)}"
+          value="${plain(l.price)}" title="The unit price charged on this line">
         <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
         <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
       </div>`).join('') : '<div class="none">Nothing added yet.</div>';
@@ -3126,7 +3140,7 @@ SCREENS.chatorders = async (page) => {
     // back to the listed price without a blank entry in a list to mean it.
     const warn = $('#ch_nocode', workingBox);
     if (warn) {
-      const bare = [...basket.values()].filter((l) => !l.code
+      const bare = [...basket.values()].filter((l) => !l.code && !l.typed
         && Object.keys(l.prices || {}).length);
       warn.innerHTML = bare.length ? `<div class="banner warn">
         <b>${count(bare.length)} line${bare.length > 1 ? 's have' : ' has'} no PCODE.</b>
@@ -3137,11 +3151,33 @@ SCREENS.chatorders = async (page) => {
           charged the listed price, which is not a dealer price.</div></div>` : '';
     }
     drawPreview();
-    $$('[data-code]', box).forEach((b) => b.addEventListener('click', () => {
-      const line = basket.get(b.dataset.code);
-      line.code = line.code === b.dataset.value ? '' : b.dataset.value;
+    $$('[data-code]', box).forEach((sel) => sel.addEventListener('change', () => {
+      const line = basket.get(sel.dataset.code);
+      line.code = sel.value;
+      line.typed = false;
       const priced = (line.prices || {})[line.code];
       line.price = priced != null ? Number(priced) : Number(line.listed ?? line.price);
+      drawBasket();
+    }));
+
+    // On change rather than on input: the basket redraws itself after every
+    // edit, and redrawing under somebody's cursor takes the field away
+    // mid-number. This fires when they leave it, by which time they have
+    // finished typing.
+    $$('[data-price]', box).forEach((i) => i.addEventListener('change', () => {
+      const line = basket.get(i.dataset.price);
+      // Typed with the commas it was shown with, most of the time.
+      const asked = Number(String(i.value).replace(/[^0-9.]/g, ''));
+      if (!Number.isFinite(asked) || asked <= 0) { drawBasket(); return; }
+      const listed = Number(line.listed ?? line.price);
+      const coded = Object.entries(line.prices || {})
+        .find(([, v]) => Number(v) === asked);
+      line.price = asked;
+      // Typing a number that is exactly one of the codes is not a hand price;
+      // it is that code, and saying so keeps the paperwork honest.
+      if (coded) { line.code = coded[0]; line.typed = false; }
+      else if (asked === listed) { line.code = ''; line.typed = false; }
+      else { line.code = ''; line.typed = true; }
       drawBasket();
     }));
   };
