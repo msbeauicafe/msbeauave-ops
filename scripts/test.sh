@@ -97,6 +97,9 @@ node --test tests/search-path.test.js
 echo "==> which way somebody clocked"
 node --test tests/how-they-clocked.test.js
 
+echo "==> every document has a number of its own"
+node --test tests/document-numbers.test.js
+
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js
 
