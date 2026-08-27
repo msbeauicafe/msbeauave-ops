@@ -763,9 +763,9 @@ label.inline input { width: auto; }
 .pick { flex-wrap: wrap; }
 .pick .nm { flex: 1 1 100%; order: 1; }
 .pick .pcode { order: 2; }
-.pick input.unit { order: 3; }
-.pick input[data-qty] { order: 4; }
-.pick .btn.stop { order: 5; margin-left: auto; }
+.pick input[data-qty] { order: 3; }
+.pick input.unit { order: 4; }
+.pick .btn.stop { order: 5; }
 
 /* The same round frame on the profile, so what is being set is plainly the
    thing that will appear on the card. */
