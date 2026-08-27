@@ -569,7 +569,7 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
  * drag an edge into view. */
 .cheer-face img {
   width: 100%; height: 100%; object-fit: cover;
-  transform: scale(1.07); transform-origin: 50% 62%;
+  transform: scale(1.12); transform-origin: 50% 62%;
 }
 .cheer-face .noface { font-size: min(4in, 34vh, 26vw); }
 
@@ -672,91 +672,110 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
 }
 
 /* ---------------------------------------------------------------------------
- * A photograph that behaves like somebody standing there
+ * A photograph that looks somewhere, and then looks at you
  *
- * The picture is still. The movement is borrowed, and it is borrowed in two
- * parts on purpose: the head turns and dips on one rhythm, the shoulders carry
- * and settle on another, slightly slower one. The two periods do not divide
- * into each other, so they drift out of step and never repeat the same pose
- * twice inside the few seconds anybody is watching.
+ * Sliding a picture about reads as a picture being slid about. Turning it on
+ * its own vertical axis under perspective reads as a head — because turning is
+ * the one thing a head does that nothing else in a frame does. Eight or nine
+ * degrees is the whole range: less and it is a wobble, more and a flat
+ * photograph starts to look like a card being flipped.
  *
- * That drift is the whole trick. Move both together and it reads as a picture
- * being wobbled; move them independently and it reads as a person.
+ * Each of these is a glance. It looks away, and then it comes back and settles
+ * square on whoever is standing at the door, which is the beat worth ending on
+ * — you walk up, and it looks at you.
  *
- * It starts once the entrance has landed, so nothing fights the arrival, and
- * the head's origin sits low in the frame — around where a neck would be —
- * because a head that pivots about the middle of a photograph looks like a
- * sticker turning, not like somebody looking round.
+ * The nose leads the turn. A head rotating about its own centre slides its
+ * face out of the frame; a real one pivots about the neck, so the yaw is paired
+ * with a small shift the other way and the origin sits low. And the shoulders
+ * come a beat late, because a body follows a head rather than leading it.
  * ------------------------------------------------------------------------ */
-.cheer.up .cheer-face .alive,
 .cheer.up .cheer-face img {
   animation-delay: .72s;
   animation-iteration-count: infinite;
-  animation-timing-function: cubic-bezier(.45, 0, .55, 1);
   animation-fill-mode: both;
+  /* Held long at the far end and eased hard on the way back: a glance is a
+   * look and a return, not a metronome. */
+  animation-timing-function: cubic-bezier(.32, 0, .24, 1);
+}
+.cheer.up .cheer-face .alive {
+  animation-delay: .96s;                    /* the beat the body is behind by */
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(.4, 0, .3, 1);
 }
 
-/* Head — a nod and a small turn. */
-.cheer.up.a-nod     .cheer-face img { animation-name: head-nod;   animation-duration: 3.1s; }
-.cheer.up.a-sway    .cheer-face img { animation-name: head-turn;  animation-duration: 3.4s; }
-.cheer.up.a-breathe .cheer-face img { animation-name: head-rest;  animation-duration: 3.6s; }
-.cheer.up.a-lean    .cheer-face img { animation-name: head-tilt;  animation-duration: 3.2s; }
+.cheer.up.a-look-left    .cheer-face img { animation-name: glance-left;  animation-duration: 3.4s; }
+.cheer.up.a-look-right   .cheer-face img { animation-name: glance-right; animation-duration: 3.6s; }
+.cheer.up.a-double-take  .cheer-face img { animation-name: glance-twice; animation-duration: 4.1s; }
+.cheer.up.a-look-up      .cheer-face img { animation-name: glance-up;    animation-duration: 3.8s; }
 
-/* Shoulders — always slower than the head above them. */
-.cheer.up.a-nod     .cheer-face .alive { animation-name: shoulders-settle; animation-duration: 4.3s; }
-.cheer.up.a-sway    .cheer-face .alive { animation-name: shoulders-sway;   animation-duration: 4.7s; }
-.cheer.up.a-breathe .cheer-face .alive { animation-name: shoulders-breathe; animation-duration: 4.1s; }
-.cheer.up.a-lean    .cheer-face .alive { animation-name: shoulders-lean;   animation-duration: 4.9s; }
+.cheer.up.a-look-left    .cheer-face .alive { animation-name: follow-left;  animation-duration: 3.4s; }
+.cheer.up.a-look-right   .cheer-face .alive { animation-name: follow-right; animation-duration: 3.6s; }
+.cheer.up.a-double-take  .cheer-face .alive { animation-name: follow-twice; animation-duration: 4.1s; }
+.cheer.up.a-look-up      .cheer-face .alive { animation-name: follow-up;    animation-duration: 3.8s; }
 
-@keyframes head-nod {
-  0%   { transform: scale(1.07) translateY(0)     rotate(0); }
-  22%  { transform: scale(1.07) translateY(-1.3%) rotate(.9deg); }
-  48%  { transform: scale(1.07) translateY(.7%)   rotate(-.3deg); }
-  74%  { transform: scale(1.07) translateY(-.6%)  rotate(-1deg); }
-  100% { transform: scale(1.07) translateY(0)     rotate(0); }
-}
-@keyframes head-turn {
-  0%   { transform: scale(1.07) translateX(0)     rotate(0); }
-  27%  { transform: scale(1.07) translateX(1.6%)  rotate(1.4deg); }
-  55%  { transform: scale(1.07) translateX(-.4%)  rotate(-.2deg); }
-  80%  { transform: scale(1.07) translateX(-1.5%) rotate(-1.3deg); }
-  100% { transform: scale(1.07) translateX(0)     rotate(0); }
-}
-@keyframes head-rest {
-  0%   { transform: scale(1.07)  translateY(0)     rotate(0); }
-  35%  { transform: scale(1.085) translateY(-.9%)  rotate(.5deg); }
-  70%  { transform: scale(1.065) translateY(.5%)   rotate(-.5deg); }
-  100% { transform: scale(1.07)  translateY(0)     rotate(0); }
-}
-@keyframes head-tilt {
-  0%   { transform: scale(1.07) translate(0, 0)          rotate(0); }
-  30%  { transform: scale(1.07) translate(-1.2%, -.7%)   rotate(-1.6deg); }
-  62%  { transform: scale(1.07) translate(.9%, .4%)      rotate(1.1deg); }
-  100% { transform: scale(1.07) translate(0, 0)          rotate(0); }
+/* Looks off to their left, holds it, comes back to you. */
+@keyframes glance-left {
+  0%   { transform: perspective(1000px) scale(1.12) rotateY(0)     translateX(0)    rotateZ(0); }
+  26%  { transform: perspective(1000px) scale(1.12) rotateY(-9deg) translateX(1.4%) rotateZ(-1deg); }
+  52%  { transform: perspective(1000px) scale(1.12) rotateY(-8deg) translateX(1.2%) rotateZ(-.8deg); }
+  78%  { transform: perspective(1000px) scale(1.12) rotateY(1.5deg) translateX(-.2%) rotateZ(.2deg); }
+  100% { transform: perspective(1000px) scale(1.12) rotateY(0)     translateX(0)    rotateZ(0); }
 }
 
-@keyframes shoulders-settle {
-  0%   { transform: translateY(0)    scale(1); }
-  40%  { transform: translateY(.5%)  scale(.994); }
-  72%  { transform: translateY(-.3%) scale(1.006); }
-  100% { transform: translateY(0)    scale(1); }
+/* The other way, with the chin coming up a little as it returns. */
+@keyframes glance-right {
+  0%   { transform: perspective(1000px) scale(1.12) rotateY(0)    translateX(0)     rotateX(0); }
+  30%  { transform: perspective(1000px) scale(1.12) rotateY(9deg) translateX(-1.5%) rotateX(1.5deg); }
+  58%  { transform: perspective(1000px) scale(1.12) rotateY(8deg) translateX(-1.3%) rotateX(1deg); }
+  82%  { transform: perspective(1000px) scale(1.12) rotateY(-1.5deg) translateX(.2%) rotateX(-.5deg); }
+  100% { transform: perspective(1000px) scale(1.12) rotateY(0)    translateX(0)     rotateX(0); }
 }
-@keyframes shoulders-sway {
+
+/* Away, back, then caught by something and away again — before settling. */
+@keyframes glance-twice {
+  0%   { transform: perspective(1000px) scale(1.12) rotateY(0)      translateX(0)     rotateZ(0); }
+  20%  { transform: perspective(1000px) scale(1.12) rotateY(-8deg)  translateX(1.3%)  rotateZ(-.9deg); }
+  40%  { transform: perspective(1000px) scale(1.12) rotateY(1deg)   translateX(-.2%)  rotateZ(.2deg); }
+  58%  { transform: perspective(1000px) scale(1.12) rotateY(7.5deg) translateX(-1.2%) rotateZ(.8deg); }
+  80%  { transform: perspective(1000px) scale(1.12) rotateY(-1deg)  translateX(.2%)   rotateZ(-.2deg); }
+  100% { transform: perspective(1000px) scale(1.12) rotateY(0)      translateX(0)     rotateZ(0); }
+}
+
+/* Glances up and aside — thinking about something — then down to you. */
+@keyframes glance-up {
+  0%   { transform: perspective(1000px) scale(1.12) rotateY(0)      rotateX(0)      translateY(0); }
+  28%  { transform: perspective(1000px) scale(1.12) rotateY(-6deg)  rotateX(-5deg)  translateY(-1.1%); }
+  54%  { transform: perspective(1000px) scale(1.12) rotateY(-5deg)  rotateX(-4deg)  translateY(-.9%); }
+  80%  { transform: perspective(1000px) scale(1.12) rotateY(1deg)   rotateX(1.2deg) translateY(.3%); }
+  100% { transform: perspective(1000px) scale(1.12) rotateY(0)      rotateX(0)      translateY(0); }
+}
+
+/* The shoulders. Same shape, a fraction of the size, a beat behind — enough
+ * that the two are never at the same point in their own arc. */
+@keyframes follow-left {
+  0%   { transform: translateX(0)   rotate(0); }
+  30%  { transform: translateX(.7%) rotate(.4deg); }
+  62%  { transform: translateX(.5%) rotate(.3deg); }
+  100% { transform: translateX(0)   rotate(0); }
+}
+@keyframes follow-right {
   0%   { transform: translateX(0)    rotate(0); }
-  30%  { transform: translateX(-.9%) rotate(-.5deg); }
-  65%  { transform: translateX(1%)   rotate(.5deg); }
+  34%  { transform: translateX(-.7%) rotate(-.4deg); }
+  66%  { transform: translateX(-.5%) rotate(-.3deg); }
   100% { transform: translateX(0)    rotate(0); }
 }
-@keyframes shoulders-breathe {
-  0%   { transform: scale(1)     translateY(0); }
-  45%  { transform: scale(1.014) translateY(-.4%); }
-  100% { transform: scale(1)     translateY(0); }
+@keyframes follow-twice {
+  0%   { transform: translateX(0)    scale(1); }
+  24%  { transform: translateX(.6%)  scale(1.006); }
+  62%  { transform: translateX(-.6%) scale(.996); }
+  100% { transform: translateX(0)    scale(1); }
 }
-@keyframes shoulders-lean {
-  0%   { transform: translate(0, 0)        rotate(0); }
-  35%  { transform: translate(.8%, -.3%)   rotate(.6deg); }
-  70%  { transform: translate(-.7%, .3%)   rotate(-.6deg); }
-  100% { transform: translate(0, 0)        rotate(0); }
+@keyframes follow-up {
+  0%   { transform: translateY(0)    scale(1); }
+  32%  { transform: translateY(-.6%) scale(1.008); }
+  64%  { transform: translateY(-.4%) scale(1.004); }
+  100% { transform: translateY(0)    scale(1); }
 }
 
 /* Somebody who finds movement uncomfortable walks past this screen all day.
