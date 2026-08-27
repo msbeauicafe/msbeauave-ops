@@ -526,7 +526,11 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
   position: fixed; inset: 0; z-index: 200;
   display: flex; align-items: center; justify-content: center;
   padding: 3vh 3vw;
+  /* Mixed from the shop's own ink rather than a fixed brown, so Beauty
+     Obsession's screen dims to its navy and this one to its plum. The literal
+     stands as the fallback where color-mix is not understood. */
   background: rgba(69, 48, 60, .34);
+  background: color-mix(in srgb, var(--ink) 34%, transparent);
   opacity: 0; transition: opacity .28s ease;
 }
 .cheer.up { opacity: 1; }
@@ -542,9 +546,16 @@ main { flex: 1 1 auto; overflow: auto; padding: 16px 18px 40px; }
   box-shadow: 0 30px 80px rgba(69, 48, 60, .32);
   max-width: min(72vw, 900px); max-height: 92vh;
 }
+/* Going home is green at both shops — but each shop's own green. A tint mixed
+   from --good lands as sage on the rose palette and as teal on Beauty
+   Obsession's, instead of one hard-coded grey-green looking muddy on the
+   cooler of the two. */
 .cheer.out .cheer-card {
   background: radial-gradient(ellipse at 50% 34%, #eaf1ec 0%, var(--bg) 62%);
+  background: radial-gradient(ellipse at 50% 34%,
+    color-mix(in srgb, var(--good) 14%, var(--bg)) 0%, var(--bg) 62%);
   border-color: #cfe0d4;
+  border-color: color-mix(in srgb, var(--good) 28%, var(--bg));
 }
 
 /* Six inches square, said in inches because that is how it was asked for and
