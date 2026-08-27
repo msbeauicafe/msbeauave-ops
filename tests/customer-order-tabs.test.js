@@ -1,0 +1,101 @@
+// One job, one menu.
+//
+// The customer order, the invoice and the packing list were three entries in
+// a column of two dozen, sitting apart from each other. They are not three
+// parts of the system — they are four moments of one job: somebody messages,
+// the order is taken, the account is invoiced, the bench packs it. Holding one
+// while looking at another meant leaving the screen and finding it again.
+//
+// This reads the real source rather than a copy of it, because the failure it
+// guards against is somebody adding a fifth screen and quietly restoring a
+// fourth top-level menu entry beside it.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const app = fs.readFileSync(path.join(here, '..', 'public/app.js'), 'utf8');
+const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+
+// The admin menu, from `admin: [` to the `]` that closes it.
+const adminMenu = (() => {
+  const at = app.indexOf('  admin: [');
+  return app.slice(at, app.indexOf('\n  ],', at));
+})();
+
+test('an owner has one Customer order menu, not three', () => {
+  const entries = [...adminMenu.matchAll(/\['([a-z]+)',\s*'[^']*',\s*'([^']+)'\]/g)]
+    .map((m) => ({ id: m[1], label: m[2] }));
+
+  const named = entries.filter((e) => e.label === 'Customer order');
+  assert.equal(named.length, 1, 'exactly one entry is called Customer order');
+  assert.equal(named[0].id, 'customerorder');
+
+  for (const gone of ['Packing list', 'Invoice']) {
+    assert.equal(entries.filter((e) => e.label === gone).length, 0,
+      `${gone} is a panel inside Customer order now, not a menu of its own`);
+  }
+});
+
+test('the panels are the four documents, in the order the work happens', () => {
+  const at = app.indexOf('SCREENS.customerorder = async');
+  assert.ok(at > 0, 'there is a Customer order screen');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
+  assert.deepEqual(panels, ['chatorders', 'pendingorders', 'resellers', 'orders'],
+    'somebody messages, it is taken, the account is invoiced, the bench packs it');
+
+  assert.match(screen, /SCREENS\[orderPanel\]/,
+    'the panel is drawn by the screen it names, not by a copy of it');
+});
+
+test('which panel is open survives a redraw', () => {
+  assert.match(app, /let orderPanel = 'chatorders';/,
+    'the open panel is kept outside the screen function');
+  const at = app.indexOf('SCREENS.customerorder = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /orderPanel = b\.dataset\.panel/,
+    'clicking a tab records which one, so raising an invoice does not bounce '
+    + 'somebody back to the first tab');
+});
+
+test('the pending list is what is waiting, not everything ever ordered', () => {
+  const at = app.indexOf('SCREENS.pendingorders = async');
+  assert.ok(at > 0, 'there is a Pending customer order screen');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  assert.match(screen, /o\.status === 'placed' \|\| o\.status === 'picking'/,
+    'a delivered order drops off the list by itself');
+  assert.match(screen, /data-open="\$\{o\.id\}"/, 'every row opens');
+});
+
+test('every row carries all three numbers', () => {
+  const at = app.indexOf('SCREENS.pendingorders = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  for (const [field, why] of [
+    ['co_no', 'the customer order number is what a reseller quotes'],
+    ['si_no', 'the invoice it became is on the same row'],
+    ['pl_no', 'and the sheet the bench is holding'],
+  ]) {
+    assert.ok(screen.includes(`o.${field}`), `${field} is missing — ${why}`);
+  }
+});
+
+test('the packing list screen leads with its own number, not a database id', () => {
+  const at = app.indexOf('SCREENS.orders = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /head: 'Packing list', cell: \(o\) => `<b>\$\{esc\(o\.pl_no/,
+    'the bench is holding a sheet with PL26_08_004 on it, not #41');
+});
+
+test('the panel tabs are plainly subordinate to the menu', () => {
+  assert.match(css, /\.subtabs\s*\{/, 'the panel tabs are styled');
+  const block = css.slice(css.indexOf('.subtabs {'), css.indexOf('.subtabs {') + 900);
+  assert.match(block, /font-size:\s*\.8\d+rem/,
+    'a size down from the menu, so the eye reads the column on the left first');
+  assert.match(block, /border-bottom/,
+    'an underline for the open one rather than a tinted bar of its own');
+});

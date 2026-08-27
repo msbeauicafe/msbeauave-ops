@@ -402,9 +402,7 @@ const TABS = {
     // happens: the customer orders, the warehouse packs it, the account is
     // invoiced. Staff look for the paper they are trying to produce, not for
     // the part of the system it lives in.
-    ['chatorders', '💬', 'Customer order'],
-    ['orders', '🚚', 'Packing list'],
-    ['resellers', '🤝', 'Invoice'],
+    ['customerorder', '💬', 'Customer order'],
     ['returns', '↩️', 'Returns'],
     ['reorder', '📈', 'Reordering'],
     ['reports', '📊', 'Reports'],
@@ -2057,7 +2055,8 @@ SCREENS.orders = async (page) => {
   const load = async () => {
     const rows = await GET(`/api/orders?status=${status}`);
     $('#board', page).innerHTML = table(rows, [
-      { head: '#', cell: (o) => o.id },
+      // The number on the sheet the bench is holding, not the database's own.
+      { head: 'Packing list', cell: (o) => `<b>${esc(o.pl_no || o.id)}</b>` },
       { head: 'Reseller', cell: (o) => `<b>${esc(o.reseller || '')}</b> `
           + (o.tier ? tierTag(o.tier) : '') },
       { head: 'Stage', cell: (o) => orderTag(o) },
@@ -2308,7 +2307,18 @@ const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO
     </div>
   </div>`;
 
-const docLines = (lines, blanks = 5) => `
+// `typed` turns the UNIT PRICE column into something somebody can correct.
+//
+// The price on a sheet is right most of the time and wrong some of the time —
+// a figure agreed in a chat window and not in the price list, a discount the
+// owner gave on the phone. Correcting it used to mean cancelling the order,
+// which puts the stock back on sale and loses the number the reseller already
+// has in front of them.
+//
+// The box is styled to look like the number it replaces rather than like a
+// form field, so a sheet that is printed or saved as a picture reads as a
+// document either way.
+const docLines = (lines, blanks = 5, typed = false) => `
   <table class="lines">
     <thead><tr>
       <th style="width:88px">PCODE</th><th>PRODUCT DESCRIPTION</th>
@@ -2321,8 +2331,11 @@ const docLines = (lines, blanks = 5) => `
         <td><b>${esc(l.name)}</b></td>
         <td class="c">${count(l.qty)}</td>
         <td class="c">${esc(l.unit || '')}</td>
-        <td class="n">${peso(l.price)}</td>
-        <td class="n">${peso(l.price * l.qty)}</td>
+        <td class="n">${typed && l.id
+          ? `<input class="figure" inputmode="decimal" data-line="${esc(String(l.id))}"
+               data-qty="${Number(l.qty)}" value="${peso(l.price).replace('₱', '')}">`
+          : peso(l.price)}</td>
+        <td class="n" data-linetotal="${esc(String(l.id ?? ''))}">${peso(l.price * l.qty)}</td>
       </tr>`).join('')}
       ${Array.from({ length: Math.max(0, blanks - lines.length) },
         () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
@@ -2386,7 +2399,8 @@ function showInvoice(opts, over = false) {
  * the paper has five and a payment made after this printed goes in by hand.
  */
 function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
-                          who = {}, shipping = 0, others = 0, over = false }) {
+                          who = {}, shipping = 0, others = 0, over = false,
+                          invoiceNo = null, canEdit = false, onSaved = null }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   const grand = sub + shipping + others;
   const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
@@ -2411,10 +2425,11 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
     <div class="doc inv">
       ${DOC_HEAD}
       <div class="title inv">INVOICE</div>
-      ${docParty(resellerName, issuedOn, orderId, who)}
+      ${docParty(resellerName, issuedOn, invoiceNo || orderId, who,
+                 invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.')}
       <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
       <div style="clear:both"></div>
-      ${docLines(lines)}
+      ${docLines(lines, 5, canEdit)}
       <div class="foot">
         <div class="mop">
           <div class="hd">PAYMENT DETAILS${payments.length ? '' : ' — TO FOLLOW PAYMENT'}</div>
@@ -2422,11 +2437,17 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
         </div>
         <div>
           <div class="totals">
-            <div><span>Subtotal:</span><span>${peso(sub)}</span></div>
-            <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
-            <div><span>Others:</span><span>${peso(others)}</span></div>
-            <div class="grand"><span>Grand Total:</span><span>${peso(grand)}</span></div>
-            <div class="bal"><span>Balance:</span><span>${peso(grand - paid)}</span></div>
+            <div><span>Subtotal:</span><span id="iv_sub">${peso(sub)}</span></div>
+            <div><span>Shipping/Delivery Fee:</span><span>${canEdit
+              ? `<input class="figure" id="iv_ship" inputmode="decimal"
+                   value="${peso(shipping).replace('₱', '')}">`
+              : peso(shipping)}</span></div>
+            <div><span>Others:</span><span>${canEdit
+              ? `<input class="figure" id="iv_oth" inputmode="decimal"
+                   value="${peso(others).replace('₱', '')}">`
+              : peso(others)}</span></div>
+            <div class="grand"><span>Grand Total:</span><span id="iv_grand">${peso(grand)}</span></div>
+            <div class="bal"><span>Balance:</span><span id="iv_bal">${peso(grand - paid)}</span></div>
           </div>
           ${BANK_DETAILS}
         </div>
@@ -2438,10 +2459,70 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       </div>
     </div>
     <div class="mt right">
+      ${canEdit ? '<span class="dim" id="iv_state"></span>' : ''}
       <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
-      <button class="btn" id="ivd_done">Done</button></div>`, 'wide', over);
-  wireSave('#ivd_save', '.doc', `${orderId} INVOICE.jpg`);
+      ${canEdit ? '<button class="btn" id="iv_keep">Save the changes</button>' : ''}
+      <button class="btn ${canEdit ? 'quiet' : ''}" id="ivd_done">Done</button></div>`,
+    'wide', over);
+  wireSave('#ivd_save', '.doc', `${invoiceNo || orderId} INVOICE.jpg`);
   $('#ivd_done').addEventListener('click', closeDialog);
+
+  if (!canEdit) return;
+
+  // A number typed with the commas it was shown with is still a number.
+  const read = (el) => {
+    const n = Number(String(el?.value ?? '').replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  const boxes = () => $$('[data-line]');
+
+  // The totals follow the typing rather than waiting for a save, because the
+  // figure somebody is checking is the Grand Total, not the line they are in.
+  const retotal = () => {
+    let running = 0;
+    for (const box of boxes()) {
+      const line = read(box) * Number(box.dataset.qty || 0);
+      running += line;
+      const cell = $(`[data-linetotal="${box.dataset.line}"]`);
+      if (cell) cell.textContent = peso(line);
+    }
+    const ship = read($('#iv_ship'));
+    const oth = read($('#iv_oth'));
+    const whole = running + ship + oth;
+    $('#iv_sub').textContent = peso(running);
+    $('#iv_grand').textContent = peso(whole);
+    $('#iv_bal').textContent = peso(whole - paid);
+    $('.duebox b').textContent = peso(whole - paid);
+    // Money already taken is the floor. Saying so while they type beats a
+    // refusal after they press the button.
+    const short = whole < paid;
+    $('#iv_state').innerHTML = short
+      ? `<span class="over">${peso(paid)} has already been settled against this
+         invoice — it cannot come to less</span>` : '';
+    $('#iv_keep').disabled = short;
+  };
+
+  $$('[data-line], #iv_ship, #iv_oth').forEach((el) => {
+    el.addEventListener('input', retotal);
+    // Tidied to the shape the rest of the sheet is in once they leave it.
+    el.addEventListener('change', () => { el.value = peso(read(el)).replace('₱', ''); retotal(); });
+  });
+  retotal();
+
+  $('#iv_keep').addEventListener('click', async () => {
+    const button = $('#iv_keep');
+    button.disabled = true;
+    try {
+      const out = await POST(`/api/orders/${orderId}/invoice`, {
+        lines: boxes().map((b) => ({ id: b.dataset.line, price: read(b) })),
+        shipping: read($('#iv_ship')),
+        others: read($('#iv_oth')),
+      });
+      notice(`${out.si_no || 'The invoice'} now comes to ${peso(out.total)} 🌸`, 'good');
+      closeDialog();
+      onSaved?.();
+    } catch (e) { whoops(e); button.disabled = false; }
+  });
 }
 
 /**
@@ -2936,6 +3017,94 @@ function showOR(r, reseller, paid = {}, over = false) {
 // One reseller at a time, ordering and payment side by side, so whoever is
 // running the conversation never has to leave this screen to finish it.
 // ===========================================================================
+// One order, four documents, one menu.
+//
+// The customer order, the invoice and the packing list were three entries in
+// the left-hand column, sitting apart from each other among two dozen others.
+// They are not three parts of the system; they are four moments of one job —
+// somebody messages, the order is taken, the account is invoiced, the bench
+// packs it — and looking at the second while holding the third meant leaving
+// the screen and finding it again in a list.
+//
+// Which panel is open outlives a redraw, because raising an invoice from the
+// chat tab and being put back on the chat tab is right, and being put back on
+// the first tab every time is how somebody loses their place.
+let orderPanel = 'chatorders';
+
+SCREENS.customerorder = async (page) => {
+  const PANELS = [
+    ['chatorders', 'Chat order'],
+    ['pendingorders', 'Pending customer order'],
+    ['resellers', 'Invoice'],
+    ['orders', 'Packing list'],
+  ];
+  if (!PANELS.some(([id]) => id === orderPanel)) orderPanel = 'chatorders';
+
+  page.innerHTML = `
+    <div class="subtabs">
+      ${PANELS.map(([id, label]) => `<button data-panel="${esc(id)}"
+        class="${id === orderPanel ? 'on' : ''}">${esc(label)}</button>`).join('')}
+    </div>
+    <div id="panel"></div>`;
+
+  $$('[data-panel]', page).forEach((b) => b.addEventListener('click', () => {
+    orderPanel = b.dataset.panel;
+    SCREENS.customerorder(page).catch(whoops);
+  }));
+
+  // Each panel draws its own heading, so this adds none: two headings stacked
+  // on one screen reads as two screens that failed to separate.
+  await SCREENS[orderPanel]($('#panel', page));
+};
+
+/**
+ * Everything taken and not yet out of the door.
+ *
+ * The list somebody works from rather than a report: an order that has been
+ * placed is money promised and stock held, and until it is delivered it is
+ * somebody's to chase. Delivered orders drop off it by themselves — a list
+ * that only grows is a list nobody opens twice.
+ *
+ * All three numbers on every row, because the question asked over Messenger is
+ * never "how is order 41 doing". It is "what happened to CO26_08_004", and the
+ * answer is on the same row as the invoice it became.
+ */
+SCREENS.pendingorders = async (page) => {
+  const load = async () => {
+    const rows = (await GET('/api/orders?status='))
+      .filter((o) => o.status === 'placed' || o.status === 'picking');
+    $('#pending', page).innerHTML = table(rows, [
+      { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
+      { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
+          + (o.tier ? tierTag(o.tier) : '') },
+      { head: 'Stage', cell: (o) => orderTag(o) },
+      { head: 'Invoice', cell: (o) => o.si_no
+          ? `${esc(o.si_no)}<br><span class="dim">${o.invoice_status === 'open'
+              ? `due ${onDay(o.due_on)}` : esc(o.invoice_status || '')}</span>`
+          : '<span class="dim">not raised</span>' },
+      { head: 'Packing list', cell: (o) => esc(o.pl_no || '—') },
+      { head: 'Total', n: true, cell: (o) => peso(o.total) },
+      { head: 'Placed', cell: (o) => when(o.placed_at) },
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>` },
+    ], 'Nothing is waiting — every order taken has gone out.');
+
+    $('#pending_count', page).textContent = rows.length
+      ? `${count(rows.length)} waiting · ${peso(rows.reduce((t, o) => t + Number(o.total), 0))}`
+      : '';
+
+    $$('[data-open]', page).forEach((b) => b.addEventListener('click',
+      () => openOrder(b.dataset.open, load).catch(whoops)));
+  };
+
+  page.innerHTML = `
+    <div class="head"><h2>Pending customer orders</h2>
+      <span class="hint">Taken and not yet out of the door. Open one to change
+        it, invoice it, or send the paperwork again</span>
+      <span class="hint" id="pending_count"></span></div>
+    <div id="pending"></div>`;
+  await load();
+};
+
 SCREENS.chatorders = async (page) => {
   let resellers = [];
   let picked = null;
@@ -3095,19 +3264,33 @@ SCREENS.chatorders = async (page) => {
   const drawBasket = () => {
     const box = $('#ch_basket', workingBox);
     if (!box) return;
+    // Thirteen codes was a row of thirteen buttons, which wrapped onto three
+    // lines and made every basket line tall enough to push the total off the
+    // screen. A list that is thirteen long is a list, not a set of buttons.
+    //
+    // Beside it, the price itself. A code covers the prices the office has
+    // agreed in advance; it does not cover the one a reseller talked somebody
+    // into on Messenger this morning, and until now that order could not be
+    // taken here at all. Typing a price is therefore a third state, not a
+    // broken version of the first two: it clears the code, because the number
+    // is no longer what that code means, and it silences the no-PCODE warning,
+    // because the price was chosen rather than defaulted to.
+    const plain = (v) => peso(v).replace('₱', '');
     box.innerHTML = basket.size ? [...basket.values()].map((l) => `
       <div class="pick">
-        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${peso(l.price)}
-          each${l.unit ? ' · ' + esc(l.unit) : ''}${
-            l.code ? ' · ' + esc(l.code) : ' · no PCODE'}</span></span>
-        <span class="codes">
+        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${
+          l.typed ? 'typed price' : l.code ? esc(l.code) : 'no PCODE'
+          }${l.unit ? ' · ' + esc(l.unit) : ''} · ${peso(l.price * l.qty)} for ${count(l.qty)}</span></span>
+        <select class="pcode" data-code="${esc(l.sku)}"
+          title="Which agreed price this line is charged at">
+          <option value="">${l.typed ? 'typed price' : `no PCODE — ${plain(l.listed ?? l.price)}`}</option>
           ${(codes || []).filter((c) => (l.prices || {})[c.code] != null)
-            .map((c) => `<button class="code ${c.code === l.code ? 'on' : ''}"
-              data-code="${esc(l.sku)}" data-value="${esc(c.code)}"
-              title="${esc(c.code)} — ${peso(l.prices[c.code])}">${esc(c.code)}</button>`)
-            .join('')
-            || '<span class="dim" style="font-size:.72rem">no PCODE priced for this one</span>'}
-        </span>
+            .map((c) => `<option value="${esc(c.code)}"
+              ${!l.typed && c.code === l.code ? 'selected' : ''}>${esc(c.code)} — ${
+              plain(l.prices[c.code])}</option>`).join('')}
+        </select>
+        <input class="unit" type="text" inputmode="decimal" data-price="${esc(l.sku)}"
+          value="${plain(l.price)}" title="The unit price charged on this line">
         <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
         <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
       </div>`).join('') : '<div class="none">Nothing added yet.</div>';
@@ -3126,7 +3309,7 @@ SCREENS.chatorders = async (page) => {
     // back to the listed price without a blank entry in a list to mean it.
     const warn = $('#ch_nocode', workingBox);
     if (warn) {
-      const bare = [...basket.values()].filter((l) => !l.code
+      const bare = [...basket.values()].filter((l) => !l.code && !l.typed
         && Object.keys(l.prices || {}).length);
       warn.innerHTML = bare.length ? `<div class="banner warn">
         <b>${count(bare.length)} line${bare.length > 1 ? 's have' : ' has'} no PCODE.</b>
@@ -3137,11 +3320,33 @@ SCREENS.chatorders = async (page) => {
           charged the listed price, which is not a dealer price.</div></div>` : '';
     }
     drawPreview();
-    $$('[data-code]', box).forEach((b) => b.addEventListener('click', () => {
-      const line = basket.get(b.dataset.code);
-      line.code = line.code === b.dataset.value ? '' : b.dataset.value;
+    $$('[data-code]', box).forEach((sel) => sel.addEventListener('change', () => {
+      const line = basket.get(sel.dataset.code);
+      line.code = sel.value;
+      line.typed = false;
       const priced = (line.prices || {})[line.code];
       line.price = priced != null ? Number(priced) : Number(line.listed ?? line.price);
+      drawBasket();
+    }));
+
+    // On change rather than on input: the basket redraws itself after every
+    // edit, and redrawing under somebody's cursor takes the field away
+    // mid-number. This fires when they leave it, by which time they have
+    // finished typing.
+    $$('[data-price]', box).forEach((i) => i.addEventListener('change', () => {
+      const line = basket.get(i.dataset.price);
+      // Typed with the commas it was shown with, most of the time.
+      const asked = Number(String(i.value).replace(/[^0-9.]/g, ''));
+      if (!Number.isFinite(asked) || asked <= 0) { drawBasket(); return; }
+      const listed = Number(line.listed ?? line.price);
+      const coded = Object.entries(line.prices || {})
+        .find(([, v]) => Number(v) === asked);
+      line.price = asked;
+      // Typing a number that is exactly one of the codes is not a hand price;
+      // it is that code, and saying so keeps the paperwork honest.
+      if (coded) { line.code = coded[0]; line.typed = false; }
+      else if (asked === listed) { line.code = ''; line.typed = false; }
+      else { line.code = ''; line.typed = true; }
       drawBasket();
     }));
   };
@@ -3725,7 +3930,11 @@ async function openReseller(id, reload) {
       showInvoiceDoc({
         over: true,
         orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments, who: o,
-        lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
+        invoiceNo: o.si_no,
+        shipping: Number(o.shipping || 0), others: Number(o.others || 0),
+        canEdit: user?.role === 'admin' || user?.role === 'office',
+        onSaved: () => openReseller(id, reload),
+        lines: o.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
           price: l.unit_price, code: l.price_code, unit: l.unit_type })),
       });
     } catch (e) { whoops(e); }

@@ -76,6 +76,9 @@ node --test tests/scanner-comes-back.test.js
 echo "==> coming back to where you were"
 node --test tests/dialogs-stack.test.js
 
+echo "==> one job, one menu"
+node --test tests/customer-order-tabs.test.js
+
 echo "==> running the tests"
 node --test tests/acceptance.test.js
 
@@ -96,6 +99,12 @@ node --test tests/search-path.test.js
 
 echo "==> which way somebody clocked"
 node --test tests/how-they-clocked.test.js
+
+echo "==> every document has a number of its own"
+node --test tests/document-numbers.test.js
+
+echo "==> correcting an invoice without cancelling the order"
+node --test tests/revise-invoice.test.js
 
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js

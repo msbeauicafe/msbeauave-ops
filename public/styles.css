@@ -118,6 +118,27 @@ nav.tabs button.on { background: var(--bg); color: var(--rose-deep); font-weight
 nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--rose-deep); outline-offset: 2px; }
 
 .page { padding: 22px 24px 56px; max-width: 1180px; margin: 0 auto; }
+
+/* Panels within one screen: the four documents of a customer order.
+   A second row of tabs, plainly subordinate to the column on the left — no
+   tinted bar of its own, an underline for the one that is open, and the type
+   a size down from the menu so the eye reads the column first. */
+.subtabs {
+  display: flex; gap: 2px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--rose-soft); margin-bottom: 18px;
+}
+.subtabs button {
+  border: none; background: transparent; font: inherit; font-size: .87rem;
+  color: var(--muted); cursor: pointer; padding: 9px 14px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.subtabs button:hover { color: var(--ink); }
+.subtabs button.on {
+  color: var(--rose-deep); font-weight: 600; border-bottom-color: var(--rose-deep);
+}
+/* A screen inside a panel has already been announced by the tab above it, so
+   its own heading sits closer to the tabs than a page heading would. */
+.subtabs + #panel > .head { margin-top: -4px; }
 .head { display: flex; align-items: baseline; gap: .9rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .head .hint { color: var(--muted); font-size: .87rem; }
 
@@ -720,27 +741,31 @@ label.inline input { width: auto; }
 /* The price a line is given, tapped rather than chosen out of a list — the
    figure it decides is the one being read into the chat, and a list that has
    to be opened first hides it. */
-.codes { display: flex; flex-wrap: wrap; gap: 4px; }
-.codes .code {
-  font: inherit; font-size: .7rem; line-height: 1; cursor: pointer;
-  padding: 5px 8px; border-radius: 999px;
-  border: 1px solid var(--rose-soft); background: #fff; color: var(--muted);
-}
-.codes .code:hover { border-color: var(--rose-dust); color: var(--ink); }
-.codes .code.on {
-  background: var(--rose-deep); border-color: var(--rose-deep);
-  color: #fff; font-weight: 600;
-}
+/* A price code is one of thirteen, so it is a list rather than a row of
+   buttons. As buttons they wrapped onto three lines and made every basket line
+   tall enough to push the running total off the bottom of the panel.
 
-/* A basket line is now two rows in a narrow column: what and how many on the
-   first, the prices it can be given on the second. The codes are ordered last
-   rather than written last, so the quantity and the remove button stay beside
-   the name where the hand expects them. */
+   The unit price sits beside it and is typed into directly, for the price a
+   reseller talked somebody into over Messenger that no code covers. It is
+   wider than the quantity box because it holds pesos, centavos and a comma. */
+.pick .pcode {
+  font: inherit; font-size: .72rem; padding: 4px 6px; max-width: 176px;
+  border: 1px solid var(--rose-soft); border-radius: 8px;
+  background: #fff; color: var(--ink);
+}
+.pick input.unit { width: 92px; text-align: right; }
+
+/* A basket line is two rows, because the panel it sits in is half a page wide
+   and a product name is not short. The name takes the first row whole rather
+   than being squeezed into a column narrow enough to break it over three
+   lines; the controls take the second, left to right in the order somebody
+   reads them — which price, what price, how many, and take it off again. */
 .pick { flex-wrap: wrap; }
-.pick .nm { flex: 1 1 120px; order: 1; }
-.pick input { order: 2; }
-.pick .btn.stop { order: 3; }
-.pick .codes { order: 4; flex: 1 1 100%; margin-top: 2px; }
+.pick .nm { flex: 1 1 100%; order: 1; }
+.pick .pcode { order: 2; }
+.pick input.unit { order: 3; }
+.pick input[data-qty] { order: 4; }
+.pick .btn.stop { order: 5; margin-left: auto; }
 
 /* The same round frame on the profile, so what is being set is plainly the
    thing that will appear on the card. */
@@ -858,6 +883,20 @@ label.sr {
   border-color: var(--rose-deep); color: var(--rose-deep); background: var(--rose-blush);
 }
 /* The documents print and download; the button that closes them does not. */
+/* A figure on a document that can be corrected.
+   Styled as the number it replaces rather than as a form field: the sheet is
+   printed and saved as a picture, and a page of boxes does not read as an
+   invoice. The rule under it is the only hint that it can be typed in, and it
+   goes away entirely on paper. */
+.doc .figure {
+  font: inherit; text-align: right; width: 100%; max-width: 84px;
+  padding: 0; margin: 0; color: inherit; background: transparent;
+  border: none; border-bottom: 1px dashed var(--rose-dust); border-radius: 0;
+}
+.doc .figure:focus { outline: none; border-bottom-color: var(--rose-deep); background: var(--rose-blush); }
+.doc .totals .figure { max-width: 96px; }
+@media print { .doc .figure { border-bottom: none; background: none; } }
+
 @media print { .dialog-x { display: none !important; } }
 
 /* ---------- the purchase order ----------
