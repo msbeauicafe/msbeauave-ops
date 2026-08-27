@@ -91,8 +91,8 @@ node --test tests/search-path.test.js
 echo "==> which way somebody clocked"
 node --test tests/how-they-clocked.test.js
 
-echo "==> a finger, then a PIN"
-node --test tests/finger-then-pin.test.js
+echo "==> a PIN, then a finger"
+node --test tests/pin-then-finger.test.js
 
 echo "==> one person, opened"
 node --test tests/person-profile.test.js

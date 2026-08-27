@@ -182,7 +182,13 @@ test('a confirmation is not overwritten while somebody is still reading it', () 
 
 test('pressing twice is answered, not treated as a second clocking', () => {
   assert.match(page, /latest\.again/, 'a repeat has to be distinguishable');
-  assert.match(page, /already \$\{what\}/, 'and say what already happened');
+  assert.match(page, /already \$\{what\.toLowerCase\(\)\}/,
+    'and say what already happened');
+  // The whole-screen cheer belongs to the press that actually clocked them.
+  // Somebody checking their first press worked should not be congratulated
+  // twice for one arrival.
+  assert.match(page, /if \(latest\.again\) \{[\s\S]{0,220}?\} else \{[\s\S]{0,120}?clocked\(/,
+    'a repeat is said in the strip, not with the big face again');
 });
 
 test('a clocking result stays up longer than an ordinary message', () => {

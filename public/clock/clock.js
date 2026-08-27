@@ -49,6 +49,145 @@ function say(text, kind = 'good', holdMs = 0) {
 // enough to be sure across a room while taking a bag off your shoulder.
 const CONFIRM_MS = 6500;
 
+// ---------------------------------------------------------------------------
+// What the door says when it lets you in, and when it lets you go
+//
+// A time clock is the first thing anybody here sees in the morning and the
+// last thing at night, and for a year it has said the same eleven words at
+// both ends. So it says something different each time — warm on the way in,
+// warm on the way out, and never at anybody's expense. Somebody arriving late
+// or leaving early reads this too.
+//
+// Kept here rather than on the server on purpose: it is the door's own voice
+// and changing it should not need a deploy of anything but this file.
+// ---------------------------------------------------------------------------
+const HELLO = [
+  "You're clocked in. Now get to work.",
+  "You're in. The day starts now.",
+  "Clocked in. Go be brilliant.",
+  "In you go. Make it count.",
+  "You're on the clock. Coffee first, then chaos.",
+  "Clocked in. The shelves won't stock themselves.",
+  "You're in. Let's make today easy on tomorrow.",
+  "Clocked in. Somebody's order is waiting.",
+  "In. Good morning — properly this time.",
+  "You're on. Head up, let's go.",
+  "Clocked in. Today's the one, then.",
+  "You're in. Try to enjoy it.",
+  "Clocked in. The team just got better.",
+  "In you come. Deep breath, then begin.",
+  "You're on the clock. Do the hard one first.",
+  "Clocked in. Nothing breaks on your watch.",
+  "You're in. Let's give them something to talk about.",
+  "Clocked in. Right — where were we?",
+];
+
+const GOODBYE = [
+  "You're clocked out. Ciao.",
+  "Clocked out. Goodbye, and well done.",
+  "You're out. Go home properly.",
+  "Clocked out. That'll do.",
+  "You're done. Rest is part of the job.",
+  "Out you go. See you tomorrow.",
+  "Clocked out. Leave it at the door.",
+  "You're out. Go and eat something.",
+  "Clocked out. Good shift.",
+  "Done for the day. Ciao.",
+  "You're out. Nothing follows you home.",
+  "Clocked out. Thanks for today.",
+  "Out. Go on — the day's yours now.",
+  "You're done. Sleep well.",
+  "Clocked out. Same time tomorrow?",
+  "You're out. Take the long way home.",
+  "Clocked out. Well earned.",
+  "Off you go. Goodbye.",
+];
+
+// Not the same line twice running, which is the one thing that makes a random
+// list look like it isn't one. With eighteen to choose from, remembering the
+// last is enough — a queue of them would just be bookkeeping.
+let lastLine = '';
+function pick(lines) {
+  const other = lines.filter((l) => l !== lastLine);
+  lastLine = other[Math.floor(Math.random() * other.length)];
+  return lastLine;
+}
+
+// The big moment: their own face, filling the screen, with something said to
+// them by name.
+//
+// It is deliberately the whole screen. The old confirmation was a strip of
+// text at the top of a board of fifty faces, which is nothing to look at from
+// four steps away with a bag on your shoulder — and being unsure is exactly
+// what made people press again. Nobody is unsure about this.
+const CHEER_MS = 4200;
+let cheerTimer = null;
+
+// How the face arrives. Eight of them, picked at random, all landing in the
+// same place so the name and the line underneath never move.
+const MOVES = ['m-pop', 'm-swing', 'm-drop', 'm-spin', 'm-rise', 'm-flip',
+               'm-wobble', 'm-zoom'];
+
+function cheer({ name, photo, action, minutes }) {
+  clearTimeout(cheerTimer);
+  document.querySelector('.cheer')?.remove();
+  // "Now press your finger" has just been answered. Leaving it up under the
+  // confirmation is the screen contradicting itself.
+  $('#notices').replaceChildren();
+  busy(CHEER_MS + 1500);
+
+  const out = action === 'out';
+  const el = document.createElement('div');
+  // A different move each time, so the same face arriving every morning at
+  // ten to six is not the same four seconds every morning at ten to six.
+  el.className = `cheer ${out ? 'out' : 'in'} ${
+    MOVES[Math.floor(Math.random() * MOVES.length)]}`;
+  el.innerHTML = `
+    <div class="cheer-card">
+      <div class="cheer-face">
+        ${photo
+          ? `<img src="${photo}" alt="">`
+          : '<span class="noface">🧑</span>'}
+      </div>
+      <b class="cheer-name">${esc(name || '')}</b>
+      <p class="cheer-line">${esc(pick(out ? GOODBYE : HELLO))}</p>
+      <p class="cheer-when">${esc(new Date().toLocaleTimeString('en-PH', {
+        hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }))}${
+        out && minutes ? ` · ${(minutes / 60).toFixed(2)} hours` : ''}</p>
+    </div>`;
+  document.body.append(el);
+  // A frame's grace so the browser has something to animate away from.
+  requestAnimationFrame(() => el.classList.add('up'));
+
+  const go = () => {
+    el.classList.remove('up');
+    setTimeout(() => el.remove(), 400);
+  };
+  cheerTimer = setTimeout(go, CHEER_MS);
+  // Somebody in a hurry behind them can clear it.
+  el.addEventListener('click', () => { clearTimeout(cheerTimer); go(); });
+}
+
+// The face to put on it. The board already knows everybody's photograph; a
+// clocking answer only carries a name, so it is looked up by name here rather
+// than fetched again.
+const faceOf = (name) => {
+  const p = team.find((x) => x.name === name);
+  return p?.has_photo ? faceSrc(p) : null;
+};
+
+// Said the same way wherever a clocking lands — the keypad, a tapped face, or
+// the scanner — so all three ends of this page agree.
+function clocked(r) {
+  cheer({
+    name: r.name || r.person,
+    photo: faceOf(r.name || r.person),
+    action: r.action,
+    minutes: r.worked_minutes,
+  });
+  load().catch(() => {});
+}
+
 // Manila, not the machine. Every other time on this page is pinned to the
 // shop's clock — the arrivals, the departures, the date under a face — and
 // this one was following whatever the PC happened to be set to. A door whose
@@ -165,17 +304,23 @@ let team = [];
 let refresher = null;
 let fixedBranch = null;
 
-// A finger has been matched and is waiting on the PIN that confirms it.
+// A PIN has named somebody and is waiting on the finger that confirms it.
 //
-// The scanner says who is standing here. It does not say they meant to clock,
-// and a fingerprint is the one thing a person cannot change if it is ever
-// copied — so nothing is recorded until the PIN only they know follows it.
+// The PIN says who is standing here and that they meant to clock. It does not
+// prove they are the person whose PIN it is — a number can be watched over a
+// shoulder or lent to a friend running late — so nothing is recorded until the
+// finger only they have follows it.
+//
+// This way round for two reasons. A scanner that listens all day answers
+// fingers nobody offered on purpose: a hand on the glass, somebody reaching
+// past. And a person who could not tell whether their press had registered
+// pressed again, which under a toggle clocked them straight back out. Now the
+// press is the last thing, it is deliberate, and the window it lands on is
+// single-use — so a second press changes nothing.
+//
 // Going out as well as coming in: walking past a scanner should not end a
 // shift any more than it should start one.
-//
-// The keypad already on this screen is the thing that asks. There is no second
-// PIN pad and nothing new to learn — the same buttons, under their own name.
-let awaiting = null;      // { ticket, name, until }
+let awaiting = null;      // { name, until }
 let askTimer = null;
 
 // The screen's own sign-in. Not a person, and not on the team list.
@@ -212,32 +357,33 @@ function gate() {
 }
 
 // ---------------------------------------------------------------------------
-// Asking for the PIN that confirms a finger
+// Asking for the finger that confirms a PIN
 //
-// It turns the keypad that is already there into their keypad, with their name
-// on it, and turns it back when the window closes. Nothing is recorded either
-// way until the PIN arrives — a window that runs out leaves no trace of a
-// shift, only a note that a finger opened one and nothing followed.
+// It turns the scanner panel that is already there into their panel, with
+// their name on it and a countdown, and turns it back when the window closes.
+// Nothing is recorded either way until the finger arrives — a window that runs
+// out leaves no trace of a shift, only a note that a PIN opened one and
+// nothing followed.
 // ---------------------------------------------------------------------------
-function startAsking(name, ticket, seconds) {
-  // Somebody's finger has been read and they are about to type. Nothing may
+function startAsking(name, seconds) {
+  // Somebody has typed their PIN and is reaching for the glass. Nothing may
   // reload under them for at least as long as they have to do it.
   busy(((seconds || 90) + 15) * 1000);
   clearInterval(askTimer);
-  awaiting = { ticket, name, until: Date.now() + (seconds || 90) * 1000 };
+  awaiting = { name, until: Date.now() + (seconds || 90) * 1000 };
 
-  const pad = $('#bypin');
-  if (!pad) return;
-  pad.classList.add('confirming');
+  const panel = $('#byfinger');
+  if (!panel) return;
+  panel.hidden = false;
+  panel.classList.add('confirming');
   const left = () => Math.max(0, Math.ceil((awaiting.until - Date.now()) / 1000));
   const paint = () => {
     if (!awaiting) return;
-    pad.querySelector('h2').textContent = `${name} — type your PIN`;
-    const hint = pad.querySelector('.hint');
-    if (hint) hint.textContent = `Your finger was recognised. ${left()}s to confirm.`;
+    $('#scantitle', panel).textContent = `${name} — now your finger`;
+    $('#scanhint', panel).textContent = `${left()}s to confirm on the glass.`;
     if (left() <= 0) {
       stopAsking();
-      say('That took too long. Press your finger again.', 'bad', CONFIRM_MS);
+      say('That took too long. Type your PIN again.', 'bad', CONFIRM_MS);
     }
   };
   paint();
@@ -248,13 +394,22 @@ function stopAsking() {
   clearInterval(askTimer);
   askTimer = null;
   awaiting = null;
-  const pad = $('#bypin');
-  if (!pad) return;
-  pad.classList.remove('confirming');
-  pad.querySelector('h2').textContent = 'Type your PIN';
-  const hint = pad.querySelector('.hint');
-  if (hint) hint.textContent = 'Type your PIN on the keyboard, or pick your face on the left.';
+  const panel = $('#byfinger');
+  if (!panel) return;
+  panel.classList.remove('confirming');
+  $('#scantitle', panel).textContent = 'Place your finger';
+  scannerIdle?.();
 }
+
+// Set once the scanner has been found, so stopAsking can put the panel back to
+// whatever it should say on this particular door — ready, not connected, or an
+// enrolment desk.
+let scannerIdle = null;
+
+// Does this door have a working scanner? The server needs to know before it
+// sends anybody to one: a broken reader at six in the morning must clock
+// people on their PIN rather than turn into a queue nobody can clear.
+let hasScanner = false;
 
 // ---------------------------------------------------------------------------
 // The faces
@@ -316,26 +471,21 @@ async function start() {
   const punch = async () => {
     if (typed.length < 4) return say('Type your four-digit PIN.', 'bad');
     $('#kgo').disabled = true;
-    // Two things the same buttons do. If a finger is waiting on its
-    // confirmation the PIN finishes that; otherwise it is the PIN on its own,
-    // which is what everybody without a fingerprint still uses.
-    const confirming = awaiting && Date.now() < awaiting.until ? awaiting : null;
     try {
-      const r = confirming
-        ? await POST('/api/clock/confirm', { ticket: confirming.ticket, pin: typed })
-        : await POST('/api/clock/by-pin', { pin: typed, branch_id: fixedBranch });
-      say(r.action === 'in'
-        ? `Good morning ${r.name} — clocked on 🌸`
-        : `${r.name} clocked out after ${(r.worked_minutes / 60).toFixed(2)} hours 🌸`);
+      const r = await POST('/api/clock/by-pin',
+        { pin: typed, branch_id: fixedBranch, scanner: hasScanner });
       typed = ''; kdots();
-      if (confirming) stopAsking();
-      load().catch(() => {});
+      // Named, but nothing written down yet. The finger is what says they
+      // meant it, and that they are the one who owns the number.
+      if (r.action === 'confirm') {
+        startAsking(r.name, r.seconds);
+        say(`${r.name} — now press your finger`, 'good', CONFIRM_MS);
+      } else {
+        clocked(r);
+      }
     } catch (e) {
       say(e.message, 'bad');
       typed = ''; kdots();
-      // A ticket dies after three wrong PINs and after ninety seconds. Once it
-      // is gone the keypad has to stop claiming to be confirming anybody.
-      if (confirming && /expired/i.test(e.message)) stopAsking();
     } finally { $('#kgo').disabled = false; }
   };
   $('#kgo').addEventListener('click', punch);
@@ -452,6 +602,7 @@ async function findScanner() {
   const panel = $('#byfinger');
   const hint = $('#scanhint');
   panel.hidden = false;
+  hasScanner = !hello.desk && !!hello.scanner;
   const idle = () => {
     // A desk is not a door, and saying "Ready" on one is a small lie: a finger
     // here is being enrolled, and pressing it expecting to clock on will look
@@ -464,11 +615,16 @@ async function findScanner() {
       hint.textContent = 'Scanner not connected — use your PIN';
       panel.classList.add('cold');
     } else {
-      hint.textContent = `Ready · ${hello.holding} on file`;
+      // What it is waiting for, said as the second step it now is. "Ready" on
+      // its own invited a press before the PIN, which is the thing this order
+      // exists to stop.
+      panel.querySelector('h2').textContent = 'Place your finger';
+      hint.textContent = 'After your PIN — this confirms it';
       panel.classList.remove('cold');
     }
   };
   idle();
+  scannerIdle = idle;
 
   // The agent does the waiting and the matching; this only asks what happened.
   //
@@ -504,51 +660,40 @@ async function findScanner() {
 
     if (latest.ok) {
       const r = latest.result || {};
+      // The window this landed on is spent. The panel goes back to waiting
+      // before anything else, so a second press finds nothing to do.
+      if (awaiting) stopAsking();
 
-      // Recognised, and nothing written down yet. The finger has named
-      // somebody; the PIN is what says they meant it.
-      if (r.action === 'confirm') {
-        // The door answers a second press from memory for a few seconds, so
-        // the same ticket arrives again while they are still typing. Asking
-        // twice would reset their name and the countdown under their fingers.
-        if (awaiting?.ticket === r.ticket) return;
-        if (!r.has_pin) {
-          say(`${r.name} has no PIN yet — ask the owner to set one.`, 'bad', CONFIRM_MS);
-          held = Date.now() + CONFIRM_MS;
-          return;
-        }
-        startAsking(r.name, r.ticket, r.seconds);
-        say(`Hello ${r.name} — now type your PIN`, 'good', CONFIRM_MS);
-        held = Date.now() + CONFIRM_MS;
-        panel.classList.remove('reading');
-        $('#scantitle', panel).textContent = 'Now your PIN';
-        hint.textContent = r.name;
-        return;
-      }
-
-      const what = r.action === 'out' ? 'clocked out' : 'clocked in';
-      // Pressed twice. Say what already happened rather than nothing, so the
-      // answer to "did it work?" is never silence.
-      say(latest.again
-        ? `${latest.person || 'You'} — already ${what} ✨`
-        : `${latest.person || 'Welcome'} — ${what} ✨`, 'good', CONFIRM_MS);
-      held = Date.now() + CONFIRM_MS;
       panel.classList.remove('reading');
       panel.classList.add('hit');
-      $('#scantitle', panel).textContent = what === 'clocked out' ? 'Clocked out' : 'Clocked in';
+      const what = r.action === 'out' ? 'Clocked out' : 'Clocked in';
+      $('#scantitle', panel).textContent = what;
       hint.textContent = latest.person || '';
+      held = Date.now() + CONFIRM_MS;
+
+      // Pressed twice. The door answers the second from memory rather than
+      // clocking anybody back out, so say what already happened — but say it
+      // small, in the strip, not with the whole screen again.
+      if (latest.again) {
+        say(`${latest.person || 'You'} — already ${what.toLowerCase()} ✨`, 'good', CONFIRM_MS);
+      } else {
+        clocked({ ...r, name: r.name || latest.person });
+      }
+
       setTimeout(() => {
         panel.classList.remove('hit');
         $('#scantitle', panel).textContent = 'Place your finger';
         idle();
       }, CONFIRM_MS);
-      load().catch(() => {});
     } else {
-      say(latest.say || 'That finger was not recognised.', 'bad', CONFIRM_MS);
+      // A finger with no window open behind it. Not a fault and not an
+      // accusation — most of these are a hand resting on the glass.
+      const first = /pin first/i.test(latest.say || '');
+      say(latest.say || 'That finger was not recognised.', first ? 'good' : 'bad', CONFIRM_MS);
       held = Date.now() + CONFIRM_MS;
       panel.classList.remove('reading');
-      $('#scantitle', panel).textContent = 'Not recognised';
-      hint.textContent = 'Try again, or use your PIN';
+      $('#scantitle', panel).textContent = first ? 'Your PIN first' : 'Not recognised';
+      hint.textContent = first ? 'Type it on the right, then press again' : 'Try again, or use your PIN';
       setTimeout(() => {
         $('#scantitle', panel).textContent = 'Place your finger';
         idle();
@@ -662,7 +807,8 @@ function pad(person) {
     <div class="pad">
       <h2>${esc(person.name)}</h2>
       <div class="sub">${person.on_shift
-        ? 'Type your PIN to clock out.' : 'Type your PIN to clock on.'}</div>
+        ? 'Type your PIN to clock out.' : 'Type your PIN to clock on.'}${
+        hasScanner && person.has_finger ? '<br>Then press your finger.' : ''}</div>
       <div class="dots" id="dots"></div>
       <div class="keys">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button data-d="${d}">${d}</button>`).join('')}
@@ -690,12 +836,15 @@ function pad(person) {
   $('#ok', veil).addEventListener('click', async () => {
     $('#ok', veil).disabled = true;
     try {
-      const r = await POST('/api/clock', { employeeId: person.id, pin });
+      const r = await POST('/api/clock',
+        { employeeId: person.id, pin, scanner: hasScanner });
       veil.remove();
-      say(r.action === 'in'
-        ? `Good morning ${r.name} — clocked on 🌸`
-        : `${r.name} clocked out after ${(r.worked_minutes / 60).toFixed(2)} hours 🌸`);
-      load().catch(() => {});
+      if (r.action === 'confirm') {
+        startAsking(r.name, r.seconds);
+        say(`${r.name} — now press your finger`, 'good', CONFIRM_MS);
+      } else {
+        clocked(r);
+      }
     } catch (e) {
       say(e.message, 'bad');
       pin = '';

@@ -77,12 +77,15 @@ async function person({ pin, finger = false } = {}) {
 // What a door does now: a finger names somebody, and the PIN they type
 // confirms it. A match on its own records nothing, which is the point of it —
 // see tests/finger-then-pin.test.js for the boundary itself.
+// The PIN names them and opens the window; the finger closes it. Both are
+// used, and 'finger' is what the pair is called — see pin-then-finger.test.js
+// for why that order and not the other one.
 async function byFinger(door, p) {
-  const matched = await POST(door, '/api/clock/by-finger',
-    { employeeId: p.id, branch_id: p.branch });
-  if (matched.status !== 200) return matched;
-  assert.equal(matched.data.action, 'confirm', JSON.stringify(matched.data));
-  return POST(door, '/api/clock/confirm', { ticket: matched.data.ticket, pin: p.pin });
+  const named = await POST(door, '/api/clock/by-pin',
+    { pin: p.pin, branch_id: p.branch, scanner: true });
+  if (named.status !== 200) return named;
+  assert.equal(named.data.action, 'confirm', JSON.stringify(named.data));
+  return POST(door, '/api/clock/by-finger', { employeeId: p.id, branch_id: p.branch });
 }
 
 const shift = async (id) => (await db.query(
