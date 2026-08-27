@@ -2307,7 +2307,18 @@ const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO
     </div>
   </div>`;
 
-const docLines = (lines, blanks = 5) => `
+// `typed` turns the UNIT PRICE column into something somebody can correct.
+//
+// The price on a sheet is right most of the time and wrong some of the time —
+// a figure agreed in a chat window and not in the price list, a discount the
+// owner gave on the phone. Correcting it used to mean cancelling the order,
+// which puts the stock back on sale and loses the number the reseller already
+// has in front of them.
+//
+// The box is styled to look like the number it replaces rather than like a
+// form field, so a sheet that is printed or saved as a picture reads as a
+// document either way.
+const docLines = (lines, blanks = 5, typed = false) => `
   <table class="lines">
     <thead><tr>
       <th style="width:88px">PCODE</th><th>PRODUCT DESCRIPTION</th>
@@ -2320,8 +2331,11 @@ const docLines = (lines, blanks = 5) => `
         <td><b>${esc(l.name)}</b></td>
         <td class="c">${count(l.qty)}</td>
         <td class="c">${esc(l.unit || '')}</td>
-        <td class="n">${peso(l.price)}</td>
-        <td class="n">${peso(l.price * l.qty)}</td>
+        <td class="n">${typed && l.id
+          ? `<input class="figure" inputmode="decimal" data-line="${esc(String(l.id))}"
+               data-qty="${Number(l.qty)}" value="${peso(l.price).replace('₱', '')}">`
+          : peso(l.price)}</td>
+        <td class="n" data-linetotal="${esc(String(l.id ?? ''))}">${peso(l.price * l.qty)}</td>
       </tr>`).join('')}
       ${Array.from({ length: Math.max(0, blanks - lines.length) },
         () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
@@ -2385,7 +2399,8 @@ function showInvoice(opts, over = false) {
  * the paper has five and a payment made after this printed goes in by hand.
  */
 function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
-                          who = {}, shipping = 0, others = 0, over = false }) {
+                          who = {}, shipping = 0, others = 0, over = false,
+                          invoiceNo = null, canEdit = false, onSaved = null }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   const grand = sub + shipping + others;
   const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
@@ -2410,10 +2425,11 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
     <div class="doc inv">
       ${DOC_HEAD}
       <div class="title inv">INVOICE</div>
-      ${docParty(resellerName, issuedOn, orderId, who)}
+      ${docParty(resellerName, issuedOn, invoiceNo || orderId, who,
+                 invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.')}
       <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
       <div style="clear:both"></div>
-      ${docLines(lines)}
+      ${docLines(lines, 5, canEdit)}
       <div class="foot">
         <div class="mop">
           <div class="hd">PAYMENT DETAILS${payments.length ? '' : ' — TO FOLLOW PAYMENT'}</div>
@@ -2421,11 +2437,17 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
         </div>
         <div>
           <div class="totals">
-            <div><span>Subtotal:</span><span>${peso(sub)}</span></div>
-            <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
-            <div><span>Others:</span><span>${peso(others)}</span></div>
-            <div class="grand"><span>Grand Total:</span><span>${peso(grand)}</span></div>
-            <div class="bal"><span>Balance:</span><span>${peso(grand - paid)}</span></div>
+            <div><span>Subtotal:</span><span id="iv_sub">${peso(sub)}</span></div>
+            <div><span>Shipping/Delivery Fee:</span><span>${canEdit
+              ? `<input class="figure" id="iv_ship" inputmode="decimal"
+                   value="${peso(shipping).replace('₱', '')}">`
+              : peso(shipping)}</span></div>
+            <div><span>Others:</span><span>${canEdit
+              ? `<input class="figure" id="iv_oth" inputmode="decimal"
+                   value="${peso(others).replace('₱', '')}">`
+              : peso(others)}</span></div>
+            <div class="grand"><span>Grand Total:</span><span id="iv_grand">${peso(grand)}</span></div>
+            <div class="bal"><span>Balance:</span><span id="iv_bal">${peso(grand - paid)}</span></div>
           </div>
           ${BANK_DETAILS}
         </div>
@@ -2437,10 +2459,70 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       </div>
     </div>
     <div class="mt right">
+      ${canEdit ? '<span class="dim" id="iv_state"></span>' : ''}
       <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
-      <button class="btn" id="ivd_done">Done</button></div>`, 'wide', over);
-  wireSave('#ivd_save', '.doc', `${orderId} INVOICE.jpg`);
+      ${canEdit ? '<button class="btn" id="iv_keep">Save the changes</button>' : ''}
+      <button class="btn ${canEdit ? 'quiet' : ''}" id="ivd_done">Done</button></div>`,
+    'wide', over);
+  wireSave('#ivd_save', '.doc', `${invoiceNo || orderId} INVOICE.jpg`);
   $('#ivd_done').addEventListener('click', closeDialog);
+
+  if (!canEdit) return;
+
+  // A number typed with the commas it was shown with is still a number.
+  const read = (el) => {
+    const n = Number(String(el?.value ?? '').replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  const boxes = () => $$('[data-line]');
+
+  // The totals follow the typing rather than waiting for a save, because the
+  // figure somebody is checking is the Grand Total, not the line they are in.
+  const retotal = () => {
+    let running = 0;
+    for (const box of boxes()) {
+      const line = read(box) * Number(box.dataset.qty || 0);
+      running += line;
+      const cell = $(`[data-linetotal="${box.dataset.line}"]`);
+      if (cell) cell.textContent = peso(line);
+    }
+    const ship = read($('#iv_ship'));
+    const oth = read($('#iv_oth'));
+    const whole = running + ship + oth;
+    $('#iv_sub').textContent = peso(running);
+    $('#iv_grand').textContent = peso(whole);
+    $('#iv_bal').textContent = peso(whole - paid);
+    $('.duebox b').textContent = peso(whole - paid);
+    // Money already taken is the floor. Saying so while they type beats a
+    // refusal after they press the button.
+    const short = whole < paid;
+    $('#iv_state').innerHTML = short
+      ? `<span class="over">${peso(paid)} has already been settled against this
+         invoice — it cannot come to less</span>` : '';
+    $('#iv_keep').disabled = short;
+  };
+
+  $$('[data-line], #iv_ship, #iv_oth').forEach((el) => {
+    el.addEventListener('input', retotal);
+    // Tidied to the shape the rest of the sheet is in once they leave it.
+    el.addEventListener('change', () => { el.value = peso(read(el)).replace('₱', ''); retotal(); });
+  });
+  retotal();
+
+  $('#iv_keep').addEventListener('click', async () => {
+    const button = $('#iv_keep');
+    button.disabled = true;
+    try {
+      const out = await POST(`/api/orders/${orderId}/invoice`, {
+        lines: boxes().map((b) => ({ id: b.dataset.line, price: read(b) })),
+        shipping: read($('#iv_ship')),
+        others: read($('#iv_oth')),
+      });
+      notice(`${out.si_no || 'The invoice'} now comes to ${peso(out.total)} 🌸`, 'good');
+      closeDialog();
+      onSaved?.();
+    } catch (e) { whoops(e); button.disabled = false; }
+  });
 }
 
 /**
@@ -3848,7 +3930,11 @@ async function openReseller(id, reload) {
       showInvoiceDoc({
         over: true,
         orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments, who: o,
-        lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
+        invoiceNo: o.si_no,
+        shipping: Number(o.shipping || 0), others: Number(o.others || 0),
+        canEdit: user?.role === 'admin' || user?.role === 'office',
+        onSaved: () => openReseller(id, reload),
+        lines: o.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
           price: l.unit_price, code: l.price_code, unit: l.unit_type })),
       });
     } catch (e) { whoops(e); }

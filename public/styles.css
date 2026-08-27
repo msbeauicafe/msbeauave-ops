@@ -883,6 +883,20 @@ label.sr {
   border-color: var(--rose-deep); color: var(--rose-deep); background: var(--rose-blush);
 }
 /* The documents print and download; the button that closes them does not. */
+/* A figure on a document that can be corrected.
+   Styled as the number it replaces rather than as a form field: the sheet is
+   printed and saved as a picture, and a page of boxes does not read as an
+   invoice. The rule under it is the only hint that it can be typed in, and it
+   goes away entirely on paper. */
+.doc .figure {
+  font: inherit; text-align: right; width: 100%; max-width: 84px;
+  padding: 0; margin: 0; color: inherit; background: transparent;
+  border: none; border-bottom: 1px dashed var(--rose-dust); border-radius: 0;
+}
+.doc .figure:focus { outline: none; border-bottom-color: var(--rose-deep); background: var(--rose-blush); }
+.doc .totals .figure { max-width: 96px; }
+@media print { .doc .figure { border-bottom: none; background: none; } }
+
 @media print { .dialog-x { display: none !important; } }
 
 /* ---------- the purchase order ----------

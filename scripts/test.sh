@@ -103,6 +103,9 @@ node --test tests/how-they-clocked.test.js
 echo "==> every document has a number of its own"
 node --test tests/document-numbers.test.js
 
+echo "==> correcting an invoice without cancelling the order"
+node --test tests/revise-invoice.test.js
+
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js
 
