@@ -186,8 +186,24 @@ const folders = (dir) => {
  * Open the scanner. Returns a line for the log, or throws with something
  * somebody standing at the machine can act on.
  */
+// How many times the pretend scanner refuses before it answers.
+//
+// The door retries a scanner that would not open, and a retry nobody can
+// exercise is a retry nobody can trust. This lets a test stage the exact
+// thing that happened for real: a first no, then a yes, with no restart in
+// between. Zero in every real run, because the variable is never set.
+const STUB_REFUSALS = Number(process.env.SDK_STUB_REFUSALS || 0);
+let refused = 0;
+
 export async function open(conf = {}) {
-  if (STUB) { device = 'stub'; return 'a pretend scanner (SDK_STUB=1)'; }
+  if (STUB) {
+    if (refused < STUB_REFUSALS) {
+      refused++;
+      throw new Error('An Application Control policy has blocked this file. (SDK_STUB_REFUSALS)');
+    }
+    device = 'stub';
+    return 'a pretend scanner (SDK_STUB=1)';
+  }
 
   const dll = findDll(conf.zkfpPath);
   dllPath = dll;
