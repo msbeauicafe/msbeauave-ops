@@ -2048,3 +2048,99 @@ test('buying is the stockroom’s business, not a reseller’s', async () => {
   assert.equal((await GET(seller, '/api/receiving-forms')).status, 403);
   assert.equal((await POST(seller, '/api/receiving-forms', { lines: [] })).status, 403);
 });
+
+// ===========================================================================
+// How one invoice was paid, not just that it was
+//
+// A reseller settles a bill with a BDO transfer, a BPI transfer and GCash.
+// That is three rows against one invoice, each with its own bank and the
+// bank's own reference — not one anonymous lump that nobody can trace back to
+// a statement six weeks later.
+// ===========================================================================
+test('one invoice takes its payment in pieces, each with the bank it came through',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const sku = await newProduct(admin, { wholesale_price: 500 });
+    await receive(store, sku, 24, 40);
+    // Fifteen-day terms, so the 2% early-settlement discount — which is a
+    // thirty-day rule — stays out of the arithmetic being checked here.
+    const id = await newReseller(admin, { terms_days: 15 });
+    const placed = await POST(admin, `/api/resellers/${id}/orders`, {
+      lines: [{ sku, qty: 20 }],                                    // ₱10,000
+    });
+    const invoice = placed.data.invoice.id;
+
+    const out = await POST(admin, `/api/invoices/${invoice}/payments`, {
+      payments: [
+        { amount: 4000, method: 'BANCO DE ORO (BDO)', reference_no: 'BDO-771' },
+        { amount: 3500, method: 'BPI',                reference_no: 'BPI-402' },
+        { amount: 2500, method: 'GCASH',              reference_no: 'GC-9911' },
+      ],
+    });
+    assert.equal(out.status, 200, JSON.stringify(out.data));
+    assert.equal(Number(out.data.taken), 10000, 'all three rows landed');
+    assert.equal(Number(out.data.balance), 0);
+    assert.equal(out.data.status, 'paid', 'and between them they settled it');
+    assert.equal(out.data.rows.length, 3, 'three rows, not one lump');
+
+    // The breakdown is in the ledger, against that invoice, bank by bank.
+    const ledger = await GET(admin, `/api/resellers/${id}/payments`);
+    const mine = ledger.data.filter((p) => String(p.invoice_id) === String(invoice));
+    assert.equal(mine.length, 3);
+    // And asking for the order's own payments returns those three and no
+    // others — an invoice prints how IT was paid, not what the account sent.
+    const forOrder = await GET(admin,
+      `/api/resellers/${id}/payments?order_id=${placed.data.orderId}`);
+    assert.equal(forOrder.data.length, 3);
+    assert.ok(forOrder.data.every((p) => String(p.invoice_id) === String(invoice)));
+    // In the order the money came in, which is the order the slots are read.
+    assert.deepEqual(forOrder.data.map((p) => p.reference_no),
+      ['BDO-771', 'BPI-402', 'GC-9911']);
+    assert.deepEqual(mine.map((p) => p.method).sort(),
+      ['BANCO DE ORO (BDO)', 'BPI', 'GCASH']);
+    assert.deepEqual(mine.map((p) => p.reference_no).sort(),
+      ['BDO-771', 'BPI-402', 'GC-9911']);
+
+    // And all three are waiting on one receipt, not three.
+    const waiting = await GET(admin, `/api/resellers/${id}/pending-receipt`);
+    assert.equal(waiting.data.count, 3);
+    const or = await POST(admin, `/api/resellers/${id}/issue-or`, {});
+    assert.equal(or.status, 200, JSON.stringify(or.data));
+    assert.equal(Number(or.data.amount), 10000, 'one number over all three');
+  });
+
+test('more than one invoice owes is refused whole, not half applied', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin, { wholesale_price: 500 });
+  await receive(store, sku, 24, 40);
+  const id = await newReseller(admin, { terms_days: 15 });
+  const placed = await POST(admin, `/api/resellers/${id}/orders`, {
+    lines: [{ sku, qty: 20 }],                                      // ₱10,000
+  });
+  const invoice = placed.data.invoice.id;
+
+  // A nought too many on the second row.
+  const fat = await POST(admin, `/api/invoices/${invoice}/payments`, {
+    payments: [
+      { amount: 4000,  method: 'BDO' },
+      { amount: 60000, method: 'BPI' },
+    ],
+  });
+  assert.equal(fat.status, 400, JSON.stringify(fat.data));
+
+  // Neither row stuck — not even the good one.
+  const ledger = await GET(admin, `/api/resellers/${id}/payments`);
+  assert.equal(ledger.data.filter((p) => String(p.invoice_id) === String(invoice)).length, 0,
+    'a refused breakdown leaves nothing behind');
+  const still = await GET(admin, `/api/resellers/${id}`);
+  assert.equal(Number(still.data.invoices.find((i) => String(i.id) === String(invoice)).balance),
+    10000, 'and the invoice still owes what it owed');
+
+  // Empty rows are not a payment either.
+  const nothing = await POST(admin, `/api/invoices/${invoice}/payments`, {
+    payments: [{ amount: '', method: 'BDO' }],
+  });
+  assert.equal(nothing.status, 400);
+});
