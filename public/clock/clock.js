@@ -120,13 +120,24 @@ function pick(lines) {
 // text at the top of a board of fifty faces, which is nothing to look at from
 // four steps away with a bag on your shoulder — and being unsure is exactly
 // what made people press again. Nobody is unsure about this.
-const CHEER_MS = 4200;
+// Long enough to arrive and then be alive for a while. The entrance takes
+// about three quarters of a second, so this leaves better than four seconds of
+// the portrait actually moving — which is the part people stand and watch.
+const CHEER_MS = 5200;
 let cheerTimer = null;
 
 // How the face arrives. Eight of them, picked at random, all landing in the
 // same place so the name and the line underneath never move.
 const MOVES = ['m-pop', 'm-swing', 'm-drop', 'm-spin', 'm-rise', 'm-flip',
                'm-wobble', 'm-zoom'];
+
+// And how it behaves once it has arrived. A photograph is still, so the
+// movement has to be borrowed: the head turns on one rhythm and the shoulders
+// carry on another, slightly slower, so the two drift out of step. That drift
+// is the whole trick — two things moving in lockstep read as a picture being
+// wobbled, and two things moving independently read as somebody standing
+// there.
+const ALIVE = ['a-nod', 'a-sway', 'a-breathe', 'a-lean'];
 
 function cheer({ name, photo, action, minutes }) {
   clearTimeout(cheerTimer);
@@ -141,13 +152,16 @@ function cheer({ name, photo, action, minutes }) {
   // A different move each time, so the same face arriving every morning at
   // ten to six is not the same four seconds every morning at ten to six.
   el.className = `cheer ${out ? 'out' : 'in'} ${
-    MOVES[Math.floor(Math.random() * MOVES.length)]}`;
+    MOVES[Math.floor(Math.random() * MOVES.length)]} ${
+    ALIVE[Math.floor(Math.random() * ALIVE.length)]}`;
   el.innerHTML = `
     <div class="cheer-card">
       <div class="cheer-face">
-        ${photo
-          ? `<img src="${photo}" alt="">`
-          : '<span class="noface">🧑</span>'}
+        <div class="alive">
+          ${photo
+            ? `<img src="${photo}" alt="">`
+            : '<span class="noface">🧑</span>'}
+        </div>
       </div>
       <b class="cheer-name">${esc(name || '')}</b>
       <p class="cheer-line">${esc(pick(out ? GOODBYE : HELLO))}</p>
