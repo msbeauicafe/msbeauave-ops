@@ -6028,9 +6028,15 @@ SCREENS.team = async (page) => {
           closeDialog();
           load();
         } catch (e) {
-          state.textContent = /fetch|timeout|abort/i.test(e.message)
-            ? 'No scanner found on this computer. Is the door agent running?'
+          // No scanner is not a dead end. The PIN above is enough to put
+          // somebody on the clock today; the finger can be added here on any
+          // later day, from any desk that has a working reader.
+          const why = /fetch|timeout|abort/i.test(e.message)
+            ? 'No door program running on this computer.'
             : e.message;
+          state.innerHTML = `${esc(why)} <b>Set a PIN above instead</b> \u2014
+            ${esc(p.name)} can clock in and out on the PIN alone, and you can
+            enrol the finger here another day.`;
           button.disabled = false;
         }
       });
