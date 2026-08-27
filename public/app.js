@@ -392,7 +392,12 @@ const TABS = {
     ['crm', '💗', 'Customers'],
     ['finance', '💰', 'Finance'],
     ['products', '🧴', 'Products'],
+    // The buying half, in the order the work happens: ask a supplier, receive
+    // what turns up, then look at what came in. Each was a panel on Receive
+    // and each is a different person's job.
+    ['purchaseorders', '🧾', 'Purchase order'],
     ['receive', '📦', 'Receive'],
+    ['inventory', '📥', 'Inventory'],
     // Named after the document each one produces, in the order the work
     // happens: the customer orders, the warehouse packs it, the account is
     // invoiced. Staff look for the paper they are trying to produce, not for
@@ -410,7 +415,9 @@ const TABS = {
   warehouse: [
     ['workspace', '🗂️', 'Workspace'],
     ['orders', '📋', 'Pick & send'],
+    ['purchaseorders', '🧾', 'Purchase order'],
     ['receive', '📦', 'Receive'],
+    ['inventory', '📥', 'Inventory'],
     ['stockroom', '🔀', 'Stockroom'],
     ['clock', '⏱️', 'Time clock'],
     ['restock', '🛎️', 'Shelf tasks'],
@@ -431,7 +438,9 @@ const TABS = {
   // own shop had. No pricing, no company money, no sign-ins.
   supervisor: [
     ['till', '🛍️', 'Till'],
+    ['purchaseorders', '🧾', 'Purchase order'],
     ['receive', '📦', 'Receive'],
+    ['inventory', '📥', 'Inventory'],
     ['stockroom', '🔀', 'Stockroom'],
     ['orders', '📋', 'Pick & send'],
     ['pickups', '📦', 'Pickups'],
@@ -447,7 +456,9 @@ const TABS = {
   // that is the supervisor's, who answers for the shop.
   office: [
     ['till', '🛍️', 'Till'],
+    ['purchaseorders', '🧾', 'Purchase order'],
     ['receive', '📦', 'Receive'],
+    ['inventory', '📥', 'Inventory'],
     ['stockroom', '🔀', 'Stockroom'],
     ['orders', '📋', 'Pick & send'],
     ['pickups', '📦', 'Pickups'],
@@ -1154,8 +1165,230 @@ async function showBatches(sku) {
 // ===========================================================================
 // Receiving
 // ===========================================================================
+// ---------------------------------------------------------------------------
+// The receiving form: the whole delivery at once, counted in boxes
+//
+// Opened from two places now — the Receive screen, where a delivery arrives
+// with no order behind it, and a purchase order, where it arrives against one.
+// So it lives out here rather than inside either, and is told what it needs
+// rather than reaching for it.
+// ---------------------------------------------------------------------------
+function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = false }) {
+  // A purchase order's outstanding lines are what you expect to be holding,
+  // so they are what the form opens with — already counted, still editable,
+  // because what a supplier sends and what was asked for are two things.
+  const items = (po?.lines || [])
+    .filter((l) => l.qty - l.received > 0)
+    .map((l) => ({
+      sku: l.sku, name: l.name, unit: l.unit || 'PCS', po_line_id: l.id,
+      batch_no: '', expiry: '', unit_cost: '',
+      packs: [{ pack: 'BOX', qty_per_box: l.qty - l.received, boxes: 1 }],
+    }));
+
+  dialog(`
+    <h3>Receiving form${po ? ` <span class="dim">· against ${esc(po.po_no)}</span>` : ''}</h3>
+    <div class="dim">Counted the way it arrives: how many to a box, and how
+      many boxes. A product can have more than one packing — three boxes of
+      sixteen and one plastic of nine is one product and fifty-seven bottles.</div>
+
+    <div class="row mt">
+      ${po ? `<div style="flex:2"><label>Supplier</label>
+               <div class="fixed">${esc(po.supplier)}</div></div>`
+           : `<div style="flex:2"><label>Supplier</label>
+               <select id="rf_supplier">${suppliers.map((v) =>
+                 `<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></div>`}
+      <div><label>Date received</label><input id="rf_on" type="date"></div>
+      <div><label>Date and time on the gate</label>
+        <input id="rf_at" type="text" placeholder="e.g. 26/08 3:40 PM"></div>
+      ${branchPicker(shops, 'rf_branch', 'Arrived at')}
+    </div>
+
+    <div class="row">
+      <div><label>Drivers name</label><input id="rf_driver" type="text"></div>
+      <div><label>Plate no.</label><input id="rf_plate" type="text"></div>
+      <div style="flex:2"><label>Address — pickup</label><input id="rf_pickup" type="text"></div>
+      <div><label>Contact #</label><input id="rf_contact" type="text"></div>
+    </div>
+
+    <div class="row">
+      <div><label>Shipping fee</label>
+        <input id="rf_fee" type="number" step="0.01" min="0" placeholder="0.00"></div>
+      <div><label>MOP</label><input id="rf_mop" type="text" placeholder="cash, GCash…"></div>
+      <div><label>Total of boxes</label>
+        <input id="rf_boxes" type="number" min="0" placeholder="counted below"></div>
+      <div><label>Guard on duty</label><input id="rf_guard" type="text"></div>
+    </div>
+
+    <div class="row">
+      <div style="flex:2"><label>Add a product</label>
+        <input id="rf_add" type="text" list="rf_skus" placeholder="scan or type a code">
+        <datalist id="rf_skus"></datalist></div>
+      <div style="flex:0 0 auto" class="pushdown">
+        <button class="btn line" id="rf_addgo">＋ Add</button></div>
+    </div>
+
+    <div id="rf_items" class="mt"></div>
+
+    <div class="row mt">
+      <div><label>Checked by</label><input id="rf_checked" type="text"></div>
+      <div><label>Approved by</label><input id="rf_approved" type="text"></div>
+      <div style="flex:2"><label>Others</label><input id="rf_others" type="text"></div>
+    </div>
+    <div class="mt right">
+      <b id="rf_sum" class="dim"></b>
+      <button class="btn" id="rf_go">Record the delivery</button></div>`, 'wide', over);
+
+  $('#rf_skus').innerHTML = catalogue.map((c) =>
+    `<option value="${esc(c.sku)}">${esc(c.name)}</option>`).join('');
+  $('#rf_on').value = new Date().toISOString().slice(0, 10);
+
+  // The inputs are the truth between redraws — read them back before any
+  // redraw, or a half-typed batch number vanishes when a packing is added.
+  const harvest = () => {
+    $$('[data-item]').forEach((box) => {
+      const it = items[+box.dataset.item];
+      if (!it) return;
+      it.unit = $('.i-unit', box).value.trim().toUpperCase() || 'PCS';
+      it.batch_no = $('.i-batch', box).value;
+      it.expiry = $('.i-exp', box).value;
+      it.unit_cost = $('.i-cost', box).value;
+      it.packs = $$('[data-pack]', box).map((row) => ({
+        pack: $('.p-pack', row).value.trim().toUpperCase() || 'BOX',
+        qty_per_box: +$('.p-per', row).value || 0,
+        boxes: +$('.p-boxes', row).value || 0,
+      }));
+    });
+  };
+
+  const totalOf = (it) => it.packs.reduce((n, k) => n + k.qty_per_box * k.boxes, 0);
+  const boxesOf = (it) => it.packs.reduce((n, k) => n + k.boxes, 0);
+
+  const retally = () => {
+    harvest();
+    const units = items.reduce((n, it) => n + totalOf(it), 0);
+    const cartons = items.reduce((n, it) => n + boxesOf(it), 0);
+    $$('[data-item]').forEach((box) => {
+      const it = items[+box.dataset.item];
+      $('.i-total', box).textContent = it ? `${count(totalOf(it))} ${it.unit}` : '';
+    });
+    $('#rf_sum').textContent = items.length
+      ? `${count(units)} units in ${count(cartons)} boxes  `
+      : '';
+    if (!$('#rf_boxes').value) $('#rf_boxes').placeholder = String(cartons || 0);
+  };
+
+  const drawItems = () => {
+    $('#rf_items').innerHTML = items.length ? items.map((it, i) => `
+      <div class="rfitem" data-item="${i}">
+        <div class="row">
+          <div style="flex:2"><label>Product</label>
+            <div class="fixed"><b>${esc(it.name)}</b>
+              <span class="dim">${esc(it.sku)}</span></div></div>
+          <div style="flex:0 0 90px"><label>Unit</label>
+            <input class="i-unit" type="text" value="${esc(it.unit || 'PCS')}"></div>
+          <div><label>Batch number</label>
+            <input class="i-batch" type="text" value="${esc(it.batch_no)}"></div>
+          <div><label>Expiry date</label>
+            <input class="i-exp" type="date" value="${esc(it.expiry)}"></div>
+          <div><label>Cost each</label>
+            <input class="i-cost" type="number" step="0.01" min="0"
+                   placeholder="unchanged" value="${esc(it.unit_cost)}"></div>
+          <div style="flex:0 0 auto" class="pushdown">
+            <button class="btn sm line stop" data-drop="${i}">Remove</button></div>
+        </div>
+        ${it.packs.map((k, j) => `
+          <div class="row packrow" data-pack="${j}">
+            <div><label>Packing</label>
+              <input class="p-pack" type="text" value="${esc(k.pack)}"></div>
+            <div><label>Qty per box</label>
+              <input class="p-per" type="number" min="1" value="${k.qty_per_box || ''}"></div>
+            <div><label>No. of boxes</label>
+              <input class="p-boxes" type="number" min="1" value="${k.boxes || ''}"></div>
+            <div style="flex:0 0 auto" class="pushdown">
+              ${it.packs.length > 1
+                ? `<button class="btn sm quiet" data-droppack="${i}:${j}">✕</button>` : ''}
+            </div>
+          </div>`).join('')}
+        <div class="row packfoot">
+          <button class="btn sm quiet" data-addpack="${i}">＋ another packing</button>
+          <span class="dim">comes to <b class="i-total"></b></span>
+        </div>
+      </div>`).join('')
+      : '<div class="dim">Nothing on this delivery yet.</div>';
+
+    $$('[data-drop]').forEach((b) => b.addEventListener('click', () => {
+      harvest(); items.splice(+b.dataset.drop, 1); drawItems();
+    }));
+    $$('[data-addpack]').forEach((b) => b.addEventListener('click', () => {
+      harvest();
+      items[+b.dataset.addpack].packs.push({ pack: 'BOX', qty_per_box: 0, boxes: 1 });
+      drawItems();
+    }));
+    $$('[data-droppack]').forEach((b) => b.addEventListener('click', () => {
+      harvest();
+      const [i, j] = b.dataset.droppack.split(':').map(Number);
+      items[i].packs.splice(j, 1);
+      drawItems();
+    }));
+    $$('#rf_items input').forEach((el) => el.addEventListener('input', retally));
+    retally();
+  };
+  drawItems();
+
+  const addProduct = () => {
+    const sku = $('#rf_add').value.trim().toUpperCase();
+    if (!sku) return;
+    const found = catalogue.find((c) => c.sku.toUpperCase() === sku);
+    if (!found) return notice('No product with that code.', 'bad');
+    harvest();
+    items.push({
+      sku: found.sku, name: found.name, unit: found.unit_type || 'PCS',
+      po_line_id: po?.lines?.find((l) => l.sku === found.sku)?.id || null,
+      batch_no: '', expiry: '', unit_cost: '',
+      packs: [{ pack: 'BOX', qty_per_box: 0, boxes: 1 }],
+    });
+    $('#rf_add').value = '';
+    drawItems();
+  };
+  $('#rf_addgo').addEventListener('click', addProduct);
+  $('#rf_add').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addProduct(); }
+  });
+
+  $('#rf_go').addEventListener('click', async () => {
+    harvest();
+    if (!items.length) return notice('Nothing on this delivery yet.', 'bad');
+    $('#rf_go').disabled = true;
+    try {
+      const out = await POST('/api/receiving-forms', {
+        po_id: po?.id || null,
+        supplier_id: po ? null : $('#rf_supplier')?.value || null,
+        branch_id: branchOf(document, 'rf_branch'),
+        lines: items,
+        courier: {
+          driver_name: $('#rf_driver').value, plate_no: $('#rf_plate').value,
+          pickup: $('#rf_pickup').value, contact: $('#rf_contact').value,
+          shipping_fee: $('#rf_fee').value, shipping_mop: $('#rf_mop').value,
+          received_at: $('#rf_at').value,
+        },
+        foot: {
+          received_on: $('#rf_on').value, total_boxes: $('#rf_boxes').value,
+          others: $('#rf_others').value, guard_on_duty: $('#rf_guard').value,
+          checked_by: $('#rf_checked').value, approved_by: $('#rf_approved').value,
+        },
+      });
+      notice(`${esc(out.rf_no)} — ${count(out.units)} units in 🌸`, 'good');
+      closeDialog();
+      done();
+      const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
+      if (full) showReceivingForm(full, true);
+    } catch (e) { whoops(e); $('#rf_go').disabled = false; }
+  });
+}
+
 SCREENS.receive = async (page) => {
   const shops = await branches();
+  let suppliers = [];
   page.innerHTML = `
     <div class="head"><h2>Receive a delivery</h2>
       <span class="hint">Splits automatically between wholesale, shop and reserve</span></div>
@@ -1181,30 +1414,11 @@ SCREENS.receive = async (page) => {
       </div>
       <div class="dim">What this delivery cost is recorded against the money going
         out, and becomes the product's cost from now on. Leave it blank to keep
-        the cost you already have.</div>
+        the cost you already have. What came in is on <b>Inventory</b>, where it
+        can still be undone.</div>
       <datalist id="skus"></datalist>
       <div id="r_out" class="mt"></div>
     </div>
-    <div class="panel"><h3>Deliveries you can still undo</h3>
-      <div class="dim">A delivery entered wrongly should be unmade, not written
-        off as damage — writing it off puts goods that never existed into the
-        shrinkage report and money that never moved into the loss column. This
-        only works while nothing has happened to the lot yet.</div>
-      <div id="r_undo" class="mt"></div></div>
-    <div class="panel"><h3>Just received</h3><div id="r_recent"></div></div>
-
-    <div class="panel"><h3>Purchase orders</h3>
-      <div class="dim">What has been asked of a supplier and what is still
-        short. Receiving against a line records the batch and the cost exactly
-        as receiving anything does — it also notes how much of the order that
-        delivery covered.</div>
-      <div class="row mt">
-        <div style="flex:2"><label>Supplier</label>
-          <select id="po_supplier"></select></div>
-        <div style="flex:0 0 auto"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
-        <div style="flex:0 0 auto"><button class="btn" id="po_new">＋ Raise a purchase order</button></div>
-      </div>
-      <div id="po_list" class="mt"></div></div>
 
     <div class="panel"><h3>Receiving forms</h3>
       <div class="dim">The paper the stockroom fills in while the delivery is
@@ -1220,43 +1434,6 @@ SCREENS.receive = async (page) => {
     $('#skus', page).innerHTML = rows.map((p) =>
       `<option value="${esc(p.sku)}">${esc(p.name)}</option>`).join('');
   }).catch(() => {});
-
-  const recent = async () => {
-    const rows = await GET('/api/reports/journal?limit=20');
-    $('#r_recent', page).innerHTML = table(rows, [
-      { head: 'When', cell: (m) => when(m.at) },
-      { head: 'Product', cell: (m) => esc(m.name) },
-      { head: 'Batch', cell: (m) => `<span class="dim">${esc(m.batch_no)}</span>` },
-      { head: 'Move', cell: (m) => `${esc(m.from_pool || '·')} → ${esc(m.to_pool || 'out')}` },
-      { head: 'Qty', n: true, cell: (m) => count(m.qty) },
-      { head: 'Why', cell: (m) => `<span class="dim">${esc(m.reason)}</span>` },
-      { head: 'Who', cell: (m) => `<span class="dim">${esc(m.actor)}</span>` },
-    ], 'Nothing has moved yet.');
-  };
-
-  // The list says why a delivery is stuck as well as that it is, so nobody
-  // presses a button to find out.
-  const undoable = async () => {
-    const rows = await GET('/api/receipts?limit=15');
-    $('#r_undo', page).innerHTML = table(rows, [
-      { head: 'When', cell: (r) => when(r.received_at) },
-      { head: 'Product', cell: (r) => esc(r.name) },
-      { head: 'Batch', cell: (r) => `<span class="dim">${esc(r.batch_no || '—')}</span>` },
-      { head: 'Units', n: true, cell: (r) => count(r.qty_received) },
-      { head: 'Cost', n: true, cell: (r) => peso(r.value) },
-      { head: 'Where', cell: (r) => `<span class="dim">${esc(r.branches || '—')}</span>` },
-      { head: '', cell: (r) => (r.held_by
-          ? tag(r.held_by, 'grey')
-          : `<button class="btn sm stop" data-undo="${r.batch_id}"
-               data-what="${esc(r.name)} — ${esc(r.batch_no || 'no batch number')}, ${
-                 r.qty_received} unit(s), ${peso(r.value)}">Undo</button>`) },
-    ], 'Nothing received yet.');
-
-    $$('[data-undo]', page).forEach((b) => b.addEventListener('click',
-      () => undoDialog(b.dataset.undo, b.dataset.what, () => {
-        undoable(); recent();
-      })));
-  };
 
   $('#r_go', page).addEventListener('click', async () => {
     try {
@@ -1275,18 +1452,66 @@ SCREENS.receive = async (page) => {
       $('#r_batch', page).value = '';
       $('#r_qty', page).value = '';
       $('#r_cost', page).value = '';
-      recent();
-      undoable();
+      // What came in is listed on Inventory now, with the undo beside it.
     } catch (e) { whoops(e); }
   });
 
   wireBranchPicker(page, 'r_branch');
   $('#r_note', page).addEventListener('click',
-    () => deliveryDialog(GET('/api/products?q=').catch(() => []), recent,
+    () => deliveryDialog(GET('/api/products?q=').catch(() => []), () => {},
       branchOf(page, 'r_branch')));
 
-  // ---- buying: suppliers, and the orders put to them --------------------
+  const drawRFs = async () => {
+    const rows = await GET('/api/receiving-forms').catch(() => []);
+    $('#rf_list', page).innerHTML = table(rows, [
+      { head: 'No.', cell: (f) => `<b>${esc(f.rf_no)}</b>` },
+      { head: 'Received', cell: (f) => onDay(f.received_on) },
+      { head: 'Supplier', cell: (f) => `${esc(f.supplier)}${
+          f.brand_name ? `<div class="dim">${esc(f.brand_name)}</div>` : ''}` },
+      { head: 'Against', cell: (f) => f.po_no ? esc(f.po_no) : tag('no order', 'grey') },
+      { head: 'Products', n: true, cell: (f) => count(f.products) },
+      { head: 'Units', n: true, cell: (f) => count(f.units) },
+      { head: 'Boxes', n: true, cell: (f) => count(f.total_boxes) },
+      { head: '', cell: (f) => `<button class="btn sm quiet" data-rf="${f.id}">Open</button>` },
+    ], 'No receiving forms yet.');
+    $$('[data-rf]', page).forEach((b) => b.addEventListener('click', async () => {
+      try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rf}`)); }
+      catch (e) { whoops(e); }
+    }));
+  };
+
+  $('#rf_new', page).addEventListener('click', async () => {
+    if (!suppliers.length) return notice('Add a supplier first, on Purchase order.', 'bad');
+    const catalogue = await GET('/api/products?q=').catch(() => []);
+    receiveDelivery({ po: null, catalogue, shops, suppliers, done: () => drawRFs() });
+  });
+
+  suppliers = await GET('/api/suppliers').catch(() => []);
+  await drawRFs();
+};
+
+// ===========================================================================
+// Purchase orders — the company buying
+// ===========================================================================
+SCREENS.purchaseorders = async (page) => {
+  const shops = await branches();
   let suppliers = [];
+  page.innerHTML = `
+    <div class="head"><h2>Purchase order</h2>
+      <span class="hint">What has been asked of a supplier, and what is still short</span></div>
+    <div class="panel">
+      <div class="dim">A purchase order carries no prices: it says what is
+        wanted and how much of it, and what it costs lands when the goods are
+        received. Receiving against a line records the batch and the cost
+        exactly as receiving anything does — it also notes how much of the
+        order that delivery covered.</div>
+      <div class="row mt">
+        <div style="flex:2"><label>Supplier</label>
+          <select id="po_supplier"></select></div>
+        <div style="flex:0 0 auto"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
+        <div style="flex:0 0 auto"><button class="btn" id="po_new">＋ Raise a purchase order</button></div>
+      </div>
+      <div id="po_list" class="mt"></div></div>`;
 
   const drawSuppliers = async () => {
     suppliers = await GET('/api/suppliers').catch(() => []);
@@ -1295,6 +1520,7 @@ SCREENS.receive = async (page) => {
           v.brand_name ? ` — ${esc(v.brand_name)}` : ''}</option>`).join('')
       : '<option value="">No suppliers yet</option>';
   };
+
 
   const drawPOs = async () => {
     const rows = await GET('/api/purchase-orders').catch(() => []);
@@ -1317,6 +1543,7 @@ SCREENS.receive = async (page) => {
 
   // Opened rather than printed straight away: the sheet is one of the things
   // in here, but so is receiving against it, and both belong to the order.
+
   async function openPO(poId) {
     const po = await GET(`/api/purchase-orders/${poId}`);
     const shops = await branches();
@@ -1352,7 +1579,7 @@ SCREENS.receive = async (page) => {
           po.lines = fresh.lines;
           po.status = fresh.status;
           drawLines();
-          recent(); undoable().catch(() => {}); drawPOs();
+          drawPOs();
         });
       }));
     };
@@ -1361,9 +1588,10 @@ SCREENS.receive = async (page) => {
     $('#po_sheet').addEventListener('click', () => showPurchaseOrder(po, true));
     $('#po_rf')?.addEventListener('click', async () => {
       const catalogue = await GET('/api/products?q=').catch(() => []);
-      receiveDelivery(po, catalogue, () => {
-        recent(); undoable().catch(() => {}); drawPOs(); drawRFs();
-      }, true);
+      receiveDelivery({
+        po, catalogue, shops, suppliers, over: true,
+        done: () => drawPOs(),
+      });
     });
     $('#po_cancel')?.addEventListener('click', async () => {
       try {
@@ -1377,6 +1605,7 @@ SCREENS.receive = async (page) => {
 
   // The delivery itself. Batch, expiry and cost are the same three things
   // receiving has always asked for, because this is the same receiving.
+
   function receiveLine(po, line, shops, done) {
     const short = line.qty - line.received;
     dialog(`
@@ -1428,245 +1657,6 @@ SCREENS.receive = async (page) => {
   // the same receive_stock underneath, once per product, and where it is
   // answering a purchase order it ticks that order off as it goes.
   // -------------------------------------------------------------------------
-  function receiveDelivery(po, catalogue, done, over = false) {
-    // A purchase order's outstanding lines are what you expect to be holding,
-    // so they are what the form opens with — already counted, still editable,
-    // because what a supplier sends and what was asked for are two things.
-    const items = (po?.lines || [])
-      .filter((l) => l.qty - l.received > 0)
-      .map((l) => ({
-        sku: l.sku, name: l.name, unit: l.unit || 'PCS', po_line_id: l.id,
-        batch_no: '', expiry: '', unit_cost: '',
-        packs: [{ pack: 'BOX', qty_per_box: l.qty - l.received, boxes: 1 }],
-      }));
-
-    dialog(`
-      <h3>Receiving form${po ? ` <span class="dim">· against ${esc(po.po_no)}</span>` : ''}</h3>
-      <div class="dim">Counted the way it arrives: how many to a box, and how
-        many boxes. A product can have more than one packing — three boxes of
-        sixteen and one plastic of nine is one product and fifty-seven bottles.</div>
-
-      <div class="row mt">
-        ${po ? `<div style="flex:2"><label>Supplier</label>
-                 <div class="fixed">${esc(po.supplier)}</div></div>`
-             : `<div style="flex:2"><label>Supplier</label>
-                 <select id="rf_supplier">${suppliers.map((v) =>
-                   `<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></div>`}
-        <div><label>Date received</label><input id="rf_on" type="date"></div>
-        <div><label>Date and time on the gate</label>
-          <input id="rf_at" type="text" placeholder="e.g. 26/08 3:40 PM"></div>
-        ${branchPicker(shops, 'rf_branch', 'Arrived at')}
-      </div>
-
-      <div class="row">
-        <div><label>Drivers name</label><input id="rf_driver" type="text"></div>
-        <div><label>Plate no.</label><input id="rf_plate" type="text"></div>
-        <div style="flex:2"><label>Address — pickup</label><input id="rf_pickup" type="text"></div>
-        <div><label>Contact #</label><input id="rf_contact" type="text"></div>
-      </div>
-
-      <div class="row">
-        <div><label>Shipping fee</label>
-          <input id="rf_fee" type="number" step="0.01" min="0" placeholder="0.00"></div>
-        <div><label>MOP</label><input id="rf_mop" type="text" placeholder="cash, GCash…"></div>
-        <div><label>Total of boxes</label>
-          <input id="rf_boxes" type="number" min="0" placeholder="counted below"></div>
-        <div><label>Guard on duty</label><input id="rf_guard" type="text"></div>
-      </div>
-
-      <div class="row">
-        <div style="flex:2"><label>Add a product</label>
-          <input id="rf_add" type="text" list="rf_skus" placeholder="scan or type a code">
-          <datalist id="rf_skus"></datalist></div>
-        <div style="flex:0 0 auto" class="pushdown">
-          <button class="btn line" id="rf_addgo">＋ Add</button></div>
-      </div>
-
-      <div id="rf_items" class="mt"></div>
-
-      <div class="row mt">
-        <div><label>Checked by</label><input id="rf_checked" type="text"></div>
-        <div><label>Approved by</label><input id="rf_approved" type="text"></div>
-        <div style="flex:2"><label>Others</label><input id="rf_others" type="text"></div>
-      </div>
-      <div class="mt right">
-        <b id="rf_sum" class="dim"></b>
-        <button class="btn" id="rf_go">Record the delivery</button></div>`, 'wide', over);
-
-    $('#rf_skus').innerHTML = catalogue.map((c) =>
-      `<option value="${esc(c.sku)}">${esc(c.name)}</option>`).join('');
-    $('#rf_on').value = new Date().toISOString().slice(0, 10);
-
-    // The inputs are the truth between redraws — read them back before any
-    // redraw, or a half-typed batch number vanishes when a packing is added.
-    const harvest = () => {
-      $$('[data-item]').forEach((box) => {
-        const it = items[+box.dataset.item];
-        if (!it) return;
-        it.unit = $('.i-unit', box).value.trim().toUpperCase() || 'PCS';
-        it.batch_no = $('.i-batch', box).value;
-        it.expiry = $('.i-exp', box).value;
-        it.unit_cost = $('.i-cost', box).value;
-        it.packs = $$('[data-pack]', box).map((row) => ({
-          pack: $('.p-pack', row).value.trim().toUpperCase() || 'BOX',
-          qty_per_box: +$('.p-per', row).value || 0,
-          boxes: +$('.p-boxes', row).value || 0,
-        }));
-      });
-    };
-
-    const totalOf = (it) => it.packs.reduce((n, k) => n + k.qty_per_box * k.boxes, 0);
-    const boxesOf = (it) => it.packs.reduce((n, k) => n + k.boxes, 0);
-
-    const retally = () => {
-      harvest();
-      const units = items.reduce((n, it) => n + totalOf(it), 0);
-      const cartons = items.reduce((n, it) => n + boxesOf(it), 0);
-      $$('[data-item]').forEach((box) => {
-        const it = items[+box.dataset.item];
-        $('.i-total', box).textContent = it ? `${count(totalOf(it))} ${it.unit}` : '';
-      });
-      $('#rf_sum').textContent = items.length
-        ? `${count(units)} units in ${count(cartons)} boxes  `
-        : '';
-      if (!$('#rf_boxes').value) $('#rf_boxes').placeholder = String(cartons || 0);
-    };
-
-    const drawItems = () => {
-      $('#rf_items').innerHTML = items.length ? items.map((it, i) => `
-        <div class="rfitem" data-item="${i}">
-          <div class="row">
-            <div style="flex:2"><label>Product</label>
-              <div class="fixed"><b>${esc(it.name)}</b>
-                <span class="dim">${esc(it.sku)}</span></div></div>
-            <div style="flex:0 0 90px"><label>Unit</label>
-              <input class="i-unit" type="text" value="${esc(it.unit || 'PCS')}"></div>
-            <div><label>Batch number</label>
-              <input class="i-batch" type="text" value="${esc(it.batch_no)}"></div>
-            <div><label>Expiry date</label>
-              <input class="i-exp" type="date" value="${esc(it.expiry)}"></div>
-            <div><label>Cost each</label>
-              <input class="i-cost" type="number" step="0.01" min="0"
-                     placeholder="unchanged" value="${esc(it.unit_cost)}"></div>
-            <div style="flex:0 0 auto" class="pushdown">
-              <button class="btn sm line stop" data-drop="${i}">Remove</button></div>
-          </div>
-          ${it.packs.map((k, j) => `
-            <div class="row packrow" data-pack="${j}">
-              <div><label>Packing</label>
-                <input class="p-pack" type="text" value="${esc(k.pack)}"></div>
-              <div><label>Qty per box</label>
-                <input class="p-per" type="number" min="1" value="${k.qty_per_box || ''}"></div>
-              <div><label>No. of boxes</label>
-                <input class="p-boxes" type="number" min="1" value="${k.boxes || ''}"></div>
-              <div style="flex:0 0 auto" class="pushdown">
-                ${it.packs.length > 1
-                  ? `<button class="btn sm quiet" data-droppack="${i}:${j}">✕</button>` : ''}
-              </div>
-            </div>`).join('')}
-          <div class="row packfoot">
-            <button class="btn sm quiet" data-addpack="${i}">＋ another packing</button>
-            <span class="dim">comes to <b class="i-total"></b></span>
-          </div>
-        </div>`).join('')
-        : '<div class="dim">Nothing on this delivery yet.</div>';
-
-      $$('[data-drop]').forEach((b) => b.addEventListener('click', () => {
-        harvest(); items.splice(+b.dataset.drop, 1); drawItems();
-      }));
-      $$('[data-addpack]').forEach((b) => b.addEventListener('click', () => {
-        harvest();
-        items[+b.dataset.addpack].packs.push({ pack: 'BOX', qty_per_box: 0, boxes: 1 });
-        drawItems();
-      }));
-      $$('[data-droppack]').forEach((b) => b.addEventListener('click', () => {
-        harvest();
-        const [i, j] = b.dataset.droppack.split(':').map(Number);
-        items[i].packs.splice(j, 1);
-        drawItems();
-      }));
-      $$('#rf_items input').forEach((el) => el.addEventListener('input', retally));
-      retally();
-    };
-    drawItems();
-
-    const addProduct = () => {
-      const sku = $('#rf_add').value.trim().toUpperCase();
-      if (!sku) return;
-      const found = catalogue.find((c) => c.sku.toUpperCase() === sku);
-      if (!found) return notice('No product with that code.', 'bad');
-      harvest();
-      items.push({
-        sku: found.sku, name: found.name, unit: found.unit_type || 'PCS',
-        po_line_id: po?.lines?.find((l) => l.sku === found.sku)?.id || null,
-        batch_no: '', expiry: '', unit_cost: '',
-        packs: [{ pack: 'BOX', qty_per_box: 0, boxes: 1 }],
-      });
-      $('#rf_add').value = '';
-      drawItems();
-    };
-    $('#rf_addgo').addEventListener('click', addProduct);
-    $('#rf_add').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); addProduct(); }
-    });
-
-    $('#rf_go').addEventListener('click', async () => {
-      harvest();
-      if (!items.length) return notice('Nothing on this delivery yet.', 'bad');
-      $('#rf_go').disabled = true;
-      try {
-        const out = await POST('/api/receiving-forms', {
-          po_id: po?.id || null,
-          supplier_id: po ? null : $('#rf_supplier')?.value || null,
-          branch_id: branchOf(document, 'rf_branch'),
-          lines: items,
-          courier: {
-            driver_name: $('#rf_driver').value, plate_no: $('#rf_plate').value,
-            pickup: $('#rf_pickup').value, contact: $('#rf_contact').value,
-            shipping_fee: $('#rf_fee').value, shipping_mop: $('#rf_mop').value,
-            received_at: $('#rf_at').value,
-          },
-          foot: {
-            received_on: $('#rf_on').value, total_boxes: $('#rf_boxes').value,
-            others: $('#rf_others').value, guard_on_duty: $('#rf_guard').value,
-            checked_by: $('#rf_checked').value, approved_by: $('#rf_approved').value,
-          },
-        });
-        notice(`${esc(out.rf_no)} — ${count(out.units)} units in 🌸`, 'good');
-        closeDialog();
-        done();
-        const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
-        if (full) showReceivingForm(full, true);
-      } catch (e) { whoops(e); $('#rf_go').disabled = false; }
-    });
-  }
-
-  const drawRFs = async () => {
-    const rows = await GET('/api/receiving-forms').catch(() => []);
-    $('#rf_list', page).innerHTML = table(rows, [
-      { head: 'No.', cell: (f) => `<b>${esc(f.rf_no)}</b>` },
-      { head: 'Received', cell: (f) => onDay(f.received_on) },
-      { head: 'Supplier', cell: (f) => `${esc(f.supplier)}${
-          f.brand_name ? `<div class="dim">${esc(f.brand_name)}</div>` : ''}` },
-      { head: 'Against', cell: (f) => f.po_no ? esc(f.po_no) : tag('no order', 'grey') },
-      { head: 'Products', n: true, cell: (f) => count(f.products) },
-      { head: 'Units', n: true, cell: (f) => count(f.units) },
-      { head: 'Boxes', n: true, cell: (f) => count(f.total_boxes) },
-      { head: '', cell: (f) => `<button class="btn sm quiet" data-rf="${f.id}">Open</button>` },
-    ], 'No receiving forms yet.');
-    $$('[data-rf]', page).forEach((b) => b.addEventListener('click', async () => {
-      try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rf}`)); }
-      catch (e) { whoops(e); }
-    }));
-  };
-
-  $('#rf_new', page).addEventListener('click', async () => {
-    if (!suppliers.length) return notice('Add a supplier first.', 'bad');
-    const catalogue = await GET('/api/products?q=').catch(() => []);
-    receiveDelivery(null, catalogue, () => {
-      recent(); undoable().catch(() => {}); drawRFs(); drawPOs();
-    });
-  });
 
   $('#po_newsup', page).addEventListener('click', () => {
     dialog(`
@@ -1696,6 +1686,7 @@ SCREENS.receive = async (page) => {
       } catch (e) { whoops(e); }
     });
   });
+
 
   $('#po_new', page).addEventListener('click', async () => {
     const supplier = $('#po_supplier', page).value;
@@ -1780,13 +1771,68 @@ SCREENS.receive = async (page) => {
     });
   });
 
-  await recent();
-  await undoable().catch(() => {});
   await drawSuppliers();
   await drawPOs();
-  await drawRFs();
+};
+
+// ===========================================================================
+// Inventory — what came in, and what can still be unmade
+// ===========================================================================
+SCREENS.inventory = async (page) => {
+  page.innerHTML = `
+    <div class="head"><h2>Inventory</h2>
+      <span class="hint">Everything that has moved, newest first</span></div>
+    <div class="panel"><h3>Deliveries you can still undo</h3>
+      <div class="dim">A delivery entered wrongly should be unmade, not written
+        off as damage — writing it off puts goods that never existed into the
+        shrinkage report and money that never moved into the loss column. This
+        only works while nothing has happened to the lot yet.</div>
+      <div id="r_undo" class="mt"></div></div>
+    <div class="panel"><h3>Just received</h3><div id="r_recent"></div></div>`;
+
+  const recent = async () => {
+    const rows = await GET('/api/reports/journal?limit=20');
+    $('#r_recent', page).innerHTML = table(rows, [
+      { head: 'When', cell: (m) => when(m.at) },
+      { head: 'Product', cell: (m) => esc(m.name) },
+      { head: 'Batch', cell: (m) => `<span class="dim">${esc(m.batch_no)}</span>` },
+      { head: 'Move', cell: (m) => `${esc(m.from_pool || '·')} → ${esc(m.to_pool || 'out')}` },
+      { head: 'Qty', n: true, cell: (m) => count(m.qty) },
+      { head: 'Why', cell: (m) => `<span class="dim">${esc(m.reason)}</span>` },
+      { head: 'Who', cell: (m) => `<span class="dim">${esc(m.actor)}</span>` },
+    ], 'Nothing has moved yet.');
+  };
+
+  // The list says why a delivery is stuck as well as that it is, so nobody
+  // presses a button to find out.
+
+  const undoable = async () => {
+    const rows = await GET('/api/receipts?limit=15');
+    $('#r_undo', page).innerHTML = table(rows, [
+      { head: 'When', cell: (r) => when(r.received_at) },
+      { head: 'Product', cell: (r) => esc(r.name) },
+      { head: 'Batch', cell: (r) => `<span class="dim">${esc(r.batch_no || '—')}</span>` },
+      { head: 'Units', n: true, cell: (r) => count(r.qty_received) },
+      { head: 'Cost', n: true, cell: (r) => peso(r.value) },
+      { head: 'Where', cell: (r) => `<span class="dim">${esc(r.branches || '—')}</span>` },
+      { head: '', cell: (r) => (r.held_by
+          ? tag(r.held_by, 'grey')
+          : `<button class="btn sm stop" data-undo="${r.batch_id}"
+               data-what="${esc(r.name)} — ${esc(r.batch_no || 'no batch number')}, ${
+                 r.qty_received} unit(s), ${peso(r.value)}">Undo</button>`) },
+    ], 'Nothing received yet.');
+
+    $$('[data-undo]', page).forEach((b) => b.addEventListener('click',
+      () => undoDialog(b.dataset.undo, b.dataset.what, () => {
+        undoable(); recent();
+      })));
+  };
+
+  await recent();
+  await undoable().catch(() => {});
   repeat(recent, 15000);
 };
+
 
 // Undoing a delivery removes every trace that it was entered, so the reason is
 // the only thing left behind. That is why the box is not optional, and why the
