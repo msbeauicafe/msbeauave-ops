@@ -56,6 +56,18 @@ const REFRESH_MS = Number(conf.refreshMinutes || 10) * 60_000;
 let cookie = '';
 let people = [];
 let lastError = null;
+// Kept apart from lastError on purpose.
+//
+// The scanner is opened once at startup, and the templates are fetched a
+// second later and every ten minutes after that. Both used to write their
+// reason into the same variable — so a scanner that failed to open had its
+// reason wiped by the very next successful refresh, and /hello then reported
+// `scanner: false, error: null`, which tells nobody anything. The reason was
+// in door-log.txt all along and an afternoon went into finding that out.
+//
+// Two failures, two variables. The website's trouble comes and goes; the
+// scanner's is decided at startup and stays decided.
+let scannerError = null;
 let lastLoad = null;
 
 // Everything this says also goes to door-log.txt beside the program.
@@ -288,6 +300,9 @@ const server = http.createServer((req, res) => {
       // this was here the only way to learn which person was to go and read a
       // file on that machine.
       refused: sdk.problems(),
+      // Why the scanner is not open, in the one place anybody thinks to look.
+      // Null when it opened fine.
+      scannerError,
       // For comparing one machine against another when a finger enrolled on
       // the first is not recognised by the second.
       settings: sdk.scannerSettings(),
@@ -585,7 +600,7 @@ try {
 } catch (e) {
   // Not fatal. The clock page falls back to PINs, and the shop keeps working
   // while somebody sorts the driver out.
-  lastError = e.message;
+  scannerError = e.message;
   say('scanner:', e.message);
 }
 // Start listening first, and sign in afterwards.
