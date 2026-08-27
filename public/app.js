@@ -2141,7 +2141,8 @@ async function openOrder(id, reload) {
   // carries batch and expiry, which is what the picker works from, and the
   // packing list is what travels with the box.
   $('#a_packing')?.addEventListener('click', () => showPackingList({
-    orderId: o.id, resellerName: o.reseller, placedAt: o.placed_at, who: o,
+    orderId: o.id, packingNo: o.pl_no,
+    resellerName: o.reseller, placedAt: o.placed_at, who: o,
     // The board names the column unit_type; the document asks for unit.
     lines: o.lines.map((l) => ({ ...l, unit: l.unit_type })),
   }));
@@ -2347,13 +2348,14 @@ const docLines = (lines, blanks = 5, typed = false) => `
  * Prices, the totals, where to pay, and the two reminders the paper carries.
  */
 function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
-                            who = {}, shipping = 0, others = 0 }) {
+                            who = {}, shipping = 0, others = 0, orderNo = null }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   return `
     <div class="doc cof">
       ${DOC_HEAD}
       <div class="title cof">CUSTOMER ORDER FORM</div>
-      ${docParty(resellerName, issuedOn, orderId, who)}
+      ${docParty(resellerName, issuedOn, orderNo || orderId, who,
+                 orderNo ? 'CUSTOMER ORDER NO.' : 'SALES ORDER NO.')}
       <div class="duebox">Total Due (PHP)<b>${peso(amount ?? sub)}</b></div>
       <div style="clear:both"></div>
       ${docLines(lines)}
@@ -2385,7 +2387,7 @@ function showInvoice(opts, over = false) {
     <div class="mt right">
       <button class="btn quiet" id="inv_save">⬇ Download JPEG</button>
       <button class="btn" id="inv_done">Done</button></div>`, 'wide', over);
-  wireSave('#inv_save', '.doc', `${opts.orderId}.jpg`);
+  wireSave('#inv_save', '.doc', `${opts.orderNo || opts.orderId}.jpg`);
   $('#inv_done').addEventListener('click', closeDialog);
 }
 
@@ -2537,7 +2539,8 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
  * substitution or a short-pick gets written where the checker is already
  * looking, rather than in the margin.
  */
-function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
+function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
+                          packingNo = null }) {
   const BLANKS = Math.max(0, 8 - lines.length);
   dialog(`
     <div class="packing">
@@ -2561,7 +2564,8 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
         </div>
         <div style="white-space:nowrap">
           <div class="lbl">DATE: <span class="val">${onDay(placedAt)}</span></div>
-          <div class="lbl">SALES ORDER NO.: <span class="val">${orderId}</span></div>
+          <div class="lbl">${packingNo ? 'PACKING LIST NO.' : 'SALES ORDER NO.'}:
+            <span class="val">${esc(String(packingNo || orderId))}</span></div>
         </div>
       </div>
       <table>
@@ -2601,7 +2605,7 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {} }) {
       <button class="btn quiet" onclick="window.print()">🖨 Print</button>
       <button class="btn" id="pk_done">Close</button>
     </div>`, 'wide');
-  wireSave('#pk_save', '.packing', `${orderId} PACKING LIST.jpg`);
+  wireSave('#pk_save', '.packing', `${packingNo || orderId} PACKING LIST.jpg`);
   $('#pk_done').addEventListener('click', closeDialog);
 }
 
@@ -3374,6 +3378,7 @@ SCREENS.chatorders = async (page) => {
   // Its own number until it has one: an order form on screen has not been
   // placed, and putting a plausible number on it invites somebody to quote it.
   let placedAs = null;
+  let placedCo = null;
 
   const drawPreview = () => {
     const box = $('#ch_preview', workingBox);
@@ -3381,6 +3386,7 @@ SCREENS.chatorders = async (page) => {
     const lines = [...basket.values()];
     box.innerHTML = customerOrderForm({
       orderId: placedAs ?? '—',
+      orderNo: placedCo,
       issuedOn: new Date(),
       amount: lines.reduce((t, l) => t + l.price * l.qty, 0),
       resellerName: picked.name,
@@ -3411,6 +3417,7 @@ SCREENS.chatorders = async (page) => {
       const out = await POST(`/api/resellers/${picked.id}/orders`,
         { lines: lines.map((l) => ({ sku: l.sku, qty: l.qty, code: l.code || null })) });
       placedAs = out.orderId;
+      placedCo = out.co_no;
       basket.clear();
       drawBasket();
       $('#ch_order_out', workingBox).innerHTML =
@@ -3418,12 +3425,13 @@ SCREENS.chatorders = async (page) => {
          <button class="btn sm quiet" id="ch_packing">🖨 Packing list</button></div>`;
       $('#ch_order_out', workingBox).querySelector('#ch_packing')
         .addEventListener('click', () => showPackingList({
-          orderId: out.orderId, resellerName: picked.name,
-          placedAt: new Date(), lines, who: picked,
+          orderId: out.orderId, packingNo: out.pl_no,
+          resellerName: picked.name, placedAt: new Date(), lines, who: picked,
         }));
       notice('Order placed 🌸', 'good');
       if (out.invoice) showInvoice({
-        orderId: out.orderId, issuedOn: out.invoice.issued_on,
+        orderId: out.orderId, orderNo: out.co_no,
+        issuedOn: out.invoice.issued_on,
         amount: out.invoice.amount, resellerName: picked.name, lines,
         who: picked,
       });
