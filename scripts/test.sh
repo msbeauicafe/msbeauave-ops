@@ -76,6 +76,9 @@ node --test tests/scanner-comes-back.test.js
 echo "==> coming back to where you were"
 node --test tests/dialogs-stack.test.js
 
+echo "==> one job, one menu"
+node --test tests/customer-order-tabs.test.js
+
 echo "==> running the tests"
 node --test tests/acceptance.test.js
 

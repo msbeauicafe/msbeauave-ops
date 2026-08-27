@@ -118,6 +118,27 @@ nav.tabs button.on { background: var(--bg); color: var(--rose-deep); font-weight
 nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--rose-deep); outline-offset: 2px; }
 
 .page { padding: 22px 24px 56px; max-width: 1180px; margin: 0 auto; }
+
+/* Panels within one screen: the four documents of a customer order.
+   A second row of tabs, plainly subordinate to the column on the left — no
+   tinted bar of its own, an underline for the one that is open, and the type
+   a size down from the menu so the eye reads the column first. */
+.subtabs {
+  display: flex; gap: 2px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--rose-soft); margin-bottom: 18px;
+}
+.subtabs button {
+  border: none; background: transparent; font: inherit; font-size: .87rem;
+  color: var(--muted); cursor: pointer; padding: 9px 14px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.subtabs button:hover { color: var(--ink); }
+.subtabs button.on {
+  color: var(--rose-deep); font-weight: 600; border-bottom-color: var(--rose-deep);
+}
+/* A screen inside a panel has already been announced by the tab above it, so
+   its own heading sits closer to the tabs than a page heading would. */
+.subtabs + #panel > .head { margin-top: -4px; }
 .head { display: flex; align-items: baseline; gap: .9rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .head .hint { color: var(--muted); font-size: .87rem; }
 

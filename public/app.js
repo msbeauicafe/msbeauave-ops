@@ -402,9 +402,7 @@ const TABS = {
     // happens: the customer orders, the warehouse packs it, the account is
     // invoiced. Staff look for the paper they are trying to produce, not for
     // the part of the system it lives in.
-    ['chatorders', '💬', 'Customer order'],
-    ['orders', '🚚', 'Packing list'],
-    ['resellers', '🤝', 'Invoice'],
+    ['customerorder', '💬', 'Customer order'],
     ['returns', '↩️', 'Returns'],
     ['reorder', '📈', 'Reordering'],
     ['reports', '📊', 'Reports'],
@@ -2057,7 +2055,8 @@ SCREENS.orders = async (page) => {
   const load = async () => {
     const rows = await GET(`/api/orders?status=${status}`);
     $('#board', page).innerHTML = table(rows, [
-      { head: '#', cell: (o) => o.id },
+      // The number on the sheet the bench is holding, not the database's own.
+      { head: 'Packing list', cell: (o) => `<b>${esc(o.pl_no || o.id)}</b>` },
       { head: 'Reseller', cell: (o) => `<b>${esc(o.reseller || '')}</b> `
           + (o.tier ? tierTag(o.tier) : '') },
       { head: 'Stage', cell: (o) => orderTag(o) },
@@ -2936,6 +2935,94 @@ function showOR(r, reseller, paid = {}, over = false) {
 // One reseller at a time, ordering and payment side by side, so whoever is
 // running the conversation never has to leave this screen to finish it.
 // ===========================================================================
+// One order, four documents, one menu.
+//
+// The customer order, the invoice and the packing list were three entries in
+// the left-hand column, sitting apart from each other among two dozen others.
+// They are not three parts of the system; they are four moments of one job —
+// somebody messages, the order is taken, the account is invoiced, the bench
+// packs it — and looking at the second while holding the third meant leaving
+// the screen and finding it again in a list.
+//
+// Which panel is open outlives a redraw, because raising an invoice from the
+// chat tab and being put back on the chat tab is right, and being put back on
+// the first tab every time is how somebody loses their place.
+let orderPanel = 'chatorders';
+
+SCREENS.customerorder = async (page) => {
+  const PANELS = [
+    ['chatorders', 'Chat order'],
+    ['pendingorders', 'Pending customer order'],
+    ['resellers', 'Invoice'],
+    ['orders', 'Packing list'],
+  ];
+  if (!PANELS.some(([id]) => id === orderPanel)) orderPanel = 'chatorders';
+
+  page.innerHTML = `
+    <div class="subtabs">
+      ${PANELS.map(([id, label]) => `<button data-panel="${esc(id)}"
+        class="${id === orderPanel ? 'on' : ''}">${esc(label)}</button>`).join('')}
+    </div>
+    <div id="panel"></div>`;
+
+  $$('[data-panel]', page).forEach((b) => b.addEventListener('click', () => {
+    orderPanel = b.dataset.panel;
+    SCREENS.customerorder(page).catch(whoops);
+  }));
+
+  // Each panel draws its own heading, so this adds none: two headings stacked
+  // on one screen reads as two screens that failed to separate.
+  await SCREENS[orderPanel]($('#panel', page));
+};
+
+/**
+ * Everything taken and not yet out of the door.
+ *
+ * The list somebody works from rather than a report: an order that has been
+ * placed is money promised and stock held, and until it is delivered it is
+ * somebody's to chase. Delivered orders drop off it by themselves — a list
+ * that only grows is a list nobody opens twice.
+ *
+ * All three numbers on every row, because the question asked over Messenger is
+ * never "how is order 41 doing". It is "what happened to CO26_08_004", and the
+ * answer is on the same row as the invoice it became.
+ */
+SCREENS.pendingorders = async (page) => {
+  const load = async () => {
+    const rows = (await GET('/api/orders?status='))
+      .filter((o) => o.status === 'placed' || o.status === 'picking');
+    $('#pending', page).innerHTML = table(rows, [
+      { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
+      { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
+          + (o.tier ? tierTag(o.tier) : '') },
+      { head: 'Stage', cell: (o) => orderTag(o) },
+      { head: 'Invoice', cell: (o) => o.si_no
+          ? `${esc(o.si_no)}<br><span class="dim">${o.invoice_status === 'open'
+              ? `due ${onDay(o.due_on)}` : esc(o.invoice_status || '')}</span>`
+          : '<span class="dim">not raised</span>' },
+      { head: 'Packing list', cell: (o) => esc(o.pl_no || '—') },
+      { head: 'Total', n: true, cell: (o) => peso(o.total) },
+      { head: 'Placed', cell: (o) => when(o.placed_at) },
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>` },
+    ], 'Nothing is waiting — every order taken has gone out.');
+
+    $('#pending_count', page).textContent = rows.length
+      ? `${count(rows.length)} waiting · ${peso(rows.reduce((t, o) => t + Number(o.total), 0))}`
+      : '';
+
+    $$('[data-open]', page).forEach((b) => b.addEventListener('click',
+      () => openOrder(b.dataset.open, load).catch(whoops)));
+  };
+
+  page.innerHTML = `
+    <div class="head"><h2>Pending customer orders</h2>
+      <span class="hint">Taken and not yet out of the door. Open one to change
+        it, invoice it, or send the paperwork again</span>
+      <span class="hint" id="pending_count"></span></div>
+    <div id="pending"></div>`;
+  await load();
+};
+
 SCREENS.chatorders = async (page) => {
   let resellers = [];
   let picked = null;
