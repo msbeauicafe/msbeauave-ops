@@ -256,7 +256,7 @@ test('the sheet only offers boxes while the goods are still in the building', ()
 test('the invoice corrects the same things, and reads them the same way', () => {
   const doc = app.slice(app.indexOf('function showInvoiceDoc'),
                         app.indexOf('function showPackingList'));
-  assert.match(doc, /docParty\([\s\S]*?canEdit && !!resellerId\)/,
+  assert.match(doc, /docParty\([\s\S]*?canEdit && !!resellerId,/,
     'the tax block is typed here too, through the party block both sheets print');
   const party = app.slice(app.indexOf('const docParty ='), app.indexOf('const docLines ='));
   assert.match(party, /data-tax="\$\{key\}"/,

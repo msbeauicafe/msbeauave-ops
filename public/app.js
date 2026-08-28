@@ -2391,7 +2391,7 @@ const goodsList = (goods) => (goods.length ? `<datalist id="doc_goods">${goods.m
   </option>`).join('')}</datalist>` : '');
 
 const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO.',
-                  typed = false) => `
+                  typed = false, numberTyped = false) => `
   <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:6px;line-height:1.3">
     <div>
       <div style="font-weight:700;font-size:1.02rem">${esc(name || 'counter sale')}${
@@ -2408,7 +2408,10 @@ const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO
     </div>
     <div style="white-space:nowrap;font-size:.7rem">
       <div><b>DATE:</b> ${onDay(dateOn)}</div>
-      <div><b>${numberLabel}</b> ${esc(String(orderNo))}</div>
+      <div><b>${numberLabel}</b> ${numberTyped
+        ? `<input class="figure wide docno" data-docno autocomplete="off"
+             value="${esc(String(orderNo))}">`
+        : esc(String(orderNo))}</div>
     </div>
   </div>`;
 
@@ -2565,7 +2568,11 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       <div class="title inv">INVOICE</div>
       ${docParty(resellerName, issuedOn, invoiceNo || orderId, who,
                  invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.',
-                 canEdit && !!resellerId)}
+                 canEdit && !!resellerId,
+                 // Only where there is an invoice to renumber. Before one is
+                 // raised the line shows the sales order, which is the
+                 // order's own number and not this sheet's to change.
+                 canEdit && !!invoiceNo)}
       <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
       <div style="clear:both"></div>
       ${docLines(lines, 5, canEdit, goods, canPick)}
@@ -2702,6 +2709,14 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
         await POST(`/api/resellers/${resellerId}/tax`, tax);
       }
 
+      // Then the number on the sheet. It is a label rather than a figure —
+      // nothing recalculates behind it — so it goes with the tax block,
+      // before anything that can be refused for the money it comes to.
+      const typedNo = $('[data-docno]', sheet)?.value.trim().toUpperCase();
+      if (typedNo && typedNo !== (invoiceNo || '')) {
+        await POST(`/api/orders/${orderId}/invoice-no`, { si_no: typedNo });
+      }
+
       // Prices before quantities. Both are judged against what has already
       // been settled, and the common correction is a price going up while a
       // quantity comes down — judged in that order the invoice clears the
@@ -2716,7 +2731,7 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       if (canPick && moved()) {
         out = await POST(`/api/orders/${orderId}/lines`, { lines: each.picture() });
       }
-      notice(`${out.si_no || 'The invoice'} now comes to ${peso(out.total)} 🌸`, 'good');
+      notice(`${typedNo || out.si_no || 'The invoice'} now comes to ${peso(out.total)} 🌸`, 'good');
       closeDialog();
       onSaved?.();
     } catch (e) { whoops(e); button.disabled = false; }

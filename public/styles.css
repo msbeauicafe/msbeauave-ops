@@ -907,6 +907,10 @@ label.sr {
    the pad. Left at full width the box claims the whole block and drops the
    answer onto a line of its own, which turns a five-line block into ten. */
 .figure.wide.party, .packing .party .figure { display: inline-block; width: 190px; }
+/* The document's own number, which is as wide as a number and no wider — left
+   at full width it would take the whole right-hand block and push the date
+   off it. */
+.figure.wide.docno { display: inline-block; width: 132px; }
 /* Once a blank row has a real product in it, it reads as a line rather than
    as something half typed. */
 .figure.named { font-weight: 700; }
