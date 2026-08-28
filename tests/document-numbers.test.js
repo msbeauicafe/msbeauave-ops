@@ -398,3 +398,26 @@ test('both of the order numbers are boxes where the order itself is opened', () 
   assert.match(sheet, /canEdit && packingNo/,
     'and the packing list carries its own number as a box, as the invoice does');
 });
+
+// The order form is shown once, straight after the order is placed, and goes
+// into the chat window from there. So the number on it is the number the
+// reseller will hold, and correcting it has to be possible on the sheet
+// itself rather than on a screen they will never see.
+test('the order form corrects its own number before it is sent', () => {
+  const app = fs.readFileSync(path.join(here, '..', 'public/app.js'), 'utf8');
+  const show = app.slice(app.indexOf('function showInvoice('),
+                         app.indexOf('function showInvoiceDoc'));
+  assert.match(show, /id="inv_keep"/, 'a form that has just been raised can be renumbered');
+  assert.match(show, /\/numbers`, \{ co_no: said\(\) \}\)/,
+    'through the one call that moves an order number');
+  assert.match(show, /box\.value = out\.co_no;/,
+    'and the sheet redraws with it, because the picture is about to be sent');
+  assert.doesNotMatch(show, /closeDialog\(\);\s*\n\s*opts\.onSaved/,
+    'without closing the document somebody is still reading');
+
+  const form = app.slice(app.indexOf('function customerOrderForm'),
+                         app.indexOf('function showInvoice('));
+  assert.match(form, /canEdit && !!orderNo/,
+    'the basket preview draws this same sheet before anything is placed, and '
+    + 'there is no number there yet to correct');
+});
