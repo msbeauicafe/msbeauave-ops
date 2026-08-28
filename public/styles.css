@@ -931,7 +931,11 @@ label.sr {
   border: 1px solid transparent; border-radius: 6px; padding: 3px 6px;
   width: 100%; min-width: 74px;
 }
-.cellbox.money { text-align: right; }
+.cellbox.money, .cellbox.n { text-align: right; }
+/* A quantity or a price in a column that is already narrow. The default
+   minimum is set for a price list eight hundred rows deep; a dialog's table
+   has six columns to fit and no room to spare. */
+.cellbox.n { min-width: 56px; max-width: 84px; }
 .cellbox.code { font-size: .82rem; color: var(--muted); min-width: 108px; }
 .cellbox:hover { border-color: var(--rose-soft); }
 .cellbox:focus {
