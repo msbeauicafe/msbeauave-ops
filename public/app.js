@@ -3044,9 +3044,17 @@ let orderPanel = 'chatorders';
  * against what a Sub-Reseller does — and until now the only way to see it was
  * to open one product card at a time, sixty times.
  *
- * Read-only on purpose. A price is changed on the product it belongs to, where
- * the change is deliberate and lands on one thing; a grid of eight hundred
- * editable boxes is a place to make a mistake nobody notices for a month.
+ * Typed into directly. This began read-only, on the reasoning that a grid of
+ * eight hundred boxes is a place to make a mistake nobody notices for a month
+ * — but the office keeps its prices in a spreadsheet precisely because a
+ * spreadsheet lets you fix a column without opening eight hundred cards, and
+ * asking somebody to leave this screen to change one figure they are already
+ * looking at is how a price list stops being kept up to date.
+ *
+ * So: every figure and every code is typed into and saved on the spot, and the
+ * safety is in the saving rather than in the refusing. One cell at a time, the
+ * box says what it is doing, and a refusal puts the old value back rather than
+ * leaving a number on screen that is not the number in the system.
  */
 SCREENS.pricelists = async (page) => {
   let data = null;
@@ -3056,8 +3064,7 @@ SCREENS.pricelists = async (page) => {
 
   page.innerHTML = `
     <div class="head"><h2>Pricelists</h2>
-      <span class="hint">What every product costs at every code. Set a price on
-        the product itself, under Products</span>
+      <span class="hint">Type over any code or price and it saves itself</span>
       <span class="hint" id="pl_count"></span></div>
     <div class="tools">
       <input type="search" id="pl_find" placeholder="Search code, name or brand…" autofocus>
@@ -3091,20 +3098,35 @@ SCREENS.pricelists = async (page) => {
 
     // A missing price is the thing worth spotting, so it is a dash in the
     // danger colour rather than an empty cell that reads as a zero.
+    const plain = (v) => (v == null ? '' : peso(v).replace('₱', ''));
     $('#pl_table', page).innerHTML = table(shown, [
-      { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
+      { head: 'Code', cell: (p) => `<input class="cellbox code" data-sku="${esc(p.sku)}"
+          value="${esc(p.sku)}" spellcheck="false"
+          title="The code this product is known by everywhere">` },
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>${p.active ? ''
           : ' ' + tag('hidden', 'grey')}<br><span class="dim">${esc(p.brand || '')}${
           p.unit_type ? ' · ' + esc(p.unit_type) : ''}</span>` },
       ...codes.map((c) => ({
         head: c, n: true,
-        cell: (p) => p.prices[c] == null
-          ? '<span class="over">—</span>' : peso(p.prices[c]),
+        cell: (p) => `<input class="cellbox money ${p.prices[c] == null ? 'unset' : ''}"
+          inputmode="decimal" data-sku="${esc(p.sku)}" data-code="${esc(c)}"
+          value="${plain(p.prices[c])}" placeholder="—">`,
       })),
       { head: 'Retail', n: true, cell: (p) => Number(p.retail_price)
           ? peso(p.retail_price) : '<span class="over">—</span>' },
     ], 'Nothing matches that.');
+    wireCells();
 
+    shownNow = shown;
+    countUp();
+  };
+
+  // Split out of draw(), because filling a cell changes the tally without
+  // changing anything else on the page.
+  let shownNow = [];
+  const countUp = () => {
+    const codes = inUse();
+    const shown = shownNow;
     const missing = codes.reduce((n, c) =>
       n + shown.filter((p) => p.prices[c] == null).length, 0);
     const idle = unused();
@@ -3114,6 +3136,66 @@ SCREENS.pricelists = async (page) => {
       ? ` · ${idle.map(esc).join(', ')} ${idle.length === 1 ? 'is' : 'are'} not in use`
       : ''}`;
   };
+
+  // Saved one cell at a time, on leaving it rather than on every keystroke.
+  //
+  // The row is not redrawn afterwards. Redrawing under somebody working across
+  // a row takes the next box away mid-type, and the only thing that changed is
+  // the figure they just typed — so the cell reports for itself: it goes quiet
+  // while saving, settles into the shape the rest of the column is in, and on
+  // a refusal puts back what was there before. A number on screen that is not
+  // the number in the system is worse than no screen at all.
+  const settle = (box, value) => {
+    box.classList.remove('saving');
+    box.value = value;
+  };
+
+  const wireCells = () => {
+    $$('.cellbox.money', page).forEach((box) => {
+      box.addEventListener('change', async () => {
+        const { sku, code } = box.dataset;
+        const row = data.products.find((p) => p.sku === sku);
+        const before = row?.prices[code];
+        const typed = String(box.value).replace(/[^0-9.]/g, '');
+        if (typed === '') { settle(box, plainOf(before)); return; }
+        const asked = Number(typed);
+        if (!Number.isFinite(asked) || asked < 0) {
+          notice('A price is a number, and not less than nothing.', 'bad');
+          settle(box, plainOf(before));
+          return;
+        }
+        if (before != null && Number(before) === asked) { settle(box, plainOf(asked)); return; }
+        box.classList.add('saving');
+        try {
+          await POST(`/api/products/${encodeURIComponent(sku)}/price`, { code, price: asked });
+          if (row) row.prices[code] = asked;
+          box.classList.remove('unset');
+          settle(box, plainOf(asked));
+          countUp();
+        } catch (e) { whoops(e); settle(box, plainOf(before)); }
+      });
+    });
+
+    $$('.cellbox.code', page).forEach((box) => {
+      box.addEventListener('change', async () => {
+        const was = box.dataset.sku;
+        const asked = box.value.trim().toUpperCase();
+        if (!asked || asked === was) { settle(box, was); return; }
+        box.classList.add('saving');
+        try {
+          const out = await POST(`/api/products/${encodeURIComponent(was)}/code`, { code: asked });
+          const row = data.products.find((p) => p.sku === was);
+          if (row) row.sku = out.sku;
+          // Every price box on this row was addressed by the old code.
+          $$(`[data-sku="${CSS.escape(was)}"]`, page).forEach((el) => { el.dataset.sku = out.sku; });
+          settle(box, out.sku);
+          notice(`${was} is now ${out.sku} 🌸`, 'good');
+        } catch (e) { whoops(e); settle(box, was); }
+      });
+    });
+  };
+
+  const plainOf = (v) => (v == null ? '' : peso(v).replace('₱', ''));
 
   $('#pl_find', page).addEventListener('input', (e) => { term = e.target.value; draw(); });
   $('#pl_brand', page).addEventListener('change', (e) => { brand = e.target.value; draw(); });
