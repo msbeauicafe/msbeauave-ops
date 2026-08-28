@@ -124,3 +124,21 @@ test('the phone layout is untouched below the breakpoint', () => {
   assert.match(before, /\.sh-nav\s*\{\s*\n?\s*position:\s*sticky;\s*bottom:\s*0/,
     'with the tabs under the thumb');
 });
+
+// Every rail loaded already scrolled 24px to the right, so every row of goods
+// sat a padding's width to the left of the heading above it and the whole page
+// looked out of true. Scroll snapping counts from the scroll port, which is
+// inside the padding: without being told about it, the first card snaps flush
+// to the port and drags the rail's own left padding out of view.
+test('a rail rests where its heading starts, not a padding to the left', () => {
+  const rail = css.slice(css.indexOf('.sh-rail {'), css.indexOf('.sh-rail::-webkit-scrollbar'));
+  assert.match(rail, /scroll-snap-type:\s*x/, 'a swipe still lands on a card');
+  assert.match(rail, /scroll-padding-left:\s*14px/,
+    'and snapping is told about the padding, or it scrolls it away on load');
+
+  const at = css.indexOf('@media (min-width: 1000px)');
+  const wide = css.slice(at);
+  assert.match(wide, /\.sh-rail\s*\{[^}]*padding:\s*0 24px 6px[^}]*scroll-padding-left:\s*24px/,
+    'the two have to move together — a rail whose scroll padding does not '
+    + 'match its padding is a rail that lands off the line');
+});

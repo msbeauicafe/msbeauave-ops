@@ -389,6 +389,12 @@ button.al { cursor: pointer; }
   display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x proximity;
   padding: 0 14px 4px; -webkit-overflow-scrolling: touch;
   scrollbar-width: none; overscroll-behavior-x: contain;
+  /* Snapping counts from the scroll port, which is inside the padding — so
+     without this the first card snaps flush to the port and takes the rail's
+     own left padding out of view with it, landing every row of goods a
+     padding's width to the left of the heading above it. Measured: the rail
+     sat at scrollLeft 24 the moment the page loaded. */
+  scroll-padding-left: 14px;
 }
 .sh-rail::-webkit-scrollbar { display: none; }
 .sh-rail > .sh-card {
@@ -469,7 +475,7 @@ button.al { cursor: pointer; }
   .sh-empty { grid-column: 1 / -1; }
 
   /* A rail holds more of a house before anybody has to push it. */
-  .sh-rail { gap: 14px; padding: 0 24px 6px; }
+  .sh-rail { gap: 14px; padding: 0 24px 6px; scroll-padding-left: 24px; }
   .sh-rail > .sh-card { flex: 0 0 206px; max-width: 206px; }
   .sh-railmore { flex: 0 0 118px; }
 
