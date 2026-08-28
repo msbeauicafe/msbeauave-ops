@@ -2141,12 +2141,23 @@ async function openOrder(id, reload) {
   // Opened over the order rather than replacing it: the picking view above
   // carries batch and expiry, which is what the picker works from, and the
   // packing list is what travels with the box.
-  $('#a_packing')?.addEventListener('click', () => showPackingList({
-    orderId: o.id, packingNo: o.pl_no,
-    resellerName: o.reseller, placedAt: o.placed_at, who: o,
-    // The board names the column unit_type; the document asks for unit.
-    lines: o.lines.map((l) => ({ ...l, unit: l.unit_type })),
-  }));
+  // Correctable while the goods are still in the building, and only then. The
+  // catalogue comes along so a blank row can offer what the warehouse holds;
+  // it is fetched rather than assumed, and a sheet whose catalogue did not
+  // arrive is still a sheet somebody can read and print.
+  const canEdit = ['admin', 'office'].includes(user?.role)
+    && ['placed', 'picking'].includes(o.status);
+  $('#a_packing')?.addEventListener('click', async () => {
+    const catalog = canEdit ? await GET('/api/wholesale/catalog').catch(() => null) : null;
+    showPackingList({
+      orderId: o.id, packingNo: o.pl_no,
+      resellerName: o.reseller, placedAt: o.placed_at, who: o,
+      canEdit, catalog, resellerId: o.reseller_id,
+      onSaved: reload,
+      // The board names the column unit_type; the document asks for unit.
+      lines: o.lines.map((l) => ({ ...l, unit: l.unit_type })),
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2545,8 +2556,25 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
  * looking, rather than in the margin.
  */
 function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
-                          packingNo = null }) {
+                          packingNo = null, canEdit = false, catalog = null,
+                          resellerId = null, onSaved = null }) {
   const BLANKS = Math.max(0, 8 - lines.length);
+  // Somewhere to write what was not on the order. Four is what the pad leaves
+  // room for once the real lines are on it, and four is more than anybody has
+  // ever added to a box at the door.
+  const SPARE = canEdit ? Math.min(BLANKS, 4) : 0;
+  const goods = canEdit && catalog ? catalog : [];
+  const byName = new Map(goods.map((g) => [g.name, g]));
+  const bySku = new Map(goods.map((g) => [g.sku, g]));
+  // A blank row is a product picker until it has a product in it. The list is
+  // the wholesale catalogue, so what can be added to a box is what the
+  // warehouse actually holds.
+  const picker = (i) => `
+    <td><input class="figure wide" list="pk_goods" data-add="${i}"
+          autocomplete="off" placeholder="Add a product"></td>
+    <td class="qty"><input class="figure mid" data-addqty="${i}"
+          inputmode="numeric" disabled></td>
+    <td class="unit" data-addunit="${i}"></td>`;
   dialog(`
     <div class="packing">
       <div class="rule"></div>
@@ -2565,7 +2593,10 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
           <div class="lbl" style="font-size:.85rem">${esc(resellerName || 'counter sale')}</div>
           ${TAX_LINES.map(([label, key]) => `
             <div class="lbl">${label}:
-              <span class="val">${esc(who?.[key] || '')}</span></div>`).join('')}
+              ${canEdit && resellerId
+                ? `<input class="figure wide" data-tax="${key}"
+                     value="${esc(who?.[key] || '')}">`
+                : `<span class="val">${esc(who?.[key] || '')}</span>`}</div>`).join('')}
         </div>
         <div style="white-space:nowrap">
           <div class="lbl">DATE: <span class="val">${onDay(placedAt)}</span></div>
@@ -2586,10 +2617,16 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
           ${lines.map((l) => `<tr>
             <td class="tick"><span class="box"></span></td>
             <td><b>${esc(l.name)}</b></td>
-            <td class="qty">${count(l.qty)}</td>
+            <td class="qty">${canEdit
+              ? `<input class="figure mid" inputmode="numeric"
+                   data-sku="${esc(l.sku || '')}" value="${Number(l.qty)}">`
+              : count(l.qty)}</td>
             <td class="unit">${esc(l.unit || '')}</td>
           </tr>`).join('')}
-          ${Array.from({ length: BLANKS }, () => `<tr>
+          ${Array.from({ length: SPARE }, (_x, i) => `<tr>
+            <td class="tick"><span class="box"></span></td>${picker(i)}
+          </tr>`).join('')}
+          ${Array.from({ length: BLANKS - SPARE }, () => `<tr>
             <td class="tick"><span class="box"></span></td><td></td><td></td><td></td>
           </tr>`).join('')}
         </tbody>
@@ -2607,13 +2644,104 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
         </div>
       </div>
     </div>
+    ${goods.length ? `<datalist id="pk_goods">${goods.map((g) => `
+      <option value="${esc(g.name)}" label="${esc(g.sku)} · ${count(g.available)} on hand">
+      </option>`).join('')}</datalist>` : ''}
     <div class="mt right">
+      ${canEdit ? '<span class="dim" id="pk_state"></span>' : ''}
       <button class="btn quiet" id="pk_save">⬇ Download JPEG</button>
       <button class="btn quiet" onclick="window.print()">🖨 Print</button>
-      <button class="btn" id="pk_done">Close</button>
+      ${canEdit ? '<button class="btn" id="pk_keep">Save the changes</button>' : ''}
+      <button class="btn ${canEdit ? 'quiet' : ''}" id="pk_done">Close</button>
     </div>`, 'wide');
   wireSave('#pk_save', '.packing', `${packingNo || orderId} PACKING LIST.jpg`);
   $('#pk_done').addEventListener('click', closeDialog);
+
+  if (!canEdit) return;
+
+  // A quantity box holds whole units. Anything else typed into it is nothing,
+  // and nothing is a line that is not going — which is a thing somebody may
+  // well mean, so it is allowed rather than corrected back.
+  const whole = (el) => {
+    const n = Math.trunc(Number(String(el?.value ?? '').replace(/[^0-9]/g, '')));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+
+  // The picker resolves what was typed to a real product before the row counts
+  // for anything: by name, as the list offers it, or by code for whoever knows
+  // the code and types it straight in.
+  const found = (el) => {
+    const said = (el?.value || '').trim();
+    return said ? byName.get(said) || bySku.get(said.toUpperCase()) || null : null;
+  };
+
+  $$('[data-add]', $('.packing')).forEach((box) => {
+    box.addEventListener('change', () => {
+      const g = found(box);
+      const i = box.dataset.add;
+      const qty = $(`[data-addqty="${i}"]`);
+      const unit = $(`[data-addunit="${i}"]`);
+      qty.disabled = !g;
+      unit.textContent = g?.unit_type || '';
+      box.classList.toggle('named', !!g);
+      if (g) {
+        box.value = g.name;
+        if (!whole(qty)) qty.value = '1';
+        qty.focus();
+        qty.select();
+      } else { qty.value = ''; }
+      restate();
+    });
+  });
+  $$('[data-sku], [data-addqty]', $('.packing'))
+    .forEach((el) => el.addEventListener('input', restate));
+
+  // What the sheet currently says, as the order would be after saving it.
+  const picture = () => {
+    const by = new Map();
+    const put = (sku, qty) => by.set(sku, (by.get(sku) || 0) + qty);
+    // Each row of the sheet is its own box, and a product picked from two
+    // deliveries has two rows. Summing them is what the sheet means: this many
+    // of that product go out, however they were held.
+    $$('[data-sku]', $('.packing')).forEach((el) => put(el.dataset.sku, whole(el)));
+    $$('[data-add]', $('.packing')).forEach((box) => {
+      const g = found(box);
+      const qty = whole($(`[data-addqty="${box.dataset.add}"]`));
+      if (g && qty) put(g.sku, qty);
+    });
+    return [...by].map(([sku, qty]) => ({ sku, qty }));
+  };
+
+  function restate() {
+    const going = picture().reduce((t, l) => t + l.qty, 0);
+    $('#pk_state').innerHTML = going
+      ? ''
+      : `<span class="over">A sheet with nothing on it is a cancellation —
+         cancel the order itself if that is what this is</span>`;
+    $('#pk_keep').disabled = !going;
+  }
+  restate();
+
+  $('#pk_keep').addEventListener('click', async () => {
+    const button = $('#pk_keep');
+    button.disabled = true;
+    try {
+      // The account's tax details first. They belong to the reseller rather
+      // than to this order, so they are worth keeping even if the quantities
+      // are then refused — and they are what every later sheet prints.
+      const tax = {};
+      $$('[data-tax]', $('.packing')).forEach((el) => { tax[el.dataset.tax] = el.value.trim(); });
+      if (Object.keys(tax).length
+          && TAX_LINES.some(([, k]) => (tax[k] || '') !== (who?.[k] || ''))) {
+        await POST(`/api/resellers/${resellerId}/tax`, tax);
+      }
+      const out = await POST(`/api/orders/${orderId}/lines`, { lines: picture() });
+      notice(`${out.pl_no || 'The packing list'} now matches the box${
+        out.si_no ? ` — ${out.si_no} comes to ${peso(out.total)}` : ''} 🌸`, 'good');
+      closeDialog();
+      onSaved?.();
+    } catch (e) { whoops(e); button.disabled = false; }
+  });
 }
 
 // An official receipt, as the till prints it. Raised from the reseller's
