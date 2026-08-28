@@ -938,6 +938,19 @@ label.sr {
 .cellbox.n { min-width: 56px; max-width: 84px; }
 .cellbox.code { font-size: .82rem; color: var(--muted); min-width: 108px; }
 .cellbox:hover { border-color: var(--rose-soft); }
+/* Borderless is right for a price list eight hundred rows deep, where the
+   boxes are the whole page and nobody has to be told. It is wrong for three
+   rows inside a dialog: there the box has to say it is a box before somebody
+   reads the screen as a report and walks off to another one. */
+.cellbox.open {
+  border-color: var(--rose-soft); background: var(--card);
+  min-width: 0;
+}
+.cellbox.open:hover { border-color: var(--rose-dust); }
+/* A product name is the longest thing in the row and the one somebody has to
+   read to know what they are changing. The column has to claim the width for
+   it rather than cutting it off at the eighth word. */
+.cellbox.open[data-swap], .cellbox.open[data-add] { min-width: 300px; }
 .cellbox:focus {
   outline: none; border-color: var(--rose-deep); background: #fff;
   color: var(--ink);

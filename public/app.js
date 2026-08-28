@@ -2144,10 +2144,11 @@ async function openOrder(id, reload) {
       </div>` : ''}
     <h3>Pick in this order</h3>
     <div class="dim">Soonest to expire first — that is what leaves the building.${canEdit
-      ? ` Change what is going and what it costs here, and the stock, the
-          packing list and the invoice all move with it. Emptying a quantity
-          takes that product off the order; something added takes its batch
-          the same way, soonest to expire first, when it is saved.`
+      ? ` Every box on this table can be typed in. Change the product, how
+          many, or what it costs, and the stock, the packing list and the
+          invoice all move with it. Emptying a quantity takes that product off
+          the order; a product swapped or added takes its batch the same way,
+          soonest to expire first, and arrives on its standing price.`
       : ''}</div>
     <div id="ol_box">
     ${o.lines.length || SPARE ? `
@@ -2158,25 +2159,29 @@ async function openOrder(id, reload) {
         </tr></thead>
         <tbody>
           ${o.lines.map((l) => `<tr>
-            <td>${esc(l.name)}</td>
+            <td>${canEdit && goods.length
+              ? `<input class="cellbox open" list="doc_goods" data-swap="${esc(String(l.id))}"
+                   data-was="${esc(l.sku)}" data-wasname="${esc(l.name)}"
+                   autocomplete="off" title="${esc(l.name)}" value="${esc(l.name)}">`
+              : esc(l.name)}</td>
             <td><b>${esc(l.batch_no)}</b></td>
             <td>${onDay(l.expiry)}</td>
             <td class="n">${canEdit
-              ? `<input class="cellbox n" inputmode="numeric" data-sku="${esc(l.sku)}"
+              ? `<input class="cellbox open n" inputmode="numeric" data-sku="${esc(l.sku)}"
                    data-qtyfor="${esc(String(l.id))}" value="${Number(l.qty)}">`
               : count(l.qty)}</td>
             <td class="n">${canEdit
-              ? `<input class="cellbox n" inputmode="decimal" data-line="${esc(String(l.id))}"
+              ? `<input class="cellbox open n" inputmode="decimal" data-line="${esc(String(l.id))}"
                    value="${Number(l.unit_price).toFixed(2)}">`
               : peso(l.unit_price)}</td>
             <td class="n" data-linetotal="${esc(String(l.id))}">${peso(l.unit_price * l.qty)}</td>
           </tr>`).join('')}
           ${Array.from({ length: SPARE }, (_x, i) => `<tr>
-            <td><input class="cellbox" list="doc_goods" data-add="${i}"
+            <td><input class="cellbox open" list="doc_goods" data-add="${i}"
                   autocomplete="off" placeholder="Add a product"></td>
             <td></td>
             <td></td>
-            <td class="n"><input class="cellbox n" data-addqty="${i}"
+            <td class="n"><input class="cellbox open n" data-addqty="${i}"
                   inputmode="numeric" disabled></td>
             <td class="n" data-addprice="${i}"></td>
             <td class="n" data-addtotal="${i}"></td>
@@ -2282,7 +2287,13 @@ async function openOrder(id, reload) {
       button.disabled = true;
       try {
         await POST(`/api/orders/${id}/invoice`, {
-          lines: $$('[data-line]', box).map((el) => ({ id: el.dataset.line, price: money(el) })),
+          // A line whose product was swapped is about to be replaced, so its
+          // price box is showing the new product's standing figure rather than
+          // anything anybody agreed to. Sending it would price the old line a
+          // moment before it is deleted.
+          lines: $$('[data-line]', box)
+            .filter((el) => !el.dataset.swapped)
+            .map((el) => ({ id: el.dataset.line, price: money(el) })),
         });
         const now = each.picture().filter((l) => l.qty > 0);
         const moved = now.length !== asPlaced.length || now.some(({ sku, qty }) =>
@@ -2520,6 +2531,36 @@ function sheetBoxes(root, goods = [], onChange = null) {
         qty?.focus();
         qty?.select();
       } else if (qty) { qty.value = ''; }
+      onChange?.();
+    });
+  });
+  // A line whose product is wrong is not a line to empty and retype somewhere
+  // else. Picking a different product on the row moves the quantity to it, and
+  // the whole picture then reads as that product going out and the old one not
+  // — which is exactly what a swap is.
+  $$('[data-swap]', root).forEach((box) => {
+    box.addEventListener('change', () => {
+      const g = found(box);
+      const qty = $(`[data-qtyfor="${box.dataset.swap}"]`, root);
+      const price = $(`[data-line="${box.dataset.swap}"]`, root);
+      // Not a product the warehouse holds, so the row goes back to what it was
+      // rather than sitting there naming something that cannot be picked.
+      if (!g) {
+        box.value = box.dataset.wasname;
+        if (qty) qty.dataset.sku = box.dataset.was;
+        if (price) delete price.dataset.swapped;
+      } else {
+        box.value = g.name;
+        if (qty) qty.dataset.sku = g.sku;
+        // The typed price belonged to the line that is about to be replaced,
+        // so it cannot follow. The new product arrives on its standing price,
+        // and the office corrects it after — the same as a row added below.
+        if (price && g.sku !== box.dataset.was) {
+          price.value = Number(g.wholesale_price || 0).toFixed(2);
+          price.dataset.swapped = '1';
+        } else if (price) { delete price.dataset.swapped; }
+      }
+      box.classList.toggle('named', !!g && g.sku !== box.dataset.was);
       onChange?.();
     });
   });

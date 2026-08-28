@@ -269,6 +269,45 @@ test('the products are corrected where the order itself is opened', () => {
     'the money is settled first, so the paid floor is judged on the corrected price');
 });
 
+// A line whose product is wrong is not a line to empty and retype below it.
+test('the product on a line can be changed for another', () => {
+  const fn = app.slice(app.indexOf('async function openOrder'),
+                       app.indexOf('// A document as a file'));
+  assert.match(fn, /data-swap="\$\{esc\(String\(l\.id\)\)\}"/,
+    'the product itself is a picker, not a label');
+  assert.match(fn, /data-was="\$\{esc\(l\.sku\)\}"/,
+    'holding what it was, so a name that resolves to nothing can go back');
+
+  const wire = app.slice(app.indexOf('function sheetBoxes'), app.indexOf('const goodsList'));
+  assert.match(wire, /qty\.dataset\.sku = g\.sku/,
+    'picking another product moves the quantity to it, which is what a swap is');
+  assert.match(wire, /box\.value = box\.dataset\.wasname/,
+    'and something that is not a product the warehouse holds puts the row back');
+  assert.match(wire, /price\.dataset\.swapped = '1'/,
+    'the price belonged to the line being replaced, so it is marked not to be sent');
+
+  const save = fn.slice(fn.indexOf("$('#ol_keep').addEventListener"));
+  assert.match(save, /filter\(\(el\) => !el\.dataset\.swapped\)/,
+    'a swapped line must not be priced a moment before it is deleted');
+});
+
+// Borderless is right for a price list eight hundred rows deep. In a dialog of
+// three rows it reads as a report, and somebody walks off to another screen to
+// change what was under their cursor all along.
+test('the boxes in the order dialog look like boxes', () => {
+  const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  const rule = css.slice(css.indexOf('.cellbox.open {'), css.indexOf('.cellbox.unset'));
+  assert.match(rule, /border-color: var\(--rose-soft\)/,
+    'a box that says it is a box before it is hovered');
+
+  const fn = app.slice(app.indexOf('async function openOrder'),
+                       app.indexOf('// A document as a file'));
+  const boxes = fn.match(/class="cellbox[^"]*"/g) || [];
+  assert.ok(boxes.length >= 5, `expected every cell to be a box, found ${boxes.length}`);
+  assert.ok(boxes.every((c) => c.includes('open')),
+    `every one of them announces itself: ${boxes.filter((c) => !c.includes('open'))}`);
+});
+
 // The invoice and the packing list are the same order seen from two sides.
 // Correcting one and not the other would mean walking to a different screen
 // depending on which number was wrong, and two sheets that could disagree.
