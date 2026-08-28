@@ -2298,7 +2298,11 @@ const TAX_LINES = [
 const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO.') => `
   <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:6px;line-height:1.3">
     <div>
-      <div style="font-weight:700;font-size:1.02rem">${esc(name || 'counter sale')}</div>
+      <div style="font-weight:700;font-size:1.02rem">${esc(name || 'counter sale')}${
+        // Beside the name, the way it has been written on these forms by hand
+        // for years: DS, then whoever the order is being sent on to.
+        who?.drop_ship ? `<span style="font-weight:400;font-size:.72rem;margin-left:14px">
+          <b>DS:</b> ${esc(who.drop_ship)}</span>` : ''}</div>
       ${TAX_LINES.map(([label, key]) => `
         <div style="font-size:.68rem"><b>${label}:</b>
           ${esc(who?.[key] || '')}</div>`).join('')}
@@ -2567,6 +2571,8 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
           <div class="lbl">DATE: <span class="val">${onDay(placedAt)}</span></div>
           <div class="lbl">${packingNo ? 'PACKING LIST NO.' : 'SALES ORDER NO.'}:
             <span class="val">${esc(String(packingNo || orderId))}</span></div>
+          ${who?.drop_ship ? `<div class="lbl">DS:
+            <span class="val">${esc(who.drop_ship)}</span></div>` : ''}
         </div>
       </div>
       <table>
@@ -3367,6 +3373,18 @@ SCREENS.chatorders = async (page) => {
         ${esc(picked.blocked_reason || 'a past-due invoice')}. Confirm their bank
         payment on their own page, under Invoice — that lifts this by itself once
         nothing is overdue.</div>` : ''}
+      ${picked.drop_ship ? `
+        <div class="panel">
+          <h3>Sending it on</h3>
+          <div class="dim">This account buys to send on to somebody else, so
+            the order form carries their name beside hers. Whatever is typed
+            here fills this box the next time she orders.</div>
+          <div class="row">
+            <div><label for="ch_ds">Drop ship to</label>
+              <input id="ch_ds" type="text" autocomplete="off"
+                value="${esc(picked.drop_ship_to || '')}" placeholder="Who it goes on to"></div>
+          </div>
+        </div>` : ''}
       <div class="split">
         <div class="panel">
           <h3>1 · What they ordered</h3>
@@ -3399,6 +3417,7 @@ SCREENS.chatorders = async (page) => {
       GET('/api/price-codes').then((rows) => { codes = rows; drawBasket(); }).catch(whoops);
     }
 
+    $('#ch_ds', workingBox)?.addEventListener('input', drawPreview);
     $('#ch_find', workingBox).addEventListener('input', drawGoods);
     $('#ch_place', workingBox).addEventListener('click', placeOrder);
     drawBasket();
@@ -3564,7 +3583,12 @@ SCREENS.chatorders = async (page) => {
       amount: lines.reduce((t, l) => t + l.price * l.qty, 0),
       resellerName: picked.name,
       lines,
-      who: picked,
+      // Shown as it will print, including whoever is in the Drop ship box at
+      // this moment — the whole point of the preview is that what goes into
+      // the chat is read here first.
+      who: picked.drop_ship
+        ? { ...picked, drop_ship: ($('#ch_ds', workingBox)?.value || '').trim() }
+        : picked,
     });
     const doc = box.firstElementChild;
     if (!doc) return;
@@ -3587,8 +3611,13 @@ SCREENS.chatorders = async (page) => {
     if (bare.length && !(await askedAndAnswered(bare))) return;
     $('#ch_place', workingBox).disabled = true;
     try {
-      const out = await POST(`/api/resellers/${picked.id}/orders`,
-        { lines: lines.map((l) => ({ sku: l.sku, qty: l.qty, code: l.code || null })) });
+      const sendOn = picked.drop_ship
+        ? ($('#ch_ds', workingBox)?.value || '').trim() : '';
+      const out = await POST(`/api/resellers/${picked.id}/orders`, {
+        lines: lines.map((l) => ({ sku: l.sku, qty: l.qty, code: l.code || null })),
+        drop_ship: sendOn || null,
+      });
+      if (sendOn) picked.drop_ship_to = sendOn;
       placedAs = out.orderId;
       placedCo = out.co_no;
       basket.clear();
@@ -3790,6 +3819,23 @@ async function openReseller(id, reload) {
       <div style="flex:0 0 auto"><button class="btn" id="d_tax">Save</button></div>
     </div>
 
+    <h3 class="mt">Sending it on</h3>
+    <div class="dim">Some accounts buy to send straight on to somebody else,
+      and their order forms carry that name beside their own. Off for
+      everybody until it is turned on here, so the rest are not asked a
+      question that has nothing to do with them.</div>
+    <div class="row mt">
+      <div style="flex:0 0 auto"><label class="dotkey" style="gap:8px">
+        <input type="checkbox" id="d_ds" ${r.drop_ship ? 'checked' : ''}>
+        This account ships on to somebody</label></div>
+      <div style="flex:2"><label for="d_dsto">Usually to</label>
+        <input id="d_dsto" type="text" value="${esc(r.drop_ship_to || '')}"
+          placeholder="Their name, to fill the box by default"
+          ${r.drop_ship ? '' : 'disabled'}></div>
+      <div style="flex:0 0 auto; align-self:flex-end">
+        <button class="btn quiet" id="d_dssave">Save</button></div>
+    </div>
+
     <h3 class="mt">Papers</h3>
     ${r.documents.length
       ? `<div class="dim">${r.documents.map((d) =>
@@ -3896,6 +3942,23 @@ async function openReseller(id, reload) {
       closeDialog();
       reload();
     } catch (err) { whoops(err); }
+  });
+
+  // The name box is only worth filling in when the switch is on.
+  $('#d_ds')?.addEventListener('change', (e) => {
+    $('#d_dsto').disabled = !e.target.checked;
+    if (!e.target.checked) $('#d_dsto').value = '';
+  });
+
+  $('#d_dssave')?.addEventListener('click', async () => {
+    try {
+      const on = $('#d_ds').checked;
+      await POST(`/api/resellers/${id}/dropship`, { on, to: $('#d_dsto').value.trim() });
+      notice(on ? 'Their order forms will ask who it goes on to 🌸'
+                : 'No longer shipping on', 'good');
+      closeDialog();
+      reload();
+    } catch (e) { whoops(e); }
   });
 
   $('#d_tax').addEventListener('click', async () => {
