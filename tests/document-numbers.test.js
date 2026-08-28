@@ -14,11 +14,15 @@
 // route a person uses, so a sixth pricing rewrite cannot quietly drop them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { hashPassword } from '../lib/auth.js';
 import { server } from '../scripts/dev.js';
 import { pool } from '../lib/db.js';
 
+const here = path.dirname(fileURLToPath(import.meta.url));
 const db = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 6 });
 let base;
 
@@ -178,4 +182,98 @@ test('two orders raised at once cannot take the same number', async () => {
   assert.equal(new Set(cos).size, 6, `six orders produced ${new Set(cos).size} numbers: ${cos}`);
   const sis = all.map((n) => n.si_no);
   assert.equal(new Set(sis).size, 6, `six invoices produced ${new Set(sis).size} numbers: ${sis}`);
+});
+
+// ---------------------------------------------------------------------------
+// A number the office can write
+//
+// The counter is right for the ordinary case and wrong for the ones that
+// matter: an invoice raised against a BIR booklet whose printed number has to
+// be the one on the sheet, or a gap in a series that has to be filled by hand.
+// Neither can be reached by cancelling and re-raising, because a counter only
+// ever goes forwards.
+// ---------------------------------------------------------------------------
+async function anOrder(admin, store) {
+  const sku = await newProduct(admin);
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 50 });
+  const seller = await newReseller(admin);
+  const order = await POST(admin, `/api/resellers/${seller}/orders`, { lines: [{ sku, qty: 1 }] });
+  assert.equal(order.status, 200, JSON.stringify(order.data));
+  return order.data.orderId;
+}
+
+test('the invoice number can be written rather than handed out', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+
+  const mine = `BIR-${unique('X')}`;
+  const out = await POST(admin, `/api/orders/${id}/invoice-no`, { si_no: `  ${mine.toLowerCase()} ` });
+  assert.equal(out.status, 200, JSON.stringify(out.data));
+  assert.equal(out.data.si_no, mine.toUpperCase(),
+    'trimmed and in capitals, the way every other number on the paper is written');
+  assert.equal((await numbers(id)).si_no, mine.toUpperCase());
+});
+
+test('the counter carries on from what was written', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const first = await anOrder(admin, store);
+
+  // Well above anything the counter has reached this month.
+  const high = `SI${stamp()}900`;
+  const set = await POST(admin, `/api/orders/${first}/invoice-no`, { si_no: high });
+  assert.equal(set.status, 200, JSON.stringify(set.data));
+
+  const next = await anOrder(admin, store);
+  assert.equal((await numbers(next)).si_no, `SI${stamp()}901`,
+    'the counter reads the highest number in the month, so nothing has to be told');
+});
+
+test('two invoices cannot be made to share one number', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const one = await anOrder(admin, store);
+  const two = await anOrder(admin, store);
+
+  const taken = (await numbers(one)).si_no;
+  const clash = await POST(admin, `/api/orders/${two}/invoice-no`, { si_no: taken });
+  assert.equal(clash.status, 400, JSON.stringify(clash.data));
+  assert.match(clash.data.error, /already on another invoice/);
+  assert.notEqual((await numbers(two)).si_no, taken,
+    'the one that lost keeps the number it had');
+});
+
+test('an invoice cannot be left with no number at all', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+  const was = (await numbers(id)).si_no;
+
+  const blank = await POST(admin, `/api/orders/${id}/invoice-no`, { si_no: '   ' });
+  assert.equal(blank.status, 400, JSON.stringify(blank.data));
+  assert.equal((await numbers(id)).si_no, was);
+});
+
+test('the warehouse floor cannot renumber an invoice', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+
+  const nope = await POST(store, `/api/orders/${id}/invoice-no`, { si_no: 'SI-MINE-1' });
+  assert.equal(nope.status, 403, JSON.stringify(nope.data));
+});
+
+test('the number is a box only on a sheet that has one to change', () => {
+  const app = fs.readFileSync(path.join(here, '..', 'public/app.js'), 'utf8');
+  const party = app.slice(app.indexOf('const docParty ='), app.indexOf('const docLines ='));
+  assert.match(party, /numberTyped\s*\?/,
+    'the number line is a box when the sheet says so, plain text when it does not');
+
+  const doc = app.slice(app.indexOf('function showInvoiceDoc'),
+                        app.indexOf('function showPackingList'));
+  assert.match(doc, /canEdit && !!invoiceNo\)/,
+    'and only where an invoice has been raised — before that the line is the '
+    + "order's own number, which is not this sheet's to change");
 });
