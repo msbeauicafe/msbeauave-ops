@@ -2099,11 +2099,37 @@ SCREENS.orders = async (page) => {
 
 async function openOrder(id, reload) {
   const o = await GET(`/api/orders/${id}`);
+  // The order dialog is where both of the order's own numbers can be written.
+  // The invoice carries its number on the invoice and the packing list carries
+  // its number on the sheet; the customer order form is handed over once, at
+  // the moment it is placed, and is never reopened — so this is the only place
+  // CO can be corrected, and PL sits beside it because a series is lined back
+  // up by moving both together.
+  const mayNumber = ['admin', 'office'].includes(user?.role) && o.channel === 'b2b';
   dialog(`
-    <h3>Order ${o.id} — ${esc(o.reseller || 'counter sale')}</h3>
+    <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
     <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
       ${o.invoice_id ? tag(`Invoice ${o.invoice_status} · due ${onDay(o.due_on)}`,
           o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
+    ${mayNumber ? `
+      <div class="panel">
+        <h3>The numbers on the paperwork</h3>
+        <div class="dim">Handed out in order as each order is taken. Written
+          here when they have to match something this system did not print — a
+          number already quoted in a chat, or a gap left by an order that was
+          cancelled. What is written becomes the one the next order counts on
+          from.</div>
+        <div class="row">
+          <div><label for="on_co">Customer order no.</label>
+            <input id="on_co" type="text" autocomplete="off"
+              value="${esc(o.co_no || '')}"></div>
+          <div><label for="on_pl">Packing list no.</label>
+            <input id="on_pl" type="text" autocomplete="off"
+              value="${esc(o.pl_no || '')}"></div>
+          <div style="flex:0 0 auto;align-self:flex-end">
+            <button class="btn sm" id="on_keep">Save the numbers</button></div>
+        </div>
+      </div>` : ''}
     <h3>Pick in this order</h3>
     <div class="dim">Soonest to expire first — that is what leaves the building.</div>
     ${table(o.lines, [
@@ -2133,6 +2159,23 @@ async function openOrder(id, reload) {
       reload();
     } catch (e) { whoops(e); }
   });
+  $('#on_keep')?.addEventListener('click', async () => {
+    const button = $('#on_keep');
+    const co = $('#on_co').value.trim().toUpperCase();
+    const pl = $('#on_pl').value.trim().toUpperCase();
+    if (co === (o.co_no || '') && pl === (o.pl_no || '')) {
+      return notice('Those are the numbers it already has.', 'good');
+    }
+    button.disabled = true;
+    try {
+      const out = await POST(`/api/orders/${id}/numbers`,
+        { co_no: co || null, pl_no: pl || null });
+      notice(`This order is ${out.co_no}, its packing list ${out.pl_no} 🌸`, 'good');
+      closeDialog();
+      reload();
+    } catch (e) { whoops(e); button.disabled = false; }
+  });
+
   act('#a_pick', 'picking');
   act('#a_send', 'dispatch');
   act('#a_cancel', 'cancel');
@@ -2794,7 +2837,10 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
         <div style="white-space:nowrap">
           <div class="lbl">DATE: <span class="val">${onDay(placedAt)}</span></div>
           <div class="lbl">${packingNo ? 'PACKING LIST NO.' : 'SALES ORDER NO.'}:
-            <span class="val">${esc(String(packingNo || orderId))}</span></div>
+            ${canEdit && packingNo
+              ? `<input class="figure wide docno" data-docno autocomplete="off"
+                   value="${esc(String(packingNo))}">`
+              : `<span class="val">${esc(String(packingNo || orderId))}</span>`}</div>
           ${who?.drop_ship ? `<div class="lbl">DS:
             <span class="val">${esc(who.drop_ship)}</span></div>` : ''}
         </div>
@@ -2876,8 +2922,14 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
           && TAX_LINES.some(([, k]) => (tax[k] || '') !== (who?.[k] || ''))) {
         await POST(`/api/resellers/${resellerId}/tax`, tax);
       }
+      // The sheet's own number goes before the quantities, for the reason the
+      // invoice's does: it is a label, and nothing recalculates behind it.
+      const typedNo = $('[data-docno]', sheet)?.value.trim().toUpperCase();
+      if (typedNo && typedNo !== (packingNo || '')) {
+        await POST(`/api/orders/${orderId}/numbers`, { pl_no: typedNo });
+      }
       const out = await POST(`/api/orders/${orderId}/lines`, { lines: each.picture() });
-      notice(`${out.pl_no || 'The packing list'} now matches the box${
+      notice(`${typedNo || out.pl_no || 'The packing list'} now matches the box${
         out.si_no ? ` — ${out.si_no} comes to ${peso(out.total)}` : ''} 🌸`, 'good');
       closeDialog();
       onSaved?.();
