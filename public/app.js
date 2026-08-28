@@ -391,6 +391,7 @@ const TABS = {
     ['branches', '🏬', 'Branches'],
     ['crm', '💗', 'Customers'],
     ['finance', '💰', 'Finance'],
+    ['pricelists', '💵', 'Pricelists'],
     ['products', '🧴', 'Products'],
     // The buying half, in the order the work happens: ask a supplier, receive
     // what turns up, then look at what came in. Each was a panel on Receive
@@ -3034,6 +3035,83 @@ function showOR(r, reseller, paid = {}, over = false) {
 // chat tab and being put back on the chat tab is right, and being put back on
 // the first tab every time is how somebody loses their place.
 let orderPanel = 'chatorders';
+
+/**
+ * The price list, whole.
+ *
+ * Every product down the page, every price code across it. This is how the
+ * office reads a price list — down a column, comparing what a Regional pays
+ * against what a Sub-Reseller does — and until now the only way to see it was
+ * to open one product card at a time, sixty times.
+ *
+ * Read-only on purpose. A price is changed on the product it belongs to, where
+ * the change is deliberate and lands on one thing; a grid of eight hundred
+ * editable boxes is a place to make a mistake nobody notices for a month.
+ */
+SCREENS.pricelists = async (page) => {
+  let data = null;
+  let brand = '';
+  let term = '';
+  let gapsOnly = false;
+
+  page.innerHTML = `
+    <div class="head"><h2>Pricelists</h2>
+      <span class="hint">What every product costs at every code. Set a price on
+        the product itself, under Products</span>
+      <span class="hint" id="pl_count"></span></div>
+    <div class="tools">
+      <input type="search" id="pl_find" placeholder="Search code, name or brand…" autofocus>
+      <select id="pl_brand"><option value="">Every brand</option></select>
+      <label class="dotkey" style="gap:6px">
+        <input type="checkbox" id="pl_gaps"> only products missing a price</label>
+    </div>
+    <div id="pl_table" class="scrollx"></div>`;
+
+  const draw = () => {
+    if (!data) return;
+    const t = term.trim().toLowerCase();
+    const shown = data.products.filter((p) => {
+      if (brand && (p.brand || '') !== brand) return false;
+      if (gapsOnly && data.codes.every((c) => p.prices[c] != null)) return false;
+      if (!t) return true;
+      return p.sku.toLowerCase().includes(t)
+        || p.name.toLowerCase().includes(t)
+        || (p.brand || '').toLowerCase().includes(t);
+    });
+
+    // A missing price is the thing worth spotting, so it is a dash in the
+    // danger colour rather than an empty cell that reads as a zero.
+    $('#pl_table', page).innerHTML = table(shown, [
+      { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
+      { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>${p.active ? ''
+          : ' ' + tag('hidden', 'grey')}<br><span class="dim">${esc(p.brand || '')}${
+          p.unit_type ? ' · ' + esc(p.unit_type) : ''}</span>` },
+      ...data.codes.map((c) => ({
+        head: c, n: true,
+        cell: (p) => p.prices[c] == null
+          ? '<span class="over">—</span>' : peso(p.prices[c]),
+      })),
+      { head: 'Retail', n: true, cell: (p) => Number(p.retail_price)
+          ? peso(p.retail_price) : '<span class="over">—</span>' },
+    ], 'Nothing matches that.');
+
+    const missing = data.codes.reduce((n, c) =>
+      n + shown.filter((p) => p.prices[c] == null).length, 0);
+    $('#pl_count', page).textContent = `${count(shown.length)} product${
+      shown.length === 1 ? '' : 's'}${missing ? ` · ${count(missing)} price${
+      missing === 1 ? '' : 's'} not set` : ' · every price set'}`;
+  };
+
+  $('#pl_find', page).addEventListener('input', (e) => { term = e.target.value; draw(); });
+  $('#pl_brand', page).addEventListener('change', (e) => { brand = e.target.value; draw(); });
+  $('#pl_gaps', page).addEventListener('change', (e) => { gapsOnly = e.target.checked; draw(); });
+
+  data = await GET('/api/pricelist');
+  const brands = [...new Set(data.products.map((p) => p.brand).filter(Boolean))].sort();
+  $('#pl_brand', page).innerHTML = '<option value="">Every brand</option>'
+    + brands.map((b) => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+  draw();
+};
 
 SCREENS.customerorder = async (page) => {
   const PANELS = [

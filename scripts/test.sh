@@ -79,6 +79,9 @@ node --test tests/dialogs-stack.test.js
 echo "==> one job, one menu"
 node --test tests/customer-order-tabs.test.js
 
+echo "==> the price list, whole"
+node --test tests/pricelists.test.js
+
 echo "==> running the tests"
 node --test tests/acceptance.test.js
 
