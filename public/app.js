@@ -3067,12 +3067,22 @@ SCREENS.pricelists = async (page) => {
     </div>
     <div id="pl_table" class="scrollx"></div>`;
 
+  // A code nobody has priced anything under is not a column of gaps; it is a
+  // code that is not in use. Counting its eight hundred blanks as "not set"
+  // buries the handful that somebody actually has to go and fill in — VIP,
+  // STOCKIST and EXEC alone would have contributed some 2,700 of them.
+  const inUse = () => data.codes.filter((c) =>
+    data.products.some((p) => p.prices[c] != null));
+  const unused = () => data.codes.filter((c) =>
+    !data.products.some((p) => p.prices[c] != null));
+
   const draw = () => {
     if (!data) return;
+    const codes = inUse();
     const t = term.trim().toLowerCase();
     const shown = data.products.filter((p) => {
       if (brand && (p.brand || '') !== brand) return false;
-      if (gapsOnly && data.codes.every((c) => p.prices[c] != null)) return false;
+      if (gapsOnly && codes.every((c) => p.prices[c] != null)) return false;
       if (!t) return true;
       return p.sku.toLowerCase().includes(t)
         || p.name.toLowerCase().includes(t)
@@ -3086,7 +3096,7 @@ SCREENS.pricelists = async (page) => {
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>${p.active ? ''
           : ' ' + tag('hidden', 'grey')}<br><span class="dim">${esc(p.brand || '')}${
           p.unit_type ? ' · ' + esc(p.unit_type) : ''}</span>` },
-      ...data.codes.map((c) => ({
+      ...codes.map((c) => ({
         head: c, n: true,
         cell: (p) => p.prices[c] == null
           ? '<span class="over">—</span>' : peso(p.prices[c]),
@@ -3095,11 +3105,14 @@ SCREENS.pricelists = async (page) => {
           ? peso(p.retail_price) : '<span class="over">—</span>' },
     ], 'Nothing matches that.');
 
-    const missing = data.codes.reduce((n, c) =>
+    const missing = codes.reduce((n, c) =>
       n + shown.filter((p) => p.prices[c] == null).length, 0);
-    $('#pl_count', page).textContent = `${count(shown.length)} product${
-      shown.length === 1 ? '' : 's'}${missing ? ` · ${count(missing)} price${
-      missing === 1 ? '' : 's'} not set` : ' · every price set'}`;
+    const idle = unused();
+    $('#pl_count', page).innerHTML = `${count(shown.length)} product${
+      shown.length === 1 ? '' : 's'}${missing ? ` · <b>${count(missing)}</b> price${
+      missing === 1 ? '' : 's'} not set` : ' · every price set'}${idle.length
+      ? ` · ${idle.map(esc).join(', ')} ${idle.length === 1 ? 'is' : 'are'} not in use`
+      : ''}`;
   };
 
   $('#pl_find', page).addEventListener('input', (e) => { term = e.target.value; draw(); });

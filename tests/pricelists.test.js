@@ -125,3 +125,20 @@ test('a price that is not set reads as missing, not as nothing owed', () => {
     'the grid is read-only — a price is changed on the product it belongs to, '
     + 'where the change is deliberate and lands on one thing');
 });
+
+// VIP, STOCKIST and EXEC carry no prices at all. Showing them as three columns
+// of dashes would have added some 2,700 blanks to the "not set" count — and
+// that count exists to say what somebody has to go and fill in, so burying the
+// real handful under phantom gaps makes it worse than no count.
+test('a code nobody prices under is not in use, not a column of gaps', () => {
+  const at = app.indexOf('SCREENS.pricelists = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /const inUse = \(\) => data\.codes\.filter/,
+    'the screen works out which codes carry a price at all');
+  assert.match(screen, /const codes = inUse\(\);/,
+    'and draws only those columns');
+  assert.match(screen, /not in use/,
+    'the unused ones are named, so nobody thinks the code has gone missing');
+  assert.ok(!/data\.codes\.reduce/.test(screen),
+    'the missing count is over the codes in use, not over every code there is');
+});
