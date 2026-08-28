@@ -58,6 +58,9 @@ node --test tests/manila.test.js
 echo "==> pages that are their own"
 node --test tests/public-pages.test.js
 
+echo "==> the shop, banded by house"
+node --test tests/shop-by-house.test.js
+
 echo "==> the shop window shows the whole shop"
 node --test tests/shop-shows-everything.test.js
 

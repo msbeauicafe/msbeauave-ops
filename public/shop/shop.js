@@ -70,6 +70,7 @@ const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 let term = '';
 let category = '';
 let view = 'home';
+let cameFrom = 'home';   // the page the search box was tapped from
 let goods = [];
 let categories = [];
 let promos = [];
@@ -88,17 +89,19 @@ let meNumbers = null;   // their purchase counts and vouchers
 // bottom. Only the middle changes.
 // ---------------------------------------------------------------------------
 function draw() {
-  const searchable = view === 'home' || view === 'shop';
+  const searchable = view === 'home' || view === 'shop' || view === 'suggest';
   // Anything the customer has to come in for is what the badge counts.
   const waiting = () => purchases.filter((p) => p.status === 'reserved').length;
 
   $('#app').innerHTML = `
     <header class="sh-header">
       <span class="logo-mark"><img src="/logo.jpg" alt=""></span>
+      ${view === 'suggest' ? `
+        <button class="sh-back" id="back" aria-label="Back">←</button>` : ''}
       ${searchable ? `
         <label class="sh-search">🔍
           <input id="find" type="search" value="${esc(term)}"
-            placeholder="Search skincare…" autocomplete="off">
+            placeholder="Search product…" autocomplete="off">
         </label>`
       : `<h1 class="sh-title">${
           { alerts: 'Notifications', me: 'Me' }[view]}</h1>`}
@@ -109,6 +112,7 @@ function draw() {
     <div class="sh-page" id="page">${
       view === 'home' ? homeView()
       : view === 'shop' ? shopView()
+      : view === 'suggest' ? suggestView()
       : view === 'alerts' ? alertsView()
       : meView()}</div>
 
@@ -133,11 +137,31 @@ function wire() {
       // the shop; a short pause turns a typed word into one query.
       find.timer = setTimeout(() => load().catch(oops), 250);
     });
-    if (document.activeElement !== find && term) {
+    // Touching the box is the question. On a phone the keyboard covers the
+    // page anyway, so leaving the shopper on a wall of everything while they
+    // type wastes the half of the screen that is left; the suggestions take
+    // it instead.
+    find.addEventListener('focus', () => {
+      if (view === 'suggest') return;
+      cameFrom = view;
+      view = 'suggest';
+      draw();
+    });
+    if (document.activeElement !== find && (term || view === 'suggest')) {
       find.focus();
       find.setSelectionRange(term.length, term.length);
     }
   }
+
+  // "See all from RYX SKIN" is the same thing as searching for it, so it is
+  // the same code path rather than a second kind of filter to keep in step.
+  $$('[data-house]').forEach((b) => b.addEventListener('click', () => {
+    term = b.dataset.house;
+    const box = $('#find');
+    if (box) box.value = term;
+    window.scrollTo(0, 0);
+    load().catch(oops);
+  }));
 
   $$('[data-cat]').forEach((b) => b.addEventListener('click', () => {
     category = b.dataset.cat;
@@ -147,6 +171,15 @@ function wire() {
   $$('[data-sku]').forEach((b) => b.addEventListener('click', () => {
     openProduct(goods.find((p) => p.sku === b.dataset.sku));
   }));
+
+  // Back leaves the search behind, rather than dropping somebody onto the
+  // page they came from still filtered by a word they can no longer see.
+  $('#back')?.addEventListener('click', () => {
+    view = cameFrom;
+    term = '';
+    window.scrollTo(0, 0);
+    load().catch(oops);
+  });
 
   $('#cart').addEventListener('click', openBasket);
 
@@ -163,6 +196,8 @@ function wire() {
     // Coming back to a tab should not still be filtered by whatever was tapped
     // on the way out.
     if (view !== 'shop') category = '';
+    // Walking away by the bar is walking away from the search as well.
+    term = '';
     window.scrollTo(0, 0);
     draw();
   }));
@@ -207,12 +242,122 @@ function homeView() {
     <div class="sh-rowhead">${term
       ? `${shown.length} result${shown.length === 1 ? '' : 's'} for “${esc(term)}”`
       : '✨ For you'}</div>
-    ${grid(shown)}`;
+    ${term ? grid(shown) : rails(shown)}`;
+}
+
+// ---------------------------------------------------------------------------
+// The wall, made walkable
+//
+// Home was every product we stock in one column: 867 cards, two abreast, four
+// hundred rows deep. Reaching the bottom of it is not something anybody does
+// twice, which means most of the shop was never seen.
+//
+// So it is banded by house instead. Each brand gets a row that swipes
+// sideways, and the page scrolls down through seventy-three brands rather than
+// through eight hundred products — the whole shop is a thumb's width away
+// instead of a minute of flicking. The houses we carry deepest come first,
+// because those are the ones somebody is most likely to have come for.
+//
+// The chips above jump straight to a house, for anybody who already knows
+// which one they want.
+// ---------------------------------------------------------------------------
+const RAIL = 12;   // per house, before "see all" takes over
+
+function rails(list) {
+  const houses = byBrand(list);
+  if (!houses.length) {
+    return '<div class="sh-empty">Nothing on the shelves just now.</div>';
+  }
+  return `
+    <div class="sh-chips sh-brandchips">
+      ${houses.map(([name, of]) => `
+        <button data-house="${esc(name)}">${esc(name)}
+          <span>${of.length}</span></button>`).join('')}
+    </div>
+    ${houses.map(([name, of]) => `
+      <div class="sh-house">
+        <div class="sh-housetop">
+          <b>${esc(name)}</b>
+          <span>${of.length} product${of.length === 1 ? '' : 's'}</span>
+        </div>
+        <div class="sh-rail">
+          ${of.slice(0, RAIL).map((p) => card(p, false)).join('')}
+          ${of.length > RAIL ? `
+            <button class="sh-railmore" data-house="${esc(name)}">
+              See all<br>${of.length}</button>` : ''}
+        </div>
+      </div>`).join('')}`;
 }
 
 // ---------------------------------------------------------------------------
 // Shop — the same goods, entered through a category
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Suggestions — the catalogue by the house it comes from
+//
+// A customer asking for "888" is not asking for a category. They are asking
+// for a brand, because that is what is written on the tub in their hand and
+// what they were told to buy. The shop had category chips and a flat wall of
+// products, and neither answers that.
+//
+// So the suggestions group by brand — the supplier line, which for this shop
+// is the same thing: 888 TOTAL WHITE, RYX SKIN, BRILLIANT SKIN ESSENTIALS.
+// Sorted by how much of it we carry, because the houses we stock deepest are
+// the ones somebody is most likely to be after.
+//
+// Nothing typed shows the first few of each, as a way in. Typed, it shows
+// every match, still under the house it belongs to, so "whitening" comes back
+// sorted by who makes it rather than as ninety cards in a row.
+// ---------------------------------------------------------------------------
+const PEEK = 6;   // per brand, before anything is typed
+
+function byBrand(list) {
+  const groups = new Map();
+  for (const p of list) {
+    // "MERRY SUN " and "MERRY SUN" are one house.
+    const name = String(p.brand || '').trim() || 'Everything else';
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(p);
+  }
+  return [...groups.entries()]
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+}
+
+function suggestView() {
+  const t = term.trim().toLowerCase();
+  const hits = !t ? goods : goods.filter((p) =>
+    p.name.toLowerCase().includes(t)
+    || (p.brand || '').toLowerCase().includes(t)
+    || (p.category || '').toLowerCase().includes(t));
+
+  if (t && !hits.length) {
+    return `<div class="sh-rowhead">Search suggestions</div>
+      <div class="sh-empty">Nothing matches “${esc(term)}”.<br>
+        Try the brand on the label — 888, RYX, Brilliant Skin.</div>`;
+  }
+
+  const groups = byBrand(hits);
+  return `
+    <div class="sh-rowhead">${t
+      ? `${hits.length} match${hits.length === 1 ? '' : 'es'} for “${esc(term)}”`
+      : 'Search suggestions'}
+      <span class="sh-count">${groups.length} brand${groups.length === 1 ? '' : 's'}</span></div>
+    ${groups.map(([name, list]) => {
+      const shown = t ? list : list.slice(0, PEEK);
+      return `
+        <div class="sh-house">
+          <div class="sh-housetop">
+            <b>${esc(name)}</b>
+            <span>${list.length} product${list.length === 1 ? '' : 's'}</span>
+          </div>
+          ${grid(shown, false)}
+          ${shown.length < list.length ? `
+            <button class="sh-more" data-house="${esc(name)}">
+              See all ${list.length} from ${esc(name)}</button>` : ''}
+        </div>`;
+    }).join('')}`;
+}
+
 function shopView() {
   const shown = category ? goods.filter((p) => p.category === category) : goods;
   return `
@@ -227,21 +372,31 @@ function shopView() {
     ${grid(shown)}`;
 }
 
-function grid(list) {
+// `named` is off inside a brand's own band on the suggestions page: printing
+// the house on every card under a heading that already says it is six copies
+// of a word the eye has just read.
+// One card, drawn once. The wall, the brand bands and the swiping rails are
+// three arrangements of the same thing, and a card that differs between them
+// is a card somebody has to learn twice.
+function card(p, named = true) {
+  return `
+    <button class="sh-card ${p.in_stock ? '' : 'gone'}" data-sku="${esc(p.sku)}">
+      <div class="sh-img">${p.has_photo
+        ? `<img src="${photoUrl(p.sku)}" alt="${esc(p.name)}" loading="lazy">` : '🧴'}</div>
+      <div class="sh-body">
+        <div class="sh-name">${esc(p.name)}</div>
+        ${named ? `<div class="sh-brand">${esc(p.brand || '')}</div>` : ''}
+        <div class="sh-price">${peso(p.price)}${
+          p.was ? ` <s>${peso(p.was)}</s>` : ''}</div>
+        ${p.percent_off ? `<div class="sh-off">−${Number(p.percent_off)}% off</div>` : ''}
+        ${p.in_stock ? '' : '<div class="sh-out">Sold out</div>'}
+      </div>
+    </button>`;
+}
+
+function grid(list, named = true) {
   return `<div class="sh-feed" id="feed">
-    ${list.length ? list.map((p) => `
-      <button class="sh-card ${p.in_stock ? '' : 'gone'}" data-sku="${esc(p.sku)}">
-        <div class="sh-img">${p.has_photo
-          ? `<img src="${photoUrl(p.sku)}" alt="${esc(p.name)}" loading="lazy">` : '🧴'}</div>
-        <div class="sh-body">
-          <div class="sh-name">${esc(p.name)}</div>
-          <div class="sh-brand">${esc(p.brand || '')}</div>
-          <div class="sh-price">${peso(p.price)}${
-            p.was ? ` <s>${peso(p.was)}</s>` : ''}</div>
-          ${p.percent_off ? `<div class="sh-off">−${Number(p.percent_off)}% off</div>` : ''}
-          ${p.in_stock ? '' : '<div class="sh-out">Sold out</div>'}
-        </div>
-      </button>`).join('')
+    ${list.length ? list.map((p) => card(p, named)).join('')
     : '<div class="sh-empty">Nothing matches that just yet.<br>Try a different word.</div>'}
   </div>`;
 }

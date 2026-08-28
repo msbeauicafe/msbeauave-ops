@@ -348,3 +348,61 @@ button.al { cursor: pointer; }
   font-size: .82rem; font-weight: 700; text-decoration: none;
 }
 .sh-cart svg { width: 22px; height: 22px; display: block; }
+
+/* ---------- suggestions, by the house a product comes from ----------
+   A customer asking for "888" is asking for a brand, not a category: it is
+   what is written on the tub in their hand. So the suggestions are grouped by
+   it, each house a band of its own with its count beside the name, and the
+   cards below in the same grid the rest of the shop uses. */
+.sh-house { margin: 0 0 18px; }
+.sh-housetop {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 0 14px 6px;
+}
+.sh-housetop b { font-size: .95rem; color: var(--rose-deep); letter-spacing: .01em; }
+.sh-housetop span { font-size: .74rem; color: var(--muted); white-space: nowrap; }
+.sh-more {
+  display: block; width: calc(100% - 28px); margin: 8px 14px 0;
+  font: inherit; font-size: .8rem; cursor: pointer;
+  padding: 9px 12px; border-radius: 10px;
+  border: 1px solid var(--rose-soft); background: #fff; color: var(--rose-deep);
+}
+.sh-more:hover { background: var(--rose-blush); border-color: var(--rose-dust); }
+
+/* The way back out of the suggestions, where the phone's own back would take
+   the shopper off the shop entirely. */
+.sh-back {
+  flex: 0 0 auto; border: none; background: transparent; cursor: pointer;
+  font-size: 1.3rem; line-height: 1; color: var(--rose-deep);
+  padding: 6px 4px 6px 0;
+}
+
+/* ---------- a house's row, swiped sideways ----------
+   Home was 867 cards in one column, four hundred rows deep, and reaching the
+   bottom is not something anybody does twice — so most of the shop was never
+   seen. Banded by house it is seventy-three rows instead, each swiped
+   sideways, and the whole shop is a thumb's width away.
+
+   scroll-snap so a swipe lands on a card rather than between two, and the
+   scrollbar hidden because a phone does not need one to know it can push. */
+.sh-rail {
+  display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x proximity;
+  padding: 0 14px 4px; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; overscroll-behavior-x: contain;
+}
+.sh-rail::-webkit-scrollbar { display: none; }
+.sh-rail > .sh-card {
+  flex: 0 0 46%; max-width: 200px; scroll-snap-align: start; margin: 0;
+}
+.sh-railmore {
+  flex: 0 0 92px; align-self: stretch; cursor: pointer; font: inherit;
+  font-size: .78rem; line-height: 1.35; color: var(--rose-deep);
+  border: 1px dashed var(--rose-dust); border-radius: 12px; background: #fff;
+  scroll-snap-align: start;
+}
+.sh-railmore:hover { background: var(--rose-blush); }
+
+/* The houses along the top, for anybody who knows which one they came for. */
+.sh-brandchips button span {
+  display: inline-block; margin-left: 6px; font-size: .68rem; opacity: .65;
+}
