@@ -277,3 +277,124 @@ test('the number is a box only on a sheet that has one to change', () => {
     'and only where an invoice has been raised — before that the line is the '
     + "order's own number, which is not this sheet's to change");
 });
+
+// ---------------------------------------------------------------------------
+// The other two numbers, for the same reasons
+//
+// A reseller holding CO26_08_012 in a chat window is holding the only copy of
+// it, and the customer order form is handed over once and never reopened.
+// ---------------------------------------------------------------------------
+test('the order and packing list numbers can be written too', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+
+  const co = `CO-${unique('A')}`;
+  const pl = `PL-${unique('B')}`;
+  const out = await POST(admin, `/api/orders/${id}/numbers`,
+    { co_no: co.toLowerCase(), pl_no: `  ${pl}  ` });
+  assert.equal(out.status, 200, JSON.stringify(out.data));
+
+  const n = await numbers(id);
+  assert.equal(n.co_no, co.toUpperCase());
+  assert.equal(n.pl_no, pl.toUpperCase());
+  assert.match(n.si_no, /^SI/, 'the invoice keeps the number it was handed');
+});
+
+test('one of the two can be moved without touching the other', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+  const before = await numbers(id);
+
+  await POST(admin, `/api/orders/${id}/numbers`, { pl_no: `PL-${unique('C')}` });
+  const after = await numbers(id);
+  assert.equal(after.co_no, before.co_no,
+    'a number not named is a number left where it was');
+  assert.notEqual(after.pl_no, before.pl_no);
+});
+
+test('the counters carry on from what was written', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const first = await anOrder(admin, store);
+  const on = stamp();
+
+  await POST(admin, `/api/orders/${first}/numbers`,
+    { co_no: `CO${on}800`, pl_no: `PL${on}700` });
+
+  const next = await anOrder(admin, store);
+  const n = await numbers(next);
+  assert.equal(n.co_no, `CO${on}801`);
+  assert.equal(n.pl_no, `PL${on}701`,
+    'each document counts for itself, from whatever it was last set to');
+});
+
+test('two orders cannot be made to share a number, and it says which', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const one = await anOrder(admin, store);
+  const two = await anOrder(admin, store);
+  const taken = await numbers(one);
+  const was = await numbers(two);
+
+  const clash = await POST(admin, `/api/orders/${two}/numbers`, { co_no: taken.co_no });
+  assert.equal(clash.status, 400, JSON.stringify(clash.data));
+  assert.match(clash.data.error, /already on another customer order/);
+  assert.equal((await numbers(two)).co_no, was.co_no,
+    'the one that lost keeps the number it had');
+
+  const clashPl = await POST(admin, `/api/orders/${two}/numbers`, { pl_no: taken.pl_no });
+  assert.equal(clashPl.status, 400, JSON.stringify(clashPl.data));
+  assert.match(clashPl.data.error, /already on another packing list/);
+});
+
+test('a number can be replaced but not rubbed out', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+  const was = await numbers(id);
+
+  const blank = await POST(admin, `/api/orders/${id}/numbers`, { co_no: '  ' });
+  assert.equal(blank.status, 400, JSON.stringify(blank.data));
+  assert.equal((await numbers(id)).co_no, was.co_no);
+});
+
+test('a counter sale has a receipt, not a customer order', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+  await POST(store, '/api/receive',
+    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 10 });
+  const sale = await POST(admin, '/api/till/sell',
+    { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 10_000 });
+  assert.equal(sale.status, 200, JSON.stringify(sale.data));
+
+  const nope = await POST(admin, `/api/orders/${sale.data.order_id}/numbers`,
+    { co_no: `CO-${unique('D')}` });
+  assert.equal(nope.status, 400, JSON.stringify(nope.data));
+  assert.match(nope.data.error, /receipt/);
+});
+
+test('the warehouse floor cannot renumber an order', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+
+  const nope = await POST(store, `/api/orders/${id}/numbers`, { co_no: 'CO-MINE-1' });
+  assert.equal(nope.status, 403, JSON.stringify(nope.data));
+});
+
+test('both of the order numbers are boxes where the order itself is opened', () => {
+  const app = fs.readFileSync(path.join(here, '..', 'public/app.js'), 'utf8');
+  const fn = app.slice(app.indexOf('async function openOrder'),
+                       app.indexOf('\n// ---', app.indexOf('async function openOrder')));
+  assert.match(fn, /id="on_co"/, 'the customer order number, which no document reopens');
+  assert.match(fn, /id="on_pl"/, 'and the packing list number beside it');
+  assert.match(fn, /o\.channel === 'b2b'/, 'never on a counter sale');
+
+  const sheet = app.slice(app.indexOf('function showPackingList'),
+                          app.indexOf('function officialReceipt'));
+  assert.match(sheet, /canEdit && packingNo/,
+    'and the packing list carries its own number as a box, as the invoice does');
+});
