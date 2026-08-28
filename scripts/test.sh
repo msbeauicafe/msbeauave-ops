@@ -115,6 +115,9 @@ node --test tests/revise-invoice.test.js
 echo "==> one account that ships on to somebody else"
 node --test tests/drop-ship.test.js
 
+echo "==> what actually goes in the box"
+node --test tests/revise-order.test.js
+
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js
 
