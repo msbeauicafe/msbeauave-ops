@@ -2522,14 +2522,19 @@ const docLines = (lines, blanks = 5, typed = false, goods = null, qtyToo = false
  * Prices, the totals, where to pay, and the two reminders the paper carries.
  */
 function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
-                            who = {}, shipping = 0, others = 0, orderNo = null }) {
+                            who = {}, shipping = 0, others = 0, orderNo = null,
+                            canEdit = false }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   return `
     <div class="doc cof">
       ${DOC_HEAD}
       <div class="title cof">CUSTOMER ORDER FORM</div>
       ${docParty(resellerName, issuedOn, orderNo || orderId, who,
-                 orderNo ? 'CUSTOMER ORDER NO.' : 'SALES ORDER NO.')}
+                 orderNo ? 'CUSTOMER ORDER NO.' : 'SALES ORDER NO.', false,
+                 // Only on a form for an order that exists. The basket preview
+                 // draws this same sheet before anything has been placed, and
+                 // there is no number there yet to correct.
+                 canEdit && !!orderNo)}
       <div class="duebox">Total Due (PHP)<b>${peso(amount ?? sub)}</b></div>
       <div style="clear:both"></div>
       ${docLines(lines)}
@@ -2556,13 +2561,56 @@ function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
 }
 
 // The same sheet, opened over the screen with the buttons that send it.
+/**
+ * The order form as it is handed over — and the one moment to correct the
+ * number on it.
+ *
+ * This sheet is shown once, straight after the order is placed, and goes into
+ * the chat window from here. So the number it carries is the number the
+ * reseller will hold, and if it has to match something already quoted to them
+ * it has to be changed now, before the picture is sent, rather than on a
+ * screen they will never see.
+ */
 function showInvoice(opts, over = false) {
+  const canEdit = opts.canEdit && !!opts.orderNo && !!opts.orderId;
   dialog(`${customerOrderForm(opts)}
     <div class="mt right">
+      ${canEdit ? '<span class="dim" id="inv_state"></span>' : ''}
       <button class="btn quiet" id="inv_save">⬇ Download JPEG</button>
-      <button class="btn" id="inv_done">Done</button></div>`, 'wide', over);
+      ${canEdit ? '<button class="btn" id="inv_keep">Save the number</button>' : ''}
+      <button class="btn ${canEdit ? 'quiet' : ''}" id="inv_done">Done</button></div>`,
+    'wide', over);
   wireSave('#inv_save', '.doc', `${opts.orderNo || opts.orderId}.jpg`);
   $('#inv_done').addEventListener('click', closeDialog);
+  if (!canEdit) return;
+
+  const box = $('.doc [data-docno]');
+  const keep = $('#inv_keep');
+  const said = () => box.value.trim().toUpperCase();
+  const restate = () => {
+    const empty = !said();
+    $('#inv_state').innerHTML = empty
+      ? `<span class="over">A form with no number on it is a form nobody can
+         quote back at you</span>` : '';
+    keep.disabled = empty || said() === opts.orderNo;
+  };
+  box.addEventListener('input', restate);
+  restate();
+
+  // Saved without closing. The sheet is about to be downloaded and sent, so
+  // what somebody wants next is to see the corrected number on it, not to
+  // find their way back to a document they have just been put back in front of.
+  keep.addEventListener('click', async () => {
+    keep.disabled = true;
+    try {
+      const out = await POST(`/api/orders/${opts.orderId}/numbers`, { co_no: said() });
+      opts.orderNo = out.co_no;
+      box.value = out.co_no;
+      notice(`This order is ${out.co_no} 🌸`, 'good');
+      opts.onSaved?.(out.co_no);
+    } catch (e) { whoops(e); }
+    restate();
+  });
 }
 
 /**
@@ -3975,6 +4023,11 @@ SCREENS.chatorders = async (page) => {
         issuedOn: out.invoice.issued_on,
         amount: out.invoice.amount, resellerName: picked.name, lines,
         who: picked,
+        canEdit: ['admin', 'office'].includes(user?.role),
+        // The panel behind is the same sheet, drawn live, and it quotes the
+        // number as well — left alone it would go on showing the one that was
+        // just corrected.
+        onSaved: (co) => { placedCo = co; drawPreview(); },
       });
     } catch (e) { whoops(e); } finally {
       $('#ch_place', workingBox).disabled = false;
