@@ -112,18 +112,28 @@ test('a price that is not set reads as missing, not as nothing owed', () => {
   const at = app.indexOf('SCREENS.pricelists = async');
   assert.ok(at > 0, 'there is a Pricelists screen');
   const screen = app.slice(at, app.indexOf('\n};', at));
-  assert.match(screen, /p\.prices\[c\] == null[\s\S]{0,80}class="over">—/,
-    'an unset price is a dash in the danger colour, never a blank cell that '
-    + 'reads as a zero');
+  // Now that the cell is a box, the dash is its placeholder and the colour
+  // comes from the stylesheet — but the point is unchanged: a price nobody
+  // has set must not read as a zero.
+  assert.match(screen, /p\.prices\[c\] == null \? 'unset' : ''/,
+    'a cell with no price behind it is marked as such');
+  const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\.cellbox\.unset::placeholder\s*\{[^}]*var\(--danger\)/,
+    'and its dash is in the danger colour, never a blank that reads as a zero');
   assert.match(screen, /prices not set|price\$\{/,
     'the screen counts what is missing, because that is the thing to act on');
-  // The search box and the gaps filter are inputs; the price cells must not
-  // be. Read-only means no editing of figures, not a screen with no controls.
-  const cells = screen.slice(screen.indexOf('...data.codes.map('),
+  // Typed into directly. This screen began read-only and the owner overrode
+  // that: the office keeps prices in a spreadsheet precisely because a
+  // spreadsheet lets you fix a column without opening eight hundred cards.
+  const cells = screen.slice(screen.indexOf('...codes.map('),
                              screen.indexOf("{ head: 'Retail'"));
-  assert.ok(!/<input|data-price|contenteditable/.test(cells),
-    'the grid is read-only — a price is changed on the product it belongs to, '
-    + 'where the change is deliberate and lands on one thing');
+  assert.match(cells, /class="cellbox money/, 'every price is typed into');
+  assert.match(cells, /placeholder="—"/,
+    'and an unset one still shows a dash rather than an empty box');
+  assert.match(screen, /class="cellbox code"/, 'so is the product code');
+  assert.match(screen, /settle\(box, plainOf\(before\)\)/,
+    'a refused save puts back what was there — a number on screen that is not '
+    + 'the number in the system is worse than no screen at all');
 });
 
 // VIP, STOCKIST and EXEC carry no prices at all. Showing them as three columns

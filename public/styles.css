@@ -897,6 +897,26 @@ label.sr {
 .doc .totals .figure { max-width: 96px; }
 @media print { .doc .figure { border-bottom: none; background: none; } }
 
+/* A cell you type into, in a table you read down.
+   Borderless until it is hovered or focused, so eight hundred rows read as a
+   price list rather than as a form; the box only announces itself when the
+   hand is on it. A price that is not set shows its dash placeholder in the
+   danger colour, because a missing price is the thing to spot. */
+.cellbox {
+  font: inherit; color: inherit; background: transparent;
+  border: 1px solid transparent; border-radius: 6px; padding: 3px 6px;
+  width: 100%; min-width: 74px;
+}
+.cellbox.money { text-align: right; }
+.cellbox.code { font-size: .82rem; color: var(--muted); min-width: 108px; }
+.cellbox:hover { border-color: var(--rose-soft); }
+.cellbox:focus {
+  outline: none; border-color: var(--rose-deep); background: #fff;
+  color: var(--ink);
+}
+.cellbox.unset::placeholder { color: var(--danger); opacity: 1; }
+.cellbox.saving { opacity: .45; pointer-events: none; }
+
 /* A table wider than the page. Nine price codes across is more than a laptop
    has, and the answer is to let the table scroll inside its own box rather
    than let the whole page scroll sideways under the menu. */
