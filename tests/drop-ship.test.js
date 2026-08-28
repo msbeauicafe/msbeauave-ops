@@ -163,3 +163,42 @@ test('the box and the DS line only appear for an account that has it', () => {
     'the printed form shows DS only when the order has somebody in it');
   assert.match(party, /<b>DS:<\/b>/, 'written the way the paper form writes it');
 });
+
+// Some weeks the same account buys for herself. The box being there is not
+// the same as the box being meant, so the tick — not the account — decides
+// whether a third party's name reaches the paper. Nothing pre-ticked, and
+// nothing typed into a box nobody has opened.
+test('the account having it on is not the same as this order using it', () => {
+  const at = app.indexOf('SCREENS.chatorders = async');
+  const screen = app.slice(at, app.indexOf('\nSCREENS.', at + 10));
+
+  const tick = screen.match(/<input type="checkbox" id="ch_dson"[^>]*>/);
+  assert.ok(tick, 'there is a tick to say this particular order goes on');
+  assert.doesNotMatch(tick[0], /\bchecked\b/,
+    'left alone the order is hers — a pre-ticked box is a name nobody chose');
+  assert.match(screen, /id="ch_ds"[^>]*\sdisabled/,
+    'and the name box stays shut until the tick opens it');
+
+  const read = screen.match(/const sendingOn = \(\) =>[\s\S]*?;\n/);
+  assert.ok(read, 'one reading of it, so the preview and the order agree');
+  assert.match(read[0], /#ch_dson[^\n]*checked/,
+    'and that reading asks the tick, not the account');
+});
+
+test('an order she keeps for herself carries no third party at all', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await stocked(admin, store);
+  const id = await anAccount(admin);
+  await POST(admin, `/api/resellers/${id}/dropship`, { on: true, to: 'JHEM' });
+
+  const order = await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 1 }] });
+  assert.equal(order.status, 200, JSON.stringify(order.data));
+  assert.equal(order.data.drop_ship, null,
+    'the usual name must not attach itself to an order nobody asked it of');
+
+  const o = await db.query('select drop_ship from orders where id = $1', [order.data.orderId]);
+  assert.equal(o.rows[0].drop_ship, null);
+  assert.equal((await rowOf(id)).drop_ship_to, 'JHEM',
+    'and her usual name is still remembered for the week she does send one on');
+});

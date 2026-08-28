@@ -3376,13 +3376,17 @@ SCREENS.chatorders = async (page) => {
       ${picked.drop_ship ? `
         <div class="panel">
           <h3>Sending it on</h3>
-          <div class="dim">This account buys to send on to somebody else, so
-            the order form carries their name beside hers. Whatever is typed
-            here fills this box the next time she orders.</div>
+          <div class="dim">This account buys for herself some weeks and to send
+            straight on to somebody else in others. Left alone this order is
+            hers. Tick it only when the goods go elsewhere, and that name
+            prints beside her own on the form.</div>
           <div class="row">
-            <div><label for="ch_ds">Drop ship to</label>
-              <input id="ch_ds" type="text" autocomplete="off"
-                value="${esc(picked.drop_ship_to || '')}" placeholder="Who it goes on to"></div>
+            <div style="flex:0 0 auto"><label class="dotkey" style="gap:8px">
+              <input type="checkbox" id="ch_dson"> Send this one on to somebody</label></div>
+            <div style="flex:2"><label for="ch_ds">Drop ship to</label>
+              <input id="ch_ds" type="text" autocomplete="off" disabled
+                value="${esc(picked.drop_ship_to || '')}"
+                placeholder="Who it goes on to"></div>
           </div>
         </div>` : ''}
       <div class="split">
@@ -3417,6 +3421,16 @@ SCREENS.chatorders = async (page) => {
       GET('/api/price-codes').then((rows) => { codes = rows; drawBasket(); }).catch(whoops);
     }
 
+    // Ticked or not is the question; the name is only the answer to it. One
+    // reading of both, so the paper on screen and the order that gets placed
+    // cannot come to different conclusions.
+    $('#ch_dson', workingBox)?.addEventListener('change', (e) => {
+      const box = $('#ch_ds', workingBox);
+      box.disabled = !e.target.checked;
+      if (e.target.checked && !box.value.trim()) box.value = picked.drop_ship_to || '';
+      if (e.target.checked) box.focus();
+      drawPreview();
+    });
     $('#ch_ds', workingBox)?.addEventListener('input', drawPreview);
     $('#ch_find', workingBox).addEventListener('input', drawGoods);
     $('#ch_place', workingBox).addEventListener('click', placeOrder);
@@ -3572,6 +3586,13 @@ SCREENS.chatorders = async (page) => {
   let placedAs = null;
   let placedCo = null;
 
+  // Empty unless this account has it on, the tick is in, and a name is typed.
+  // Returning '' rather than the account's boolean matters: `drop_ship` on a
+  // reseller is true/false and on a document is a name, and a document handed
+  // the boolean would print "DS: true".
+  const sendingOn = () => (picked?.drop_ship && $('#ch_dson', workingBox)?.checked
+    ? ($('#ch_ds', workingBox)?.value || '').trim() : '');
+
   const drawPreview = () => {
     const box = $('#ch_preview', workingBox);
     if (!box || !picked) return;
@@ -3586,9 +3607,7 @@ SCREENS.chatorders = async (page) => {
       // Shown as it will print, including whoever is in the Drop ship box at
       // this moment — the whole point of the preview is that what goes into
       // the chat is read here first.
-      who: picked.drop_ship
-        ? { ...picked, drop_ship: ($('#ch_ds', workingBox)?.value || '').trim() }
-        : picked,
+      who: { ...picked, drop_ship: sendingOn() || null },
     });
     const doc = box.firstElementChild;
     if (!doc) return;
@@ -3611,8 +3630,7 @@ SCREENS.chatorders = async (page) => {
     if (bare.length && !(await askedAndAnswered(bare))) return;
     $('#ch_place', workingBox).disabled = true;
     try {
-      const sendOn = picked.drop_ship
-        ? ($('#ch_ds', workingBox)?.value || '').trim() : '';
+      const sendOn = sendingOn();
       const out = await POST(`/api/resellers/${picked.id}/orders`, {
         lines: lines.map((l) => ({ sku: l.sku, qty: l.qty, code: l.code || null })),
         drop_ship: sendOn || null,
