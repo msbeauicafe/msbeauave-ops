@@ -897,6 +897,14 @@ label.sr {
 .doc .totals .figure { max-width: 96px; }
 @media print { .doc .figure { border-bottom: none; background: none; } }
 
+/* A table wider than the page. Nine price codes across is more than a laptop
+   has, and the answer is to let the table scroll inside its own box rather
+   than let the whole page scroll sideways under the menu. */
+.scrollx { overflow-x: auto; overscroll-behavior-x: contain; }
+.scrollx table { min-width: 100%; }
+.scrollx td, .scrollx th { white-space: nowrap; }
+.scrollx td:nth-child(2) { white-space: normal; min-width: 240px; }
+
 @media print { .dialog-x { display: none !important; } }
 
 /* ---------- the purchase order ----------
