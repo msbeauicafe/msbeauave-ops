@@ -2099,6 +2099,18 @@ SCREENS.orders = async (page) => {
 
 async function openOrder(id, reload) {
   const o = await GET(`/api/orders/${id}`);
+  // Correctable while the goods are still in the building, and only then: once
+  // an order is fulfilled the stock has left, and a screen cannot call it back.
+  const canEdit = ['admin', 'office'].includes(user?.role)
+    && o.channel === 'b2b' && ['placed', 'picking'].includes(o.status);
+  // The catalogue comes along so a blank row can offer what the warehouse
+  // actually holds. Fetched rather than assumed: if it does not arrive the
+  // dialog still opens, still corrects what is on the order, and simply has
+  // nothing to offer for adding something new.
+  const catalog = canEdit ? await GET('/api/wholesale/catalog').catch(() => null) : null;
+  const goods = catalog || [];
+  const SPARE = canEdit && goods.length ? 3 : 0;
+
   // The order dialog is where both of the order's own numbers can be written.
   // The invoice carries its number on the invoice and the packing list carries
   // its number on the sheet; the customer order form is handed over once, at
@@ -2131,16 +2143,51 @@ async function openOrder(id, reload) {
         </div>
       </div>` : ''}
     <h3>Pick in this order</h3>
-    <div class="dim">Soonest to expire first — that is what leaves the building.</div>
-    ${table(o.lines, [
-      { head: '#', cell: (_l, i) => '' },
-      { head: 'Product', cell: (l) => esc(l.name) },
-      { head: 'Batch', cell: (l) => `<b>${esc(l.batch_no)}</b>` },
-      { head: 'Expires', cell: (l) => onDay(l.expiry) },
-      { head: 'Qty', n: true, cell: (l) => count(l.qty) },
-      { head: 'Price', n: true, cell: (l) => peso(l.unit_price) },
-    ], 'No lines on this order.')}
-    <div class="right mt"><b>Total ${peso(o.total)}</b></div>
+    <div class="dim">Soonest to expire first — that is what leaves the building.${canEdit
+      ? ` Change what is going and what it costs here, and the stock, the
+          packing list and the invoice all move with it. Emptying a quantity
+          takes that product off the order; something added takes its batch
+          the same way, soonest to expire first, when it is saved.`
+      : ''}</div>
+    <div id="ol_box">
+    ${o.lines.length || SPARE ? `
+      <div class="scroll"><table>
+        <thead><tr>
+          <th>Product</th><th>Batch</th><th>Expires</th>
+          <th class="n">Qty</th><th class="n">Price</th><th class="n">Total</th>
+        </tr></thead>
+        <tbody>
+          ${o.lines.map((l) => `<tr>
+            <td>${esc(l.name)}</td>
+            <td><b>${esc(l.batch_no)}</b></td>
+            <td>${onDay(l.expiry)}</td>
+            <td class="n">${canEdit
+              ? `<input class="cellbox n" inputmode="numeric" data-sku="${esc(l.sku)}"
+                   data-qtyfor="${esc(String(l.id))}" value="${Number(l.qty)}">`
+              : count(l.qty)}</td>
+            <td class="n">${canEdit
+              ? `<input class="cellbox n" inputmode="decimal" data-line="${esc(String(l.id))}"
+                   value="${Number(l.unit_price).toFixed(2)}">`
+              : peso(l.unit_price)}</td>
+            <td class="n" data-linetotal="${esc(String(l.id))}">${peso(l.unit_price * l.qty)}</td>
+          </tr>`).join('')}
+          ${Array.from({ length: SPARE }, (_x, i) => `<tr>
+            <td><input class="cellbox" list="doc_goods" data-add="${i}"
+                  autocomplete="off" placeholder="Add a product"></td>
+            <td></td>
+            <td></td>
+            <td class="n"><input class="cellbox n" data-addqty="${i}"
+                  inputmode="numeric" disabled></td>
+            <td class="n" data-addprice="${i}"></td>
+            <td class="n" data-addtotal="${i}"></td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>${goodsList(goods)}`
+      : '<div class="none">No lines on this order.</div>'}
+    </div>
+    <div class="right mt"><b>Total <span id="ol_total">${peso(o.total)}</span></b></div>
+    ${canEdit ? `<div class="right"><span class="dim" id="ol_state"></span>
+      <button class="btn sm" id="ol_keep">Save the products</button></div>` : ''}
     <div class="mt right">
       <button class="btn quiet" id="a_packing">🖨 Packing list</button>
       ${o.status === 'placed' ? '<button class="btn" id="a_pick">Start picking</button>' : ''}
@@ -2149,7 +2196,7 @@ async function openOrder(id, reload) {
         <button class="btn stop" id="a_cancel">Cancel</button>` : ''}
       ${o.status === 'fulfilled' && !o.delivered_at
         ? '<button class="btn go" id="a_delivered">Mark delivered</button>' : ''}
-    </div>`);
+    </div>`, 'wide');
 
   const act = (sel, path) => $(sel)?.addEventListener('click', async () => {
     try {
@@ -2176,6 +2223,81 @@ async function openOrder(id, reload) {
     } catch (e) { whoops(e); button.disabled = false; }
   });
 
+  // The lines themselves. Same two calls the invoice makes and in the same
+  // order — prices before quantities, because both are judged against what has
+  // already been settled and the usual correction is a price going up while a
+  // quantity comes down.
+  if (canEdit) {
+    const box = $('#ol_box');
+    const each = sheetBoxes(box, goods, () => retotal());
+    const money = (el) => {
+      const n = Number(String(el?.value ?? '').replace(/[^0-9.]/g, ''));
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+    const asPlaced = [...o.lines.reduce((by, l) =>
+      by.set(l.sku, (by.get(l.sku) || 0) + Number(l.qty)), new Map())]
+      .map(([sku, qty]) => ({ sku, qty }));
+    const paid = Number(o.total || 0) - Number(o.balance ?? o.total ?? 0);
+
+    function retotal() {
+      let running = 0;
+      for (const price of $$('[data-line]', box)) {
+        const qty = wholeUnits($(`[data-qtyfor="${price.dataset.line}"]`, box));
+        const line = money(price) * qty;
+        running += line;
+        const cell = $(`[data-linetotal="${price.dataset.line}"]`, box);
+        if (cell) cell.textContent = peso(line);
+      }
+      // Something added here has no price of its own until it is saved: it
+      // takes the standing wholesale price, and the office corrects it after
+      // like any other line. Showing that now keeps the total honest.
+      each.added().forEach((g, i) => {
+        const line = Number(g.wholesale_price || 0) * g.qty;
+        running += line;
+        const price = $(`[data-addprice="${i}"]`, box);
+        const total = $(`[data-addtotal="${i}"]`, box);
+        if (price) price.textContent = peso(g.wholesale_price || 0);
+        if (total) total.textContent = peso(line);
+      });
+      const whole = running + Number(o.shipping || 0) + Number(o.others || 0);
+      $('#ol_total').textContent = peso(whole);
+      const empty = !each.picture().some((l) => l.qty > 0);
+      const short = paid > 0 && whole < paid;
+      $('#ol_state').innerHTML = empty
+        ? `<span class="over">An order with nothing on it is a cancellation —
+           use Cancel if that is what this is</span>`
+        : short
+          ? `<span class="over">${peso(paid)} has already been settled against
+             this order — it cannot come to less</span>` : '';
+      $('#ol_keep').disabled = empty || short;
+    }
+    $$('[data-line]', box).forEach((el) => {
+      el.addEventListener('input', retotal);
+      el.addEventListener('change', () => { el.value = money(el).toFixed(2); retotal(); });
+    });
+    retotal();
+
+    $('#ol_keep').addEventListener('click', async () => {
+      const button = $('#ol_keep');
+      button.disabled = true;
+      try {
+        await POST(`/api/orders/${id}/invoice`, {
+          lines: $$('[data-line]', box).map((el) => ({ id: el.dataset.line, price: money(el) })),
+        });
+        const now = each.picture().filter((l) => l.qty > 0);
+        const moved = now.length !== asPlaced.length || now.some(({ sku, qty }) =>
+          qty !== asPlaced.find((l) => l.sku === sku)?.qty);
+        const out = moved
+          ? await POST(`/api/orders/${id}/lines`, { lines: now })
+          : { total: null };
+        notice(`This order now comes to ${
+          out.total == null ? $('#ol_total').textContent : peso(out.total)} 🌸`, 'good');
+        closeDialog();
+        reload();
+      } catch (e) { whoops(e); button.disabled = false; }
+    });
+  }
+
   act('#a_pick', 'picking');
   act('#a_send', 'dispatch');
   act('#a_cancel', 'cancel');
@@ -2184,14 +2306,7 @@ async function openOrder(id, reload) {
   // Opened over the order rather than replacing it: the picking view above
   // carries batch and expiry, which is what the picker works from, and the
   // packing list is what travels with the box.
-  // Correctable while the goods are still in the building, and only then. The
-  // catalogue comes along so a blank row can offer what the warehouse holds;
-  // it is fetched rather than assumed, and a sheet whose catalogue did not
-  // arrive is still a sheet somebody can read and print.
-  const canEdit = ['admin', 'office'].includes(user?.role)
-    && ['placed', 'picking'].includes(o.status);
-  $('#a_packing')?.addEventListener('click', async () => {
-    const catalog = canEdit ? await GET('/api/wholesale/catalog').catch(() => null) : null;
+  $('#a_packing')?.addEventListener('click', () => {
     showPackingList({
       orderId: o.id, packingNo: o.pl_no,
       resellerName: o.reseller, placedAt: o.placed_at, who: o,
@@ -2391,16 +2506,20 @@ function sheetBoxes(root, goods = [], onChange = null) {
       const g = found(box);
       const i = box.dataset.add;
       const qty = $(`[data-addqty="${i}"]`, root);
+      // Not every sheet has a unit column to fill — the order dialog names the
+      // batch where a document names the unit — so this asks rather than
+      // assumes. A missing cell is a document that does not print that fact,
+      // not a mistake.
       const unit = $(`[data-addunit="${i}"]`, root);
       box.classList.toggle('named', !!g);
-      qty.disabled = !g;
-      unit.textContent = g?.unit_type || '';
+      if (qty) qty.disabled = !g;
+      if (unit) unit.textContent = g?.unit_type || '';
       if (g) {
         box.value = g.name;
-        if (!wholeUnits(qty)) qty.value = '1';
-        qty.focus();
-        qty.select();
-      } else { qty.value = ''; }
+        if (qty && !wholeUnits(qty)) qty.value = '1';
+        qty?.focus();
+        qty?.select();
+      } else if (qty) { qty.value = ''; }
       onChange?.();
     });
   });

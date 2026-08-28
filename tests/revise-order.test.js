@@ -250,6 +250,25 @@ test('the sheet only offers boxes while the goods are still in the building', ()
     'the tax block is typed here and kept on the account');
 });
 
+// The order dialog is where somebody is already looking at the products, so
+// it is where they should be able to change them — rather than being sent to
+// a document to correct what the document only reports.
+test('the products are corrected where the order itself is opened', () => {
+  const fn = app.slice(app.indexOf('async function openOrder'),
+                       app.indexOf('// A document as a file'));
+  assert.match(fn, /data-sku="\$\{esc\(l\.sku\)\}"/, 'a quantity on every line');
+  assert.match(fn, /data-line="\$\{esc\(String\(l\.id\)\)\}"/, 'and a price');
+  assert.match(fn, /list="doc_goods"/, 'and spare rows offering the catalogue');
+  assert.match(fn, /sheetBoxes\(box, goods/,
+    'read by the same one every other sheet reads through');
+  assert.match(fn, /o\.channel === 'b2b' && \['placed', 'picking'\]/,
+    'never on a counter sale, and never once the goods have gone');
+
+  const save = fn.slice(fn.indexOf("$('#ol_keep').addEventListener"));
+  assert.ok(save.indexOf('/invoice`') < save.indexOf('/lines`'),
+    'the money is settled first, so the paid floor is judged on the corrected price');
+});
+
 // The invoice and the packing list are the same order seen from two sides.
 // Correcting one and not the other would mean walking to a different screen
 // depending on which number was wrong, and two sheets that could disagree.
