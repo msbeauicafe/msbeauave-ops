@@ -406,3 +406,89 @@ button.al { cursor: pointer; }
 .sh-brandchips button span {
   display: inline-block; margin-left: 6px; font-size: .68rem; opacity: .65;
 }
+
+
+/* ===========================================================================
+   The desktop shop
+   ===========================================================================
+   This was drawn for a phone, and on a laptop it sat in the middle of the
+   glass as a 480px column with two thirds of the screen empty either side —
+   fine as a preview of the phone, wrong as the shop somebody actually buys
+   from at a desk.
+
+   Nothing here changes the markup. The page is one flex column of header,
+   page, nav, and every difference below is that column arranged for a wider
+   room: the bar of tabs moves off the bottom of the glass and up under the
+   header where a mouse expects it, the goods go from two across to five, and
+   the product opens as a card in the middle rather than as a sheet sliding up
+   from an edge that is nowhere near the pointer.
+
+   1000px, because that is where a browser window stops being a tall column
+   and starts being a wide one. Below it, everything is exactly as it was.
+   =========================================================================== */
+@media (min-width: 1000px) {
+  body { padding: 26px 0; background: var(--bg); }
+
+  .phone {
+    max-width: 1180px; border-radius: 18px;
+    min-height: calc(100vh - 52px);
+    box-shadow: 0 14px 50px rgba(158, 91, 123, .16);
+  }
+
+  /* Header, tabs, then the page: the order of a website rather than of a
+     phone, where the tabs live under the thumb. */
+  .sh-header { order: 1; padding: 16px 24px; gap: 18px; }
+  .sh-nav    { order: 2; }
+  .sh-page   { order: 3; }
+
+  .sh-header .logo-mark { width: 44px; height: 44px; }
+  .sh-search { max-width: 660px; padding: 11px 14px; }
+  .sh-search input { font-size: .95rem; }
+  .sh-cart { width: 44px; height: 44px; }
+
+  /* Off the bottom edge and under the header. A row of four icons stretched
+     across 1,180px is a row of four very lonely icons, so they sit together
+     in the middle at the size a mouse aims at rather than a thumb. */
+  .sh-nav {
+    position: static; justify-content: center; gap: 6px;
+    border-top: none; border-bottom: 1px solid var(--rose-soft);
+    padding: 0 24px;
+  }
+  .sh-nav button {
+    flex: 0 0 auto; flex-direction: row; gap: 9px; align-items: center;
+    font-size: .88rem; padding: 13px 20px; border-radius: 0;
+    border-bottom: 3px solid transparent; margin-bottom: -1px;
+  }
+  .sh-nav button:hover { color: var(--rose-deep); background: var(--rose-blush); }
+  .sh-nav button.on { border-bottom-color: var(--rose-deep); }
+  .sh-nav i, .sh-nav svg { width: 20px; height: 20px; }
+
+  /* Five across. Two was right for a phone and absurd here. */
+  .sh-feed { grid-template-columns: repeat(5, 1fr); gap: 14px; padding: 0 24px 24px; }
+  .sh-card { font-size: .82rem; }
+  .sh-empty { grid-column: 1 / -1; }
+
+  /* A rail holds more of a house before anybody has to push it. */
+  .sh-rail { gap: 14px; padding: 0 24px 6px; }
+  .sh-rail > .sh-card { flex: 0 0 206px; max-width: 206px; }
+  .sh-railmore { flex: 0 0 118px; }
+
+  .sh-wallet div { padding: 14px 10px; }
+  .sh-wallet b { font-size: .95rem; }
+  .sh-wallet span { font-size: .76rem; }
+  .sh-banner { margin: 16px 24px; padding: 26px 28px; }
+  .sh-banner h3 { font-size: 1.5rem; }
+  .sh-rowhead, .sh-housetop { padding-left: 24px; padding-right: 24px; }
+  .sh-chips { padding: 14px 24px; flex-wrap: wrap; overflow-x: visible; }
+  .sh-more { width: calc(100% - 48px); margin: 10px 24px 0; }
+
+  /* A product opens in the middle of the screen. A sheet sliding up from the
+     bottom edge is a phone gesture; on a desktop that edge is nowhere near
+     the pointer, and the thing it is showing you ends up in the corner. */
+  .sh-sheet { align-items: center; padding: 24px; }
+  .sh-sheet-inner {
+    max-width: 620px; border-radius: 16px; padding: 22px; max-height: 84vh;
+  }
+  .sh-sheet-inner .big-img { height: 340px; }
+  .sh-close { width: auto; min-width: 160px; float: right; padding: 10px 22px; }
+}

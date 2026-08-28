@@ -85,3 +85,42 @@ test('a house does not repeat its own name on every card', () => {
     'under a heading that already says the brand, printing it six more times '
     + 'is six copies of a word the eye has just read');
 });
+
+// The shop was drawn for a phone, and on a laptop it sat in the middle of the
+// glass as a 480px column with two thirds of the screen empty either side.
+// Fine as a preview of the phone; wrong as the shop somebody buys from at a
+// desk. Nothing about the markup changed — this is that same column arranged
+// for a wider room.
+test('a wide window gets a wide shop', () => {
+  const at = css.indexOf('@media (min-width: 1000px)');
+  assert.ok(at > 0, 'there is a desktop arrangement');
+  const wide = css.slice(at, css.length);
+
+  assert.match(wide, /\.phone\s*\{[^}]*max-width:\s*1180px/,
+    'the shell widens rather than staying a phone in the middle of a monitor');
+  assert.match(wide, /\.sh-feed\s*\{[^}]*repeat\(5, 1fr\)/,
+    'five products across, not two');
+
+  // The tabs live under the thumb on a phone and under the header on a
+  // desktop, where a mouse expects them. Ordered rather than moved, so the
+  // markup is the same document either way.
+  assert.match(wide, /\.sh-header\s*\{\s*order:\s*1/, 'header first');
+  assert.match(wide, /\.sh-nav\s*\{\s*order:\s*2/, 'then the tabs');
+  assert.match(wide, /\.sh-page\s*\{\s*order:\s*3/, 'then the page');
+  assert.match(wide, /\.sh-nav\s*\{[^}]*position:\s*static/,
+    'the bar comes off the bottom edge of the glass');
+
+  // A sheet sliding up from the bottom is a phone gesture; on a desktop that
+  // edge is nowhere near the pointer.
+  assert.match(wide, /\.sh-sheet\s*\{[^}]*align-items:\s*center/,
+    'a product opens in the middle of the screen');
+});
+
+test('the phone layout is untouched below the breakpoint', () => {
+  const at = css.indexOf('@media (min-width: 1000px)');
+  const before = css.slice(0, at);
+  assert.match(before, /\.phone\s*\{[^}]*max-width:\s*480px/,
+    'a phone still gets the column it was drawn for');
+  assert.match(before, /\.sh-nav\s*\{\s*\n?\s*position:\s*sticky;\s*bottom:\s*0/,
+    'with the tabs under the thumb');
+});
