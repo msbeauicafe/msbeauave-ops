@@ -899,20 +899,22 @@ label.sr {
 .doc .totals .figure { max-width: 96px; }
 /* A quantity sits under its heading; a name and a tax line run along the row.
    Same box either way — what changes is which way the writing goes. */
-.packing .figure.mid { text-align: center; max-width: 60px; }
+/* A quantity sits under its heading; a name and a tax line run along the row.
+   Same box either way — what changes is which way the writing goes. */
+.figure.mid { text-align: center; max-width: 60px; }
 .figure.wide { max-width: none; text-align: left; }
 /* A tax line reads label-then-answer along one line, the way it is written on
    the pad. Left at full width the box claims the whole block and drops the
    answer onto a line of its own, which turns a five-line block into ten. */
-.packing .party .figure { display: inline-block; width: 190px; }
+.figure.wide.party, .packing .party .figure { display: inline-block; width: 190px; }
 /* Once a blank row has a real product in it, it reads as a line rather than
    as something half typed. */
-.packing .figure.named { font-weight: 700; }
-.packing .figure.wide::placeholder { color: #b9b9b9; font-style: italic; }
-.packing .figure:disabled { border-bottom-style: none; background: transparent; }
+.figure.named { font-weight: 700; }
+.figure.wide::placeholder { color: #b9b9b9; font-style: italic; }
+.figure:disabled { border-bottom-style: none; background: transparent; }
 @media print {
   .doc .figure, .packing .figure { border-bottom: none; background: none; }
-  .packing .figure.wide::placeholder { color: transparent; }
+  .figure.wide::placeholder { color: transparent; }
 }
 
 /* A cell you type into, in a table you read down.

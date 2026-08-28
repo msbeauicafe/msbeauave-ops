@@ -244,8 +244,37 @@ test('the sheet only offers boxes while the goods are still in the building', ()
                           app.indexOf('function officialReceipt'));
   assert.match(sheet, /data-sku="\$\{esc\(l\.sku \|\| ''\)\}"/,
     'each line carries the product it is, so the sheet can be read back');
-  assert.match(sheet, /list="pk_goods"/,
+  assert.match(sheet, /list="doc_goods"/,
     'and a blank row offers what the warehouse actually holds');
   assert.match(sheet, /data-tax="\$\{key\}"/,
     'the tax block is typed here and kept on the account');
+});
+
+// The invoice and the packing list are the same order seen from two sides.
+// Correcting one and not the other would mean walking to a different screen
+// depending on which number was wrong, and two sheets that could disagree.
+test('the invoice corrects the same things, and reads them the same way', () => {
+  const doc = app.slice(app.indexOf('function showInvoiceDoc'),
+                        app.indexOf('function showPackingList'));
+  assert.match(doc, /docParty\([\s\S]*?canEdit && !!resellerId\)/,
+    'the tax block is typed here too, through the party block both sheets print');
+  const party = app.slice(app.indexOf('const docParty ='), app.indexOf('const docLines ='));
+  assert.match(party, /data-tax="\$\{key\}"/,
+    'and it is a box when the sheet says so, plain text when it does not');
+  assert.match(doc, /const canPick = canEdit && \['placed', 'picking'\]/,
+    'quantities close when the goods leave; prices stay open as long as the invoice does');
+  assert.match(doc, /sheetBoxes\(sheet, goods/,
+    'and the sheet is read by the one reading both documents share');
+
+  const packing = app.slice(app.indexOf('function showPackingList'),
+                            app.indexOf('function officialReceipt'));
+  assert.match(packing, /sheetBoxes\(sheet, goods/,
+    'a packing list and an invoice must not come to different answers');
+
+  // Prices are settled before quantities on purpose: both are judged against
+  // what has already been paid, and the usual correction is a price going up
+  // while a quantity comes down.
+  const save = doc.slice(doc.indexOf("$('#iv_keep').addEventListener"));
+  assert.ok(save.indexOf('/invoice`') < save.indexOf('/lines`'),
+    'the money is settled first, so the paid floor is judged on the corrected price');
 });

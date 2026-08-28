@@ -2306,7 +2306,92 @@ const TAX_LINES = [
   ['Business Address', 'business_address'],
 ];
 
-const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO.') => `
+// ---------------------------------------------------------------------------
+// The boxes a document grows once it can be corrected
+//
+// A packing list and an invoice are the same order seen from two sides, so
+// they answer the same question — how many of what is going out — and they
+// have to answer it the same way. The markup differs because the tables do;
+// the reading of it is here, once, so the two sheets cannot disagree.
+// ---------------------------------------------------------------------------
+
+// A quantity box holds whole units. Anything else typed into it is nothing,
+// and nothing is a line that is not going — which is a thing somebody may well
+// mean, so it is allowed rather than corrected back.
+const wholeUnits = (el) => {
+  const n = Math.trunc(Number(String(el?.value ?? '').replace(/[^0-9]/g, '')));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+/**
+ * Wires the quantity boxes and the blank-row pickers inside one document, and
+ * hands back a reading of what the sheet currently says.
+ *
+ * `goods` is the wholesale catalogue, so a blank row can only offer what the
+ * warehouse actually holds. Each row of the sheet is its own box, and a product
+ * picked from two deliveries has two rows: summing them is what the sheet
+ * means — this many of that product go out, however they were held.
+ */
+function sheetBoxes(root, goods = [], onChange = null) {
+  const byName = new Map(goods.map((g) => [g.name, g]));
+  const bySku = new Map(goods.map((g) => [g.sku, g]));
+  // The picker resolves what was typed to a real product before the row counts
+  // for anything: by name, as the list offers it, or by code for whoever knows
+  // the code and types it straight in.
+  const found = (el) => {
+    const said = (el?.value || '').trim();
+    return said ? byName.get(said) || bySku.get(said.toUpperCase()) || null : null;
+  };
+
+  $$('[data-add]', root).forEach((box) => {
+    box.addEventListener('change', () => {
+      const g = found(box);
+      const i = box.dataset.add;
+      const qty = $(`[data-addqty="${i}"]`, root);
+      const unit = $(`[data-addunit="${i}"]`, root);
+      box.classList.toggle('named', !!g);
+      qty.disabled = !g;
+      unit.textContent = g?.unit_type || '';
+      if (g) {
+        box.value = g.name;
+        if (!wholeUnits(qty)) qty.value = '1';
+        qty.focus();
+        qty.select();
+      } else { qty.value = ''; }
+      onChange?.();
+    });
+  });
+  if (onChange) {
+    $$('[data-sku], [data-addqty]', root)
+      .forEach((el) => el.addEventListener('input', onChange));
+  }
+
+  return {
+    added: () => $$('[data-add]', root).map((box) => {
+      const g = found(box);
+      const qty = wholeUnits($(`[data-addqty="${box.dataset.add}"]`, root));
+      return g && qty ? { ...g, qty } : null;
+    }).filter(Boolean),
+    // What goes out when this sheet is signed, by product — the shape
+    // revise_order reads, which is the whole picture rather than a list of
+    // changes: a product left off the sheet is a product that is not going.
+    picture() {
+      const by = new Map();
+      const put = (sku, qty) => by.set(sku, (by.get(sku) || 0) + qty);
+      $$('[data-sku]', root).forEach((el) => put(el.dataset.sku, wholeUnits(el)));
+      this.added().forEach((g) => put(g.sku, g.qty));
+      return [...by].map(([sku, qty]) => ({ sku, qty }));
+    },
+  };
+}
+
+// The catalogue a blank row offers, as a list the browser fills in from.
+const goodsList = (goods) => (goods.length ? `<datalist id="doc_goods">${goods.map((g) => `
+  <option value="${esc(g.name)}" label="${esc(g.sku)} · ${count(g.available)} on hand">
+  </option>`).join('')}</datalist>` : '');
+
+const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO.',
+                  typed = false) => `
   <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:6px;line-height:1.3">
     <div>
       <div style="font-weight:700;font-size:1.02rem">${esc(name || 'counter sale')}${
@@ -2316,7 +2401,10 @@ const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO
           <b>DS:</b> ${esc(who.drop_ship)}</span>` : ''}</div>
       ${TAX_LINES.map(([label, key]) => `
         <div style="font-size:.68rem"><b>${label}:</b>
-          ${esc(who?.[key] || '')}</div>`).join('')}
+          ${typed
+            ? `<input class="figure wide party" data-tax="${key}"
+                 value="${esc(who?.[key] || '')}">`
+            : esc(who?.[key] || '')}</div>`).join('')}
     </div>
     <div style="white-space:nowrap;font-size:.7rem">
       <div><b>DATE:</b> ${onDay(dateOn)}</div>
@@ -2335,7 +2423,17 @@ const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO
 // The box is styled to look like the number it replaces rather than like a
 // form field, so a sheet that is printed or saved as a picture reads as a
 // document either way.
-const docLines = (lines, blanks = 5, typed = false) => `
+// `typed` opens the money boxes and `qtyToo` the quantity ones. Two flags
+// rather than one because they close at different moments: a price stays
+// correctable for as long as the invoice exists, and a quantity stops the
+// moment the goods leave the building.
+const docLines = (lines, blanks = 5, typed = false, goods = null, qtyToo = false) => {
+  const spare = Math.max(0, blanks - lines.length);
+  // Somewhere to write what the order did not have on it. Only where there is
+  // a catalogue to pick from: a free-text row would be a product nobody can
+  // hold stock against.
+  const pickable = qtyToo && goods && goods.length ? Math.min(spare, 4) : 0;
+  return `
   <table class="lines">
     <thead><tr>
       <th style="width:88px">PCODE</th><th>PRODUCT DESCRIPTION</th>
@@ -2346,7 +2444,10 @@ const docLines = (lines, blanks = 5, typed = false) => `
       ${lines.map((l) => `<tr>
         <td class="c">${esc(l.code || '')}</td>
         <td><b>${esc(l.name)}</b></td>
-        <td class="c">${count(l.qty)}</td>
+        <td class="c">${qtyToo && l.id
+          ? `<input class="figure mid" inputmode="numeric" data-sku="${esc(l.sku || '')}"
+               data-qtyfor="${esc(String(l.id))}" value="${Number(l.qty)}">`
+          : count(l.qty)}</td>
         <td class="c">${esc(l.unit || '')}</td>
         <td class="n">${typed && l.id
           ? `<input class="figure" inputmode="decimal" data-line="${esc(String(l.id))}"
@@ -2354,10 +2455,21 @@ const docLines = (lines, blanks = 5, typed = false) => `
           : peso(l.price)}</td>
         <td class="n" data-linetotal="${esc(String(l.id ?? ''))}">${peso(l.price * l.qty)}</td>
       </tr>`).join('')}
-      ${Array.from({ length: Math.max(0, blanks - lines.length) },
+      ${Array.from({ length: pickable }, (_x, i) => `<tr>
+        <td class="c"></td>
+        <td><input class="figure wide" list="doc_goods" data-add="${i}"
+              autocomplete="off" placeholder="Add a product"></td>
+        <td class="c"><input class="figure mid" data-addqty="${i}"
+              inputmode="numeric" disabled></td>
+        <td class="c" data-addunit="${i}"></td>
+        <td class="n" data-addprice="${i}"></td>
+        <td class="n" data-addtotal="${i}"></td>
+      </tr>`).join('')}
+      ${Array.from({ length: spare - pickable },
         () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
     </tbody>
   </table>`;
+};
 
 /**
  * The CUSTOMER ORDER FORM: what a reseller is sent to agree to, before money.
@@ -2418,7 +2530,15 @@ function showInvoice(opts, over = false) {
  */
 function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
                           who = {}, shipping = 0, others = 0, over = false,
-                          invoiceNo = null, canEdit = false, onSaved = null }) {
+                          invoiceNo = null, canEdit = false, onSaved = null,
+                          catalog = null, resellerId = null, status = null }) {
+  // Correctable while the goods are still in the building. A price can be
+  // fixed on a sheet at any time — nothing physical follows it — but a
+  // quantity moves stock, and stock that has left cannot be called back by a
+  // document. So the money boxes and the quantity boxes have different
+  // lifetimes, and only the quantity ones close.
+  const canPick = canEdit && ['placed', 'picking'].includes(status);
+  const goods = canPick && catalog ? catalog : [];
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   const grand = sub + shipping + others;
   const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
@@ -2444,10 +2564,12 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       ${DOC_HEAD}
       <div class="title inv">INVOICE</div>
       ${docParty(resellerName, issuedOn, invoiceNo || orderId, who,
-                 invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.')}
+                 invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.',
+                 canEdit && !!resellerId)}
       <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
       <div style="clear:both"></div>
-      ${docLines(lines, 5, canEdit)}
+      ${docLines(lines, 5, canEdit, goods, canPick)}
+      ${goodsList(goods)}
       <div class="foot">
         <div class="mop">
           <div class="hd">PAYMENT DETAILS${payments.length ? '' : ' — TO FOLLOW PAYMENT'}</div>
@@ -2493,17 +2615,48 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
     return Number.isFinite(n) && n >= 0 ? n : 0;
   };
   const boxes = () => $$('[data-line]');
+  const sheet = $('.doc.inv');
+  const each = sheetBoxes(sheet, goods, () => retotal());
+  // How many of a line are going, which is the box if there is one and what
+  // was picked if there is not.
+  const going = (box) => {
+    const typedQty = $(`[data-qtyfor="${box.dataset.line}"]`, sheet);
+    return typedQty ? wholeUnits(typedQty) : Number(box.dataset.qty || 0);
+  };
+  // What was picked, by product — the same shape the sheet reads back, so
+  // "did anything move?" is one comparison rather than two. A product held on
+  // two batches is two lines and one entry here, as it is on the sheet.
+  const asPlaced = [...lines.reduce((by, l) =>
+    by.set(l.sku, (by.get(l.sku) || 0) + Number(l.qty)), new Map())]
+    .map(([sku, qty]) => ({ sku, qty }));
+  const moved = () => {
+    const now = each.picture().filter((l) => l.qty > 0);
+    return now.length !== asPlaced.length || now.some(({ sku, qty }) =>
+      qty !== asPlaced.find((l) => l.sku === sku)?.qty);
+  };
 
   // The totals follow the typing rather than waiting for a save, because the
   // figure somebody is checking is the Grand Total, not the line they are in.
   const retotal = () => {
     let running = 0;
     for (const box of boxes()) {
-      const line = read(box) * Number(box.dataset.qty || 0);
+      const line = read(box) * going(box);
       running += line;
-      const cell = $(`[data-linetotal="${box.dataset.line}"]`);
+      const cell = $(`[data-linetotal="${box.dataset.line}"]`, sheet);
       if (cell) cell.textContent = peso(line);
     }
+    // A row added here has no price of its own yet — it takes the standing
+    // wholesale price when it is saved, and the office corrects it after, the
+    // same as any other line. Showing that figure now keeps the Grand Total
+    // honest about what is being agreed to.
+    each.added().forEach((g, i) => {
+      const line = Number(g.wholesale_price || 0) * g.qty;
+      running += line;
+      const price = $(`[data-addprice="${i}"]`, sheet);
+      const total = $(`[data-addtotal="${i}"]`, sheet);
+      if (price) price.textContent = peso(g.wholesale_price || 0);
+      if (total) total.textContent = peso(line);
+    });
     const ship = read($('#iv_ship'));
     const oth = read($('#iv_oth'));
     const whole = running + ship + oth;
@@ -2511,13 +2664,18 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
     $('#iv_grand').textContent = peso(whole);
     $('#iv_bal').textContent = peso(whole - paid);
     $('.duebox b').textContent = peso(whole - paid);
-    // Money already taken is the floor. Saying so while they type beats a
-    // refusal after they press the button.
+    // Money already taken is the floor, and an invoice with nothing on it is a
+    // cancellation. Saying either while they type beats a refusal after they
+    // press the button.
     const short = whole < paid;
+    const empty = canPick && !each.picture().some((l) => l.qty > 0);
     $('#iv_state').innerHTML = short
       ? `<span class="over">${peso(paid)} has already been settled against this
-         invoice — it cannot come to less</span>` : '';
-    $('#iv_keep').disabled = short;
+         invoice — it cannot come to less</span>`
+      : empty
+        ? `<span class="over">An invoice with nothing on it is a cancellation —
+           cancel the order itself if that is what this is</span>` : '';
+    $('#iv_keep').disabled = short || empty;
   };
 
   $$('[data-line], #iv_ship, #iv_oth').forEach((el) => {
@@ -2531,11 +2689,33 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
     const button = $('#iv_keep');
     button.disabled = true;
     try {
-      const out = await POST(`/api/orders/${orderId}/invoice`, {
+      // Three things can have changed, and they are saved in the order that
+      // makes the refusals land in the right place.
+      //
+      // The tax block first: it belongs to the account rather than to this
+      // order, so it is worth keeping even if the figures are then refused,
+      // and it is what every later sheet of theirs prints.
+      const tax = {};
+      $$('[data-tax]', sheet).forEach((el) => { tax[el.dataset.tax] = el.value.trim(); });
+      if (Object.keys(tax).length
+          && TAX_LINES.some(([, k]) => (tax[k] || '') !== (who?.[k] || ''))) {
+        await POST(`/api/resellers/${resellerId}/tax`, tax);
+      }
+
+      // Prices before quantities. Both are judged against what has already
+      // been settled, and the common correction is a price going up while a
+      // quantity comes down — judged in that order the invoice clears the
+      // floor, judged the other way round it would be refused halfway.
+      // Quantities also keep whatever price the line is on, so the figure
+      // agreed here survives the second call.
+      let out = await POST(`/api/orders/${orderId}/invoice`, {
         lines: boxes().map((b) => ({ id: b.dataset.line, price: read(b) })),
         shipping: read($('#iv_ship')),
         others: read($('#iv_oth')),
       });
+      if (canPick && moved()) {
+        out = await POST(`/api/orders/${orderId}/lines`, { lines: each.picture() });
+      }
       notice(`${out.si_no || 'The invoice'} now comes to ${peso(out.total)} 🌸`, 'good');
       closeDialog();
       onSaved?.();
@@ -2564,13 +2744,11 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
   // ever added to a box at the door.
   const SPARE = canEdit ? Math.min(BLANKS, 4) : 0;
   const goods = canEdit && catalog ? catalog : [];
-  const byName = new Map(goods.map((g) => [g.name, g]));
-  const bySku = new Map(goods.map((g) => [g.sku, g]));
   // A blank row is a product picker until it has a product in it. The list is
   // the wholesale catalogue, so what can be added to a box is what the
   // warehouse actually holds.
   const picker = (i) => `
-    <td><input class="figure wide" list="pk_goods" data-add="${i}"
+    <td><input class="figure wide" list="doc_goods" data-add="${i}"
           autocomplete="off" placeholder="Add a product"></td>
     <td class="qty"><input class="figure mid" data-addqty="${i}"
           inputmode="numeric" disabled></td>
@@ -2644,9 +2822,7 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
         </div>
       </div>
     </div>
-    ${goods.length ? `<datalist id="pk_goods">${goods.map((g) => `
-      <option value="${esc(g.name)}" label="${esc(g.sku)} · ${count(g.available)} on hand">
-      </option>`).join('')}</datalist>` : ''}
+    ${goodsList(goods)}
     <div class="mt right">
       ${canEdit ? '<span class="dim" id="pk_state"></span>' : ''}
       <button class="btn quiet" id="pk_save">⬇ Download JPEG</button>
@@ -2659,61 +2835,11 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
 
   if (!canEdit) return;
 
-  // A quantity box holds whole units. Anything else typed into it is nothing,
-  // and nothing is a line that is not going — which is a thing somebody may
-  // well mean, so it is allowed rather than corrected back.
-  const whole = (el) => {
-    const n = Math.trunc(Number(String(el?.value ?? '').replace(/[^0-9]/g, '')));
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  };
-
-  // The picker resolves what was typed to a real product before the row counts
-  // for anything: by name, as the list offers it, or by code for whoever knows
-  // the code and types it straight in.
-  const found = (el) => {
-    const said = (el?.value || '').trim();
-    return said ? byName.get(said) || bySku.get(said.toUpperCase()) || null : null;
-  };
-
-  $$('[data-add]', $('.packing')).forEach((box) => {
-    box.addEventListener('change', () => {
-      const g = found(box);
-      const i = box.dataset.add;
-      const qty = $(`[data-addqty="${i}"]`);
-      const unit = $(`[data-addunit="${i}"]`);
-      qty.disabled = !g;
-      unit.textContent = g?.unit_type || '';
-      box.classList.toggle('named', !!g);
-      if (g) {
-        box.value = g.name;
-        if (!whole(qty)) qty.value = '1';
-        qty.focus();
-        qty.select();
-      } else { qty.value = ''; }
-      restate();
-    });
-  });
-  $$('[data-sku], [data-addqty]', $('.packing'))
-    .forEach((el) => el.addEventListener('input', restate));
-
-  // What the sheet currently says, as the order would be after saving it.
-  const picture = () => {
-    const by = new Map();
-    const put = (sku, qty) => by.set(sku, (by.get(sku) || 0) + qty);
-    // Each row of the sheet is its own box, and a product picked from two
-    // deliveries has two rows. Summing them is what the sheet means: this many
-    // of that product go out, however they were held.
-    $$('[data-sku]', $('.packing')).forEach((el) => put(el.dataset.sku, whole(el)));
-    $$('[data-add]', $('.packing')).forEach((box) => {
-      const g = found(box);
-      const qty = whole($(`[data-addqty="${box.dataset.add}"]`));
-      if (g && qty) put(g.sku, qty);
-    });
-    return [...by].map(([sku, qty]) => ({ sku, qty }));
-  };
+  const sheet = $('.packing');
+  const each = sheetBoxes(sheet, goods, () => restate());
 
   function restate() {
-    const going = picture().reduce((t, l) => t + l.qty, 0);
+    const going = each.picture().reduce((t, l) => t + l.qty, 0);
     $('#pk_state').innerHTML = going
       ? ''
       : `<span class="over">A sheet with nothing on it is a cancellation —
@@ -2730,12 +2856,12 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
       // than to this order, so they are worth keeping even if the quantities
       // are then refused — and they are what every later sheet prints.
       const tax = {};
-      $$('[data-tax]', $('.packing')).forEach((el) => { tax[el.dataset.tax] = el.value.trim(); });
+      $$('[data-tax]', sheet).forEach((el) => { tax[el.dataset.tax] = el.value.trim(); });
       if (Object.keys(tax).length
           && TAX_LINES.some(([, k]) => (tax[k] || '') !== (who?.[k] || ''))) {
         await POST(`/api/resellers/${resellerId}/tax`, tax);
       }
-      const out = await POST(`/api/orders/${orderId}/lines`, { lines: picture() });
+      const out = await POST(`/api/orders/${orderId}/lines`, { lines: each.picture() });
       notice(`${out.pl_no || 'The packing list'} now matches the box${
         out.si_no ? ` — ${out.si_no} comes to ${peso(out.total)}` : ''} 🌸`, 'good');
       closeDialog();
@@ -4313,16 +4439,22 @@ async function openReseller(id, reload) {
   // has already paid filled in against it.
   $$('[data-invoice]').forEach((b) => b.addEventListener('click', async () => {
     try {
+      const may = user?.role === 'admin' || user?.role === 'office';
+      // The catalogue only matters while quantities can still move, so it is
+      // fetched only then — and a sheet whose catalogue did not arrive is
+      // still a sheet somebody can read, correct the prices on, and print.
       const [o, payments] = await Promise.all([
         GET(`/api/orders/${b.dataset.invoice}`),
         GET(`/api/resellers/${id}/payments?order_id=${b.dataset.invoice}`).catch(() => []),
       ]);
+      const catalog = may && ['placed', 'picking'].includes(o.status)
+        ? await GET('/api/wholesale/catalog').catch(() => null) : null;
       showInvoiceDoc({
         over: true,
         orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments, who: o,
-        invoiceNo: o.si_no,
+        invoiceNo: o.si_no, status: o.status, catalog, resellerId: o.reseller_id,
         shipping: Number(o.shipping || 0), others: Number(o.others || 0),
-        canEdit: user?.role === 'admin' || user?.role === 'office',
+        canEdit: may,
         onSaved: () => openReseller(id, reload),
         lines: o.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
           price: l.unit_price, code: l.price_code, unit: l.unit_type })),
