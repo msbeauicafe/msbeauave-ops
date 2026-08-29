@@ -2593,6 +2593,12 @@ const goodsList = (goods) => (goods.length ? `<datalist id="doc_goods">${goods.m
   <option value="${esc(g.name)}" label="${esc(g.sku)} · ${count(g.available)} on hand">
   </option>`).join('')}</datalist>` : '');
 
+// Every one of these sheets is a piece of paper somebody sends or files, so
+// every one of them offers both ways off the screen: a picture for the chat
+// window, and the printer for the folder. The button is hidden on the paper
+// itself by the print stylesheet, along with the rest of the screen.
+const PRINT_BTN = '<button class="btn quiet" onclick="window.print()">🖨 Print</button>';
+
 const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO.',
                   typed = false, numberTyped = false) => `
   <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:6px;line-height:1.3">
@@ -2737,6 +2743,7 @@ function showInvoice(opts, over = false) {
     <div class="mt right">
       ${canEdit ? '<span class="dim" id="inv_state"></span>' : ''}
       <button class="btn quiet" id="inv_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
       ${canEdit ? '<button class="btn" id="inv_keep">Save the number</button>' : ''}
       <button class="btn ${canEdit ? 'quiet' : ''}" id="inv_done">Done</button></div>`,
     'wide', over);
@@ -2859,6 +2866,7 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
     <div class="mt right">
       ${canEdit ? '<span class="dim" id="iv_state"></span>' : ''}
       <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
       ${canEdit ? '<button class="btn" id="iv_keep">Save the changes</button>' : ''}
       <button class="btn ${canEdit ? 'quiet' : ''}" id="ivd_done">Done</button></div>`,
     'wide', over);
@@ -3095,7 +3103,7 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
     <div class="mt right">
       ${canEdit ? '<span class="dim" id="pk_state"></span>' : ''}
       <button class="btn quiet" id="pk_save">⬇ Download JPEG</button>
-      <button class="btn quiet" onclick="window.print()">🖨 Print</button>
+      ${PRINT_BTN}
       ${canEdit ? '<button class="btn" id="pk_keep">Save the changes</button>' : ''}
       <button class="btn ${canEdit ? 'quiet' : ''}" id="pk_done">Close</button>
     </div>`, 'wide');
@@ -3375,6 +3383,7 @@ function showPurchaseOrder(po, over = false) {
   })}
     <div class="mt right">
       <button class="btn quiet" id="po_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
       <button class="btn" id="po_done">Done</button></div>`, 'wide', over);
   wireSave('#po_save', '.doc', `${po.po_no}.jpg`);
   $('#po_done').addEventListener('click', closeDialog);
@@ -3523,6 +3532,7 @@ function showReceivingForm(f, over = false) {
   })}
     <div class="mt right">
       <button class="btn quiet" id="rf_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
       <button class="btn" id="rf_done">Done</button></div>`, 'wide', over);
   wireSave('#rf_save', '.doc', `${f.rf_no}.jpg`);
   $('#rf_done').addEventListener('click', closeDialog);
@@ -3543,6 +3553,7 @@ function showOR(r, reseller, paid = {}, over = false) {
   })}
     <div class="mt right">
       <button class="btn quiet" id="or_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
       <button class="btn" id="or_done">Done</button></div>`, 'wide', over);
   // The OR goes back into the same chat the payment was confirmed in, so it is
   // named after itself rather than the order it settles — one payment can
@@ -6030,7 +6041,7 @@ Salamat po! 🌸</div>
         <div id="hits"></div>
       </div>
       <div class="mt right">
-        <button class="btn quiet" onclick="window.print()">🖨 Print</button>
+        ${PRINT_BTN}
         <button class="btn" id="next">Next sale</button></div>`);
     $('#next').addEventListener('click', closeDialog);
 
