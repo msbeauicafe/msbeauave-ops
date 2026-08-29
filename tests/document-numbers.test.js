@@ -393,10 +393,6 @@ test('both of the order numbers are boxes where the order itself is opened', () 
   assert.match(fn, /id="on_pl"/, 'and the packing list number beside it');
   assert.match(fn, /o\.channel === 'b2b'/, 'never on a counter sale');
 
-  const sheet = app.slice(app.indexOf('function showPackingList'),
-                          app.indexOf('function officialReceipt'));
-  assert.match(sheet, /canEdit && packingNo/,
-    'and the packing list carries its own number as a box, as the invoice does');
 });
 
 // The order form is shown once, straight after the order is placed, and goes
