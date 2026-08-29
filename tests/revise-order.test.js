@@ -239,15 +239,6 @@ test('the sheet only offers boxes while the goods are still in the building', ()
     'the bench can read the sheet; correcting the order behind it is the office');
   assert.match(fn, /\['placed', 'picking'\]\.includes\(o\.status\)/,
     'and only while the stock is still held rather than gone');
-
-  const sheet = app.slice(app.indexOf('function showPackingList'),
-                          app.indexOf('function officialReceipt'));
-  assert.match(sheet, /data-sku="\$\{esc\(l\.sku \|\| ''\)\}"/,
-    'each line carries the product it is, so the sheet can be read back');
-  assert.match(sheet, /list="doc_goods"/,
-    'and a blank row offers what the warehouse actually holds');
-  assert.match(sheet, /data-tax="\$\{key\}"/,
-    'the tax block is typed here and kept on the account');
 });
 
 // The order dialog is where somebody is already looking at the products, so
@@ -267,6 +258,40 @@ test('the products are corrected where the order itself is opened', () => {
   const save = fn.slice(fn.indexOf("$('#ol_keep').addEventListener"));
   assert.ok(save.indexOf('/invoice`') < save.indexOf('/lines`'),
     'the money is settled first, so the paid floor is judged on the corrected price');
+});
+
+// The paper that travels with the box states what is in the box. It is not
+// where the box is decided.
+//
+// It was briefly both, written before the order itself could be corrected.
+// Now that it can, the sheet going back to read-only settles a question the
+// bench should never have been asked — and takes the last place where stock
+// could be moved from a document rather than from the order.
+test('the packing list is a document and not a form', () => {
+  const sheet = app.slice(app.indexOf('function showPackingList'),
+                          app.indexOf('function officialReceipt'));
+
+  for (const [what, pattern] of [
+    ['a quantity box', /data-sku=/],
+    ['a spare row to add a product', /data-add=/],
+    ['a picker to swap one', /data-swap=/],
+    ['a box for the tax block', /data-tax=/],
+    ['a box for its own number', /data-docno/],
+    ['a way to save any of it', /pk_keep|sheetBoxes/],
+  ]) {
+    assert.doesNotMatch(sheet, pattern, `the packing list still carries ${what}`);
+  }
+
+  // What it does have: the two ways off the screen and the way out.
+  assert.match(sheet, /id="pk_save"/, 'a picture for the chat window');
+  assert.match(sheet, /PRINT_BTN/, 'the printer for the folder');
+  assert.match(sheet, /id="pk_done"/, 'and a way to close it');
+
+  // And the order behind it is still where all of that lives.
+  const fn = app.slice(app.indexOf('async function openOrder'),
+                       app.indexOf('// A document as a file'));
+  assert.match(fn, /data-swap=/, 'the product is changed on the order');
+  assert.match(fn, /id="on_pl"/, 'and so is the packing list number');
 });
 
 // Every one of these sheets is a piece of paper somebody sends or files, so
@@ -341,11 +366,6 @@ test('the invoice corrects the same things, and reads them the same way', () => 
     'quantities close when the goods leave; prices stay open as long as the invoice does');
   assert.match(doc, /sheetBoxes\(sheet, goods/,
     'and the sheet is read by the one reading both documents share');
-
-  const packing = app.slice(app.indexOf('function showPackingList'),
-                            app.indexOf('function officialReceipt'));
-  assert.match(packing, /sheetBoxes\(sheet, goods/,
-    'a packing list and an invoice must not come to different answers');
 
   // Prices are settled before quantities on purpose: both are judged against
   // what has already been paid, and the usual correction is a price going up
