@@ -719,7 +719,15 @@ label.inline input { width: auto; }
 .doc .bank h5 { font-size: .68rem; margin-bottom: 5px; letter-spacing: .03em; }
 .doc .bank .b { font-weight: 700; margin-top: 3px; }
 .doc .mop { border: 1px solid #e8b9cc; font-size: .66rem; }
-.doc .mop .hd { text-align: center; font-weight: 700; padding: 4px; border-bottom: 1px solid #e8b9cc; }
+/* Filled, like every other band on the sheet. A heading that is only bold
+   reads as the first line of the box on paper; a heading with a wash behind it
+   reads as a heading, which is what the pad it replaces does and what somebody
+   comparing the two notices straight away. */
+.doc .mop .hd {
+  text-align: center; font-weight: 700; padding: 4px;
+  border-bottom: 1px solid #e8b9cc; background: #dbe6f7;
+}
+.doc.cof .mop .hd { background: #fbe2ee; }
 .doc .mop .slot { border-bottom: 1px solid #f0d3de; padding: 2px 8px; line-height: 1.2; }
 /* Five slots, because the paper has five and a reseller settles in
    instalments. They are the tallest thing on the sheet, so they are also
