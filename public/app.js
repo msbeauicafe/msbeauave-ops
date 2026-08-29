@@ -2097,7 +2097,17 @@ SCREENS.orders = async (page) => {
   repeat(load);
 };
 
-async function openOrder(id, reload) {
+/**
+ * One order, opened.
+ *
+ * `sheetEditable` is which desk it was opened at, not what the person may do:
+ * that is `canEdit` below, and it still decides everything on this dialog. The
+ * two screens that reach here want different things of the packing list —
+ * Pending customer order is the office working on an order that has not left,
+ * Wholesale orders is where the paper is printed for the bench — so the
+ * caller says which, and neither has to know how the sheet is built.
+ */
+async function openOrder(id, reload, { sheetEditable = false } = {}) {
   const o = await GET(`/api/orders/${id}`);
   // Correctable while the goods are still in the building, and only then: once
   // an order is fulfilled the stock has left, and a screen cannot call it back.
@@ -2316,12 +2326,13 @@ async function openOrder(id, reload) {
 
   // Opened over the order rather than replacing it: the picking view above
   // carries batch and expiry, which is what the picker works from, and the
-  // packing list is what travels with the box. It is read-only — the boxes
-  // are up there on the order, where changing something moves the stock.
+  // packing list is what travels with the box.
   $('#a_packing')?.addEventListener('click', () => {
     showPackingList({
       orderId: o.id, packingNo: o.pl_no,
       resellerName: o.reseller, placedAt: o.placed_at, who: o,
+      canEdit: canEdit && sheetEditable,
+      catalog, resellerId: o.reseller_id, onSaved: reload,
       // The board names the column unit_type; the document asks for unit.
       lines: o.lines.map((l) => ({ ...l, unit: l.unit_type })),
     });
@@ -3008,18 +3019,33 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
  * substitution or a short-pick gets written where the checker is already
  * looking, rather than in the margin.
  *
- * A document and not a form. It was briefly both — quantities, spare rows and
- * the tax block could all be typed here — and that was written before the
- * order itself could be corrected. Now that it can, this sheet going back to
- * being read-only costs nothing and settles a question the bench should never
- * have been asked: the paper that travels with the box is a statement of what
- * is in the box, not the place the box is decided. What is on it is changed on
- * the order (Pending customer order, Open) and on the invoice; this is printed
- * and handed over.
+ * Whether it takes typing is not a property of the sheet but of the desk it
+ * was opened at, so `canEdit` is passed in rather than worked out here.
+ * Pending customer order is the office's screen — orders taken and not yet out
+ * of the door, the hours when a chat message still changes what goes in the
+ * box — and there the sheet is worked on. Wholesale orders is where the paper
+ * is printed and handed over, and there it states what is in the box rather
+ * than deciding it. Same document, two desks, and the sheet does not have to
+ * know which one it is standing on.
  */
 function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
-                          packingNo = null }) {
+                          packingNo = null, canEdit = false, catalog = null,
+                          resellerId = null, onSaved = null }) {
   const BLANKS = Math.max(0, 8 - lines.length);
+  // Somewhere to write what was not on the order. Four is what the pad leaves
+  // room for once the real lines are on it, and four is more than anybody has
+  // ever added to a box at the door.
+  const SPARE = canEdit ? Math.min(BLANKS, 4) : 0;
+  const goods = canEdit && catalog ? catalog : [];
+  // A blank row is a product picker until it has a product in it. The list is
+  // the wholesale catalogue, so what can be added to a box is what the
+  // warehouse actually holds.
+  const picker = (i) => `
+    <td><input class="figure wide" list="doc_goods" data-add="${i}"
+          autocomplete="off" placeholder="Add a product"></td>
+    <td class="qty"><input class="figure mid" data-addqty="${i}"
+          inputmode="numeric" disabled></td>
+    <td class="unit" data-addunit="${i}"></td>`;
   dialog(`
     <div class="packing">
       <div class="rule"></div>
@@ -3038,12 +3064,18 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
           <div class="lbl" style="font-size:.85rem">${esc(resellerName || 'counter sale')}</div>
           ${TAX_LINES.map(([label, key]) => `
             <div class="lbl">${label}:
-              <span class="val">${esc(who?.[key] || '')}</span></div>`).join('')}
+              ${canEdit && resellerId
+                ? `<input class="figure wide" data-tax="${key}"
+                     value="${esc(who?.[key] || '')}">`
+                : `<span class="val">${esc(who?.[key] || '')}</span>`}</div>`).join('')}
         </div>
         <div style="white-space:nowrap">
           <div class="lbl">DATE: <span class="val">${onDay(placedAt)}</span></div>
           <div class="lbl">${packingNo ? 'PACKING LIST NO.' : 'SALES ORDER NO.'}:
-            <span class="val">${esc(String(packingNo || orderId))}</span></div>
+            ${canEdit && packingNo
+              ? `<input class="figure wide docno" data-docno autocomplete="off"
+                   value="${esc(String(packingNo))}">`
+              : `<span class="val">${esc(String(packingNo || orderId))}</span>`}</div>
           ${who?.drop_ship ? `<div class="lbl">DS:
             <span class="val">${esc(who.drop_ship)}</span></div>` : ''}
         </div>
@@ -3059,10 +3091,16 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
           ${lines.map((l) => `<tr>
             <td class="tick"><span class="box"></span></td>
             <td><b>${esc(l.name)}</b></td>
-            <td class="qty">${count(l.qty)}</td>
+            <td class="qty">${canEdit
+              ? `<input class="figure mid" inputmode="numeric"
+                   data-sku="${esc(l.sku || '')}" value="${Number(l.qty)}">`
+              : count(l.qty)}</td>
             <td class="unit">${esc(l.unit || '')}</td>
           </tr>`).join('')}
-          ${Array.from({ length: BLANKS }, () => `<tr>
+          ${Array.from({ length: SPARE }, (_x, i) => `<tr>
+            <td class="tick"><span class="box"></span></td>${picker(i)}
+          </tr>`).join('')}
+          ${Array.from({ length: BLANKS - SPARE }, () => `<tr>
             <td class="tick"><span class="box"></span></td><td></td><td></td><td></td>
           </tr>`).join('')}
         </tbody>
@@ -3080,13 +3118,58 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
         </div>
       </div>
     </div>
+    ${goodsList(goods)}
     <div class="mt right">
+      ${canEdit ? '<span class="dim" id="pk_state"></span>' : ''}
       <button class="btn quiet" id="pk_save">⬇ Download JPEG</button>
       ${PRINT_BTN}
-      <button class="btn" id="pk_done">Close</button>
+      ${canEdit ? '<button class="btn" id="pk_keep">Save the changes</button>' : ''}
+      <button class="btn ${canEdit ? 'quiet' : ''}" id="pk_done">Close</button>
     </div>`, 'wide');
   wireSave('#pk_save', '.packing', `${packingNo || orderId} PACKING LIST.jpg`);
   $('#pk_done').addEventListener('click', closeDialog);
+
+  if (!canEdit) return;
+
+  const sheet = $('.packing');
+  const each = sheetBoxes(sheet, goods, () => restate());
+
+  function restate() {
+    const going = each.picture().reduce((t, l) => t + l.qty, 0);
+    $('#pk_state').innerHTML = going
+      ? ''
+      : `<span class="over">A sheet with nothing on it is a cancellation —
+         cancel the order itself if that is what this is</span>`;
+    $('#pk_keep').disabled = !going;
+  }
+  restate();
+
+  $('#pk_keep').addEventListener('click', async () => {
+    const button = $('#pk_keep');
+    button.disabled = true;
+    try {
+      // The account's tax details first. They belong to the reseller rather
+      // than to this order, so they are worth keeping even if the quantities
+      // are then refused — and they are what every later sheet prints.
+      const tax = {};
+      $$('[data-tax]', sheet).forEach((el) => { tax[el.dataset.tax] = el.value.trim(); });
+      if (Object.keys(tax).length
+          && TAX_LINES.some(([, k]) => (tax[k] || '') !== (who?.[k] || ''))) {
+        await POST(`/api/resellers/${resellerId}/tax`, tax);
+      }
+      // The sheet's own number goes before the quantities, for the reason the
+      // invoice's does: it is a label, and nothing recalculates behind it.
+      const typedNo = $('[data-docno]', sheet)?.value.trim().toUpperCase();
+      if (typedNo && typedNo !== (packingNo || '')) {
+        await POST(`/api/orders/${orderId}/numbers`, { pl_no: typedNo });
+      }
+      const out = await POST(`/api/orders/${orderId}/lines`, { lines: each.picture() });
+      notice(`${typedNo || out.pl_no || 'The packing list'} now matches the box${
+        out.si_no ? ` — ${out.si_no} comes to ${peso(out.total)}` : ''} 🌸`, 'good');
+      closeDialog();
+      onSaved?.();
+    } catch (e) { whoops(e); button.disabled = false; }
+  });
 }
 
 // An official receipt, as the till prints it. Raised from the reseller's
@@ -3752,7 +3835,7 @@ SCREENS.pendingorders = async (page) => {
       : '';
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
-      () => openOrder(b.dataset.open, load).catch(whoops)));
+      () => openOrder(b.dataset.open, load, { sheetEditable: true }).catch(whoops)));
   };
 
   page.innerHTML = `
