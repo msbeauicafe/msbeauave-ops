@@ -3612,7 +3612,7 @@ function showOR(r, reseller, paid = {}, over = false) {
 // chat tab and being put back on the chat tab is right, and being put back on
 // the first tab every time is how somebody loses their place.
 let orderPanel = 'chatorders';
-let customerPanel = 'resellers';
+let customerPanel = 'reselleraccounts';
 
 /**
  * The price list, whole.
@@ -3800,10 +3800,10 @@ SCREENS.pricelists = async (page) => {
  */
 SCREENS.customers = async (page) => {
   const PANELS = [
-    ['resellers', 'Resellers'],
+    ['reselleraccounts', 'Resellers'],
     ['crm', 'Shop customers'],
   ];
-  if (!PANELS.some(([id]) => id === customerPanel)) customerPanel = 'resellers';
+  if (!PANELS.some(([id]) => id === customerPanel)) customerPanel = 'reselleraccounts';
 
   page.innerHTML = `
     <div class="subtabs">
@@ -3825,6 +3825,7 @@ SCREENS.customerorder = async (page) => {
   const PANELS = [
     ['chatorders', 'Chat order'],
     ['pendingorders', 'Pending customer order'],
+    ['resellers', 'Invoice'],
     ['orders', 'Packing list'],
   ];
   if (!PANELS.some(([id]) => id === orderPanel)) orderPanel = 'chatorders';
@@ -4329,7 +4330,15 @@ SCREENS.chatorders = async (page) => {
 // ===========================================================================
 // Resellers
 // ===========================================================================
-SCREENS.resellers = async (page) => {
+/**
+ * The reseller list, drawn twice for the two halves of the job.
+ *
+ * The same names either way — the difference is which half of the account
+ * opens behind them, and what the screen says it is for. Two copies of the
+ * list would be two lists to keep right; this is one, told where it is.
+ */
+const resellerList = (part) => async (page) => {
+  const acct = part === 'account';
   let term = '';
   const load = async () => {
     const all = await GET('/api/resellers');
@@ -4360,21 +4369,23 @@ SCREENS.resellers = async (page) => {
     ], 'No reseller accounts yet.');
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
-      () => openReseller(+b.dataset.open, load).catch(whoops)));
+      () => openReseller(+b.dataset.open, load, part).catch(whoops)));
   };
 
   page.innerHTML = `
-    <div class="head"><h2>Resellers</h2>
+    <div class="head"><h2>${acct ? 'Resellers' : 'Invoice'}</h2>
       <span class="hint">Whoever was invoiced most recently is at the top, and
-        stays there until they pay · Tier 1 pays first · Tier 2 gets terms ·
-        Tier 3 gets the best terms</span>
+        stays there until they pay${acct
+          ? ' · Tier 1 pays first · Tier 2 gets terms · Tier 3 gets the best terms'
+          : ' · open one to confirm a transfer, issue the receipt, or send the invoice again'
+        }</span>
       <div class="dotkey">
         <span><i class="blip"></i>owes money, not yet past due</span>
         <span><i class="blip late"></i>past due</span>
       </div></div>
     <div class="tools">
       <input type="search" id="find" placeholder="Search name or email…">
-      <button class="btn" id="add">＋ New reseller</button>
+      ${acct ? '<button class="btn" id="add">＋ New reseller</button>' : ''}
     </div>
     <div class="panel" id="list"></div>`;
 
@@ -4383,7 +4394,8 @@ SCREENS.resellers = async (page) => {
     load().catch(whoops);
   });
 
-  $('#add', page).addEventListener('click', () => {
+  // Opening an account is account work, so it is offered on that half only.
+  $('#add', page)?.addEventListener('click', () => {
     dialog(`
       <h3>New reseller</h3>
       <div class="row">
@@ -4420,7 +4432,28 @@ SCREENS.resellers = async (page) => {
   repeat(load, 15000);
 };
 
-async function openReseller(id, reload) {
+// What is owed and what has landed, in Customer order beside the orders it
+// answers; and who they are, under Customers beside the shop's own list.
+SCREENS.resellers = resellerList('money');
+SCREENS.reselleraccounts = resellerList('account');
+
+/**
+ * One reseller, in the half you came for.
+ *
+ * The account and the money against it are two jobs, and they were one very
+ * long dialog. Who they are — their terms, their picture, the tax block that
+ * prints on their paper, whether they ship on, and the record of both — is
+ * kept under Customers, beside the shop's own list. What is owed and what has
+ * landed — their papers, confirming a transfer, issuing the receipt, the
+ * invoices themselves — stays in Customer order, where the order it answers
+ * was taken.
+ *
+ * The name and the standing line head both, because whichever half you are in,
+ * the first question is still whether this account can order at all.
+ */
+async function openReseller(id, reload, part = 'account') {
+  const acct = part === 'account';
+  const money = part === 'money';
   const r = await GET(`/api/resellers/${id}`);
   dialog(`
     <h3>${esc(r.name)}</h3>
@@ -4440,9 +4473,10 @@ async function openReseller(id, reload) {
       theirs — money that arrived with nothing open left to pay. It is taken off
       their next invoice automatically, the moment it is raised.</div>` : ''}
 
-    ${r.status !== 'active' || !r.docs_verified
+    ${acct && (r.status !== 'active' || !r.docs_verified)
       ? '<div class="mt"><button class="btn go" id="d_approve">Approve this account</button></div>' : ''}
 
+    ${acct ? `
     <h3 class="mt">Terms</h3>
     <div class="row">
       <div><label>Tier</label><select id="d_tier">${[1, 2, 3].map((t) =>
@@ -4512,6 +4546,9 @@ async function openReseller(id, reload) {
         <button class="btn quiet" id="d_dssave">Save</button></div>
     </div>
 
+` : ''}
+
+    ${money ? `
     <h3 class="mt">Papers</h3>
     ${r.documents.length
       ? `<div class="dim">${r.documents.map((d) =>
@@ -4577,6 +4614,9 @@ async function openReseller(id, reload) {
           <button class="btn sm quiet" data-invoice="${i.order_id}">🖨 Invoice</button>` },
     ], 'No invoices yet.')}
 
+` : ''}
+
+    ${acct ? `
     <h3 class="mt">History</h3>
     <div class="dim">${r.events.slice(0, 10).map((e) =>
       `${when(e.at)} — <b>${esc(e.kind)}</b> ${esc(JSON.stringify(e.detail || {}))}`).join('<br>')
@@ -4585,7 +4625,7 @@ async function openReseller(id, reload) {
     ${r.credits?.length ? `<h3 class="mt">Credit ledger</h3>
       <div class="dim">${r.credits.map((c) =>
         `${when(c.at)} — <b>${Number(c.amount) > 0 ? '+' : ''}${peso(c.amount)}</b>
-          — ${esc(c.reason)}`).join('<br>')}</div>` : ''}`);
+          — ${esc(c.reason)}`).join('<br>')}</div>` : ''}` : ''}`);
 
   $('#d_approve')?.addEventListener('click', async () => {
     try {
@@ -4637,7 +4677,7 @@ async function openReseller(id, reload) {
     } catch (e) { whoops(e); }
   });
 
-  $('#d_tax').addEventListener('click', async () => {
+  $('#d_tax')?.addEventListener('click', async () => {
     try {
       await POST(`/api/resellers/${id}/tax`, {
         tax_type: $('#d_taxtype').value, trade_name: $('#d_trade').value,
@@ -4650,7 +4690,7 @@ async function openReseller(id, reload) {
     } catch (e) { whoops(e); }
   });
 
-  $('#d_terms').addEventListener('click', async () => {
+  $('#d_terms')?.addEventListener('click', async () => {
     try {
       await POST(`/api/resellers/${id}/terms`, {
         tier: +$('#d_tier').value, credit_limit: +$('#d_limit').value,
@@ -4671,7 +4711,7 @@ async function openReseller(id, reload) {
     } catch (e) { whoops(e); }
   });
 
-  $('#d_attach').addEventListener('click', async () => {
+  $('#d_attach')?.addEventListener('click', async () => {
     try {
       await POST(`/api/resellers/${id}/documents`,
         { kind: $('#d_kind').value, reference: $('#d_ref').value });
@@ -4720,7 +4760,7 @@ async function openReseller(id, reload) {
   // that is the button below, and it is a separate decision on purpose: four
   // transfers against one invoice should leave the reseller holding one
   // receipt, not four.
-  $('#acct_pay').addEventListener('click', async () => {
+  $('#acct_pay')?.addEventListener('click', async () => {
     const rows = $$('.payrow').map((row) => ({
       amount: +$('.pay_amt', row).value,
       paid_on: $('.pay_on', row).value,

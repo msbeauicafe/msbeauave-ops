@@ -43,38 +43,31 @@ test('an owner has one Customer order menu, not three', () => {
   }
 });
 
-test('the panels are the documents, in the order the work happens', () => {
+test('the panels are the four documents, in the order the work happens', () => {
   const at = app.indexOf('SCREENS.customerorder = async');
   assert.ok(at > 0, 'there is a Customer order screen');
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
-  assert.deepEqual(panels, ['chatorders', 'pendingorders', 'orders'],
-    'somebody messages, it is taken, the bench packs it');
+  assert.deepEqual(panels, ['chatorders', 'pendingorders', 'resellers', 'orders'],
+    'somebody messages, it is taken, the account is invoiced, the bench packs it');
 
   assert.match(screen, /SCREENS\[orderPanel\]/,
     'the panel is drawn by the screen it names, not by a copy of it');
 });
 
-// The account moved out of here and into Customers, which is where a person
-// is kept rather than where an order is taken from them.
-test('the reseller account is under Customers, and only there', () => {
+test('Customers carries the reseller account beside the shop list', () => {
   const at = app.indexOf('SCREENS.customers = async');
   assert.ok(at > 0, 'there is a Customers screen');
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
-  assert.deepEqual(panels, ['resellers', 'crm'],
+  assert.deepEqual(panels, ['reselleraccounts', 'crm'],
     'the wholesale accounts first, because this company is a distributor');
   assert.match(screen, /SCREENS\[customerPanel\]/,
     'the panel is drawn by the screen it names, not by a copy of it');
-  assert.match(app, /let customerPanel = 'resellers';/,
+  assert.match(app, /let customerPanel = 'reselleraccounts';/,
     'which panel is open is kept outside the screen function');
-
-  const order = app.slice(app.indexOf('SCREENS.customerorder = async'),
-    app.indexOf('\n};', app.indexOf('SCREENS.customerorder = async')));
-  assert.ok(!order.includes("'resellers'"),
-    'Customer order does not carry the account list as well — one place to look');
 
   const entries = [...adminMenu.matchAll(/\['([a-z]+)',\s*'[^']*',\s*'([^']+)'\]/g)]
     .map((m) => ({ id: m[1], label: m[2] }));
@@ -82,7 +75,50 @@ test('the reseller account is under Customers, and only there', () => {
   assert.equal(named.length, 1, 'exactly one entry is called Customers');
   assert.equal(named[0].id, 'customers');
   assert.equal(entries.filter((e) => e.id === 'resellers').length, 0,
-    'Resellers is a panel inside Customers now, not a menu of its own');
+    'Resellers is a panel, not a menu of its own');
+});
+
+// Who they are and what they owe are two jobs. The dialog is one function
+// drawing whichever half it was opened for, so a section cannot end up in
+// both halves or in neither.
+test('the account splits into the half you came for', () => {
+  const at = app.indexOf('async function openReseller');
+  assert.ok(at > 0, 'there is one reseller dialog');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn, /const acct = part === 'account';/);
+  assert.match(fn, /const money = part === 'money';/);
+
+  // Every heading in the dialog, and which half it is inside.
+  const halves = {};
+  let half = null;
+  for (const line of fn.split('\n')) {
+    if (/\$\{acct \? `/.test(line)) half = 'acct';
+    else if (/\$\{money \? `/.test(line)) half = 'money';
+    else if (/^\s*` : ''\}/.test(line)) half = null;
+    const h = line.match(/<h3 class="mt">([^<$]+)<\/h3>/);
+    if (h) halves[h[1].trim()] = half;
+  }
+
+  assert.deepEqual(halves, {
+    Terms: 'acct',
+    'Let this one through anyway': 'acct',
+    'Their picture': 'acct',
+    'For tax': 'acct',
+    'Sending it on': 'acct',
+    Papers: 'money',
+    'Confirm the bank payment': 'money',
+    'Issue the receipt': 'money',
+    Invoices: 'money',
+    History: 'acct',
+    'Credit ledger': 'acct',
+  }, 'the account under Customers, the money in Customer order');
+
+  // The list is drawn once and told which half it opens.
+  assert.match(app, /SCREENS\.resellers = resellerList\('money'\);/);
+  assert.match(app, /SCREENS\.reselleraccounts = resellerList\('account'\);/);
+  assert.match(app, /openReseller\(\+b\.dataset\.open, load, part\)/,
+    'the row opens the half its screen is for');
 });
 
 test('which panel is open survives a redraw', () => {
