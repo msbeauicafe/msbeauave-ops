@@ -2076,7 +2076,7 @@ SCREENS.orders = async (page) => {
     ], 'No orders here yet.');
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
-      () => openOrder(b.dataset.open, load).catch(whoops)));
+      () => openOrder(b.dataset.open, load, { readOnly: true }).catch(whoops)));
   };
 
   page.innerHTML = `
@@ -2097,11 +2097,20 @@ SCREENS.orders = async (page) => {
   repeat(load);
 };
 
-async function openOrder(id, reload) {
+/**
+ * One order, opened.
+ *
+ * `readOnly` is the screen it was opened from. Pending customer order is where
+ * an order is worked on; Wholesale orders is where the warehouse picks and
+ * sends what has already been decided, so it opens the same order to read.
+ * The stage buttons stay either way — starting a pick and dispatching are what
+ * that screen is for, and neither is editing.
+ */
+async function openOrder(id, reload, { readOnly = false } = {}) {
   const o = await GET(`/api/orders/${id}`);
   // Correctable while the goods are still in the building, and only then: once
   // an order is fulfilled the stock has left, and a screen cannot call it back.
-  const canEdit = ['admin', 'office'].includes(user?.role)
+  const canEdit = !readOnly && ['admin', 'office'].includes(user?.role)
     && o.channel === 'b2b' && ['placed', 'picking'].includes(o.status);
   // The catalogue comes along so a blank row can offer what the warehouse
   // actually holds. Fetched rather than assumed: if it does not arrive the
@@ -2117,7 +2126,8 @@ async function openOrder(id, reload) {
   // the moment it is placed, and is never reopened — so this is the only place
   // CO can be corrected, and PL sits beside it because a series is lined back
   // up by moving both together.
-  const mayNumber = ['admin', 'office'].includes(user?.role) && o.channel === 'b2b';
+  const mayNumber = !readOnly && ['admin', 'office'].includes(user?.role)
+    && o.channel === 'b2b';
   dialog(`
     <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
     <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
