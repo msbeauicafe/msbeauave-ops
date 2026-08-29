@@ -269,6 +269,24 @@ test('the products are corrected where the order itself is opened', () => {
     'the money is settled first, so the paid floor is judged on the corrected price');
 });
 
+// Every one of these sheets is a piece of paper somebody sends or files, so
+// every one of them has to offer both ways off the screen. Print was on the
+// packing list alone, which meant the invoice was a document you could only
+// photograph.
+test('every document offers the printer as well as the picture', () => {
+  const shown = [...app.matchAll(/id="(\w+_save)">⬇ Download JPEG<\/button>\s*\n\s*(\S+)/g)];
+  assert.ok(shown.length >= 6, `expected every sheet to be checked, found ${shown.length}`);
+  for (const [, which, next] of shown) {
+    assert.match(next, /PRINT_BTN/,
+      `${which} offers a picture and no way to print the thing`);
+  }
+
+  const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  const printing = css.slice(css.indexOf('body:has(#dialog) .shell'));
+  assert.match(printing.slice(0, 600), /\.veil:not\(#dialog\) \{ display: none/,
+    'a document opened over another must not print the one underneath it');
+});
+
 // A line whose product is wrong is not a line to empty and retype below it.
 test('the product on a line can be changed for another', () => {
   const fn = app.slice(app.indexOf('async function openOrder'),

@@ -377,6 +377,12 @@ tr:hover [data-person] b, [data-person]:hover b { color: var(--rose-deep); text-
   .shell { display: block; }
   body { background: #fff; }
   body:has(#dialog) .shell { display: none !important; }
+  /* A document opened over something else — the invoice over the account it
+     belongs to — leaves the one underneath in the page as a veil with no id,
+     fixed to the whole viewport with a dark ground behind it. On screen it is
+     covered; on paper it would be printed over the sheet. Only the one on top
+     is the thing being printed. */
+  .veil:not(#dialog) { display: none !important; }
   #dialog { position: static; background: none; padding: 0; display: block; }
   #dialog .dialog { border: 0; max-width: none; max-height: none; padding: 0; overflow: visible; }
   .receipt { border: 0; padding: 0; }
