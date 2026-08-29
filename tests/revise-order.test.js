@@ -326,6 +326,68 @@ test('the order is worked on from one screen and read from the other', () => {
   }
 });
 
+// A pad is never on its last page while somebody is still writing on it.
+//
+// The spare rows used to be a fixed three. Filling the third meant saving,
+// reopening and finding your place again to add a fourth — on a screen whose
+// whole purpose is taking an order down as it is being read out.
+test('the spare rows do not run out', () => {
+  const wire = app.slice(app.indexOf('function sheetBoxes'), app.indexOf('const goodsList'));
+  assert.match(wire, /const growIfLast = \(box\) =>/,
+    'a filled spare row grows the next one');
+  assert.match(wire, /if \(box !== rows\[rows\.length - 1\]\) return;/,
+    'and only the last one does, so filling an earlier row adds nothing');
+  assert.match(wire, /wirePicker\(\$\('\[data-add\]', fresh\)\)/,
+    'the row it grows is wired like the ones drawn with the sheet');
+  assert.match(wire, /if \(g\) growIfLast\(box\)/,
+    'a row is only spent once it holds a real product');
+});
+
+// A form that runs to a second page is not the form: the paper it replaces is
+// one sheet, and half a table on a page by itself is what somebody has to
+// apologise for when they hand it over.
+test('a long sheet is scaled onto one page rather than broken across two', () => {
+  const fn = app.slice(app.indexOf('function printOneSheet'), app.indexOf('const PRINT_BTN'));
+  // zoom, not transform. A transform is painted after layout, so the browser
+  // paginates the sheet at its full height and then draws the pieces shrunk —
+  // three pages of a form meant to be one, which is what this first did.
+  assert.match(fn, /doc\.style\.zoom = shrink < 1 \? shrink\.toFixed\(4\) : ''/,
+    'zoom changes the layout, so the page count follows it');
+  assert.doesNotMatch(fn, /style\.transform/,
+    'a transform leaves the pagination at full size');
+
+  // Measured and corrected, not calculated and hoped for: working it out from
+  // the unzoomed height came out seven pixels over, and seven pixels over is a
+  // second page carrying one line of a signature block.
+  assert.match(fn, /const got = doc\.getBoundingClientRect\(\)\.height;\s*\n\s*if \(got <= TALL\) break;/,
+    'it asks the browser what it actually got');
+  assert.match(fn, /shrink \*= \(TALL \/ got\) \* 0\.995/,
+    'and comes down until the answer fits, never settling on the boundary');
+  assert.match(fn, /shrink < 1/,
+    'never above 1 — a two-line invoice must not print an inch high');
+  assert.match(fn, /doc\.style\.width = `\$\{WIDE \/ shrink\}px`/,
+    'laid out wider by as much as it is shrunk, so it fills the sheet rather '
+    + 'than sitting in a column down the left of it');
+  assert.match(fn, /addEventListener\('afterprint', undo\)/, 'the sheet goes back afterwards');
+  assert.match(fn, /setTimeout\(undo, 3000\)/,
+    'including where afterprint never fires, which is most phones');
+
+  // A module's functions are not on window, so an inline onclick cannot see
+  // them. This was wired as one before the tests caught it.
+  assert.match(app, /const PRINT_BTN = '<button class="btn quiet" data-print>/,
+    'the button is marked, not wired inline');
+  assert.doesNotMatch(app, /onclick="printOneSheet/,
+    'an inline handler in a module is a button that does nothing');
+
+  const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  assert.match(css, /@page \{ margin: 10mm; \}/, 'margins the measurement can rely on');
+  // The buttons under a document are hidden on paper, but their row keeps its
+  // margin — and a sheet that fills the page exactly plus twelve pixels of
+  // nothing is a second page with no ink on it.
+  assert.match(css, /#dialog \.dialog > \.mt\.right \{ display: none !important; \}/,
+    'the action row goes too, not just the buttons in it');
+});
+
 // Every one of these sheets is a piece of paper somebody sends or files, so
 // every one of them has to offer both ways off the screen. Print was on the
 // packing list alone, which meant the invoice was a document you could only
