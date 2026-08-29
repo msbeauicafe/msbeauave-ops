@@ -283,15 +283,47 @@ test('the packing list is a document, wherever it is opened from', () => {
   assert.match(sheet, /PRINT_BTN/, 'the printer for the folder');
   assert.match(sheet, /id="pk_done"/, 'and a way to close it');
 
-  // The same at both desks, which is only true while neither can ask for
-  // anything else. One flag, once, is how the last version drifted apart.
+  // The sheet is handed nothing it could be made editable by, at any desk.
   const fn = app.slice(app.indexOf('async function openOrder'),
                        app.indexOf('// A document as a file'));
   const opened = fn.slice(fn.indexOf("$('#a_packing')"));
   assert.doesNotMatch(opened, /canEdit|catalog|onSaved/,
     'the sheet is handed nothing it could be made editable by');
-  assert.equal((app.match(/openOrder\(b\.dataset\.open, load\)/g) || []).length, 2,
-    'and both screens open the order the same way, with nothing to tell apart');
+});
+
+// One screen works, the other reads.
+//
+// Pending customer order is where an order that has not left is corrected.
+// Wholesale orders is where the warehouse picks and sends what has already
+// been decided — so it opens the same order with nothing to type in. The stage
+// buttons stay: starting a pick and dispatching are what that screen is for,
+// and neither of them is editing.
+test('the order is worked on from one screen and read from the other', () => {
+  const board = app.slice(app.indexOf('SCREENS.orders = async'),
+                          app.indexOf('/**\n * One order, opened.'));
+  assert.match(board, /openOrder\(b\.dataset\.open, load, \{ readOnly: true \}\)/,
+    'the picking screen opens an order to read');
+
+  const pending = app.slice(app.indexOf('SCREENS.pendingorders = async'),
+                            app.indexOf('SCREENS.chatorders = async'));
+  assert.match(pending, /openOrder\(b\.dataset\.open, load\)/,
+    'and the office screen opens it to work on');
+  assert.doesNotMatch(pending, /readOnly/,
+    'silence rather than false, so the working side cannot be shut by a typo');
+
+  // Saying so is not the same as it holding: the dialog has to fold the
+  // screen into both of the things it gates, the boxes and the numbers.
+  const fn = app.slice(app.indexOf('/**\n * One order, opened.'),
+                       app.indexOf('// A document as a file'));
+  assert.match(fn, /const canEdit = !readOnly &&/,
+    'a screen that reads cannot open the product, price or money boxes');
+  assert.match(fn, /const mayNumber = !readOnly &&/,
+    'nor the numbers on the paperwork');
+  // And what that screen is actually for is untouched.
+  for (const button of ['a_pick', 'a_send', 'a_cancel', 'a_packing']) {
+    assert.match(fn, new RegExp(`id="${button}"`),
+      `${button} is what the picking screen is for and must survive`);
+  }
 });
 
 // Every one of these sheets is a piece of paper somebody sends or files, so
