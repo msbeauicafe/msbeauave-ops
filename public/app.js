@@ -2696,7 +2696,14 @@ const docLines = (lines, blanks = 5, typed = false, goods = null, qtyToo = false
     <tbody>
       ${lines.map((l) => `<tr>
         <td class="c">${esc(l.code || '')}</td>
-        <td><b>${esc(l.name)}</b></td>
+        <td>${typed && l.id
+          // What the line is called, which is not what the line is: the sku
+          // underneath is untouched, so this can never make the paper disagree
+          // with the warehouse about what is in the box, only about what to
+          // call it. Emptied, it goes back to the product's own name.
+          ? `<input class="figure wide" data-notefor="${esc(String(l.id))}"
+               autocomplete="off" title="${esc(l.name)}" value="${esc(l.name)}">`
+          : `<b>${esc(l.name)}</b>`}</td>
         <td class="c">${qtyToo && l.id
           ? `<input class="figure mid" inputmode="numeric" data-sku="${esc(l.sku || '')}"
                data-qtyfor="${esc(String(l.id))}" value="${Number(l.qty)}">`
@@ -2730,8 +2737,9 @@ const docLines = (lines, blanks = 5, typed = false, goods = null, qtyToo = false
  */
 function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
                             who = {}, shipping = 0, others = 0, orderNo = null,
-                            canEdit = false }) {
+                            canEdit = false, catalog = null }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const goods = canEdit && catalog ? catalog : [];
   return `
     <div class="doc cof">
       ${DOC_HEAD}
@@ -2744,7 +2752,8 @@ function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
                  canEdit && !!orderNo)}
       <div class="duebox">Total Due (PHP)<b>${peso(amount ?? sub)}</b></div>
       <div style="clear:both"></div>
-      ${docLines(lines)}
+      ${docLines(lines, 5, canEdit, goods, canEdit)}
+      ${goodsList(goods)}
       <div class="foot">
         <div style="font-size:.68rem">
           <b>Reminders:</b>
@@ -2753,10 +2762,11 @@ function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
           ${BANK_DETAILS}
         </div>
         <div class="totals">
-          <div><span>Subtotal:</span><span>${peso(sub)}</span></div>
+          <div><span>Subtotal:</span><span data-cofsub>${peso(sub)}</span></div>
           <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
           <div><span>Others:</span><span>${peso(others)}</span></div>
-          <div class="grand"><span>Grand Total:</span><span>${peso(sub + shipping + others)}</span></div>
+          <div class="grand"><span>Grand Total:</span>
+            <span data-cofgrand>${peso(sub + shipping + others)}</span></div>
         </div>
       </div>
       <div class="sign1">
@@ -2785,37 +2795,100 @@ function showInvoice(opts, over = false) {
       ${canEdit ? '<span class="dim" id="inv_state"></span>' : ''}
       <button class="btn quiet" id="inv_save">⬇ Download JPEG</button>
       ${PRINT_BTN}
-      ${canEdit ? '<button class="btn" id="inv_keep">Save the number</button>' : ''}
+      ${canEdit ? '<button class="btn" id="inv_keep">Save the changes</button>' : ''}
       <button class="btn ${canEdit ? 'quiet' : ''}" id="inv_done">Done</button></div>`,
     'wide', over);
   wireSave('#inv_save', '.doc', `${opts.orderNo || opts.orderId}.jpg`);
   $('#inv_done').addEventListener('click', closeDialog);
   if (!canEdit) return;
 
-  const box = $('.doc [data-docno]');
+  // Scoped to the dialog on purpose. The chat-order screen draws this same
+  // sheet live into the panel behind — that is the whole point of the preview
+  // — so a bare '.doc.cof' finds the read-only one in the page and wires every
+  // box on this document to a form that has none.
+  const sheet = $('#dialog .doc.cof');
+  const box = $('[data-docno]', sheet);
   const keep = $('#inv_keep');
   const said = () => box.value.trim().toUpperCase();
-  const restate = () => {
+  const goods = opts.catalog || [];
+  const each = sheetBoxes(sheet, goods, () => restate());
+  const money = (el) => {
+    const n = Number(String(el?.value ?? '').replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  const asPlaced = [...opts.lines.reduce((by, l) =>
+    by.set(l.sku, (by.get(l.sku) || 0) + Number(l.qty)), new Map())]
+    .map(([sku, qty]) => ({ sku, qty }));
+
+  function restate() {
+    let running = 0;
+    for (const price of $$('[data-line]', sheet)) {
+      const qty = wholeUnits($(`[data-qtyfor="${price.dataset.line}"]`, sheet));
+      const line = money(price) * qty;
+      running += line;
+      const cell = $(`[data-linetotal="${price.dataset.line}"]`, sheet);
+      if (cell) cell.textContent = peso(line);
+    }
+    each.added().forEach((g, i) => {
+      const line = Number(g.wholesale_price || 0) * g.qty;
+      running += line;
+      const price = $(`[data-addprice="${i}"]`, sheet);
+      const total = $(`[data-addtotal="${i}"]`, sheet);
+      if (price) price.textContent = peso(g.wholesale_price || 0);
+      if (total) total.textContent = peso(line);
+    });
+    const whole = running + Number(opts.shipping || 0) + Number(opts.others || 0);
+    $('[data-cofsub]', sheet).textContent = peso(running);
+    $('[data-cofgrand]', sheet).textContent = peso(whole);
+    $('.duebox b', sheet).textContent = peso(whole);
+
     const empty = !said();
+    const nothing = !each.picture().some((l) => l.qty > 0);
     $('#inv_state').innerHTML = empty
       ? `<span class="over">A form with no number on it is a form nobody can
-         quote back at you</span>` : '';
-    keep.disabled = empty || said() === opts.orderNo;
-  };
+         quote back at you</span>`
+      : nothing
+        ? `<span class="over">A form with nothing on it is a cancellation —
+           cancel the order itself if that is what this is</span>` : '';
+    keep.disabled = empty || nothing;
+  }
   box.addEventListener('input', restate);
+  $$('[data-line], [data-notefor]', sheet).forEach((el) => el.addEventListener('input', restate));
+  $$('[data-line]', sheet).forEach((el) => el.addEventListener('change',
+    () => { el.value = money(el).toFixed(2); restate(); }));
   restate();
 
   // Saved without closing. The sheet is about to be downloaded and sent, so
-  // what somebody wants next is to see the corrected number on it, not to
-  // find their way back to a document they have just been put back in front of.
+  // what somebody wants next is to see the corrected form on it, not to find
+  // their way back to a document they have just been put back in front of.
+  //
+  // Four things in the order that makes each refusal land where it belongs:
+  // the number, which nothing else depends on; the names, which are only
+  // names; then prices before quantities, as everywhere else, because both are
+  // judged against what has been settled and the usual correction is a price
+  // going up while a quantity comes down.
   keep.addEventListener('click', async () => {
     keep.disabled = true;
     try {
-      const out = await POST(`/api/orders/${opts.orderId}/numbers`, { co_no: said() });
-      opts.orderNo = out.co_no;
-      box.value = out.co_no;
-      notice(`This order is ${out.co_no} 🌸`, 'good');
-      opts.onSaved?.(out.co_no);
+      if (said() !== opts.orderNo) {
+        const out = await POST(`/api/orders/${opts.orderId}/numbers`, { co_no: said() });
+        opts.orderNo = out.co_no;
+        box.value = out.co_no;
+      }
+      const notes = $$('[data-notefor]', sheet)
+        .map((el) => ({ id: el.dataset.notefor, description: el.value.trim() }));
+      if (notes.length) await POST(`/api/orders/${opts.orderId}/descriptions`, { lines: notes });
+
+      await POST(`/api/orders/${opts.orderId}/invoice`, {
+        lines: $$('[data-line]', sheet).map((el) => ({ id: el.dataset.line, price: money(el) })),
+      });
+      const now = each.picture().filter((l) => l.qty > 0);
+      const moved = now.length !== asPlaced.length || now.some(({ sku, qty }) =>
+        qty !== asPlaced.find((l) => l.sku === sku)?.qty);
+      if (moved) await POST(`/api/orders/${opts.orderId}/lines`, { lines: now });
+
+      notice(`${opts.orderNo} saved — ${$('[data-cofgrand]', sheet).textContent} 🌸`, 'good');
+      opts.onSaved?.(opts.orderNo);
     } catch (e) { whoops(e); }
     restate();
   });
@@ -4027,9 +4100,15 @@ SCREENS.chatorders = async (page) => {
       if (out.invoice) showInvoice({
         orderId: out.orderId, orderNo: out.co_no,
         issuedOn: out.invoice.issued_on,
-        amount: out.invoice.amount, resellerName: picked.name, lines,
+        amount: out.invoice.amount, resellerName: picked.name,
+        // Read back rather than reused: the basket carries no line ids, and
+        // every box on this sheet is keyed to one.
+        lines: (await GET(`/api/orders/${out.orderId}`)).lines.map((l) => ({
+          id: l.id, sku: l.sku, name: l.name, qty: l.qty,
+          price: l.unit_price, code: l.price_code, unit: l.unit_type })),
         who: picked,
         canEdit: ['admin', 'office'].includes(user?.role),
+        catalog: catalog || await GET('/api/wholesale/catalog').catch(() => null),
         // The panel behind is the same sheet, drawn live, and it quotes the
         // number as well — left alone it would go on showing the one that was
         // just corrected.
