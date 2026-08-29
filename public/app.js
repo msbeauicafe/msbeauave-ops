@@ -4061,11 +4061,13 @@ SCREENS.chatorders = async (page) => {
     box.innerHTML = basket.size ? [...basket.values()].map((l) => `
       <div class="pick">
         <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${
-          l.typed ? 'typed price' : l.code ? esc(l.code) : 'no PCODE'
-          }${l.unit ? ' · ' + esc(l.unit) : ''} · ${peso(l.price * l.qty)} for ${count(l.qty)}</span></span>
+          l.price === 0 ? 'FREE' : l.typed ? 'typed price' : l.code ? esc(l.code) : 'no PCODE'
+          }${l.unit ? ' · ' + esc(l.unit) : ''} · ${l.price === 0 ? 'no charge'
+            : peso(l.price * l.qty)} for ${count(l.qty)}</span></span>
         <select class="pcode" data-code="${esc(l.sku)}"
           title="Which agreed price this line is charged at">
-          <option value="">${l.typed ? 'typed price' : `no PCODE — ${plain(l.listed ?? l.price)}`}</option>
+          <option value="">${l.price === 0 ? 'free of charge'
+            : l.typed ? 'typed price' : `no PCODE — ${plain(l.listed ?? l.price)}`}</option>
           ${(codes || []).filter((c) => (l.prices || {})[c.code] != null)
             .map((c) => `<option value="${esc(c.code)}"
               ${!l.typed && c.code === l.code ? 'selected' : ''}>${esc(c.code)} — ${
@@ -4118,15 +4120,25 @@ SCREENS.chatorders = async (page) => {
     $$('[data-price]', box).forEach((i) => i.addEventListener('change', () => {
       const line = basket.get(i.dataset.price);
       // Typed with the commas it was shown with, most of the time.
-      const asked = Number(String(i.value).replace(/[^0-9.]/g, ''));
-      if (!Number.isFinite(asked) || asked <= 0) { drawBasket(); return; }
+      const said = String(i.value).replace(/[^0-9.]/g, '');
+      const asked = Number(said);
+      // Nought is a price. A buy-ten-free-one unit, a sunglasses giveaway, a
+      // sample sent along with the box — those go on the paper as lines at no
+      // charge, not as lines left off it, because the reseller signs for them
+      // and the warehouse has to pick them. So the only readings refused here
+      // are the ones that are not a number at all: an emptied box, which is
+      // somebody who cleared it rather than somebody who means free, and
+      // anything below nothing, which no invoice has ever said.
+      if (said === '' || !Number.isFinite(asked) || asked < 0) { drawBasket(); return; }
       const listed = Number(line.listed ?? line.price);
       const coded = Object.entries(line.prices || {})
         .find(([, v]) => Number(v) === asked);
       line.price = asked;
       // Typing a number that is exactly one of the codes is not a hand price;
-      // it is that code, and saying so keeps the paperwork honest.
-      if (coded) { line.code = coded[0]; line.typed = false; }
+      // it is that code, and saying so keeps the paperwork honest. Free is
+      // never that: no code means free, so it is always a hand price.
+      if (asked === 0) { line.code = ''; line.typed = true; }
+      else if (coded) { line.code = coded[0]; line.typed = false; }
       else if (asked === listed) { line.code = ''; line.typed = false; }
       else { line.code = ''; line.typed = true; }
       drawBasket();
@@ -4198,7 +4210,12 @@ SCREENS.chatorders = async (page) => {
   async function placeOrder() {
     if (!basket.size) return notice('Add what they ordered first.', 'bad');
     const lines = [...basket.values()];
-    const bare = lines.filter((l) => !l.code && Object.keys(l.prices || {}).length);
+    // The same reading the warning on screen uses. A line with a hand price is
+    // not a line missing a code: the price was chosen, and asking about it
+    // again after somebody has typed it is asking them to defend their own
+    // figure.
+    const bare = lines.filter((l) => !l.code && !l.typed
+      && Object.keys(l.prices || {}).length);
     if (bare.length && !(await askedAndAnswered(bare))) return;
     $('#ch_place', workingBox).disabled = true;
     try {
@@ -4210,6 +4227,30 @@ SCREENS.chatorders = async (page) => {
       if (sendOn) picked.drop_ship_to = sendOn;
       placedAs = out.orderId;
       placedCo = out.co_no;
+
+      // A price typed into the basket is the price this order is on, and until
+      // now it was not: place_order takes products, quantities and codes, and
+      // the money belongs to the invoice, so a hand price stopped at the edge
+      // of the screen and the order went out at the listed one. It is applied
+      // here, the moment the order exists and before anybody is shown a total,
+      // through the same correction the office uses afterwards.
+      //
+      // By product rather than by line: one product held across two deliveries
+      // is two lines, and the price typed against the product is the price of
+      // every unit of it going out.
+      const handed = new Map(lines.filter((l) => l.typed).map((l) => [l.sku, l.price]));
+      // Read back rather than reused: the basket carries no line ids, and both
+      // the correction above and every box on the sheet below are keyed to one.
+      let now = handed.size || out.invoice
+        ? await GET(`/api/orders/${out.orderId}`) : null;
+      if (handed.size) {
+        const repriced = now.lines.filter((l) => handed.has(l.sku))
+          .map((l) => ({ id: l.id, price: handed.get(l.sku) }));
+        if (repriced.length) {
+          await POST(`/api/orders/${out.orderId}/invoice`, { lines: repriced });
+          now = await GET(`/api/orders/${out.orderId}`);
+        }
+      }
       basket.clear();
       drawBasket();
       $('#ch_order_out', workingBox).innerHTML =
@@ -4224,10 +4265,10 @@ SCREENS.chatorders = async (page) => {
       if (out.invoice) showInvoice({
         orderId: out.orderId, orderNo: out.co_no,
         issuedOn: out.invoice.issued_on,
-        amount: out.invoice.amount, resellerName: picked.name,
-        // Read back rather than reused: the basket carries no line ids, and
-        // every box on this sheet is keyed to one.
-        lines: (await GET(`/api/orders/${out.orderId}`)).lines.map((l) => ({
+        // The order as it stands, which is not what was invoiced a moment ago
+        // if a hand price has just been applied to it.
+        amount: now?.total ?? out.invoice.amount, resellerName: picked.name,
+        lines: (now.lines || []).map((l) => ({
           id: l.id, sku: l.sku, name: l.name, qty: l.qty,
           price: l.unit_price, code: l.price_code, unit: l.unit_type })),
         who: picked,
