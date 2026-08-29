@@ -395,7 +395,15 @@ tr:hover [data-person] b, [data-person]:hover b { color: var(--rose-deep); text-
   .doc, .packing, .receipt { break-inside: avoid; page-break-inside: avoid; }
   .doc table, .packing table { break-inside: avoid; page-break-inside: avoid; }
   .doc tr, .packing tr { break-inside: avoid; page-break-inside: avoid; }
-  #dialog .dialog { border: 0; max-width: none; max-height: none; padding: 0; overflow: visible; }
+  /* The white border round the sheet, which @page no longer provides. Same
+     10mm, so what printOneSheet() measures against is what comes out. */
+  #dialog .dialog { border: 0; max-width: none; max-height: none; padding: 10mm; overflow: visible; }
+  /* A form's headings and column bands are the form. A printer dropping them
+     to save ink hands the reseller a different document from the one that was
+     read on screen and approved, so it is told not to. */
+  .doc, .packing, .receipt, .doc *, .packing *, .receipt * {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
   .receipt { border: 0; padding: 0; }
 }
 
@@ -658,9 +666,19 @@ label.inline input { width: auto; }
 }
 /* Blank rows so the sheet looks like the pad it replaces, and so anything
    added by hand at the bench has somewhere to go. */
-.packing .sign { display: flex; justify-content: space-around; margin-top: 16px; text-align: center; }
+/* Somewhere to actually sign.
+   
+   The rule used to sit under the typed name, which left the only blank space
+   above it occupied by the name itself — a signature line with the name
+   already written on it. It is the other way round on every form anybody has
+   ever signed: a clear space, the rule, and the printed name beneath it saying
+   who the signature above should belong to. The space is 13mm, which is what a
+   hand needs. */
+.packing .sign { display: flex; justify-content: space-around; margin-top: 20px; text-align: center; }
 .packing .sign .who-line { font-size: .68rem; }
-.packing .sign .nm { font-weight: 700; border-bottom: 1px solid #000; padding: 0 26px 2px; }
+.packing .sign .nm {
+  font-weight: 700; border-top: 1px solid #000; padding: 2px 26px 0; margin-top: 13mm;
+}
 .packing .sign .role { color: #444; font-size: .62rem; margin-top: 2px; }
 .packing .sign .cap { font-weight: 700; font-size: .64rem; margin-top: 4px; }
 
@@ -707,8 +725,14 @@ label.inline input { width: auto; }
    instalments. They are the tallest thing on the sheet, so they are also
    where the room for a longer order has to come from. */
 .doc .mop .slot b { display: block; }
-.doc .sign1 { text-align: center; margin-top: 12px; font-size: .68rem; }
-.doc .sign1 .nm { font-weight: 700; }
+/* The same room to sign on the order form, the invoice and the receipt. The
+   rule is drawn here rather than left to the name's own underline, so a sheet
+   with a long name and one with a short name are signed on the same width. */
+.doc .sign1 { text-align: center; margin-top: 14px; font-size: .68rem; }
+.doc .sign1 .nm {
+  font-weight: 700; border-top: 1px solid #000; margin: 13mm auto 0; padding-top: 2px;
+  width: 62mm;
+}
 .doc .sign1 .cap { font-weight: 700; margin-top: 3px; }
 
 /* ---------- picking a reseller the way you pick a face on the clock ----------
@@ -933,13 +957,28 @@ label.sr {
 .figure.named { font-weight: 700; }
 .figure.wide::placeholder { color: #b9b9b9; font-style: italic; }
 .figure:disabled { border-bottom-style: none; background: transparent; }
-/* Margins the printer can honour on short bond, long bond or A4 alike, so the
-   measurement printOneSheet() scales against is the one that comes out. */
-@page { margin: 10mm; }
+/* No margin on the page, and the margin put on the sheet instead.
+   
+   Not a preference: a page margin is where the browser prints its own header
+   and footer — the date, the tab's title, the URL, "1/1" — across the top and
+   bottom of a document that goes to a reseller. Chrome leaves them off when
+   the page has no margin of its own, so the white border round the form is
+   given by the dialog below rather than by the printer. */
+@page { margin: 0; }
 
 @media print {
   .doc .figure, .packing .figure { border-bottom: none; background: none; }
   .figure.wide::placeholder { color: transparent; }
+
+  /* The sheet is as tall as the paper — printOneSheet gives it the height — so
+     the space left over after the table goes above the signatures rather than
+     below them, and they sit at the foot where a signature sits.
+     
+     Down here rather than with the other print rules on purpose: this has the
+     same specificity as the .packing .sign margin it is overriding, and that
+     one is declared further up the file. Equal weight, so the last one wins. */
+  .doc, .packing { display: flex; flex-direction: column; }
+  .packing .sign, .doc .sign1 { margin-top: auto; }
 }
 
 /* A cell you type into, in a table you read down.

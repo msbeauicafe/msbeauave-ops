@@ -380,12 +380,42 @@ test('a long sheet is scaled onto one page rather than broken across two', () =>
     'an inline handler in a module is a button that does nothing');
 
   const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
-  assert.match(css, /@page \{ margin: 10mm; \}/, 'margins the measurement can rely on');
   // The buttons under a document are hidden on paper, but their row keeps its
   // margin — and a sheet that fills the page exactly plus twelve pixels of
   // nothing is a second page with no ink on it.
   assert.match(css, /#dialog \.dialog > \.mt\.right \{ display: none !important; \}/,
     'the action row goes too, not just the buttons in it');
+
+  // What comes out of the printer has to be the document that was read on
+  // screen and approved, not a version of it the browser decided on.
+  assert.match(css, /@page \{ margin: 0; \}/,
+    'no page margin, because a page margin is where the browser prints the '
+    + 'date, the URL and "1/1" across a document going to a reseller');
+  assert.match(css, /#dialog \.dialog \{[^}]*padding: 10mm/,
+    'the white border round the sheet is given by the sheet instead');
+  assert.match(css, /print-color-adjust: exact/,
+    'and the headings and column bands are not dropped to save ink');
+
+  // Room to sign, at the foot of the paper.
+  assert.match(css, /\.packing \.sign \.nm \{[^}]*border-top: 1px solid #000/,
+    'the rule goes above the name, not under it — a signature line with the '
+    + 'name already written on it is not a signature line');
+  assert.match(css, /\.packing \.sign \.nm \{[^}]*margin-top: 13mm/,
+    'with a hand\'s width of space over it');
+  const pushed = css.indexOf('.packing .sign, .doc .sign1 { margin-top: auto; }');
+  assert.ok(pushed > -1, 'the signatures are pushed to the foot of the page');
+  assert.ok(pushed > css.indexOf('.packing .sign {'),
+    'and declared after the margin it overrides — equal specificity, so the '
+    + 'one further down the file is the one that wins');
+
+  const fn2 = app.slice(app.indexOf('function printOneSheet'), app.indexOf('const PRINT_BTN'));
+  assert.match(fn2, /doc\.style\.minHeight = `\$\{TALL \/ shrink\}px`/,
+    'the sheet is as tall as the paper, or there is nothing to push against');
+  assert.ok(fn2.indexOf('doc.style.minHeight =') > fn2.indexOf('shrink *= (TALL / got)'),
+    'set after the fitting, or the sheet measures as its own minimum and '
+    + 'shrinks itself trying to fit it');
+  assert.match(fn2, /minHeight: doc\.style\.minHeight/,
+    'and put back with the rest when the printing is done');
 });
 
 // Every one of these sheets is a piece of paper somebody sends or files, so

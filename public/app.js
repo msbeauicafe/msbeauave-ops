@@ -2700,7 +2700,8 @@ function printOneSheet() {
   const WIDE = 8.5 * 96 - (20 / 25.4) * 96;
   const TALL = 11 * 96 - (20 / 25.4) * 96;
 
-  const was = { width: doc.style.width, zoom: doc.style.zoom };
+  const was = { width: doc.style.width, zoom: doc.style.zoom,
+                minHeight: doc.style.minHeight };
   doc.style.zoom = '';
 
   // Scaling to fit the height alone would leave the sheet in a narrow column
@@ -2736,6 +2737,12 @@ function printOneSheet() {
     // a rounded pixel tips it onto page two.
     shrink *= (TALL / got) * 0.995;
   }
+
+  // Down to the foot of the paper, so the signatures sit where a signature
+  // sits rather than partway up a sheet with a hand's width of nothing under
+  // it. Set after the fitting rather than during it, or the sheet would
+  // measure as its own minimum and shrink itself trying to fit that.
+  doc.style.minHeight = `${TALL / shrink}px`;
 
   const undo = () => {
     Object.assign(doc.style, was);
