@@ -10,7 +10,6 @@
   ],
   "headers": [
     {
-      "//": "The screen itself, which changes several times a day. Vercel's default for a static file is to let a browser hold it, and a browser holding app.js is somebody looking at a change that shipped an hour ago and being told it did not. no-cache does not mean do not cache: it means ask first, so an unchanged file still comes back as a 304 and costs nothing.",
       "source": "/(app.js|styles.css)",
       "headers": [
         {
