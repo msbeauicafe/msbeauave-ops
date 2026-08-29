@@ -265,17 +265,31 @@ test('the warehouse floor cannot renumber an invoice', async () => {
   assert.equal(nope.status, 403, JSON.stringify(nope.data));
 });
 
-test('the number is a box only on a sheet that has one to change', () => {
+test('the invoice number is written where the order is worked on', () => {
   const app = fs.readFileSync(path.join(here, '..', 'public/app.js'), 'utf8');
   const party = app.slice(app.indexOf('const docParty ='), app.indexOf('const docLines ='));
   assert.match(party, /numberTyped\s*\?/,
     'the number line is a box when the sheet says so, plain text when it does not');
 
+  // The invoice is a document, so its number moved to the order rather than
+  // going: all three of an order's numbers are written in one place.
   const doc = app.slice(app.indexOf('function showInvoiceDoc'),
                         app.indexOf('function showPackingList'));
-  assert.match(doc, /canEdit && !!invoiceNo\)/,
-    'and only where an invoice has been raised — before that the line is the '
-    + "order's own number, which is not this sheet's to change");
+  assert.doesNotMatch(doc, /data-docno/, 'the invoice does not carry a box for it');
+
+  const fn = app.slice(app.indexOf('async function openOrder'),
+                       app.indexOf('// A document as a file'));
+  assert.match(fn, /id="on_si"/, 'the order dialog does');
+  assert.match(fn, /o\.si_no \?/,
+    'and only once an invoice has been raised, there being nothing to renumber before');
+  assert.match(fn, /\/invoice-no`, \{ si_no: si \}\)/,
+    'through the one call that moves an invoice number');
+
+  // The order's own pair go first: a clash on the invoice number must not lose
+  // a customer order number that was corrected in the same breath.
+  const save = fn.slice(fn.indexOf("$('#on_keep')"));
+  assert.ok(save.indexOf('/numbers`') < save.indexOf('/invoice-no`'),
+    'the pair that belong to the order are settled before the one that does not');
 });
 
 // ---------------------------------------------------------------------------

@@ -938,6 +938,9 @@ label.sr {
   width: 100%; min-width: 74px;
 }
 .cellbox.money, .cellbox.n { text-align: right; }
+/* A money field in a form reads right-aligned, the way it does on the sheet
+   the form is filling in. */
+input.n { text-align: right; }
 /* A quantity or a price in a column that is already narrow. The default
    minimum is set for a price list eight hundred rows deep; a dialog's table
    has six columns to fit and no room to spare. */
