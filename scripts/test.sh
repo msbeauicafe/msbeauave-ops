@@ -118,6 +118,9 @@ node --test tests/drop-ship.test.js
 echo "==> what actually goes in the box"
 node --test tests/revise-order.test.js
 
+echo "==> what a line is called on the paper"
+node --test tests/line-descriptions.test.js
+
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js
 

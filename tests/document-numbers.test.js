@@ -417,7 +417,7 @@ test('the order form corrects its own number before it is sent', () => {
   const app = fs.readFileSync(path.join(here, '..', 'public/app.js'), 'utf8');
   const show = app.slice(app.indexOf('function showInvoice('),
                          app.indexOf('function showInvoiceDoc'));
-  assert.match(show, /id="inv_keep"/, 'a form that has just been raised can be renumbered');
+  assert.match(show, /id="inv_keep"/, 'a form that has just been raised can be corrected');
   assert.match(show, /\/numbers`, \{ co_no: said\(\) \}\)/,
     'through the one call that moves an order number');
   assert.match(show, /box\.value = out\.co_no;/,
