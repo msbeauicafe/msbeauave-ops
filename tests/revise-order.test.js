@@ -260,37 +260,38 @@ test('the products are corrected where the order itself is opened', () => {
     'the money is settled first, so the paid floor is judged on the corrected price');
 });
 
-// The same sheet at two desks.
+// The paper that travels with the box states what is in the box. It is not
+// where the box is decided — at any desk.
 //
-// Pending customer order is the office's screen: orders taken and not yet out
-// of the door, the hours when a chat message still changes what goes in the
-// box. Wholesale orders is where the paper is printed and handed to the bench,
-// and there the sheet states what is in the box rather than deciding it.
-//
-// Which one it is cannot be worked out from the document, so the screen that
-// opens the order says, and the sheet is spared knowing.
-test('the packing list is worked on at one desk and printed at the other', () => {
-  const pending = app.slice(app.indexOf('SCREENS.pendingorders = async'),
-                            app.indexOf('SCREENS.chatorders = async'));
-  assert.match(pending, /openOrder\(b\.dataset\.open, load, \{ sheetEditable: true \}\)/,
-    'the office works on the sheet where it works on the order');
+// It was briefly a form, then briefly a form at one desk and a document at the
+// other, which was worse: the same sheet answering differently depending on
+// which tab reached it is a sheet nobody can be sure of.
+test('the packing list is a document, wherever it is opened from', () => {
+  const sheet = app.slice(app.indexOf('function showPackingList'),
+                          app.indexOf('function officialReceipt'));
+  for (const [what, pattern] of [
+    ['a quantity box', /data-sku=/],
+    ['a spare row to add a product', /data-add=/],
+    ['a picker to swap one', /data-swap=/],
+    ['a box for the tax block', /data-tax=/],
+    ['a box for its own number', /data-docno/],
+    ['a way to save any of it', /pk_keep|sheetBoxes/],
+  ]) {
+    assert.doesNotMatch(sheet, pattern, `the packing list still carries ${what}`);
+  }
+  assert.match(sheet, /id="pk_save"/, 'a picture for the chat window');
+  assert.match(sheet, /PRINT_BTN/, 'the printer for the folder');
+  assert.match(sheet, /id="pk_done"/, 'and a way to close it');
 
-  // Stopping at openOrder's own doc comment, which names the flag while
-  // explaining it — a mention there is not the board asking for boxes.
-  const board = app.slice(app.indexOf('SCREENS.orders = async'),
-                          app.indexOf('/**\n * One order, opened.'));
-  assert.match(board, /openOrder\(b\.dataset\.open, load\)/,
-    'and the screen the paper is printed from asks for no boxes');
-  assert.doesNotMatch(board, /sheetEditable/,
-    'silence rather than false, so the read-only side cannot drift open by a typo');
-
-  // Saying so is not the same as it holding. The dialog has to actually put
-  // the two together, and the sheet has to be given both halves to save with.
+  // The same at both desks, which is only true while neither can ask for
+  // anything else. One flag, once, is how the last version drifted apart.
   const fn = app.slice(app.indexOf('async function openOrder'),
                        app.indexOf('// A document as a file'));
-  assert.match(fn, /canEdit: canEdit && sheetEditable/,
-    'the desk cannot open a sheet the person is not allowed to change');
-  assert.match(fn, /onSaved: reload/, 'and what is saved on it refreshes the list behind');
+  const opened = fn.slice(fn.indexOf("$('#a_packing')"));
+  assert.doesNotMatch(opened, /canEdit|catalog|onSaved/,
+    'the sheet is handed nothing it could be made editable by');
+  assert.equal((app.match(/openOrder\(b\.dataset\.open, load\)/g) || []).length, 2,
+    'and both screens open the order the same way, with nothing to tell apart');
 });
 
 // Every one of these sheets is a piece of paper somebody sends or files, so
