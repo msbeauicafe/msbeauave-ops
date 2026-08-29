@@ -469,6 +469,17 @@ const TABS = {
     ['clock', '⏱️', 'Time clock'],
     ['workspace', '🗂️', 'Workspace'],
   ],
+  // The order desk: whoever takes the reseller orders. Customer order, which
+  // is the job, and the same three screens about themselves that everybody
+  // who works here has. Nothing else is on this menu and nothing else answers
+  // them if they go looking — the database refuses an order desk outside the
+  // functions that screen calls.
+  orderdesk: [
+    ['customerorder', '💬', 'Customer order'],
+    ['me', '🪪', 'My record'],
+    ['myleave', '🌴', 'My leave'],
+    ['notices', '📢', 'Noticeboard'],
+  ],
   // Somebody who works here and nothing else. Three screens, all of them
   // about themselves, and no way to reach a fourth.
   employee: [
@@ -515,6 +526,7 @@ const roleName = (r) => ({
   admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier',
   supervisor: 'Supervisor', office: 'Office', timekeeper: 'Timekeeper',
   reseller: 'Reseller', employee: 'Staff', observer: 'View only',
+  orderdesk: 'Order desk',
 }[r] ?? r);
 
 function drawFrame() {
@@ -5376,6 +5388,7 @@ SCREENS.people = async (page) => {
           <option value="supervisor">Supervisor (the till and the stockroom)</option>
           <option value="office">Office (the till and the stockroom)</option>
           <option value="timekeeper">Timekeeper (a door tablet — the clock only)</option>
+          <option value="orderdesk">Order desk (Customer order, and their own record)</option>
           <option value="employee">Staff (their own record and nothing else)</option>
           <option value="reseller">Reseller (their own portal)</option></select></div>
         <div id="u_link" style="display:none"><label>Which reseller</label>
