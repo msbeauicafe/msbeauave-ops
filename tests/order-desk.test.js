@@ -268,6 +268,105 @@ test('the order desk menu is the job and their own record, and nothing else', ()
   }
 });
 
+// ---------------------------------------------------------------------------
+// Moving somebody onto it, from the app rather than a database console
+// ---------------------------------------------------------------------------
+
+test('an owner can move somebody between roles, and it takes effect at once', async () => {
+  const admin = await signIn('admin');
+  const staff = await signIn('employee');
+
+  const who = (await GET(admin, '/api/users')).data
+    .find((u) => u.username === staff.username);
+  assert.equal(who.role, 'employee');
+
+  const moved = await POST(admin, `/api/users/${who.id}/role`, { role: 'orderdesk' });
+  assert.equal(moved.status, 200, JSON.stringify(moved.data));
+
+  const now = (await db.query('select role, sessions_from from app_users where id = $1',
+    [who.id])).rows[0];
+  assert.equal(now.role, 'orderdesk');
+  assert.ok(now.sessions_from, 'their sessions end with the role, because the cookie carries it');
+
+});
+
+test('the cookie somebody was holding does not keep the role they have lost', async () => {
+  // The dangerous direction. A session cookie carries its own role, so an
+  // owner demoted without their sessions ending would go on being an owner —
+  // in their open tab, for another twelve hours, with nothing on any screen
+  // to say so.
+  const owner = await signIn('admin');
+  const spare = await signIn('admin');          // so this is not the last one
+  assert.ok(spare);
+
+  const me = (await GET(owner, '/api/users')).data.find((u) => u.username === owner.username);
+  assert.equal((await GET(owner, '/api/users')).status, 200, 'an owner reads the sign-ins');
+
+  const down = await POST(owner, `/api/users/${me.id}/role`, { role: 'employee' });
+  assert.equal(down.status, 200, JSON.stringify(down.data));
+
+  const after = await GET(owner, '/api/users');
+  assert.equal(after.status, 401,
+    'the cookie is still signed and still unexpired — and no longer worth anything');
+  assert.match(after.data.error, /signed out/i);
+});
+
+test('the last owner cannot be demoted, because nobody could put it back', async () => {
+  const admin = await signIn('admin');
+  const me = (await GET(admin, '/api/users')).data.find((u) => u.username === admin.username);
+
+  // Every other owner switched off, so this one is the only way in.
+  const others = (await db.query(
+    "select id from app_users where role = 'admin' and active and id <> $1", [me.id])).rows;
+  for (const o of others) await db.query('update app_users set active = false where id = $1', [o.id]);
+  try {
+    const tried = await POST(admin, `/api/users/${me.id}/role`, { role: 'employee' });
+    assert.equal(tried.status, 400);
+    assert.match(tried.data.error, /last owner/i,
+      'and it says why, rather than failing with a permission error');
+    assert.equal(
+      (await db.query('select role from app_users where id = $1', [me.id])).rows[0].role,
+      'admin', 'nothing moved');
+  } finally {
+    for (const o of others) await db.query('update app_users set active = true where id = $1', [o.id]);
+  }
+});
+
+test('a portal sign-in is not moved in or out of the portal', async () => {
+  const admin = await signIn('admin');
+  const id = await anAccount(admin);
+  const made = await POST(admin, '/api/users', {
+    username: unique('portal'), display_name: 'Portal', password: 'secret12345',
+    role: 'reseller', reseller_id: id });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+
+  const out = await POST(admin, `/api/users/${made.data.id}/role`, { role: 'employee' });
+  assert.equal(out.status, 400);
+  assert.match(out.data.error, /portal sign-in belongs to the reseller/i,
+    'a sign-in pointing at a company it can no longer read is not a role change');
+
+  const staff = await signIn('employee');
+  const them = (await GET(admin, '/api/users')).data.find((u) => u.username === staff.username);
+  const into = await POST(admin, `/api/users/${them.id}/role`, { role: 'reseller' });
+  assert.equal(into.status, 400, 'and neither is one pointing at nothing at all');
+});
+
+test('the role picker offers every role a sign-in can be, and not the portal', () => {
+  const at = app.indexOf('const ROLES = [');
+  const list = app.slice(at, app.indexOf('];', at));
+  const ids = [...list.matchAll(/\['([a-z]+)',/g)].map((m) => m[1]);
+
+  assert.deepEqual(ids, ['admin', 'warehouse', 'cashier', 'supervisor', 'office',
+    'orderdesk', 'timekeeper', 'employee', 'observer']);
+  assert.ok(!ids.includes('reseller'),
+    'a portal sign-in is bound to an account, so it is created as one rather than moved into one');
+
+  // One list behind both pickers, so the one on a new sign-in and the one on
+  // an existing sign-in cannot drift apart.
+  const people = app.slice(app.indexOf('SCREENS.people ='));
+  assert.equal((people.match(/ROLES\.map/g) || []).length, 2);
+});
+
 test('a role with no name on screen reads as a database column', () => {
   const at = app.indexOf('const roleName =');
   const map = app.slice(at, app.indexOf('}[r] ?? r);', at));

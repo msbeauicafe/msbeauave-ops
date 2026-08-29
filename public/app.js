@@ -522,6 +522,21 @@ const TABS = {
 
 // What a sign-in can do, not who the person is. Several people hold full
 // access; only one of them owns the shop, so this says admin.
+// What a sign-in can be, in the order the list is offered. A reseller is not
+// on it: a portal sign-in is bound to the account it was made for, so it is
+// created as one rather than moved into one.
+const ROLES = [
+  ['admin', 'Everything (admin)'],
+  ['warehouse', 'Warehouse'],
+  ['cashier', 'Cashier (the till)'],
+  ['supervisor', 'Supervisor (the till and the stockroom)'],
+  ['office', 'Office (the till and the stockroom)'],
+  ['orderdesk', 'Order desk (Customer order, and their own record)'],
+  ['timekeeper', 'Timekeeper (a door tablet — the clock only)'],
+  ['employee', 'Staff (their own record and nothing else)'],
+  ['observer', 'View only'],
+];
+
 const roleName = (r) => ({
   admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier',
   supervisor: 'Supervisor', office: 'Office', timekeeper: 'Timekeeper',
@@ -5382,14 +5397,8 @@ SCREENS.people = async (page) => {
         <div><label>Display name</label><input id="u_disp" type="text"></div>
         <div><label>Password</label><input id="u_pass" type="password"></div>
         <div><label>Can do</label><select id="u_role">
-          <option value="admin">Everything (admin)</option>
-          <option value="warehouse">Warehouse</option>
-          <option value="cashier">Cashier (the till)</option>
-          <option value="supervisor">Supervisor (the till and the stockroom)</option>
-          <option value="office">Office (the till and the stockroom)</option>
-          <option value="timekeeper">Timekeeper (a door tablet — the clock only)</option>
-          <option value="orderdesk">Order desk (Customer order, and their own record)</option>
-          <option value="employee">Staff (their own record and nothing else)</option>
+          ${ROLES.map(([id, label]) =>
+            `<option value="${esc(id)}">${esc(label)}</option>`).join('')}
           <option value="reseller">Reseller (their own portal)</option></select></div>
         <div id="u_link" style="display:none"><label>Which reseller</label>
           ${resellers.length
@@ -5412,7 +5421,16 @@ SCREENS.people = async (page) => {
     $('#u_list', page).innerHTML = table(rows, [
       { head: 'Username', cell: (u) => `<b>${esc(u.username)}</b>` },
       { head: 'Name', cell: (u) => esc(u.display_name) },
-      { head: 'Can do', cell: (u) => tag(roleName(u.role), 'pink') },
+      // Read and set in the same place. A role was decided once when the
+      // sign-in was made and never again, which meant somebody changing jobs
+      // needed a database console.
+      { head: 'Can do', cell: (u) => (u.role === 'reseller'
+          ? tag(roleName(u.role), 'pink')
+          : `<select class="sm" data-role="${u.id}" data-was="${esc(u.role)}"
+                     data-who="${esc(u.display_name)}">
+              ${ROLES.map(([id, label]) => `<option value="${esc(id)}"${
+                id === u.role ? ' selected' : ''}>${esc(label)}</option>`).join('')}
+             </select>`) },
       { head: 'Reseller', cell: (u) => esc(u.reseller || '—') },
       { head: 'Works at', cell: (u) => (u.role === 'reseller'
           ? '<span class="dim">—</span>'
@@ -5443,6 +5461,22 @@ SCREENS.people = async (page) => {
         notice(sel.value
           ? `Now works at ${sel.selectedOptions[0].textContent}`
           : 'Covers every branch', 'good');
+      } catch (e) { whoops(e); draw(await GET('/api/users')); }
+    }));
+
+    // Changing it ends every session that sign-in has open, because the cookie
+    // in their browser carries the role it was issued with. Said here rather
+    // than left to be discovered, so nobody wonders why they were put back at
+    // the sign-in screen.
+    $$('[data-role]', page).forEach((sel) => sel.addEventListener('change', async () => {
+      const { role: id, was, who } = sel.dataset;
+      const asked = sel.value;
+      if (asked === was) return;
+      try {
+        await POST(`/api/users/${id}/role`, { role: asked });
+        notice(`${who} is now ${roleName(asked)} — signed out, so the new screen `
+               + 'is there when they sign back in 🌸', 'good');
+        draw(await GET('/api/users'));
       } catch (e) { whoops(e); draw(await GET('/api/users')); }
     }));
 
