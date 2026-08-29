@@ -384,6 +384,17 @@ tr:hover [data-person] b, [data-person]:hover b { color: var(--rose-deep); text-
      is the thing being printed. */
   .veil:not(#dialog) { display: none !important; }
   #dialog { position: static; background: none; padding: 0; display: block; }
+  /* One sheet, one page. printOneSheet() shrinks a long document to fit; this
+     stops the browser breaking a form across the fold on its way there — a
+     signature block on a page of its own is not a signed form. */
+  /* The row of buttons under every document. The buttons themselves are
+     hidden above, but the row still holds its top margin, and a sheet that
+     fills the page exactly plus twelve pixels of nothing is a second page
+     carrying no ink at all. */
+  #dialog .dialog > .mt.right { display: none !important; }
+  .doc, .packing, .receipt { break-inside: avoid; page-break-inside: avoid; }
+  .doc table, .packing table { break-inside: avoid; page-break-inside: avoid; }
+  .doc tr, .packing tr { break-inside: avoid; page-break-inside: avoid; }
   #dialog .dialog { border: 0; max-width: none; max-height: none; padding: 0; overflow: visible; }
   .receipt { border: 0; padding: 0; }
 }
@@ -922,6 +933,10 @@ label.sr {
 .figure.named { font-weight: 700; }
 .figure.wide::placeholder { color: #b9b9b9; font-style: italic; }
 .figure:disabled { border-bottom-style: none; background: transparent; }
+/* Margins the printer can honour on short bond, long bond or A4 alike, so the
+   measurement printOneSheet() scales against is the one that comes out. */
+@page { margin: 10mm; }
+
 @media print {
   .doc .figure, .packing .figure { border-bottom: none; background: none; }
   .figure.wide::placeholder { color: transparent; }

@@ -2553,7 +2553,39 @@ function sheetBoxes(root, goods = [], onChange = null) {
     return said ? byName.get(said) || bySku.get(said.toUpperCase()) || null : null;
   };
 
-  $$('[data-add]', root).forEach((box) => {
+  // A spare row that has just been filled was the last spare row, and now
+  // there are none. The sheet grows one rather than making somebody save,
+  // reopen and find their place again — the same way a pad is never the last
+  // page while you are still writing on it.
+  const growIfLast = (box) => {
+    const rows = $$('[data-add]', root);
+    if (box !== rows[rows.length - 1]) return;
+    const row = box.closest('tr');
+    const fresh = row.cloneNode(true);
+    const next = String(Number(box.dataset.add) + 1);
+    for (const [attr, sel] of [['data-add', '[data-add]'], ['data-addqty', '[data-addqty]'],
+                               ['data-addunit', '[data-addunit]'], ['data-addprice', '[data-addprice]'],
+                               ['data-addtotal', '[data-addtotal]']]) {
+      const el = $(sel, fresh);
+      if (el) el.setAttribute(attr, next);
+    }
+    $$('input', fresh).forEach((el) => {
+      el.value = '';
+      el.classList.remove('named');
+      if (el.hasAttribute('data-addqty')) el.disabled = true;
+    });
+    ['[data-addunit]', '[data-addprice]', '[data-addtotal]'].forEach((sel) => {
+      const cell = $(sel, fresh);
+      if (cell) cell.textContent = '';
+    });
+    row.after(fresh);
+    wirePicker($('[data-add]', fresh));
+    if (onChange) {
+      $$('[data-addqty]', fresh).forEach((el) => el.addEventListener('input', onChange));
+    }
+  };
+
+  function wirePicker(box) {
     box.addEventListener('change', () => {
       const g = found(box);
       const i = box.dataset.add;
@@ -2572,9 +2604,11 @@ function sheetBoxes(root, goods = [], onChange = null) {
         qty?.focus();
         qty?.select();
       } else if (qty) { qty.value = ''; }
+      if (g) growIfLast(box);
       onChange?.();
     });
-  });
+  }
+  $$('[data-add]', root).forEach(wirePicker);
   // A line whose product is wrong is not a line to empty and retype somewhere
   // else. Picking a different product on the row moves the quantity to it, and
   // the whole picture then reads as that product going out and the old one not
@@ -2638,7 +2672,90 @@ const goodsList = (goods) => (goods.length ? `<datalist id="doc_goods">${goods.m
 // every one of them offers both ways off the screen: a picture for the chat
 // window, and the printer for the folder. The button is hidden on the paper
 // itself by the print stylesheet, along with the rest of the screen.
-const PRINT_BTN = '<button class="btn quiet" onclick="window.print()">🖨 Print</button>';
+/**
+ * Print one sheet onto one page.
+ *
+ * A form that runs to a second page is not the form: the paper it replaces is
+ * a single sheet, the signature block belongs under the lines it signs off,
+ * and half a table on a page by itself is what somebody has to apologise for
+ * when they hand it over. An order of four products and an order of thirty are
+ * both one sheet, so a long one is scaled down until it fits rather than
+ * broken across the fold.
+ *
+ * Measured rather than assumed, because bond paper is not one size — short,
+ * long and A4 are all in use — and the printer, not this code, knows which is
+ * in the tray. What it does know is the ratio of the document to the page it
+ * is being put on, so it shrinks by that and no more. Scaling only ever down:
+ * a short order blown up to fill the sheet would print a two-line invoice in
+ * letters an inch high.
+ */
+function printOneSheet() {
+  const doc = $('#dialog .doc') || $('#dialog .packing') || $('#dialog .receipt');
+  if (!doc) return window.print();
+
+  // The printable area of the shortest paper anybody here prints on, less the
+  // 10mm margin the stylesheet asks for, in the 96 pixels-to-the-inch the
+  // browser lays out with. Short bond and Letter are both 8.5 × 11; long bond
+  // and A4 are taller, so a sheet that fits this fits those.
+  const WIDE = 8.5 * 96 - (20 / 25.4) * 96;
+  const TALL = 11 * 96 - (20 / 25.4) * 96;
+
+  const was = { width: doc.style.width, zoom: doc.style.zoom };
+  doc.style.zoom = '';
+
+  // Scaling to fit the height alone would leave the sheet in a narrow column
+  // down the left of the paper. So it is laid out wider by exactly as much as
+  // it is about to be shrunk, and lands at the full width of the page: a long
+  // order comes out as small print filling the sheet, which is what the pad it
+  // replaces looks like, rather than as a thumbnail in the corner.
+  //
+  // Widening rewraps the text and changes the height, so the two settle
+  // against each other. Three passes is well past enough for a table.
+  // zoom rather than transform: a transform is painted after layout, so the
+  // browser still paginates the sheet at its full height and breaks it across
+  // pages that are then drawn shrunk — three pages of a form meant to be one.
+  // zoom changes the layout itself, so the page count follows it.
+  //
+  // Laid out at WIDE/zoom and then zoomed, the sheet comes out exactly WIDE
+  // across, filling the paper rather than sitting in a column down the left.
+  //
+  // Then measured and corrected rather than calculated and hoped for. Working
+  // it out from the unzoomed height was consistently a few pixels over — the
+  // width changes how the text wraps, which changes the height, which changes
+  // the width it should have been given — and a sheet seven pixels too tall is
+  // a second page carrying one line of a signature block. So it asks the
+  // browser what it actually got, and comes down until the answer fits.
+  let shrink = 1;
+  for (let pass = 0; pass < 6; pass += 1) {
+    doc.style.width = `${WIDE / shrink}px`;
+    doc.style.zoom = shrink < 1 ? shrink.toFixed(4) : '';
+    const got = doc.getBoundingClientRect().height;
+    if (got <= TALL) break;
+    // Never less than the honest ratio, so this walks down rather than
+    // creeping, and the 0.995 stops it settling exactly on the boundary where
+    // a rounded pixel tips it onto page two.
+    shrink *= (TALL / got) * 0.995;
+  }
+
+  const undo = () => {
+    Object.assign(doc.style, was);
+    window.removeEventListener('afterprint', undo);
+  };
+  window.addEventListener('afterprint', undo);
+  window.print();
+  // Safari and some Android browsers never fire afterprint; the sheet must not
+  // be left squeezed on screen because of it.
+  setTimeout(undo, 3000);
+}
+
+// Marked rather than wired with an inline onclick: app.js is a module, so a
+// function declared in it is not on `window` and an inline handler cannot see
+// it. One listener on the document covers every print button on every sheet,
+// including the ones drawn after this line runs.
+const PRINT_BTN = '<button class="btn quiet" data-print>🖨 Print</button>';
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-print]')) printOneSheet();
+});
 
 const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO.',
                   typed = false, numberTyped = false) => `
