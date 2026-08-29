@@ -350,26 +350,87 @@ test('the boxes in the order dialog look like boxes', () => {
     `every one of them announces itself: ${boxes.filter((c) => !c.includes('open'))}`);
 });
 
+// One desk works, the rest read.
+//
+// Pending customer order is where an order that has not left the building is
+// corrected — the products, the quantities, the prices, the delivery fee, and
+// the numbers on the paperwork. The account's own screen and the two document
+// tabs are where the paper is looked up, saved as a picture and sent.
+//
+// The delivery fee and Others were typed on the invoice, and the invoice is a
+// document now, so they moved rather than went. Nothing that could be
+// corrected before has stopped being correctable; it is all in one place.
+test('the invoice is a document, and what it used to take is on the order', () => {
+  const doc = app.slice(app.indexOf('function showInvoiceDoc'),
+                        app.indexOf('function showPackingList'));
+  for (const [what, pattern] of [
+    ['a quantity box', /data-sku=/],
+    ['a spare row to add a product', /data-add=/],
+    ['a price box', /data-line="/],
+    ['a box for the delivery fee', /iv_ship/],
+    ['a box for its own number', /data-docno/],
+    ['a way to save any of it', /iv_keep|sheetBoxes/],
+  ]) {
+    assert.doesNotMatch(doc, pattern, `the invoice still carries ${what}`);
+  }
+  assert.match(doc, /id="ivd_save"/, 'a picture for the chat window');
+  assert.match(doc, /PRINT_BTN/, 'the printer for the folder');
+
+  const account = app.slice(app.indexOf("$$('[data-invoice]')"),
+                            app.indexOf("$$('[data-invoice]')") + 1400);
+  assert.doesNotMatch(account, /canEdit/,
+    'and the account screen asks for none of it');
+
+  // Everything it used to take is on the order, in one call.
+  const fn = app.slice(app.indexOf('async function openOrder'),
+                       app.indexOf('// A document as a file'));
+  assert.match(fn, /id="ol_ship"/, 'the delivery fee moved here rather than going');
+  assert.match(fn, /id="ol_oth"/, 'and so did Others');
+  const save = fn.slice(fn.indexOf("$('#ol_keep').addEventListener"));
+  assert.match(save, /shipping: money\(\$\('#ol_ship'\)\)/,
+    'and they go up with the prices, being the same correction to the same money');
+  assert.match(save, /others: money\(\$\('#ol_oth'\)\)/);
+});
+
+// A line whose product is wrong is not a line to empty and retype below it.
+test('the product on a line can be changed for another', () => {
+  const fn = app.slice(app.indexOf('async function openOrder'),
+                       app.indexOf('// A document as a file'));
+  assert.match(fn, /data-swap="\$\{esc\(String\(l\.id\)\)\}"/,
+    'the product itself is a picker, not a label');
+  assert.match(fn, /data-was="\$\{esc\(l\.sku\)\}"/,
+    'holding what it was, so a name that resolves to nothing can go back');
+
+  const wire = app.slice(app.indexOf('function sheetBoxes'), app.indexOf('const goodsList'));
+  assert.match(wire, /qty\.dataset\.sku = g\.sku/,
+    'picking another product moves the quantity to it, which is what a swap is');
+  assert.match(wire, /box\.value = box\.dataset\.wasname/,
+    'and something that is not a product the warehouse holds puts the row back');
+  assert.match(wire, /price\.dataset\.swapped = '1'/,
+    'the price belonged to the line being replaced, so it is marked not to be sent');
+
+  const save = fn.slice(fn.indexOf("$('#ol_keep').addEventListener"));
+  assert.match(save, /filter\(\(el\) => !el\.dataset\.swapped\)/,
+    'a swapped line must not be priced a moment before it is deleted');
+});
+
+// Borderless is right for a price list eight hundred rows deep. In a dialog of
+// three rows it reads as a report, and somebody walks off to another screen to
+// change what was under their cursor all along.
+test('the boxes in the order dialog look like boxes', () => {
+  const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  const rule = css.slice(css.indexOf('.cellbox.open {'), css.indexOf('.cellbox.unset'));
+  assert.match(rule, /border-color: var\(--rose-soft\)/,
+    'a box that says it is a box before it is hovered');
+
+  const fn = app.slice(app.indexOf('async function openOrder'),
+                       app.indexOf('// A document as a file'));
+  const boxes = fn.match(/class="cellbox[^"]*"/g) || [];
+  assert.ok(boxes.length >= 5, `expected every cell to be a box, found ${boxes.length}`);
+  assert.ok(boxes.every((c) => c.includes('open')),
+    `every one of them announces itself: ${boxes.filter((c) => !c.includes('open'))}`);
+});
+
 // The invoice and the packing list are the same order seen from two sides.
 // Correcting one and not the other would mean walking to a different screen
 // depending on which number was wrong, and two sheets that could disagree.
-test('the invoice corrects the same things, and reads them the same way', () => {
-  const doc = app.slice(app.indexOf('function showInvoiceDoc'),
-                        app.indexOf('function showPackingList'));
-  assert.match(doc, /docParty\([\s\S]*?canEdit && !!resellerId,/,
-    'the tax block is typed here too, through the party block both sheets print');
-  const party = app.slice(app.indexOf('const docParty ='), app.indexOf('const docLines ='));
-  assert.match(party, /data-tax="\$\{key\}"/,
-    'and it is a box when the sheet says so, plain text when it does not');
-  assert.match(doc, /const canPick = canEdit && \['placed', 'picking'\]/,
-    'quantities close when the goods leave; prices stay open as long as the invoice does');
-  assert.match(doc, /sheetBoxes\(sheet, goods/,
-    'and the sheet is read by the one reading both documents share');
-
-  // Prices are settled before quantities on purpose: both are judged against
-  // what has already been paid, and the usual correction is a price going up
-  // while a quantity comes down.
-  const save = doc.slice(doc.indexOf("$('#iv_keep').addEventListener"));
-  assert.ok(save.indexOf('/invoice`') < save.indexOf('/lines`'),
-    'the money is settled first, so the paid floor is judged on the corrected price');
-});

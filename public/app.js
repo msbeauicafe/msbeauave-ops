@@ -2148,6 +2148,10 @@ async function openOrder(id, reload, { sheetEditable = false } = {}) {
           <div><label for="on_pl">Packing list no.</label>
             <input id="on_pl" type="text" autocomplete="off"
               value="${esc(o.pl_no || '')}"></div>
+          ${o.si_no ? `
+            <div><label for="on_si">Invoice no.</label>
+              <input id="on_si" type="text" autocomplete="off"
+                value="${esc(o.si_no)}"></div>` : ''}
           <div style="flex:0 0 auto;align-self:flex-end">
             <button class="btn sm" id="on_keep">Save the numbers</button></div>
         </div>
@@ -2200,9 +2204,18 @@ async function openOrder(id, reload, { sheetEditable = false } = {}) {
       </table></div>${goodsList(goods)}`
       : '<div class="none">No lines on this order.</div>'}
     </div>
+    ${canEdit ? `
+      <div class="row" style="justify-content:flex-end;align-items:flex-end;gap:14px">
+        <div style="flex:0 0 150px"><label for="ol_ship">Shipping/Delivery Fee</label>
+          <input id="ol_ship" type="text" class="n" inputmode="decimal"
+            value="${Number(o.shipping || 0).toFixed(2)}"></div>
+        <div style="flex:0 0 150px"><label for="ol_oth">Others</label>
+          <input id="ol_oth" type="text" class="n" inputmode="decimal"
+            value="${Number(o.others || 0).toFixed(2)}"></div>
+      </div>` : ''}
     <div class="right mt"><b>Total <span id="ol_total">${peso(o.total)}</span></b></div>
     ${canEdit ? `<div class="right"><span class="dim" id="ol_state"></span>
-      <button class="btn sm" id="ol_keep">Save the products</button></div>` : ''}
+      <button class="btn sm" id="ol_keep">Save the changes</button></div>` : ''}
     <div class="mt right">
       <button class="btn quiet" id="a_packing">🖨 Packing list</button>
       ${o.status === 'placed' ? '<button class="btn" id="a_pick">Start picking</button>' : ''}
@@ -2221,18 +2234,32 @@ async function openOrder(id, reload, { sheetEditable = false } = {}) {
       reload();
     } catch (e) { whoops(e); }
   });
+  // All three of the order's numbers, which is all of them: the invoice's used
+  // to be typed on the invoice, and the invoice is a document now. Two calls
+  // because they are two tables — the order's pair move together, the
+  // invoice's on its own — and the pair go first, so a clash on the invoice
+  // number does not lose a customer order number already corrected.
   $('#on_keep')?.addEventListener('click', async () => {
     const button = $('#on_keep');
-    const co = $('#on_co').value.trim().toUpperCase();
-    const pl = $('#on_pl').value.trim().toUpperCase();
-    if (co === (o.co_no || '') && pl === (o.pl_no || '')) {
+    const said = (sel) => ($(sel)?.value ?? '').trim().toUpperCase();
+    const co = said('#on_co');
+    const pl = said('#on_pl');
+    const si = said('#on_si');
+    if (co === (o.co_no || '') && pl === (o.pl_no || '') && si === (o.si_no || '')) {
       return notice('Those are the numbers it already has.', 'good');
     }
     button.disabled = true;
     try {
-      const out = await POST(`/api/orders/${id}/numbers`,
-        { co_no: co || null, pl_no: pl || null });
-      notice(`This order is ${out.co_no}, its packing list ${out.pl_no} 🌸`, 'good');
+      let out = { co_no: o.co_no, pl_no: o.pl_no };
+      if (co !== (o.co_no || '') || pl !== (o.pl_no || '')) {
+        out = await POST(`/api/orders/${id}/numbers`,
+          { co_no: co || null, pl_no: pl || null });
+      }
+      if ($('#on_si') && si !== (o.si_no || '')) {
+        await POST(`/api/orders/${id}/invoice-no`, { si_no: si });
+      }
+      notice(`This order is ${out.co_no}, its packing list ${out.pl_no}${
+        $('#on_si') ? `, its invoice ${si || o.si_no}` : ''} 🌸`, 'good');
       closeDialog();
       reload();
     } catch (e) { whoops(e); button.disabled = false; }
@@ -2274,7 +2301,7 @@ async function openOrder(id, reload, { sheetEditable = false } = {}) {
         if (price) price.textContent = peso(g.wholesale_price || 0);
         if (total) total.textContent = peso(line);
       });
-      const whole = running + Number(o.shipping || 0) + Number(o.others || 0);
+      const whole = running + money($('#ol_ship')) + money($('#ol_oth'));
       $('#ol_total').textContent = peso(whole);
       const empty = !each.picture().some((l) => l.qty > 0);
       const short = paid > 0 && whole < paid;
@@ -2286,7 +2313,11 @@ async function openOrder(id, reload, { sheetEditable = false } = {}) {
              this order — it cannot come to less</span>` : '';
       $('#ol_keep').disabled = empty || short;
     }
-    $$('[data-line]', box).forEach((el) => {
+    // The delivery fee and whatever else the order carried used to be typed on
+    // the invoice. The invoice is a document now, so they are here, beside the
+    // figures they are added to — and they go up in the same call the prices
+    // do, because they are the same correction to the same money.
+    $$('[data-line], #ol_ship, #ol_oth').forEach((el) => {
       el.addEventListener('input', retotal);
       el.addEventListener('change', () => { el.value = money(el).toFixed(2); retotal(); });
     });
@@ -2304,6 +2335,8 @@ async function openOrder(id, reload, { sheetEditable = false } = {}) {
           lines: $$('[data-line]', box)
             .filter((el) => !el.dataset.swapped)
             .map((el) => ({ id: el.dataset.line, price: money(el) })),
+          shipping: money($('#ol_ship')),
+          others: money($('#ol_oth')),
         });
         const now = each.picture().filter((l) => l.qty > 0);
         const moved = now.length !== asPlaced.length || now.some(({ sku, qty }) =>
@@ -2801,15 +2834,7 @@ function showInvoice(opts, over = false) {
  */
 function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
                           who = {}, shipping = 0, others = 0, over = false,
-                          invoiceNo = null, canEdit = false, onSaved = null,
-                          catalog = null, resellerId = null, status = null }) {
-  // Correctable while the goods are still in the building. A price can be
-  // fixed on a sheet at any time — nothing physical follows it — but a
-  // quantity moves stock, and stock that has left cannot be called back by a
-  // document. So the money boxes and the quantity boxes have different
-  // lifetimes, and only the quantity ones close.
-  const canPick = canEdit && ['placed', 'picking'].includes(status);
-  const goods = canPick && catalog ? catalog : [];
+                          invoiceNo = null }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   const grand = sub + shipping + others;
   const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
@@ -2835,16 +2860,10 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       ${DOC_HEAD}
       <div class="title inv">INVOICE</div>
       ${docParty(resellerName, issuedOn, invoiceNo || orderId, who,
-                 invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.',
-                 canEdit && !!resellerId,
-                 // Only where there is an invoice to renumber. Before one is
-                 // raised the line shows the sales order, which is the
-                 // order's own number and not this sheet's to change.
-                 canEdit && !!invoiceNo)}
+                 invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.')}
       <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
       <div style="clear:both"></div>
-      ${docLines(lines, 5, canEdit, goods, canPick)}
-      ${goodsList(goods)}
+      ${docLines(lines)}
       <div class="foot">
         <div class="mop">
           <div class="hd">PAYMENT DETAILS${payments.length ? '' : ' — TO FOLLOW PAYMENT'}</div>
@@ -2853,14 +2872,8 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
         <div>
           <div class="totals">
             <div><span>Subtotal:</span><span id="iv_sub">${peso(sub)}</span></div>
-            <div><span>Shipping/Delivery Fee:</span><span>${canEdit
-              ? `<input class="figure" id="iv_ship" inputmode="decimal"
-                   value="${peso(shipping).replace('₱', '')}">`
-              : peso(shipping)}</span></div>
-            <div><span>Others:</span><span>${canEdit
-              ? `<input class="figure" id="iv_oth" inputmode="decimal"
-                   value="${peso(others).replace('₱', '')}">`
-              : peso(others)}</span></div>
+            <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
+            <div><span>Others:</span><span>${peso(others)}</span></div>
             <div class="grand"><span>Grand Total:</span><span id="iv_grand">${peso(grand)}</span></div>
             <div class="bal"><span>Balance:</span><span id="iv_bal">${peso(grand - paid)}</span></div>
           </div>
@@ -2874,137 +2887,11 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
       </div>
     </div>
     <div class="mt right">
-      ${canEdit ? '<span class="dim" id="iv_state"></span>' : ''}
       <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
       ${PRINT_BTN}
-      ${canEdit ? '<button class="btn" id="iv_keep">Save the changes</button>' : ''}
-      <button class="btn ${canEdit ? 'quiet' : ''}" id="ivd_done">Done</button></div>`,
-    'wide', over);
+      <button class="btn" id="ivd_done">Done</button></div>`, 'wide', over);
   wireSave('#ivd_save', '.doc', `${invoiceNo || orderId} INVOICE.jpg`);
   $('#ivd_done').addEventListener('click', closeDialog);
-
-  if (!canEdit) return;
-
-  // A number typed with the commas it was shown with is still a number.
-  const read = (el) => {
-    const n = Number(String(el?.value ?? '').replace(/[^0-9.]/g, ''));
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  };
-  const boxes = () => $$('[data-line]');
-  const sheet = $('.doc.inv');
-  const each = sheetBoxes(sheet, goods, () => retotal());
-  // How many of a line are going, which is the box if there is one and what
-  // was picked if there is not.
-  const going = (box) => {
-    const typedQty = $(`[data-qtyfor="${box.dataset.line}"]`, sheet);
-    return typedQty ? wholeUnits(typedQty) : Number(box.dataset.qty || 0);
-  };
-  // What was picked, by product — the same shape the sheet reads back, so
-  // "did anything move?" is one comparison rather than two. A product held on
-  // two batches is two lines and one entry here, as it is on the sheet.
-  const asPlaced = [...lines.reduce((by, l) =>
-    by.set(l.sku, (by.get(l.sku) || 0) + Number(l.qty)), new Map())]
-    .map(([sku, qty]) => ({ sku, qty }));
-  const moved = () => {
-    const now = each.picture().filter((l) => l.qty > 0);
-    return now.length !== asPlaced.length || now.some(({ sku, qty }) =>
-      qty !== asPlaced.find((l) => l.sku === sku)?.qty);
-  };
-
-  // The totals follow the typing rather than waiting for a save, because the
-  // figure somebody is checking is the Grand Total, not the line they are in.
-  const retotal = () => {
-    let running = 0;
-    for (const box of boxes()) {
-      const line = read(box) * going(box);
-      running += line;
-      const cell = $(`[data-linetotal="${box.dataset.line}"]`, sheet);
-      if (cell) cell.textContent = peso(line);
-    }
-    // A row added here has no price of its own yet — it takes the standing
-    // wholesale price when it is saved, and the office corrects it after, the
-    // same as any other line. Showing that figure now keeps the Grand Total
-    // honest about what is being agreed to.
-    each.added().forEach((g, i) => {
-      const line = Number(g.wholesale_price || 0) * g.qty;
-      running += line;
-      const price = $(`[data-addprice="${i}"]`, sheet);
-      const total = $(`[data-addtotal="${i}"]`, sheet);
-      if (price) price.textContent = peso(g.wholesale_price || 0);
-      if (total) total.textContent = peso(line);
-    });
-    const ship = read($('#iv_ship'));
-    const oth = read($('#iv_oth'));
-    const whole = running + ship + oth;
-    $('#iv_sub').textContent = peso(running);
-    $('#iv_grand').textContent = peso(whole);
-    $('#iv_bal').textContent = peso(whole - paid);
-    $('.duebox b').textContent = peso(whole - paid);
-    // Money already taken is the floor, and an invoice with nothing on it is a
-    // cancellation. Saying either while they type beats a refusal after they
-    // press the button.
-    const short = whole < paid;
-    const empty = canPick && !each.picture().some((l) => l.qty > 0);
-    $('#iv_state').innerHTML = short
-      ? `<span class="over">${peso(paid)} has already been settled against this
-         invoice — it cannot come to less</span>`
-      : empty
-        ? `<span class="over">An invoice with nothing on it is a cancellation —
-           cancel the order itself if that is what this is</span>` : '';
-    $('#iv_keep').disabled = short || empty;
-  };
-
-  $$('[data-line], #iv_ship, #iv_oth').forEach((el) => {
-    el.addEventListener('input', retotal);
-    // Tidied to the shape the rest of the sheet is in once they leave it.
-    el.addEventListener('change', () => { el.value = peso(read(el)).replace('₱', ''); retotal(); });
-  });
-  retotal();
-
-  $('#iv_keep').addEventListener('click', async () => {
-    const button = $('#iv_keep');
-    button.disabled = true;
-    try {
-      // Three things can have changed, and they are saved in the order that
-      // makes the refusals land in the right place.
-      //
-      // The tax block first: it belongs to the account rather than to this
-      // order, so it is worth keeping even if the figures are then refused,
-      // and it is what every later sheet of theirs prints.
-      const tax = {};
-      $$('[data-tax]', sheet).forEach((el) => { tax[el.dataset.tax] = el.value.trim(); });
-      if (Object.keys(tax).length
-          && TAX_LINES.some(([, k]) => (tax[k] || '') !== (who?.[k] || ''))) {
-        await POST(`/api/resellers/${resellerId}/tax`, tax);
-      }
-
-      // Then the number on the sheet. It is a label rather than a figure —
-      // nothing recalculates behind it — so it goes with the tax block,
-      // before anything that can be refused for the money it comes to.
-      const typedNo = $('[data-docno]', sheet)?.value.trim().toUpperCase();
-      if (typedNo && typedNo !== (invoiceNo || '')) {
-        await POST(`/api/orders/${orderId}/invoice-no`, { si_no: typedNo });
-      }
-
-      // Prices before quantities. Both are judged against what has already
-      // been settled, and the common correction is a price going up while a
-      // quantity comes down — judged in that order the invoice clears the
-      // floor, judged the other way round it would be refused halfway.
-      // Quantities also keep whatever price the line is on, so the figure
-      // agreed here survives the second call.
-      let out = await POST(`/api/orders/${orderId}/invoice`, {
-        lines: boxes().map((b) => ({ id: b.dataset.line, price: read(b) })),
-        shipping: read($('#iv_ship')),
-        others: read($('#iv_oth')),
-      });
-      if (canPick && moved()) {
-        out = await POST(`/api/orders/${orderId}/lines`, { lines: each.picture() });
-      }
-      notice(`${typedNo || out.si_no || 'The invoice'} now comes to ${peso(out.total)} 🌸`, 'good');
-      closeDialog();
-      onSaved?.();
-    } catch (e) { whoops(e); button.disabled = false; }
-  });
 }
 
 /**
@@ -4747,25 +4634,21 @@ async function openReseller(id, reload) {
   // Reopened from the account rather than from the moment it was placed, so
   // the money side is known by now: this is the INVOICE, with what the account
   // has already paid filled in against it.
+  // Read, saved as a picture, printed. This account's screen is where an
+  // invoice is looked up and sent, not where the order behind it is changed —
+  // that is Pending customer order, which has the lines, the prices, the
+  // delivery fee and the numbers, and moves the stock along with them.
   $$('[data-invoice]').forEach((b) => b.addEventListener('click', async () => {
     try {
-      const may = user?.role === 'admin' || user?.role === 'office';
-      // The catalogue only matters while quantities can still move, so it is
-      // fetched only then — and a sheet whose catalogue did not arrive is
-      // still a sheet somebody can read, correct the prices on, and print.
       const [o, payments] = await Promise.all([
         GET(`/api/orders/${b.dataset.invoice}`),
         GET(`/api/resellers/${id}/payments?order_id=${b.dataset.invoice}`).catch(() => []),
       ]);
-      const catalog = may && ['placed', 'picking'].includes(o.status)
-        ? await GET('/api/wholesale/catalog').catch(() => null) : null;
       showInvoiceDoc({
         over: true,
         orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments, who: o,
-        invoiceNo: o.si_no, status: o.status, catalog, resellerId: o.reseller_id,
+        invoiceNo: o.si_no,
         shipping: Number(o.shipping || 0), others: Number(o.others || 0),
-        canEdit: may,
-        onSaved: () => openReseller(id, reload),
         lines: o.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
           price: l.unit_price, code: l.price_code, unit: l.unit_type })),
       });
