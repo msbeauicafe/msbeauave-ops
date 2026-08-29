@@ -45,3 +45,25 @@ test('the api is never rewritten', () => {
     assert.ok(!swallowed(url), `${url} must reach the server, not a page`);
   }
 });
+
+// The screen changes several times a day, and the whole point of shipping it
+// that way is that somebody can look and say whether it is right. A browser
+// holding on to app.js turns that into somebody looking at an hour-old build
+// and reporting a bug that was already fixed — which is a worse failure than
+// the bug, because the answer to it is not in the code.
+//
+// no-cache does not mean do not cache. It means ask first: an unchanged file
+// still comes back 304 and costs nothing on the wire.
+test('the screen itself is checked for freshness rather than assumed', () => {
+  const rule = (config.headers || []).find((h) => /app\.js/.test(h.source));
+  assert.ok(rule, 'nothing tells the browser to re-check app.js');
+  assert.match(rule.source, /styles\.css/,
+    'and the stylesheet with it — a new screen in an old skin reads as broken');
+
+  const cache = rule.headers.find((h) => h.key.toLowerCase() === 'cache-control');
+  assert.ok(cache, 'the rule sets no Cache-Control at all');
+  assert.match(cache.value, /no-cache/,
+    `app.js is served as "${cache.value}", which lets a browser hold it`);
+  assert.doesNotMatch(cache.value, /immutable/,
+    'immutable is the opposite promise: never ask again');
+});
