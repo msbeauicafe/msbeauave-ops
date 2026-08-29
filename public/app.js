@@ -389,7 +389,7 @@ const TABS = {
     ['attendance', '🕒', 'Attendance'],
     ['clock', '⏱️', 'Time clock'],
     ['branches', '🏬', 'Branches'],
-    ['crm', '💗', 'Customers'],
+    ['customers', '💗', 'Customers'],
     ['finance', '💰', 'Finance'],
     ['pricelists', '💵', 'Pricelists'],
     ['products', '🧴', 'Products'],
@@ -490,10 +490,9 @@ const TABS = {
     ['attendance', '🕒', 'Attendance'],
     ['clock', '⏱️', 'Time clock'],
     ['branches', '🏬', 'Branches'],
-    ['crm', '💗', 'Customers'],
+    ['customers', '💗', 'Customers'],
     ['products', '🧴', 'Products'],
     ['orders', '🚚', 'Wholesale'],
-    ['resellers', '🤝', 'Resellers'],
     ['returns', '↩️', 'Returns'],
     ['reorder', '📈', 'Reordering'],
     ['reports', '📊', 'Reports'],
@@ -3613,6 +3612,7 @@ function showOR(r, reseller, paid = {}, over = false) {
 // chat tab and being put back on the chat tab is right, and being put back on
 // the first tab every time is how somebody loses their place.
 let orderPanel = 'chatorders';
+let customerPanel = 'resellers';
 
 /**
  * The price list, whole.
@@ -3786,11 +3786,45 @@ SCREENS.pricelists = async (page) => {
   draw();
 };
 
+/**
+ * Customers: the accounts, both kinds.
+ *
+ * A reseller account and a loyalty account are the same question asked twice —
+ * who is this, what have they bought, what do they owe — so they belong behind
+ * one word on the menu rather than one on the menu and one buried in a tab of
+ * the order screen. Customer order is where an order is taken and papered;
+ * this is where the person it is taken from is kept.
+ *
+ * Resellers first, because this company is a distributor: the loyalty list is
+ * the shop's, and the shop is the smaller half of the business.
+ */
+SCREENS.customers = async (page) => {
+  const PANELS = [
+    ['resellers', 'Resellers'],
+    ['crm', 'Shop customers'],
+  ];
+  if (!PANELS.some(([id]) => id === customerPanel)) customerPanel = 'resellers';
+
+  page.innerHTML = `
+    <div class="subtabs">
+      ${PANELS.map(([id, label]) => `<button data-panel="${esc(id)}"
+        class="${id === customerPanel ? 'on' : ''}">${esc(label)}</button>`).join('')}
+    </div>
+    <div id="panel"></div>`;
+
+  $$('[data-panel]', page).forEach((b) => b.addEventListener('click', () => {
+    customerPanel = b.dataset.panel;
+    SCREENS.customers(page).catch(whoops);
+  }));
+
+  // Each panel draws its own heading, as on Customer order.
+  await SCREENS[customerPanel]($('#panel', page));
+};
+
 SCREENS.customerorder = async (page) => {
   const PANELS = [
     ['chatorders', 'Chat order'],
     ['pendingorders', 'Pending customer order'],
-    ['resellers', 'Invoice'],
     ['orders', 'Packing list'],
   ];
   if (!PANELS.some(([id]) => id === orderPanel)) orderPanel = 'chatorders';
@@ -7635,7 +7669,7 @@ const STANDING = {
 SCREENS.crm = async (page) => {
   let term = '';
   page.innerHTML = `
-    <div class="head"><h2>Customers</h2>
+    <div class="head"><h2>Shop customers</h2>
       <span class="hint">Everyone with a loyalty account, however they got one</span></div>
     <div class="tools">
       <input type="search" id="find" placeholder="Search by name or number…">

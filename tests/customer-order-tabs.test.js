@@ -2,13 +2,17 @@
 //
 // The customer order, the invoice and the packing list were three entries in
 // a column of two dozen, sitting apart from each other. They are not three
-// parts of the system — they are four moments of one job: somebody messages,
-// the order is taken, the account is invoiced, the bench packs it. Holding one
-// while looking at another meant leaving the screen and finding it again.
+// parts of the system — they are moments of one job: somebody messages, the
+// order is taken, the bench packs it. Holding one while looking at another
+// meant leaving the screen and finding it again.
+//
+// The account the order is taken from is not one of those moments, so it is
+// not one of those tabs: it lives under Customers, beside the loyalty list,
+// because both answer the same question about a different kind of buyer.
 //
 // This reads the real source rather than a copy of it, because the failure it
-// guards against is somebody adding a fifth screen and quietly restoring a
-// fourth top-level menu entry beside it.
+// guards against is somebody adding a screen and quietly restoring a
+// top-level menu entry beside it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -39,17 +43,46 @@ test('an owner has one Customer order menu, not three', () => {
   }
 });
 
-test('the panels are the four documents, in the order the work happens', () => {
+test('the panels are the documents, in the order the work happens', () => {
   const at = app.indexOf('SCREENS.customerorder = async');
   assert.ok(at > 0, 'there is a Customer order screen');
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
-  assert.deepEqual(panels, ['chatorders', 'pendingorders', 'resellers', 'orders'],
-    'somebody messages, it is taken, the account is invoiced, the bench packs it');
+  assert.deepEqual(panels, ['chatorders', 'pendingorders', 'orders'],
+    'somebody messages, it is taken, the bench packs it');
 
   assert.match(screen, /SCREENS\[orderPanel\]/,
     'the panel is drawn by the screen it names, not by a copy of it');
+});
+
+// The account moved out of here and into Customers, which is where a person
+// is kept rather than where an order is taken from them.
+test('the reseller account is under Customers, and only there', () => {
+  const at = app.indexOf('SCREENS.customers = async');
+  assert.ok(at > 0, 'there is a Customers screen');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
+  assert.deepEqual(panels, ['resellers', 'crm'],
+    'the wholesale accounts first, because this company is a distributor');
+  assert.match(screen, /SCREENS\[customerPanel\]/,
+    'the panel is drawn by the screen it names, not by a copy of it');
+  assert.match(app, /let customerPanel = 'resellers';/,
+    'which panel is open is kept outside the screen function');
+
+  const order = app.slice(app.indexOf('SCREENS.customerorder = async'),
+    app.indexOf('\n};', app.indexOf('SCREENS.customerorder = async')));
+  assert.ok(!order.includes("'resellers'"),
+    'Customer order does not carry the account list as well — one place to look');
+
+  const entries = [...adminMenu.matchAll(/\['([a-z]+)',\s*'[^']*',\s*'([^']+)'\]/g)]
+    .map((m) => ({ id: m[1], label: m[2] }));
+  const named = entries.filter((e) => e.label === 'Customers');
+  assert.equal(named.length, 1, 'exactly one entry is called Customers');
+  assert.equal(named[0].id, 'customers');
+  assert.equal(entries.filter((e) => e.id === 'resellers').length, 0,
+    'Resellers is a panel inside Customers now, not a menu of its own');
 });
 
 test('which panel is open survives a redraw', () => {
