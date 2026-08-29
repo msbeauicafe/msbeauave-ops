@@ -2758,6 +2758,15 @@ function printOneSheet() {
 // function declared in it is not on `window` and an inline handler cannot see
 // it. One listener on the document covers every print button on every sheet,
 // including the ones drawn after this line runs.
+// How money actually arrives here, offered as a list rather than left to
+// whoever is typing. Two screens ask the question — the account and the
+// invoice — so the answer is written once: a mode added here is added to both,
+// and "GCASH" cannot be GCash on one screen and G-Cash on the other, which is
+// what a statement is matched against later.
+const MOP_OPTIONS = ['BANCO DE ORO (BDO)', 'BPI', 'SECURITY BANK', 'GCASH', 'CASH', 'FUNDS'];
+const mopList = (id) => `<datalist id="${id}">${MOP_OPTIONS
+  .map((m) => `<option value="${esc(m)}"></option>`).join('')}</datalist>`;
+
 const PRINT_BTN = '<button class="btn quiet" data-print>🖨 Print</button>';
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-print]')) printOneSheet();
@@ -4583,12 +4592,7 @@ async function openReseller(id, reload, part = 'account') {
         <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
           <input class="pay_ref" type="text" placeholder="the bank's own reference"></div>
       </div>`).join('')}
-    <datalist id="acct_banks">
-      <option value="BANCO DE ORO (BDO)"></option>
-      <option value="BPI"></option>
-      <option value="SECURITY BANK"></option>
-      <option value="GCASH"></option>
-    </datalist>
+    ${mopList('acct_banks')}
     <div class="dim">The reference is the bank's, off their proof of payment — it
       is what they quote to say the money left, and what the statement is matched
       against later. It prints on the invoice.</div>
@@ -4826,12 +4830,7 @@ async function openReseller(id, reload, part = 'account') {
           <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
             <input class="ip_ref" type="text" placeholder="the bank's own reference"></div>
         </div>`).join('')}
-      <datalist id="inv_banks">
-        <option value="BANCO DE ORO (BDO)"></option>
-        <option value="BPI"></option>
-        <option value="SECURITY BANK"></option>
-        <option value="GCASH"></option>
-      </datalist>
+      ${mopList('inv_banks')}
       <div class="dim">Paying a 30-day invoice within 10 days takes 2% off by
         itself. Clearing the last past-due invoice lets the account order again.
         The reference is the bank's own — what they quote to say the money left,
