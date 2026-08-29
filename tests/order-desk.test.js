@@ -269,6 +269,66 @@ test('the order desk menu is the job and their own record, and nothing else', ()
 });
 
 // ---------------------------------------------------------------------------
+// The ordinary half
+//
+// The role was built as a slice of the owner and stopped there, so the menu
+// listed My record, My leave and the noticeboard and nothing behind them would
+// answer: both of them signed in to "Your sign-in does not allow that" on the
+// first thing they clicked. A role is not only the special thing it may do —
+// it is also everything ordinary that everybody who works here can already do.
+// ---------------------------------------------------------------------------
+
+/** A sign-in with a person behind it, the way a real member of staff has. */
+async function onTheTeam(role, position = 'Order Management Coordinator') {
+  const cookie = await signIn(role);
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  await db.query(
+    `insert into employees (name, position, branch_id, user_id)
+     values ($1, $2, $3, (select id from app_users where username = $4))`,
+    [`Person ${cookie.username}`, position, branch?.id ?? null, cookie.username]);
+  return cookie;
+}
+
+test('an order desk works here, so their own record answers them', async () => {
+  const desk = await onTheTeam('orderdesk');
+
+  const mine = await GET(desk, '/api/my');
+  assert.equal(mine.status, 200, `their own record: ${JSON.stringify(mine.data)}`);
+
+  assert.equal((await GET(desk, '/api/noticeboard')).status, 200,
+    'a notice pinned up for the company is pinned up for them');
+
+  // Their own password, which is not the company's business to keep from them.
+  const pw = await POST(desk, '/api/my/password',
+    { current: 'secret123', password: 'secret45678' });
+  assert.equal(pw.status, 200, JSON.stringify(pw.data));
+});
+
+test('every screen on the order desk menu answers when it is opened', async () => {
+  // The failure this file exists to prevent happening twice: a menu entry is
+  // a promise, and the promise is kept by a route list somewhere else.
+  const desk = await onTheTeam('orderdesk');
+  const at = app.indexOf('  orderdesk: [');
+  const ids = [...app.slice(at, app.indexOf('\n  ],', at)).matchAll(/\['([a-z]+)',/g)]
+    .map((m) => m[1]);
+
+  // What each screen asks for the moment it is drawn.
+  const firstCall = {
+    customerorder: '/api/orders?status=',
+    me: '/api/my',
+    myleave: '/api/my',
+    notices: '/api/noticeboard',
+  };
+
+  for (const id of ids) {
+    const p = firstCall[id];
+    assert.ok(p, `${id} is on the menu but this test does not know what it opens`);
+    const { status } = await GET(desk, p);
+    assert.equal(status, 200, `${id} is on the menu and ${p} answers ${status}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Moving somebody onto it, from the app rather than a database console
 // ---------------------------------------------------------------------------
 
