@@ -397,6 +397,12 @@ tr:hover [data-person] b, [data-person]:hover b { color: var(--rose-deep); text-
   .doc tr, .packing tr { break-inside: avoid; page-break-inside: avoid; }
   /* The white border round the sheet, which @page no longer provides. Same
      10mm, so what printOneSheet() measures against is what comes out. */
+  /* White, because bond paper is white. The screen paints this panel in the
+     house rose, which nobody saw on paper while backgrounds were being dropped
+     — now that they are kept, that tint would be laid over the whole sheet in
+     ink, on every page, which is neither the document nor a good use of a
+     cartridge. The bands on the sheet are colour; the sheet is not. */
+  #dialog, #dialog .dialog, .doc, .packing, .receipt { background: #fff; }
   #dialog .dialog { border: 0; max-width: none; max-height: none; padding: 10mm; overflow: visible; }
   /* A form's headings and column bands are the form. A printer dropping them
      to save ink hands the reseller a different document from the one that was
