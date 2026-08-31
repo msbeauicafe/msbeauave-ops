@@ -162,24 +162,25 @@ test('the warehouse floor cannot rename what it is picking', async () => {
   assert.equal(nope.status, 403, JSON.stringify(nope.data));
 });
 
-test('the order form is where it is written, before the form is sent', () => {
+// The /descriptions route above still stands, but the order form no longer
+// renames a line — it swaps it. The product description on the form is a
+// dropdown of the catalogue, and picking one moves the whole line (name, sku,
+// standing price) to that product, so the paper cannot name something the
+// warehouse is not holding.
+test('the order form description picks a real product rather than free text', () => {
   const lines = app.slice(app.indexOf('const docLines ='), app.indexOf('function customerOrderForm'));
-  assert.match(lines, /data-notefor=/, 'the description is a box on a sheet that takes typing');
+  assert.match(lines, /data-swap=/, 'the description is a catalogue dropdown that swaps the line');
+  assert.doesNotMatch(lines, /data-notefor=/, 'and no longer a free-text rename box');
 
   const form = app.slice(app.indexOf('function customerOrderForm'),
                          app.indexOf('function showInvoice('));
   assert.match(form, /docLines\(lines, 5, canEdit, goods, canEdit\)/,
-    'and the form opens the names, the prices and the quantities together');
+    'the form opens the products, the prices and the quantities together');
 
   const show = app.slice(app.indexOf('function showInvoice('),
                          app.indexOf('function showInvoiceDoc'));
-  assert.match(show, /\/descriptions`, \{ lines: notes \}\)/, 'saved through its own call');
-
-  // The names are only names, so they go before anything that can be refused
-  // for the money it comes to; then prices before quantities as everywhere.
   const save = show.slice(show.indexOf("keep.addEventListener('click'"));
-  assert.ok(save.indexOf('/descriptions`') < save.indexOf('/invoice`'),
-    'a refusal about money must not lose a name already typed');
+  assert.doesNotMatch(save, /\/descriptions`/, 'the form swaps, it does not rename');
   assert.ok(save.indexOf('/invoice`') < save.indexOf('/lines`'),
     'the money is settled first, so the paid floor is judged on the corrected price');
 });
