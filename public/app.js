@@ -2880,12 +2880,14 @@ const docLines = (lines, blanks = 5, typed = false, goods = null, qtyToo = false
     <tbody>
       ${lines.map((l) => `<tr>
         <td class="c">${esc(l.code || '')}</td>
-        <td>${typed && l.id
-          // What the line is called, which is not what the line is: the sku
-          // underneath is untouched, so this can never make the paper disagree
-          // with the warehouse about what is in the box, only about what to
-          // call it. Emptied, it goes back to the product's own name.
-          ? `<input class="figure wide" data-notefor="${esc(String(l.id))}"
+        <td>${typed && l.id && goods && goods.length
+          // A dropdown of the catalogue: picking one swaps the line to THAT
+          // product — its name, its sku underneath and its standing price move
+          // together — so the paper can never disagree with the warehouse about
+          // what is in the box. Off the list it goes back to what it was, so a
+          // half-typed word cannot name a product nobody holds.
+          ? `<input class="figure wide" list="doc_goods" data-swap="${esc(String(l.id))}"
+               data-was="${esc(l.sku || '')}" data-wasname="${esc(l.name)}"
                autocomplete="off" title="${esc(l.name)}" value="${esc(l.name)}">`
           : `<b>${esc(l.name)}</b>`}</td>
         <td class="c">${qtyToo && l.id
@@ -3037,7 +3039,7 @@ function showInvoice(opts, over = false) {
     keep.disabled = empty || nothing;
   }
   box.addEventListener('input', restate);
-  $$('[data-line], [data-notefor]', sheet).forEach((el) => el.addEventListener('input', restate));
+  $$('[data-line]', sheet).forEach((el) => el.addEventListener('input', restate));
   $$('[data-line]', sheet).forEach((el) => el.addEventListener('change',
     () => { el.value = money(el).toFixed(2); restate(); }));
   restate();
@@ -3059,10 +3061,6 @@ function showInvoice(opts, over = false) {
         opts.orderNo = out.co_no;
         box.value = out.co_no;
       }
-      const notes = $$('[data-notefor]', sheet)
-        .map((el) => ({ id: el.dataset.notefor, description: el.value.trim() }));
-      if (notes.length) await POST(`/api/orders/${opts.orderId}/descriptions`, { lines: notes });
-
       await POST(`/api/orders/${opts.orderId}/invoice`, {
         lines: $$('[data-line]', sheet).map((el) => ({ id: el.dataset.line, price: money(el) })),
       });
