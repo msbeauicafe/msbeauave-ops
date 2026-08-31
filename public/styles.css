@@ -1218,6 +1218,17 @@ input.n { text-align: right; }
 #page .due { color: var(--danger); }
 #page table.lines tfoot .gmore, #page table.lines .l_del { padding: 2px 8px; }
 
+/* Reports — a sub-nav and a date bar. */
+#page .subnav { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+#page .subnav button {
+  border: 1px solid var(--rose-soft); background: var(--card); font: inherit; padding: 6px 14px;
+  border-radius: 999px; cursor: pointer; color: var(--ink);
+}
+#page .subnav button.on { background: var(--rose-deep); color: #fff; border-color: var(--rose-deep); }
+#page .daterow { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+#page .daterow label { margin: 0 0 4px; }
+#page .daterow input { padding: 6px 8px; }
+
 /* Cash position cards. */
 #page .cashcard {
   flex: 1; min-width: 150px; padding: 12px 16px; border: 1px solid var(--rose-soft);
