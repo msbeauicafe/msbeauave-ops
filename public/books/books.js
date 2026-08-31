@@ -64,6 +64,7 @@ const TABS = [
   ['journal', 'Journal'],
   ['trial', 'Trial balance'],
   ['statements', 'Statements'],
+  ['reports', 'Reports'],
 ];
 let tab = 'trial';
 
@@ -511,6 +512,95 @@ SCREENS.statements = async (page) => {
             <td class="n"><b>${peso(s.balance.total_liabilities + s.balance.total_equity)}</b></td></tr></tbody></table></div>
     </div>`;
 };
+
+// ---- reports ----------------------------------------------------------------
+let reportView = 'aging';
+let reportFrom = null, reportTo = null;
+
+SCREENS.reports = async (page) => {
+  reportFrom ||= `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+  reportTo ||= today();
+  const VIEWS = [['aging', 'Payables aging'], ['cashflow', 'Cash flow'], ['income', 'Income statement']];
+  page.innerHTML = `<div class="head"><h2>Reports</h2>
+      <span class="hint">Every figure straight off the journal</span></div>
+    <div class="subnav">${VIEWS.map(([id, label]) =>
+      `<button data-rv="${id}" class="${id === reportView ? 'on' : ''}">${esc(label)}</button>`).join('')}</div>
+    <div class="daterow" id="drow" ${reportView === 'aging' ? 'hidden' : ''}>
+      <label>From</label><input id="r_from" type="date" value="${reportFrom}">
+      <label>To</label><input id="r_to" type="date" value="${reportTo}">
+      <button class="btn quiet sm" id="r_apply">Show</button>
+      <button class="btn quiet sm" id="r_month">This month</button>
+      <button class="btn quiet sm" id="r_year">This year</button></div>
+    <div id="rep-body"></div>`;
+  page.querySelectorAll('[data-rv]').forEach((b) => b.onclick = () => { reportView = b.dataset.rv; shell_reload(); });
+  const apply = () => { reportFrom = $('#r_from').value; reportTo = $('#r_to').value; draw(); };
+  $('#r_apply').onclick = apply;
+  $('#r_month').onclick = () => { const d = new Date();
+    reportFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; reportTo = today(); shell_reload(); };
+  $('#r_year').onclick = () => { reportFrom = `${new Date().getFullYear()}-01-01`; reportTo = today(); shell_reload(); };
+
+  const body = $('#rep-body');
+  async function draw() {
+    body.innerHTML = '<div class="dim">Working…</div>';
+    if (reportView === 'aging') return drawAging(body);
+    if (reportView === 'cashflow') return drawCashflow(body);
+    return drawIncome(body);
+  }
+  await draw();
+};
+
+async function drawAging(body) {
+  const a = await GET('/api/books/reports/aging');
+  const cols = [['notdue', 'Not due'], ['d30', '1–30 days'], ['d60', '31–60'], ['d90', '61–90'], ['over', '90+']];
+  const cell = (n) => `<td class="n">${Number(n) ? peso(n) : ''}</td>`;
+  body.innerHTML = `<div class="panel"><table class="lines"><thead><tr><th>Supplier</th>
+      ${cols.map(([, l]) => `<th class="n">${l}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>
+      ${a.vendors.length ? a.vendors.map((v) => `<tr><td><b>${esc(v.vendor)}</b></td>
+        ${cols.map(([k]) => cell(v[k])).join('')}<td class="n"><b>${peso(v.total)}</b></td></tr>`).join('')
+        : '<tr><td colspan="7" class="dim">Nothing outstanding — all paid up.</td></tr>'}
+      </tbody><tfoot><tr><td class="right"><b>Total owed</b></td>
+        ${cols.map(([k]) => `<td class="n"><b>${Number(a.totals[k]) ? peso(a.totals[k]) : ''}</b></td>`).join('')}
+        <td class="n"><b>${peso(a.totals.total)}</b></td></tr></tfoot></table></div>`;
+}
+
+async function drawCashflow(body) {
+  const c = await GET(`/api/books/reports/cashflow?from=${reportFrom}&to=${reportTo}`);
+  const list = (rows, none) => rows.length ? rows.map((r) => `<tr><td>${esc(r.title)}</td>
+      <td class="n">${peso(r.amount)}</td></tr>`).join('') : `<tr><td class="dim">${none}</td><td></td></tr>`;
+  body.innerHTML = `<div class="panel"><h3>Cash flow · ${onDay(c.from)} – ${onDay(c.to)}</h3>
+    <table class="lines"><tbody>
+      <tr class="grand"><td>Cash at the start</td><td class="n"><b>${peso(c.opening)}</b></td></tr>
+      <tr class="sub"><td colspan="2">Cash in</td></tr>${list(c.inflows, 'Nothing came in')}
+      <tr><td class="right"><b>Total in</b></td><td class="n"><b>${peso(c.total_in)}</b></td></tr>
+      <tr class="sub"><td colspan="2">Cash out</td></tr>${list(c.outflows, 'Nothing went out')}
+      <tr><td class="right"><b>Total out</b></td><td class="n"><b>${peso(c.total_out)}</b></td></tr>
+      <tr><td class="right">Net change</td><td class="n ${c.net < 0 ? 'due' : ''}">${peso(c.net)}</td></tr>
+      <tr class="grand"><td><b>Cash at the close</b></td><td class="n"><b>${peso(c.closing)}</b></td></tr>
+    </tbody></table></div>`;
+}
+
+async function drawIncome(body) {
+  const s = await GET(`/api/books/reports/income?from=${reportFrom}&to=${reportTo}`);
+  const p = s.period, pr = s.prior;
+  const list = (rows) => rows.length ? rows.map((a) => `<tr><td>${esc(a.title)}</td>
+      <td class="n">${peso(a.balance)}</td></tr>`).join('') : '<tr><td class="dim">—</td><td></td></tr>';
+  const delta = (now, was) => {
+    const d = Number(now) - Number(was);
+    return `<span class="dim">${d >= 0 ? '▲' : '▼'} ${peso(Math.abs(d))} vs ${onDay(pr.from)}–${onDay(pr.to)}</span>`;
+  };
+  body.innerHTML = `<div class="panel"><h3>Income statement · ${onDay(s.from)} – ${onDay(s.to)}</h3>
+    <table class="lines"><tbody>
+      <tr class="sub"><td colspan="2">Revenue</td></tr>${list(p.revenue)}
+      <tr><td class="right"><b>Total revenue</b></td><td class="n"><b>${peso(p.total_revenue)}</b></td></tr>
+      <tr><td class="right">${delta(p.total_revenue, pr.total_revenue)}</td><td></td></tr>
+      <tr class="sub"><td colspan="2">Expenses</td></tr>${list(p.expense)}
+      <tr><td class="right"><b>Total expenses</b></td><td class="n"><b>${peso(p.total_expense)}</b></td></tr>
+      <tr><td class="right">${delta(p.total_expense, pr.total_expense)}</td><td></td></tr>
+      <tr class="grand"><td class="right"><b>${p.profit >= 0 ? 'Net income' : 'Net loss'}</b></td>
+        <td class="n"><b>${peso(Math.abs(p.profit))}</b></td></tr>
+      <tr><td class="right">${delta(p.profit, pr.profit)}</td><td></td></tr>
+    </tbody></table></div>`;
+}
 
 // ---- a tiny dialog (self-contained, styles.css already has .veil/.dialog) ---
 function dialog(html) {

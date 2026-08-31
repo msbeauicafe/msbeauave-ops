@@ -136,6 +136,9 @@ node --test tests/books-payables.test.js
 echo "==> the books: cash, transfers & disbursement vouchers"
 node --test tests/books-cash.test.js
 
+echo "==> the books: reports read straight off the journal"
+node --test tests/books-reports.test.js
+
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js
 
