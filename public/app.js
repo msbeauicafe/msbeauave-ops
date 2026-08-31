@@ -4647,23 +4647,6 @@ async function openReseller(id, reload, part = 'account') {
       <div style="flex:0 0 auto"><button class="btn" id="d_tax">Save</button></div>
     </div>
 
-    <h3 class="mt">Sending it on</h3>
-    <div class="dim">Some accounts buy to send straight on to somebody else,
-      and their order forms carry that name beside their own. Off for
-      everybody until it is turned on here, so the rest are not asked a
-      question that has nothing to do with them.</div>
-    <div class="row mt">
-      <div style="flex:0 0 auto"><label class="dotkey" style="gap:8px">
-        <input type="checkbox" id="d_ds" ${r.drop_ship ? 'checked' : ''}>
-        This account ships on to somebody</label></div>
-      <div style="flex:2"><label for="d_dsto">Usually to</label>
-        <input id="d_dsto" type="text" value="${esc(r.drop_ship_to || '')}"
-          placeholder="Their name, to fill the box by default"
-          ${r.drop_ship ? '' : 'disabled'}></div>
-      <div style="flex:0 0 auto; align-self:flex-end">
-        <button class="btn quiet" id="d_dssave">Save</button></div>
-    </div>
-
 ` : ''}
 
     ${money ? `
@@ -4823,22 +4806,6 @@ async function openReseller(id, reload, part = 'account') {
     } catch (err) { whoops(err); }
   }));
 
-  // The name box is only worth filling in when the switch is on.
-  $('#d_ds')?.addEventListener('change', (e) => {
-    $('#d_dsto').disabled = !e.target.checked;
-    if (!e.target.checked) $('#d_dsto').value = '';
-  });
-
-  $('#d_dssave')?.addEventListener('click', async () => {
-    try {
-      const on = $('#d_ds').checked;
-      await POST(`/api/resellers/${id}/dropship`, { on, to: $('#d_dsto').value.trim() });
-      notice(on ? 'Their order forms will ask who it goes on to 🌸'
-                : 'No longer shipping on', 'good');
-      closeDialog();
-      reload();
-    } catch (e) { whoops(e); }
-  });
 
   $('#d_tax')?.addEventListener('click', async () => {
     try {
