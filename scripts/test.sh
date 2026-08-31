@@ -127,6 +127,9 @@ node --test tests/order-desk.test.js
 echo "==> the data coordinator: products and stock, never a price"
 node --test tests/data-coordinator.test.js
 
+echo "==> the books: double-entry, and the owner\'s alone"
+node --test tests/books.test.js
+
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js
 
