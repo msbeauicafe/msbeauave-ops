@@ -3204,20 +3204,20 @@ function showPackingList({ orderId, resellerName, placedAt, lines, who = {},
       </div>
       <table>
         <thead><tr>
-          <th style="width:34px"></th>
-          <th>PRODUCT DESCRIPTION</th>
           <th style="width:90px">QUANTITY</th>
           <th style="width:90px">UNIT TYPE</th>
+          <th>PRODUCT DESCRIPTION</th>
+          <th style="width:34px"></th>
         </tr></thead>
         <tbody>
           ${lines.map((l) => `<tr>
-            <td class="tick"><span class="box"></span></td>
-            <td><b>${esc(l.name)}</b></td>
             <td class="qty">${count(l.qty)}</td>
             <td class="unit">${esc(l.unit || '')}</td>
+            <td><b>${esc(l.name)}</b></td>
+            <td class="tick"><span class="box"></span></td>
           </tr>`).join('')}
           ${Array.from({ length: BLANKS }, () => `<tr>
-            <td class="tick"><span class="box"></span></td><td></td><td></td><td></td>
+            <td></td><td></td><td></td><td class="tick"><span class="box"></span></td>
           </tr>`).join('')}
         </tbody>
       </table>
