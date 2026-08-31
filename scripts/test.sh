@@ -133,6 +133,9 @@ node --test tests/books.test.js
 echo "==> the books: payables & expenses, still balanced"
 node --test tests/books-payables.test.js
 
+echo "==> the books: cash, transfers & disbursement vouchers"
+node --test tests/books-cash.test.js
+
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js
 

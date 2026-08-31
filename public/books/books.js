@@ -60,6 +60,7 @@ const TABS = [
   ['entry', 'New entry'],
   ['payables', 'Payables'],
   ['expenses', 'Expenses'],
+  ['cash', 'Cash'],
   ['journal', 'Journal'],
   ['trial', 'Trial balance'],
   ['statements', 'Statements'],
@@ -88,15 +89,22 @@ SCREENS.chart = async (page) => {
   const byType = {};
   rows.forEach((a) => (byType[a.type] ||= []).push(a));
   page.innerHTML = `<div class="head"><h2>Chart of accounts</h2>
-      <span class="hint">${rows.length} accounts · seeded from the old system</span>
+      <span class="hint">${rows.length} accounts · seeded from the old system · tick Cash to count an account in the cash position</span>
       <button class="btn" id="add">＋ New account</button></div>
     ${Object.entries(byType).map(([type, list]) => `
       <div class="panel"><h3>${esc(type)}</h3>
-        <table><thead><tr><th>Code</th><th>Title</th><th>Normal side</th></tr></thead><tbody>
+        <table><thead><tr><th>Code</th><th>Title</th><th>Normal side</th><th class="n">Cash</th></tr></thead><tbody>
         ${list.map((a) => `<tr><td class="dim">${esc(a.code)}</td><td><b>${esc(a.title)}</b></td>
-          <td>${esc(a.normal_side)}</td></tr>`).join('')}
+          <td>${esc(a.normal_side)}</td>
+          <td class="n"><input type="checkbox" class="cashmark" data-code="${esc(a.code)}"${a.is_cash ? ' checked' : ''}></td></tr>`).join('')}
         </tbody></table></div>`).join('')}`;
   $('#add').onclick = () => accountDialog(() => shell_reload());
+  page.querySelectorAll('.cashmark').forEach((c) => c.onchange = async () => {
+    try {
+      await POST('/api/books/cash/mark', { code: c.dataset.code, is_cash: c.checked });
+      notice(c.checked ? 'Marked as cash 🌸' : 'No longer cash', 'good');
+    } catch (e) { c.checked = !c.checked; notice(e.message, 'bad'); }
+  });
 };
 
 function accountDialog(done) {
@@ -173,6 +181,14 @@ function accountOptions(accounts, only) {
   const list = only ? accounts.filter(only) : accounts;
   return list.map((a) => `<option value="${esc(a.code)}">${esc(a.code)} — ${esc(a.title)}</option>`).join('');
 }
+// The cash accounts, or — if the owner has marked none — every asset account.
+const cashAccounts = (accounts) => {
+  const marked = accounts.filter((a) => a.is_cash);
+  return marked.length ? marked : accounts.filter((a) => a.type === 'Asset');
+};
+const METHODS = ['cash', 'cheque', 'bank transfer', 'online'];
+const methodField = (id) => `<label>Paid by</label><select id="${id}">${
+  METHODS.map((m) => `<option>${m}</option>`).join('')}</select>`;
 // A line grid: account · amount · memo, with a live total. Returns {html, wire, read}.
 function lineGrid(accounts) {
   const opts = accountOptions(accounts);
@@ -275,13 +291,14 @@ function billDialog(vendors, accounts) {
 }
 
 function payDialog(d, accounts) {
-  const cash = (a) => a.type === 'Asset';
   dialog(`<h3>Pay ${esc(d.no)}</h3>
     <div class="dim">${esc(d.who)} · ${peso(d.bal)} still owed</div>
     <div class="row mt"><div><label>Date</label><input id="p_date" type="date" value="${today()}"></div>
       <div><label>Amount</label><input id="p_amt" class="n" inputmode="decimal" value="${Number(d.bal).toFixed(2)}"></div></div>
-    <div class="row"><div style="flex:1"><label>Paid from</label>
-      <select id="p_from">${accountOptions(accounts, cash)}</select></div></div>
+    <div class="row"><div><label>Paid from</label>
+      <select id="p_from">${accountOptions(cashAccounts(accounts))}</select></div>
+      <div>${methodField('p_method')}</div>
+      <div><label>Reference / cheque no.</label><input id="p_ref" placeholder="(optional)"></div></div>
     <div class="row"><div style="flex:1"><label>Memo</label><input id="p_memo" placeholder="(optional)"></div></div>
     <div class="mt right"><button class="btn quiet" id="p_x">Cancel</button>
       <button class="btn" id="p_go">Record payment</button></div>`);
@@ -290,7 +307,8 @@ function payDialog(d, accounts) {
     try {
       await POST(`/api/books/bills/${d.id}/pay`, {
         pay_date: $('#p_date').value, amount: money($('#p_amt').value),
-        paid_from: $('#p_from').value, memo: $('#p_memo').value.trim() });
+        paid_from: $('#p_from').value, method: $('#p_method').value, reference: $('#p_ref').value.trim(),
+        memo: $('#p_memo').value.trim() });
       closeDialog(); notice('Payment recorded 🌸', 'good'); shell_reload();
     } catch (e) { notice(e.message, 'bad'); }
   };
@@ -318,13 +336,14 @@ function vendorList(vendors) {
 SCREENS.expenses = async (page) => {
   const [accounts, recent] = await Promise.all([GET('/api/books/accounts'), GET('/api/books/expenses')]);
   const grid = lineGrid(accounts);
-  const cash = (a) => a.type === 'Asset';
   page.innerHTML = `<div class="head"><h2>Expenses</h2>
       <span class="hint">Money out, paid on the spot — no bill in between</span></div>
     <div class="panel">
       <div class="row"><div><label>Date</label><input id="x_date" type="date" value="${today()}"></div>
-        <div><label>Paid from</label><select id="x_from">${accountOptions(accounts, cash)}</select></div>
-        <div style="flex:2"><label>Memo</label><input id="x_memo" placeholder="What this was for"></div></div>
+        <div><label>Paid from</label><select id="x_from">${accountOptions(cashAccounts(accounts))}</select></div>
+        <div>${methodField('x_method')}</div>
+        <div><label>Reference / cheque no.</label><input id="x_ref" placeholder="(optional)"></div></div>
+      <div class="row"><div style="flex:1"><label>Memo</label><input id="x_memo" placeholder="What this was for"></div></div>
       <div id="x_grid">${grid.html}</div>
       <div class="mt right"><button class="btn" id="x_go" disabled>Record expense</button></div>
     </div>
@@ -342,11 +361,98 @@ SCREENS.expenses = async (page) => {
     try {
       await POST('/api/books/expenses', {
         pay_date: $('#x_date').value, paid_from: $('#x_from').value,
+        method: $('#x_method').value, reference: $('#x_ref').value.trim(),
         memo: $('#x_memo').value.trim(), lines });
       notice('Expense recorded 🌸', 'good'); shell_reload();
     } catch (e) { notice(e.message, 'bad'); }
   };
 };
+
+SCREENS.cash = async (page) => {
+  const [cash, disb, accounts] = await Promise.all([
+    GET('/api/books/cash'), GET('/api/books/disbursements'), GET('/api/books/accounts'),
+  ]);
+  const move = (m) => {
+    const inn = Number(m.debit), out = Number(m.credit);
+    return `<tr><td>${onDay(m.entry_date)}</td><td class="dim">${esc(m.entry_no)}</td>
+      <td>${esc(m.title)}</td><td>${esc(m.memo)}</td>
+      <td class="n">${inn ? '<span class="tag green">' + peso(inn) + '</span>' : ''}</td>
+      <td class="n">${out ? peso(out) : ''}</td></tr>`;
+  };
+  page.innerHTML = `<div class="head"><h2>Cash</h2>
+      <span class="hint">Where the money is, and everything that moved it</span>
+      <button class="btn" id="xfer">⇄ Transfer</button></div>
+    <div class="panel"><div class="row" style="gap:24px;align-items:stretch">
+      ${cash.accounts.map((a) => `<div class="cashcard"><div class="dim">${esc(a.title)}</div>
+        <div style="font-size:1.3rem"><b>${peso(a.balance)}</b></div></div>`).join('')
+        || '<div class="dim">No cash accounts marked yet — mark them on the Chart, or they default to your asset accounts.</div>'}
+      <div class="cashcard total"><div class="dim">Cash on hand, all told</div>
+        <div style="font-size:1.5rem"><b>${peso(cash.total)}</b></div></div>
+    </div></div>
+    <div class="panel"><h3>Disbursement vouchers</h3>
+      ${disb.length ? `<table class="lines"><thead><tr><th>Voucher</th><th>Date</th><th>Paid to</th><th>For</th>
+        <th>By</th><th class="n">Amount</th><th></th></tr></thead><tbody>
+        ${disb.map((v, i) => `<tr><td class="dim">${esc(v.voucher_no)}</td><td>${onDay(v.paid_on)}</td>
+          <td><b>${esc(v.payee)}</b></td><td>${esc(v.kind)}${v.bill_no ? ` · ${esc(v.bill_no)}` : ''}</td>
+          <td>${esc(v.method)}${v.reference ? `<br><span class="dim">${esc(v.reference)}</span>` : ''}</td>
+          <td class="n"><b>${peso(v.amount)}</b></td>
+          <td><button class="btn quiet sm vch" data-i="${i}">Voucher</button></td></tr>`).join('')}</tbody></table>`
+        : '<div class="none">No money out yet.</div>'}</div>
+    <div class="panel"><h3>Recent cash movements</h3>
+      ${cash.movements.length ? `<table class="lines"><thead><tr><th>Date</th><th>Entry</th><th>Account</th>
+        <th>Memo</th><th class="n">In</th><th class="n">Out</th></tr></thead>
+        <tbody>${cash.movements.map(move).join('')}</tbody></table>`
+        : '<div class="none">Nothing has moved yet.</div>'}</div>`;
+  $('#xfer').onclick = () => transferDialog(cashAccounts(accounts));
+  page.querySelectorAll('.vch').forEach((b) => b.onclick = () => voucherDialog(disb[Number(b.dataset.i)]));
+};
+
+function transferDialog(cash) {
+  if (cash.length < 2) return notice('You need at least two cash accounts to move money between.', 'bad');
+  const opts = accountOptions(cash);
+  dialog(`<h3>Move cash</h3>
+    <div class="row"><div><label>From</label><select id="t_from">${opts}</select></div>
+      <div><label>To</label><select id="t_to">${opts}</select></div></div>
+    <div class="row"><div><label>Date</label><input id="t_date" type="date" value="${today()}"></div>
+      <div><label>Amount</label><input id="t_amt" class="n" inputmode="decimal" placeholder="0.00"></div></div>
+    <div class="row"><div style="flex:1"><label>Memo</label><input id="t_memo" placeholder="(optional)"></div></div>
+    <div class="mt right"><button class="btn quiet" id="t_x">Cancel</button>
+      <button class="btn" id="t_go">Move it</button></div>`);
+  if (cash[1]) $('#t_to').value = cash[1].code;
+  $('#t_x').onclick = closeDialog;
+  $('#t_go').onclick = async () => {
+    try {
+      await POST('/api/books/transfer', {
+        from: $('#t_from').value, to: $('#t_to').value, xfer_date: $('#t_date').value,
+        amount: money($('#t_amt').value), memo: $('#t_memo').value.trim() });
+      closeDialog(); notice('Cash moved 🌸', 'good'); shell_reload();
+    } catch (e) { notice(e.message, 'bad'); }
+  };
+}
+
+function voucherDialog(v) {
+  dialog(`<div class="voucher">
+      <div class="v-head"><div><b>MS BEAU AVE</b><div class="dim">Disbursement Voucher</div></div>
+        <div class="right"><b>${esc(v.voucher_no)}</b><div class="dim">${onDay(v.paid_on)}</div></div></div>
+      <table class="v-body"><tbody>
+        <tr><td class="dim">Paid to</td><td><b>${esc(v.payee)}</b></td></tr>
+        <tr><td class="dim">For</td><td>${esc(v.kind)}${v.bill_no ? ` · ${esc(v.bill_no)}` : ''}${
+          v.memo ? ` — ${esc(v.memo)}` : ''}</td></tr>
+        <tr><td class="dim">Paid by</td><td>${esc(v.method)}${v.reference ? ` · ${esc(v.reference)}` : ''}</td></tr>
+        <tr><td class="dim">Out of</td><td>${esc(v.paid_from_title)}</td></tr>
+        <tr class="v-amt"><td class="dim">Amount</td><td><b>${peso(v.amount)}</b></td></tr>
+      </tbody></table>
+      <div class="v-sign"><div><div class="v-line"></div>Prepared by</div>
+        <div><div class="v-line"></div>Approved by</div>
+        <div><div class="v-line"></div>Received by</div></div>
+    </div>
+    <div class="mt right no-print"><button class="btn quiet" id="v_x">Close</button>
+      <button class="btn" id="v_print">Print</button></div>`);
+  document.body.classList.add('voucher-open');
+  const done = () => { document.body.classList.remove('voucher-open'); closeDialog(); };
+  $('#v_x').onclick = done;
+  $('#v_print').onclick = () => window.print();
+}
 
 SCREENS.journal = async (page) => {
   const rows = await GET('/api/books/journal');
