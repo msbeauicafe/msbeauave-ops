@@ -469,6 +469,22 @@ const TABS = {
     ['clock', '⏱️', 'Time clock'],
     ['workspace', '🗂️', 'Workspace'],
   ],
+  // The data coordinator: keeps the catalogue and the stock records current.
+  // The product catalogue, the buying half in the order the work happens, and
+  // the shelf — plus the three screens about themselves that everybody who
+  // works here has. No pricelist, no till, no customer order: adding a product
+  // is theirs, pricing it is the owner's.
+  datacoord: [
+    ['products', '🧴', 'Products'],
+    ['purchaseorders', '🧾', 'Purchase order'],
+    ['receive', '📦', 'Receive'],
+    ['inventory', '📥', 'Inventory'],
+    ['stockroom', '🔀', 'Stockroom'],
+    ['reorder', '📈', 'Reordering'],
+    ['me', '🪪', 'My record'],
+    ['myleave', '🌴', 'My leave'],
+    ['notices', '📢', 'Noticeboard'],
+  ],
   // The order desk: whoever takes the reseller orders. Customer order, which
   // is the job, and the same three screens about themselves that everybody
   // who works here has. Nothing else is on this menu and nothing else answers
@@ -532,6 +548,7 @@ const ROLES = [
   ['supervisor', 'Supervisor (the till and the stockroom)'],
   ['office', 'Office (the till and the stockroom)'],
   ['orderdesk', 'Order desk (Customer order, and their own record)'],
+  ['datacoord', 'Data coordinator (products, stock and inventory)'],
   ['timekeeper', 'Timekeeper (a door tablet — the clock only)'],
   ['employee', 'Staff (their own record and nothing else)'],
   ['observer', 'View only'],
@@ -541,7 +558,7 @@ const roleName = (r) => ({
   admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier',
   supervisor: 'Supervisor', office: 'Office', timekeeper: 'Timekeeper',
   reseller: 'Reseller', employee: 'Staff', observer: 'View only',
-  orderdesk: 'Order desk',
+  orderdesk: 'Order desk', datacoord: 'Data coordinator',
 }[r] ?? r);
 
 function drawFrame() {
@@ -766,8 +783,9 @@ SCREENS.products = async (page) => {
     <div class="tools">
       <input type="search" id="find" placeholder="Search by code, name or brand…">
       <button class="btn" id="add">＋ New product</button>
+      ${user.role === 'admin' ? `
       <button class="btn line" id="sheet">📋 Load a price list</button>
-      <button class="btn line" id="pics">🖼️ Pictures, all at once</button>
+      <button class="btn line" id="pics">🖼️ Pictures, all at once</button>` : ''}
     </div>
     <div class="panel" id="list"></div>
     ${user.role === 'admin' ? `
@@ -782,9 +800,9 @@ SCREENS.products = async (page) => {
 
   $('#find', page).addEventListener('input', (e) => { term = e.target.value; load().catch(whoops); });
   $('#add', page).addEventListener('click', () => editProduct(null, load));
-  $('#sheet', page).addEventListener('click',
+  $('#sheet', page)?.addEventListener('click',
     () => priceListDialog(GET('/api/products').catch(() => []), load));
-  $('#pics', page).addEventListener('click',
+  $('#pics', page)?.addEventListener('click',
     () => GET('/api/products').then((all) => productPhotosDialog(all, load)).catch(whoops));
   $('#erase', page)?.addEventListener('click', () => erasePracticeData(load));
   await load();
@@ -1066,11 +1084,14 @@ function editProduct(p, reload) {
     </div>
     <div class="row">
       <div><label>Costs us</label><input id="f_cost" type="number" step="0.01" value="${num(p?.unit_cost)}"></div>
+      ${user.role === 'datacoord' ? '' : `
       <div><label>To resellers</label><input id="f_ws" type="number" step="0.01" value="${num(p?.wholesale_price)}"></div>
       <div><label>They sell at</label><input id="f_srp" type="number" step="0.01" value="${num(p?.srp)}"></div>
-      <div><label>We sell at</label><input id="f_rp" type="number" step="0.01" value="${num(p?.retail_price)}"></div>
+      <div><label>We sell at</label><input id="f_rp" type="number" step="0.01" value="${num(p?.retail_price)}"></div>`}
     </div>
-    <div class="dim">Our shop price may not go below what resellers sell at.</div>
+    <div class="dim">${user.role === 'datacoord'
+      ? 'Selling prices are set by the owner on Pricelists — a new product is added here and priced there.'
+      : 'Our shop price may not go below what resellers sell at.'}</div>
     <div class="row">
       <div><label>Shelf life (months)</label><input id="f_life" type="number" value="${num(p?.shelf_life_months, 24)}"></div>
       <div><label>Resellers need (months)</label><input id="f_floor" type="number" value="${num(p?.reseller_floor_months, 12)}"></div>
@@ -1144,8 +1165,10 @@ function editProduct(p, reload) {
     }
     const body = {
       name: $('#f_name').value, brand: $('#f_brand').value, category: $('#f_cat').value,
-      unit_cost: +$('#f_cost').value, wholesale_price: +$('#f_ws').value,
-      srp: +$('#f_srp').value, retail_price: +$('#f_rp').value,
+      unit_cost: +$('#f_cost').value,
+      ...(user.role === 'datacoord' ? {} : {
+        wholesale_price: +$('#f_ws').value,
+        srp: +$('#f_srp').value, retail_price: +$('#f_rp').value }),
       shelf_life_months: +$('#f_life').value, reseller_floor_months: +$('#f_floor').value,
       shelf_min: +$('#f_min').value, alloc_b2b: b2b, alloc_shop: shop, alloc_reserve: reserve,
     };

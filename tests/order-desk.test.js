@@ -417,7 +417,7 @@ test('the role picker offers every role a sign-in can be, and not the portal', (
   const ids = [...list.matchAll(/\['([a-z]+)',/g)].map((m) => m[1]);
 
   assert.deepEqual(ids, ['admin', 'warehouse', 'cashier', 'supervisor', 'office',
-    'orderdesk', 'timekeeper', 'employee', 'observer']);
+    'orderdesk', 'datacoord', 'timekeeper', 'employee', 'observer']);
   assert.ok(!ids.includes('reseller'),
     'a portal sign-in is bound to an account, so it is created as one rather than moved into one');
 
