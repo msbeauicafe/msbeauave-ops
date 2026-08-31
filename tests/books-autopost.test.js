@@ -159,6 +159,16 @@ test('auto-posting is the owner\'s — nobody else can read it or run it', async
   }
 });
 
+test('the nightly job posts on its own, with no one signed in', async () => {
+  // run_book_sync_job() is what pg_cron calls at night: it wears the owner's
+  // hat for one transaction and runs the sweep, so it works without a web
+  // request or a sign-in behind it.
+  const s = await counterSale(321, 'cash');
+  const out = (await db.query('select run_book_sync_job() as j')).rows[0].j;
+  assert.equal(typeof out.total, 'number', 'it returns a tally');
+  assert.equal(await mapCount('counter', s.sale), 1, 'and it posted the pending sale');
+});
+
 test('the sweep is wired into the books app', async () => {
   const fs = await import('node:fs');
   const url = await import('node:url');
