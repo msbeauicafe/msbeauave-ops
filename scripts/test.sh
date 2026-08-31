@@ -142,6 +142,9 @@ node --test tests/books-reports.test.js
 echo "==> the books: auto-posting the shop's real trading"
 node --test tests/books-autopost.test.js
 
+echo "==> the books: the cost side — perpetual inventory & COGS"
+node --test tests/books-cost.test.js
+
 echo "==> an account's details, papers and proofs"
 node --test tests/reseller-profile-files.test.js
 

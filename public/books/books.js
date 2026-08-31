@@ -457,17 +457,22 @@ function voucherDialog(v) {
 
 SCREENS.journal = async (page) => {
   const [rows, pending] = await Promise.all([GET('/api/books/journal'), GET('/api/books/sync')]);
-  const waiting = Number(pending.counter) + Number(pending.invoice) + Number(pending.payment) + Number(pending.discount);
+  const waiting = ['counter', 'invoice', 'payment', 'discount', 'receiving', 'cost']
+    .reduce((s, k) => s + Number(pending[k] || 0), 0);
   const bits = [[pending.counter, 'counter sale'], [pending.invoice, 'invoice'],
-    [pending.payment, 'payment'], [pending.discount, 'discount']]
+    [pending.payment, 'payment'], [pending.discount, 'discount'],
+    [pending.receiving, 'stock receipt'], [pending.cost, 'cost entry']]
     .filter(([n]) => Number(n) > 0)
     .map(([n, w]) => `${n} ${w}${Number(n) === 1 ? '' : 's'}`).join(' · ');
   page.innerHTML = `<div class="head"><h2>Journal</h2>
       <span class="hint">${rows.length} entries, newest first</span></div>
     <div class="panel autopost">
-      <div><b>Auto-posting</b> — the day's sales, straight from the selling side.
+      <div><b>Auto-posting</b> — the day's trading, both sides, straight from the selling side.
         <div class="dim">${waiting ? esc(bits) + ' waiting to post' : 'The books are up to date with the shop 🌸'}</div></div>
-      <button class="btn${waiting ? '' : ' quiet'}" id="sync"${waiting ? '' : ' disabled'}>Bring the books up to date</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn quiet" id="value">Value the stockroom</button>
+        <button class="btn${waiting ? '' : ' quiet'}" id="sync"${waiting ? '' : ' disabled'}>Bring the books up to date</button>
+      </div>
     </div>
     ${rows.length ? rows.map((e) => `<div class="panel">
       <div class="row" style="justify-content:space-between">
@@ -487,13 +492,24 @@ SCREENS.journal = async (page) => {
       notice(postedLine(r), 'good'); shell_reload();
     } catch (e) { notice(e.message, 'bad'); sync.disabled = false; sync.textContent = 'Bring the books up to date'; }
   };
+  $('#value').onclick = async () => {
+    $('#value').disabled = true; $('#value').textContent = 'Valuing…';
+    try {
+      const r = await POST('/api/books/value-inventory');
+      const d = Number(r.adjusted) || 0;
+      notice(d === 0 ? 'Inventory already matches the stock on hand 🌸'
+        : `Inventory ${d < 0 ? 'written down' : 'brought up'} ${peso(Math.abs(d))} to the count 🌸`, 'good');
+      shell_reload();
+    } catch (e) { notice(e.message, 'bad'); $('#value').disabled = false; $('#value').textContent = 'Value the stockroom'; }
+  };
 };
 
 // How a sync result reads back.
 function postedLine(r) {
   const t = Number(r.total) || 0;
   if (!t) return 'Already up to date 🌸';
-  const bits = [[r.counter, 'sale'], [r.invoice, 'invoice'], [r.payment, 'payment'], [r.discount, 'discount']]
+  const bits = [[r.counter, 'sale'], [r.invoice, 'invoice'], [r.payment, 'payment'],
+    [r.discount, 'discount'], [r.receiving, 'stock receipt'], [r.cost, 'cost entry']]
     .filter(([n]) => Number(n) > 0).map(([n, w]) => `${n} ${w}${Number(n) === 1 ? '' : 's'}`).join(', ');
   return `Posted ${bits} to the books 🌸`;
 }
