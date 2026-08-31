@@ -1215,3 +1215,5 @@ input.n { text-align: right; }
   letter-spacing: .03em; text-transform: uppercase; color: var(--rose-deep); }
 #page table.lines tr.grand td { border-top: 2px solid var(--rose-dust); font-size: .95rem; }
 #page .right { text-align: right; }
+#page .due { color: var(--danger); }
+#page table.lines tfoot .gmore, #page table.lines .l_del { padding: 2px 8px; }

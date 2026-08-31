@@ -58,6 +58,8 @@ function signInScreen(after) {
 const TABS = [
   ['chart', 'Chart of accounts'],
   ['entry', 'New entry'],
+  ['payables', 'Payables'],
+  ['expenses', 'Expenses'],
   ['journal', 'Journal'],
   ['trial', 'Trial balance'],
   ['statements', 'Statements'],
@@ -162,6 +164,188 @@ SCREENS.entry = async (page) => {
     } catch (e) { notice(e.message, 'bad'); }
   };
   retotal();
+};
+
+// ---- payables & expenses share one thing: a grid of what-it-was-for lines ---
+const money = (v) => { const n = Number(String(v).replace(/[^0-9.]/g, '')); return Number.isFinite(n) ? n : 0; };
+
+function accountOptions(accounts, only) {
+  const list = only ? accounts.filter(only) : accounts;
+  return list.map((a) => `<option value="${esc(a.code)}">${esc(a.code)} — ${esc(a.title)}</option>`).join('');
+}
+// A line grid: account · amount · memo, with a live total. Returns {html, wire, read}.
+function lineGrid(accounts) {
+  const opts = accountOptions(accounts);
+  const line = () => `<tr class="bline">
+      <td><select class="l_acct"><option value="">—</option>${opts}</select></td>
+      <td><input class="l_amt n" inputmode="decimal" placeholder="0.00"></td>
+      <td><input class="l_memo" placeholder="(optional)"></td>
+      <td><button class="btn quiet sm l_del" title="Remove">✕</button></td></tr>`;
+  const html = `<table class="lines mt"><thead><tr><th>Account</th><th>Amount</th><th>Memo</th><th></th></tr></thead>
+      <tbody class="gbody">${line() + line()}</tbody>
+      <tfoot><tr><td class="right"><b>Total</b></td><td class="n"><b class="gtotal">₱0.00</b></td><td></td>
+        <td><button class="btn quiet sm gmore">＋</button></td></tr></tfoot></table>`;
+  const wire = (root, onChange) => {
+    const body = $('.gbody', root);
+    const retotal = () => {
+      let t = 0; root.querySelectorAll('.bline').forEach((r) => { t += money($('.l_amt', r).value); });
+      $('.gtotal', root).textContent = peso(t);
+      onChange && onChange(t);
+    };
+    root.addEventListener('input', retotal);
+    $('.gmore', root).onclick = (e) => { e.preventDefault(); body.insertAdjacentHTML('beforeend', line()); };
+    root.addEventListener('click', (e) => {
+      if (e.target.closest('.l_del')) { e.preventDefault(); e.target.closest('tr').remove(); retotal(); }
+    });
+    retotal();
+    return retotal;
+  };
+  const read = (root) => [...root.querySelectorAll('.bline')].map((r) => ({
+    account: $('.l_acct', r).value, amount: money($('.l_amt', r).value),
+    memo: $('.l_memo', r).value.trim() || null,
+  })).filter((l) => l.account && l.amount > 0);
+  return { html, wire, read };
+}
+
+SCREENS.payables = async (page) => {
+  const [sum, bills, vendors, accounts] = await Promise.all([
+    GET('/api/books/payables'), GET('/api/books/bills'),
+    GET('/api/books/vendors'), GET('/api/books/accounts'),
+  ]);
+  const tag = (b) => {
+    const late = b.due_date && String(b.due_date).slice(0, 10) < today() && b.status !== 'paid';
+    if (b.status === 'paid') return '<span class="tag green">paid</span>';
+    if (late) return '<span class="tag red">overdue</span>';
+    if (b.status === 'part') return '<span class="tag">part-paid</span>';
+    return '<span class="tag">open</span>';
+  };
+  page.innerHTML = `<div class="head"><h2>Payables</h2>
+      <span class="hint">What the business owes its suppliers</span>
+      <button class="btn quiet" id="vendor">Suppliers</button>
+      <button class="btn" id="bill">＋ Record bill</button></div>
+    <div class="panel"><div class="row" style="gap:32px">
+      <div><div class="dim">Owed in total</div><div style="font-size:1.4rem"><b>${peso(sum.total_open)}</b></div></div>
+      <div><div class="dim">Of that, overdue</div><div style="font-size:1.4rem"${sum.total_overdue > 0 ? ' class="due"' : ''}>
+        <b>${peso(sum.total_overdue)}</b></div></div>
+    </div></div>
+    <div class="panel"><table class="lines"><thead><tr><th>Bill</th><th>Supplier</th><th>Dated</th><th>Due</th>
+      <th class="n">Amount</th><th class="n">Paid</th><th class="n">Balance</th><th></th><th></th></tr></thead><tbody>
+      ${bills.length ? bills.map((b) => `<tr>
+        <td class="dim">${esc(b.bill_no)}${b.reference ? `<br><span class="dim">${esc(b.reference)}</span>` : ''}</td>
+        <td><b>${esc(b.vendor)}</b>${b.memo ? `<br><span class="dim">${esc(b.memo)}</span>` : ''}</td>
+        <td>${onDay(b.bill_date)}</td><td>${b.due_date ? onDay(b.due_date) : '<span class="dim">—</span>'}</td>
+        <td class="n">${peso(b.amount)}</td><td class="n">${Number(b.paid) ? peso(b.paid) : ''}</td>
+        <td class="n"><b>${peso(b.balance)}</b></td><td>${tag(b)}</td>
+        <td>${b.status !== 'paid' ? `<button class="btn sm pay" data-id="${b.id}"
+          data-bal="${b.balance}" data-who="${esc(b.vendor)}" data-no="${esc(b.bill_no)}">Pay</button>` : ''}</td></tr>`).join('')
+        : '<tr><td colspan="9" class="dim">No bills recorded yet.</td></tr>'}
+      </tbody></table></div>`;
+  $('#bill').onclick = () => billDialog(vendors, accounts);
+  $('#vendor').onclick = () => vendorList(vendors);
+  page.querySelectorAll('.pay').forEach((btn) => btn.onclick = () => payDialog(btn.dataset, accounts));
+};
+
+function billDialog(vendors, accounts) {
+  const grid = lineGrid(accounts);
+  dialog(`<h3>Record a bill</h3>
+    <div class="row"><div style="flex:2"><label>Supplier</label>
+      <select id="b_vendor"><option value="">— pick a supplier —</option>
+        ${vendors.map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></div>
+      <div><label>Their ref</label><input id="b_ref" placeholder="DR / invoice no."></div></div>
+    <div class="row"><div><label>Bill date</label><input id="b_date" type="date" value="${today()}"></div>
+      <div><label>Due date</label><input id="b_due" type="date"></div>
+      <div style="flex:2"><label>Memo</label><input id="b_memo" placeholder="What this bill is for"></div></div>
+    <div id="b_grid">${grid.html}</div>
+    <div class="mt right"><button class="btn quiet" id="b_x">Cancel</button>
+      <button class="btn" id="b_go">Record bill</button></div>`);
+  grid.wire($('#b_grid'));
+  $('#b_x').onclick = closeDialog;
+  $('#b_go').onclick = async () => {
+    const lines = grid.read($('#b_grid'));
+    if (!$('#b_vendor').value) return notice('Pick a supplier first.', 'bad');
+    if (!lines.length) return notice('Add at least one line.', 'bad');
+    try {
+      await POST('/api/books/bills', {
+        vendor_id: Number($('#b_vendor').value), bill_date: $('#b_date').value,
+        due_date: $('#b_due').value || null, reference: $('#b_ref').value.trim(),
+        memo: $('#b_memo').value.trim(), lines });
+      closeDialog(); notice('Bill recorded 🌸', 'good'); shell_reload();
+    } catch (e) { notice(e.message, 'bad'); }
+  };
+}
+
+function payDialog(d, accounts) {
+  const cash = (a) => a.type === 'Asset';
+  dialog(`<h3>Pay ${esc(d.no)}</h3>
+    <div class="dim">${esc(d.who)} · ${peso(d.bal)} still owed</div>
+    <div class="row mt"><div><label>Date</label><input id="p_date" type="date" value="${today()}"></div>
+      <div><label>Amount</label><input id="p_amt" class="n" inputmode="decimal" value="${Number(d.bal).toFixed(2)}"></div></div>
+    <div class="row"><div style="flex:1"><label>Paid from</label>
+      <select id="p_from">${accountOptions(accounts, cash)}</select></div></div>
+    <div class="row"><div style="flex:1"><label>Memo</label><input id="p_memo" placeholder="(optional)"></div></div>
+    <div class="mt right"><button class="btn quiet" id="p_x">Cancel</button>
+      <button class="btn" id="p_go">Record payment</button></div>`);
+  $('#p_x').onclick = closeDialog;
+  $('#p_go').onclick = async () => {
+    try {
+      await POST(`/api/books/bills/${d.id}/pay`, {
+        pay_date: $('#p_date').value, amount: money($('#p_amt').value),
+        paid_from: $('#p_from').value, memo: $('#p_memo').value.trim() });
+      closeDialog(); notice('Payment recorded 🌸', 'good'); shell_reload();
+    } catch (e) { notice(e.message, 'bad'); }
+  };
+}
+
+function vendorList(vendors) {
+  dialog(`<h3>Suppliers</h3>
+    <div class="vendor-rows">${vendors.length ? vendors.map((v) => `<div class="row" style="justify-content:space-between">
+      <div><b>${esc(v.name)}</b>${v.notes ? `<br><span class="dim">${esc(v.notes)}</span>` : ''}</div></div>`).join('')
+      : '<div class="dim">No suppliers yet.</div>'}</div>
+    <div class="row mt"><div style="flex:2"><label>New supplier</label><input id="v_name" placeholder="Name"></div>
+      <div style="flex:1"><label>Notes</label><input id="v_notes" placeholder="(optional)"></div></div>
+    <div class="mt right"><button class="btn quiet" id="v_x">Close</button>
+      <button class="btn" id="v_go">Add supplier</button></div>`);
+  $('#v_x').onclick = closeDialog;
+  $('#v_go').onclick = async () => {
+    if (!$('#v_name').value.trim()) return notice('A supplier needs a name.', 'bad');
+    try {
+      await POST('/api/books/vendors', { name: $('#v_name').value.trim(), notes: $('#v_notes').value.trim() });
+      closeDialog(); notice('Supplier added 🌸', 'good'); shell_reload();
+    } catch (e) { notice(e.message, 'bad'); }
+  };
+}
+
+SCREENS.expenses = async (page) => {
+  const [accounts, recent] = await Promise.all([GET('/api/books/accounts'), GET('/api/books/expenses')]);
+  const grid = lineGrid(accounts);
+  const cash = (a) => a.type === 'Asset';
+  page.innerHTML = `<div class="head"><h2>Expenses</h2>
+      <span class="hint">Money out, paid on the spot — no bill in between</span></div>
+    <div class="panel">
+      <div class="row"><div><label>Date</label><input id="x_date" type="date" value="${today()}"></div>
+        <div><label>Paid from</label><select id="x_from">${accountOptions(accounts, cash)}</select></div>
+        <div style="flex:2"><label>Memo</label><input id="x_memo" placeholder="What this was for"></div></div>
+      <div id="x_grid">${grid.html}</div>
+      <div class="mt right"><button class="btn" id="x_go" disabled>Record expense</button></div>
+    </div>
+    <div class="panel"><h3>Recent expenses</h3>
+      ${recent.length ? `<table class="lines"><thead><tr><th>Date</th><th>Entry</th><th>What for</th>
+        <th class="n">Amount</th></tr></thead><tbody>
+        ${recent.map((e) => `<tr><td>${onDay(e.entry_date)}</td><td class="dim">${esc(e.entry_no)}</td>
+          <td>${esc(e.memo)}${e.lines.length ? `<br><span class="dim">${e.lines.map((l) => esc(l.title)).join(', ')}</span>` : ''}</td>
+          <td class="n"><b>${peso(e.total)}</b></td></tr>`).join('')}</tbody></table>`
+        : '<div class="none">Nothing recorded yet.</div>'}</div>`;
+  grid.wire($('#x_grid'), (t) => { $('#x_go').disabled = !(t > 0); });
+  $('#x_go').onclick = async () => {
+    const lines = grid.read($('#x_grid'));
+    if (!lines.length) return notice('Add at least one line.', 'bad');
+    try {
+      await POST('/api/books/expenses', {
+        pay_date: $('#x_date').value, paid_from: $('#x_from').value,
+        memo: $('#x_memo').value.trim(), lines });
+      notice('Expense recorded 🌸', 'good'); shell_reload();
+    } catch (e) { notice(e.message, 'bad'); }
+  };
 };
 
 SCREENS.journal = async (page) => {
