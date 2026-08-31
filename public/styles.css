@@ -1263,3 +1263,16 @@ input.n { text-align: right; }
   body.voucher-open #dialog .dialog { box-shadow: none; border: none; padding: 0; }
   body.voucher-open .voucher { border: none; width: auto; }
 }
+
+/* Papers and proofs on an account — a small grid of thumbnails. */
+.filegrid { display: flex; flex-wrap: wrap; gap: 12px; }
+.filecard { margin: 0; width: 132px; }
+.filecard img {
+  width: 132px; height: 96px; object-fit: cover; border-radius: 8px;
+  border: 1px solid var(--rose-soft); background: var(--card); display: block;
+}
+.filecard figcaption { font-size: .72rem; margin-top: 4px; line-height: 1.3; word-break: break-word; }
+.linkbtn {
+  border: none; background: none; color: var(--danger); font: inherit; font-size: .72rem;
+  padding: 0; margin-left: 6px; cursor: pointer; text-decoration: underline;
+}
