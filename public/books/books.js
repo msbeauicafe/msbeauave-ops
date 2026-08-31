@@ -456,9 +456,19 @@ function voucherDialog(v) {
 }
 
 SCREENS.journal = async (page) => {
-  const rows = await GET('/api/books/journal');
+  const [rows, pending] = await Promise.all([GET('/api/books/journal'), GET('/api/books/sync')]);
+  const waiting = Number(pending.counter) + Number(pending.invoice) + Number(pending.payment) + Number(pending.discount);
+  const bits = [[pending.counter, 'counter sale'], [pending.invoice, 'invoice'],
+    [pending.payment, 'payment'], [pending.discount, 'discount']]
+    .filter(([n]) => Number(n) > 0)
+    .map(([n, w]) => `${n} ${w}${Number(n) === 1 ? '' : 's'}`).join(' · ');
   page.innerHTML = `<div class="head"><h2>Journal</h2>
       <span class="hint">${rows.length} entries, newest first</span></div>
+    <div class="panel autopost">
+      <div><b>Auto-posting</b> — the day's sales, straight from the selling side.
+        <div class="dim">${waiting ? esc(bits) + ' waiting to post' : 'The books are up to date with the shop 🌸'}</div></div>
+      <button class="btn${waiting ? '' : ' quiet'}" id="sync"${waiting ? '' : ' disabled'}>Bring the books up to date</button>
+    </div>
     ${rows.length ? rows.map((e) => `<div class="panel">
       <div class="row" style="justify-content:space-between">
         <div><b>${esc(e.entry_no)}</b> · ${onDay(e.entry_date)} · ${esc(e.memo)}</div>
@@ -469,7 +479,24 @@ SCREENS.journal = async (page) => {
         <td class="n">${Number(l.credit) ? peso(l.credit) : ''}</td>
         <td class="dim">${esc(l.memo || '')}</td></tr>`).join('')}</tbody></table></div>`).join('')
       : '<div class="none">Nothing posted yet.</div>'}`;
+  const sync = $('#sync');
+  if (sync && waiting) sync.onclick = async () => {
+    sync.disabled = true; sync.textContent = 'Posting…';
+    try {
+      const r = await POST('/api/books/sync');
+      notice(postedLine(r), 'good'); shell_reload();
+    } catch (e) { notice(e.message, 'bad'); sync.disabled = false; sync.textContent = 'Bring the books up to date'; }
+  };
 };
+
+// How a sync result reads back.
+function postedLine(r) {
+  const t = Number(r.total) || 0;
+  if (!t) return 'Already up to date 🌸';
+  const bits = [[r.counter, 'sale'], [r.invoice, 'invoice'], [r.payment, 'payment'], [r.discount, 'discount']]
+    .filter(([n]) => Number(n) > 0).map(([n, w]) => `${n} ${w}${Number(n) === 1 ? '' : 's'}`).join(', ');
+  return `Posted ${bits} to the books 🌸`;
+}
 
 SCREENS.trial = async (page) => {
   const { rows, totals } = await GET('/api/books/trial-balance');
@@ -614,10 +641,19 @@ function closeDialog() { $('#dialog')?.remove(); }
 let currentUser = null;
 const shell_reload = () => shell(currentUser);
 
+// Pull the shop's trading into the books once when the app opens. Idempotent, so
+// it only ever posts what is new; silent unless it actually posted something.
+async function syncOnLoad() {
+  try {
+    const r = await POST('/api/books/sync');
+    if (Number(r.total) > 0) { notice(postedLine(r), 'good'); if (tab === 'journal') shell_reload(); }
+  } catch { /* leave it to the button on the Journal tab */ }
+}
+
 async function start() {
   try {
     const me = await GET('/api/me');
-    if (me.user && me.user.role === 'admin') { currentUser = me.user; return shell(me.user); }
+    if (me.user && me.user.role === 'admin') { currentUser = me.user; await shell(me.user); syncOnLoad(); return; }
     if (me.user) {
       root().innerHTML = `<div class="login-wrap"><div class="login-card">
         <div class="brand"><b>MS BEAU AVE</b><span>Books</span></div>

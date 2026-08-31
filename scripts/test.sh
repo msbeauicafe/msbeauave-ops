@@ -139,6 +139,9 @@ node --test tests/books-cash.test.js
 echo "==> the books: reports read straight off the journal"
 node --test tests/books-reports.test.js
 
+echo "==> the books: auto-posting the shop's real trading"
+node --test tests/books-autopost.test.js
+
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js
 

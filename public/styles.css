@@ -1218,6 +1218,10 @@ input.n { text-align: right; }
 #page .due { color: var(--danger); }
 #page table.lines tfoot .gmore, #page table.lines .l_del { padding: 2px 8px; }
 
+/* Auto-posting panel on the Journal tab. */
+#page .panel.autopost { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; background: var(--rose-blush); border: 1px solid var(--rose-soft); }
+
 /* Reports — a sub-nav and a date bar. */
 #page .subnav { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
 #page .subnav button {
