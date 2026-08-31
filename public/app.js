@@ -4599,9 +4599,7 @@ async function openReseller(id, reload, part = 'account') {
       </div>` : ''}
 
     <h3 class="mt">Their picture</h3>
-    <div class="dim">Shown on their card on the Customer order screen, so
-      whoever is taking the order finds them by recognising them. A shopfront
-      or a logo does the job as well as a face.</div>
+    <div class="dim">On their card on the Customer order screen — a face, shopfront or logo.</div>
     <div class="row mt" style="align-items:center">
       <div style="flex:0 0 auto">
         ${r.photo_at
@@ -4615,8 +4613,7 @@ async function openReseller(id, reload, part = 'account') {
     </div>
 
     <h3 class="mt">Papers on file</h3>
-    <div class="dim">Photographs of this account's papers — the BIR 2303, a business
-      permit, a tax certificate. The picture itself, kept on the record.</div>
+    <div class="dim">Photos of their papers — BIR 2303, business permit, tax certificate.</div>
     <div class="filegrid mt">${fileCards(r.files, 'document')}</div>
     <div class="row mt">
       <div style="flex:2"><label>What it is (e.g. BIR 2303)</label><input id="doc_label" type="text"></div>
@@ -4624,10 +4621,17 @@ async function openReseller(id, reload, part = 'account') {
         <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
     </div>
 
+    <h3 class="mt">Bank transaction proofs</h3>
+    <div class="dim">Screenshots of their bank transfers — kept here for your reference.</div>
+    <div class="filegrid mt">${fileCards(r.files, 'payment_proof')}</div>
+    <div class="row mt">
+      <div style="flex:2"><label>What it is (bank / reference)</label><input id="proof_label" type="text"></div>
+      <div style="flex:2"><label>Choose an image</label>
+        <input id="proof_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
+    </div>
+
     <h3 class="mt">For tax</h3>
-    <div class="dim">The block printed at the top of this account's invoices,
-      order forms and packing lists. Leave anything blank that they have not
-      given you — a blank line prints blank, the same as the paper does.</div>
+    <div class="dim">Printed at the top of this account's invoices, order forms and packing lists.</div>
     <div class="row mt">
       <div><label>Tax Type</label>
         <input id="d_taxtype" type="text" list="taxtypes" value="${esc(r.tax_type || '')}">
