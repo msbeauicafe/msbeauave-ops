@@ -130,6 +130,9 @@ node --test tests/data-coordinator.test.js
 echo "==> the books: double-entry, and the owner\'s alone"
 node --test tests/books.test.js
 
+echo "==> the books: payables & expenses, still balanced"
+node --test tests/books-payables.test.js
+
 echo "==> a PIN, then a finger"
 node --test tests/pin-then-finger.test.js
 
