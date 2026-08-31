@@ -2266,11 +2266,13 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
     ${canEdit ? `<div class="right"><span class="dim" id="ol_state"></span>
       <button class="btn sm" id="ol_keep">Save the changes</button></div>` : ''}
     <div class="mt right">
-      <button class="btn quiet" id="a_packing">🖨 Packing list</button>
-      ${o.status === 'placed' ? '<button class="btn" id="a_pick">Start picking</button>' : ''}
-      ${['placed', 'picking'].includes(o.status) ? `
-        <button class="btn go" id="a_send">Dispatch</button>
-        <button class="btn stop" id="a_cancel">Cancel</button>` : ''}
+      ${readOnly ? `
+        <button class="btn quiet" id="a_packing">🖨 Packing list</button>
+        ${o.status === 'placed' ? '<button class="btn" id="a_pick">Start picking</button>' : ''}
+        ${['placed', 'picking'].includes(o.status)
+          ? '<button class="btn go" id="a_send">Dispatch</button>' : ''}` : ''}
+      ${['placed', 'picking'].includes(o.status)
+        ? '<button class="btn stop" id="a_cancel">Cancel</button>' : ''}
       ${o.status === 'fulfilled' && !o.delivered_at
         ? '<button class="btn go" id="a_delivered">Mark delivered</button>' : ''}
     </div>`, 'wide');
