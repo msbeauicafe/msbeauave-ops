@@ -24,13 +24,18 @@
 -- and no cost of goods is guessed from an unreliable per-line snapshot.
 --
 --   Counter / cash sale      debit cash (by method)      credit Item Sales Revenue
---   Wholesale fulfilment     debit Accounts Receivable   credit Item Sales Revenue
+--   Wholesale invoice        debit Accounts Receivable   credit Item Sales Revenue
 --   Payment on account       debit cash (by method)      credit Accounts Receivable
 --   Early-payment discount   debit Customer Pmt Discounts credit Accounts Receivable
 --
--- A receivable raised at fulfilment is drawn back down to nothing by its
--- payments and, if one was given, its discount — so a settled invoice leaves no
--- balance behind.
+-- The receivable is recognised when the INVOICE is raised, not when the order is
+-- later fulfilled — because a customer can pay against an invoice before it
+-- ships, and a payment must always have a receivable to draw down. Every
+-- non-void invoice (whose order was not cancelled) is booked; every payment
+-- credits it; so A/R and the payments against it can never disagree.
+--
+-- A receivable is drawn back down to nothing by its payments and, if one was
+-- given, its discount — so a settled invoice leaves no balance behind.
 -- ============================================================================
 
 -- The one thing that makes a sweep idempotent: a source event, and the entry it
@@ -55,14 +60,14 @@ begin
                  where s.total > 0 and not exists (select 1 from book_source_postings sp
                    where sp.source_type='counter' and sp.source_id=s.id)),
     'invoice', (select count(*) from invoices i join orders o on o.id=i.order_id
-                 where o.status='fulfilled' and i.status<>'void' and i.amount>0
+                 where o.status<>'cancelled' and i.status<>'void' and i.amount>0
                    and not exists (select 1 from book_source_postings sp
                      where sp.source_type='invoice' and sp.source_id=i.id)),
     'payment', (select count(*) from payments p
                  where coalesce(p.amount,0)>0 and not exists (select 1 from book_source_postings sp
                    where sp.source_type='payment' and sp.source_id=p.id)),
     'discount', (select count(*) from invoices i join orders o on o.id=i.order_id
-                 where i.status='paid' and coalesce(i.discount,0)>0 and o.status='fulfilled'
+                 where i.status='paid' and coalesce(i.discount,0)>0 and o.status<>'cancelled'
                    and not exists (select 1 from book_source_postings sp
                      where sp.source_type='discount' and sp.source_id=i.id))
   ) into j;
@@ -102,11 +107,11 @@ begin
     n_counter := n_counter + 1;
   end loop;
 
-  -- Wholesale fulfilment — goods have gone, so a receivable against revenue.
+  -- Wholesale invoices — a receivable against revenue, from the day it is raised.
   for r in
     select i.id, i.amount, i.issued_on, coalesce(i.si_no, 'INV-'||i.id) as no
       from invoices i join orders o on o.id = i.order_id
-     where o.status='fulfilled' and i.status <> 'void' and i.amount > 0
+     where o.status <> 'cancelled' and i.status <> 'void' and i.amount > 0
        and not exists (select 1 from book_source_postings sp
                         where sp.source_type='invoice' and sp.source_id=i.id)
      order by i.id
@@ -145,7 +150,7 @@ begin
     select i.id, i.discount, coalesce(i.si_no,'INV-'||i.id) as no,
            coalesce(i.settled_on, current_date) as d
       from invoices i join orders o on o.id=i.order_id
-     where i.status='paid' and coalesce(i.discount,0) > 0 and o.status='fulfilled'
+     where i.status='paid' and coalesce(i.discount,0) > 0 and o.status <> 'cancelled'
        and not exists (select 1 from book_source_postings sp
                         where sp.source_type='discount' and sp.source_id=i.id)
      order by i.id

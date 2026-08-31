@@ -51,12 +51,14 @@ async function counterSale(total, method = 'cash') {
     [o, receipt, method, total])).rows[0].id;
   return { order: o, sale: id, receipt };
 }
-// A fulfilled wholesale order with an invoice raised against a reseller.
-async function wholesale(total) {
+// A wholesale order with an invoice raised against a reseller. The order need
+// NOT be fulfilled — a receivable is booked the moment the invoice exists, so a
+// customer can pay before the goods ship.
+async function wholesale(total, status = 'placed') {
   const rid = (await db.query(`insert into resellers (name, status) values ($1,'active') returning id`, [uniq('RS')])).rows[0].id;
   const o = (await db.query(
     `insert into orders (channel, status, reseller_id, subtotal, total, branch_id)
-     values ('b2b','fulfilled',$1,$2,$2,$3) returning id`, [rid, total, branch])).rows[0].id;
+     values ('b2b',$4,$1,$2,$2,$3) returning id`, [rid, total, branch, status])).rows[0].id;
   const inv = (await db.query(
     `insert into invoices (order_id, reseller_id, due_on, amount) values ($1,$2,current_date + 30,$3) returning id`,
     [o, rid, total])).rows[0].id;
@@ -84,9 +86,9 @@ test('a counter sale posts cash against sales revenue', async () => {
   assert.ok(rev && Number(rev.credit) === 1000, 'item sales revenue is credited the total');
 });
 
-test('a fulfilled invoice becomes a receivable that its payment clears', async () => {
+test('an invoice becomes a receivable — even before fulfilment — that its payment clears', async () => {
   const admin = await signIn('admin');
-  const w = await wholesale(5000);
+  const w = await wholesale(5000, 'placed');   // paid against before the goods ship
   await sync(admin);
   let ar = await linesFor('invoice', w.invoice);
   assert.ok(ar.find((l) => l.account === '101' && Number(l.debit) === 5000), 'a receivable is raised');
