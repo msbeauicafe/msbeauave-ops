@@ -1174,3 +1174,44 @@ input.n { text-align: right; }
   .doc.po.rf .rf-foot { margin-top: auto; }
   .doc.po.rf .rf-foot .sign3 { margin-top: 22px; }
 }
+
+/* ---------- Books: the accounting app on /books ----------
+   A standalone app sharing this stylesheet. Most of it reuses .panel, .btn,
+   .tag, .lines and .notice; these are the few pieces its own shell needs. */
+.books-top {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 10px 20px; background: var(--rose-blush); border-bottom: 1px solid var(--rose-soft);
+}
+.books-top .brand { display: flex; flex-direction: column; line-height: 1.1; }
+.books-top .brand b { color: var(--rose-deep); letter-spacing: .02em; }
+.books-top .brand span { font-size: .72rem; color: var(--muted); }
+.books-top nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+.books-top nav button {
+  border: none; background: transparent; font: inherit; padding: 8px 14px;
+  border-radius: 8px; cursor: pointer; color: var(--ink);
+}
+.books-top nav button.on { background: var(--bg); color: var(--rose-deep); font-weight: 600; }
+.books-top nav button:hover { background: var(--bg); }
+.books-top .who { display: flex; align-items: center; gap: 10px; }
+
+.login-wrap { min-height: 100vh; display: grid; place-items: center;
+  background: linear-gradient(160deg, var(--rose-blush), var(--bg) 62%); }
+.login-card {
+  width: min(360px, 92vw); background: var(--card); border: 1px solid var(--rose-soft);
+  border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 6px;
+}
+.login-card .brand { text-align: center; margin-bottom: 12px; }
+.login-card .brand b { display: block; color: var(--rose-deep); font-size: 1.2rem; letter-spacing: .04em; }
+.login-card .brand span { color: var(--muted); font-size: .8rem; }
+.login-card label { font-size: .78rem; color: var(--muted); margin-top: 6px; }
+.login-card input {
+  border: 1px solid var(--rose-dust); border-radius: 8px; padding: 9px 10px; font: inherit; outline: none;
+}
+.btn.wide { width: 100%; margin-top: 14px; padding: 10px; }
+
+.books-top ~ #page .two-up { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 820px) { .books-top ~ #page .two-up { grid-template-columns: 1fr; } }
+#page table.lines tr.sub td { background: var(--rose-blush); font-weight: 600; font-size: .72rem;
+  letter-spacing: .03em; text-transform: uppercase; color: var(--rose-deep); }
+#page table.lines tr.grand td { border-top: 2px solid var(--rose-dust); font-size: .95rem; }
+#page .right { text-align: right; }
