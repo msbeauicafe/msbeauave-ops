@@ -4496,6 +4496,45 @@ const resellerList = (part) => async (page) => {
 SCREENS.resellers = resellerList('money');
 SCREENS.reselleraccounts = resellerList('account');
 
+// Papers (BIR, permits) and bank-transfer proofs on an account: thumbnails that
+// open the full image, each captioned with who put it there and when.
+function fileCards(files, category) {
+  const list = (files || []).filter((f) => f.category === category);
+  if (!list.length) return '<div class="dim">None yet.</div>';
+  return list.map((f) => `<figure class="filecard">
+    <a href="/api/reseller-files/${f.id}" target="_blank" rel="noopener">
+      <img src="/api/reseller-files/${f.id}" alt="${esc(f.label || 'file')}" loading="lazy"></a>
+    <figcaption><b>${esc(f.label || '—')}</b><br>
+      <span class="dim">${esc(f.uploaded_by || '')} · ${onDay(f.uploaded_at)}</span>
+      <button class="linkbtn del-file" data-file="${f.id}">remove</button></figcaption>
+  </figure>`).join('');
+}
+async function uploadResellerFile(id, file, category, label) {
+  // A larger edge than a card photo — a certificate or a bank screenshot has to
+  // stay readable. The server shrinks it again and caps the size.
+  await POST(`/api/resellers/${id}/files`, { dataUrl: await shrink(file, 1600), category, label: label || null });
+}
+
+// The history reads as a sentence: who, then what, then what changed.
+const KIND_LABELS = {
+  details_changed: 'edited the details', terms_changed: 'changed the terms',
+  approved: 'approved the account', override: 'let an order through',
+  tax_changed: 'edited the tax block', drop_ship_changed: 'changed drop-ship',
+};
+const prettyKind = (k) => KIND_LABELS[k] || String(k || '').replace(/_/g, ' ');
+function eventDetail(e) {
+  const d = e.detail || {};
+  if (e.kind === 'details_changed' && d.from && d.to) {
+    const parts = [];
+    for (const k of ['name', 'contact', 'email']) {
+      if ((d.from[k] || '') !== (d.to[k] || '')) parts.push(`${k}: ${esc(d.from[k] || '—')} → ${esc(d.to[k] || '—')}`);
+    }
+    return parts.length ? ` — ${parts.join('; ')}` : '';
+  }
+  if (d.note) return ` — ${esc(d.note)}`;
+  return '';
+}
+
 /**
  * One reseller, in the half you came for.
  *
@@ -4536,6 +4575,14 @@ async function openReseller(id, reload, part = 'account') {
       ? '<div class="mt"><button class="btn go" id="d_approve">Approve this account</button></div>' : ''}
 
     ${acct ? `
+    <h3 class="mt">Account details</h3>
+    <div class="row">
+      <div style="flex:2"><label>Name</label><input id="d_name" type="text" value="${esc(r.name || '')}"></div>
+      <div style="flex:2"><label>Contact</label><input id="d_contact" type="text" value="${esc(r.contact || '')}"></div>
+      <div style="flex:2"><label>Email</label><input id="d_email" type="text" value="${esc(r.email || '')}"></div>
+      <div style="flex:0 0 auto"><button class="btn" id="d_details">Save</button></div>
+    </div>
+
     <h3 class="mt">Terms</h3>
     <div class="row">
       <div><label>Tier</label><select id="d_tier">${[1, 2, 3].map((t) =>
@@ -4565,6 +4612,16 @@ async function openReseller(id, reload, part = 'account') {
       <div style="flex:2"><label>Choose a picture</label>
         <input id="d_photo" type="file" accept="image/jpeg,image/png,image/webp"></div>
       ${r.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="d_photo_x">Remove</button></div>' : ''}
+    </div>
+
+    <h3 class="mt">Papers on file</h3>
+    <div class="dim">Photographs of this account's papers — the BIR 2303, a business
+      permit, a tax certificate. The picture itself, kept on the record.</div>
+    <div class="filegrid mt">${fileCards(r.files, 'document')}</div>
+    <div class="row mt">
+      <div style="flex:2"><label>What it is (e.g. BIR 2303)</label><input id="doc_label" type="text"></div>
+      <div style="flex:2"><label>Choose an image</label>
+        <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
     </div>
 
     <h3 class="mt">For tax</h3>
@@ -4649,6 +4706,17 @@ async function openReseller(id, reload, part = 'account') {
     <div class="mt right"><button class="btn" id="acct_pay">Confirm payments</button></div>
     <div id="acct_out" class="mt"></div>
 
+    <h3 class="mt">Bank transfer proofs</h3>
+    <div class="dim">Screenshots of the bank transaction — the proof the money left,
+      the way it shows in the bank app. Kept on the record beside the confirmed
+      payments.</div>
+    <div class="filegrid mt">${fileCards(r.files, 'payment_proof')}</div>
+    <div class="row mt">
+      <div style="flex:2"><label>What it is (bank / reference)</label><input id="proof_label" type="text"></div>
+      <div style="flex:2"><label>Choose an image</label>
+        <input id="proof_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
+    </div>
+
     <h3 class="mt">Issue the receipt</h3>
     <div id="acct_pending"></div>
 
@@ -4672,8 +4740,9 @@ async function openReseller(id, reload, part = 'account') {
 
     ${acct ? `
     <h3 class="mt">History</h3>
-    <div class="dim">${r.events.slice(0, 10).map((e) =>
-      `${when(e.at)} — <b>${esc(e.kind)}</b> ${esc(JSON.stringify(e.detail || {}))}`).join('<br>')
+    <div class="dim">${r.events.slice(0, 12).map((e) =>
+      `${when(e.at)}${e.actor ? ` · <b>${esc(e.actor)}</b>` : ''} — ${esc(prettyKind(e.kind))}${
+        eventDetail(e)}`).join('<br>')
       || 'Nothing yet.'}</div>
 
     ${r.credits?.length ? `<h3 class="mt">Credit ledger</h3>
@@ -4713,6 +4782,44 @@ async function openReseller(id, reload, part = 'account') {
       reload();
     } catch (err) { whoops(err); }
   });
+
+  // The account's own details — name and how to reach it — on the record.
+  $('#d_details')?.addEventListener('click', async () => {
+    try {
+      await POST(`/api/resellers/${id}/details`, {
+        name: $('#d_name').value.trim(),
+        contact: $('#d_contact').value.trim(),
+        email: $('#d_email').value.trim() });
+      notice('Details saved 🌸', 'good');
+      closeDialog();
+      reload();
+    } catch (err) { whoops(err); }
+  });
+
+  // A paper (BIR, permit) or a bank-transfer proof — the image itself.
+  $('#doc_file')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    try {
+      await uploadResellerFile(id, file, 'document', $('#doc_label')?.value.trim());
+      notice('Paper saved 🌸', 'good'); closeDialog(); reload();
+    } catch (err) { whoops(err); }
+    e.target.value = '';
+  });
+  $('#proof_file')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    try {
+      await uploadResellerFile(id, file, 'payment_proof', $('#proof_label')?.value.trim());
+      notice('Proof saved 🌸', 'good'); closeDialog(); reload();
+    } catch (err) { whoops(err); }
+    e.target.value = '';
+  });
+  document.querySelectorAll('.del-file').forEach((btn) => btn.addEventListener('click', async () => {
+    if (!confirm('Remove this file from the record?')) return;
+    try {
+      await DELETE(`/api/reseller-files/${btn.dataset.file}`);
+      notice('Removed', 'good'); closeDialog(); reload();
+    } catch (err) { whoops(err); }
+  }));
 
   // The name box is only worth filling in when the switch is on.
   $('#d_ds')?.addEventListener('change', (e) => {
