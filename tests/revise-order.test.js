@@ -454,8 +454,10 @@ test('the product on a line can be changed for another', () => {
     'the price belonged to the line being replaced, so it is marked not to be sent');
 
   const save = fn.slice(fn.indexOf("$('#ol_keep').addEventListener"));
-  assert.match(save, /filter\(\(el\) => !el\.dataset\.swapped\)/,
+  assert.match(save, /filter\(\(el\) => !el\.dataset\.swapped/,
     'a swapped line must not be priced a moment before it is deleted');
+  assert.match(fn, /data-remove="\$\{esc\(String\(l\.id\)\)\}"/,
+    'an ✕ takes a line off the order');
 });
 
 // Borderless is right for a price list eight hundred rows deep. In a dialog of
@@ -535,8 +537,10 @@ test('the product on a line can be changed for another', () => {
     'the price belonged to the line being replaced, so it is marked not to be sent');
 
   const save = fn.slice(fn.indexOf("$('#ol_keep').addEventListener"));
-  assert.match(save, /filter\(\(el\) => !el\.dataset\.swapped\)/,
+  assert.match(save, /filter\(\(el\) => !el\.dataset\.swapped/,
     'a swapped line must not be priced a moment before it is deleted');
+  assert.match(fn, /data-remove="\$\{esc\(String\(l\.id\)\)\}"/,
+    'an ✕ takes a line off the order');
 });
 
 // Borderless is right for a price list eight hundred rows deep. In a dialog of
