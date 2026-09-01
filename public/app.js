@@ -4377,22 +4377,13 @@ SCREENS.chatorders = async (page) => {
       basket.clear();
       drawBasket();
       $('#ch_order_out', workingBox).innerHTML = '';
-      notice('Order placed 🌸', 'good');
-      if (out.invoice) showInvoice({
-        orderId: out.orderId, orderNo: out.co_no,
-        issuedOn: out.invoice.issued_on,
-        // The order as it stands, which is not what was invoiced a moment ago
-        // if a hand price has just been applied to it.
-        amount: now?.total ?? out.invoice.amount, resellerName: picked.name,
-        lines: (now.lines || []).map((l) => ({
-          id: l.id, sku: l.sku, name: l.name, qty: l.qty,
-          price: l.unit_price, code: l.price_code, unit: l.unit_type })),
-        who: picked,
-        // The customer order form is read here to send into the chat, not
-        // edited — it is a form to read, not a price to change. Corrections
-        // to a placed order are made on its Invoice, not on this sheet.
-        canEdit: false,
-      });
+      notice('Order placed 🌸 — it is under Pending customer order', 'good');
+      // Straight to where the placed order now lives: the Pending customer
+      // order tab. The subtabs sit on the customer-order screen above this one,
+      // so switch the panel there and let it redraw.
+      orderPanel = 'pendingorders';
+      const outer = page.parentElement;
+      if (outer) SCREENS.customerorder(outer).catch(whoops);
     } catch (e) { whoops(e); } finally {
       $('#ch_place', workingBox).disabled = false;
     }
