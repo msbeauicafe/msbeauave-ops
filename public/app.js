@@ -4055,24 +4055,28 @@ SCREENS.chatorders = async (page) => {
                 placeholder="Who it goes on to"></div>
           </div>
         </div>` : ''}
-      <div class="panel">
-        <h3>What they ordered</h3>
-        <input type="search" id="ch_find" placeholder="Search products…">
-        <div class="dim" id="ch_count" style="font-size:.72rem;margin:4px 0 2px"></div>
-        <div id="ch_goods" class="scroll" style="max-height:420px;overflow-y:auto"></div>
-        <h4 class="mt">Basket</h4>
-        <div id="ch_basket"></div>
-        <div class="basket-sum">
-          <div class="sumrow"><span>Subtotal</span><span id="ch_sub">₱0.00</span></div>
-          <div class="sumrow grand"><span>Total</span><span id="ch_total">₱0.00</span></div>
+      <div class="split">
+        <div class="panel">
+          <h3>What they ordered</h3>
+          <input type="search" id="ch_find" placeholder="Search products…">
+          <div class="dim" id="ch_count" style="font-size:.72rem;margin:4px 0 2px"></div>
+          <div id="ch_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
         </div>
-        <div id="ch_nocode"></div>
-        <div class="mt right">
-          <button class="btn quiet" id="ch_draft">Draft</button>
-          <button class="btn" id="ch_place">Place order</button>
-          <button class="btn stop" id="ch_cancel">Cancel</button>
+        <div class="panel">
+          <h3>List of orders</h3>
+          <div id="ch_basket"></div>
+          <div class="basket-sum">
+            <div class="sumrow"><span>Subtotal</span><span id="ch_sub">₱0.00</span></div>
+            <div class="sumrow grand"><span>Total</span><span id="ch_total">₱0.00</span></div>
+          </div>
+          <div id="ch_nocode"></div>
+          <div class="mt right">
+            <button class="btn quiet" id="ch_draft">Draft</button>
+            <button class="btn" id="ch_place">Place order</button>
+            <button class="btn stop" id="ch_cancel">Cancel</button>
+          </div>
+          <div id="ch_order_out" class="mt"></div>
         </div>
-        <div id="ch_order_out" class="mt"></div>
       </div>`;
 
     $('#rs_change', workingBox).addEventListener('click', backToPicker);
