@@ -131,7 +131,10 @@ const whoops = (e) => notice(e.message, 'bad');
 // swapped back for the name the person taking the order actually knows — "888
 // Total White Whitening Soap 80g. is short 3 unit(s)", not "888-TWWS-80".
 const withProductName = (e, goods = []) => {
-  const m = /^NOT_ENOUGH_STOCK:\s*(\S+)\s+is short\b/.exec(e?.message || '');
+  // Both the placing and the revising refusals read "<code> is short N unit(s)",
+  // with or without a NOT_ENOUGH_STOCK: label the server may have trimmed. The
+  // token right before "is short" is the code; swap it for the product's name.
+  const m = /([^\s:]+)\s+is short\b/.exec(e?.message || '');
   const g = m && (goods || []).find((x) => x.sku === m[1]);
   return g ? { message: e.message.replace(m[1], g.name) } : e;
 };
@@ -2206,13 +2209,13 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
           o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
     <div class="order-split">
       <div class="co-side">
-        <div class="co-scale">${coForm}</div>
-        <div class="mt right">
+        <div class="co-actions">
           ${chat ? `<a class="btn go" href="${esc(chat)}" target="_blank"
             rel="noopener noreferrer">💬 Send to ${esc(o.reseller || 'their chat')}</a>` : ''}
           <button class="btn quiet" id="co_jpeg">⬇ Download JPEG</button>
           ${PRINT_BTN}
         </div>
+        <div class="co-scale">${coForm}</div>
       </div>
       <div class="edit-side">
     ${mayNumber ? `

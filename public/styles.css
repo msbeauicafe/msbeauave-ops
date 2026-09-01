@@ -268,7 +268,13 @@ textarea.sheet {
    one popup. Stacks to one column when the screen is too narrow to hold them. */
 .dialog.co-open { max-width: 96vw; width: min(1780px, 96vw); }
 .order-split { display: flex; gap: 20px; align-items: flex-start; }
-.order-split .co-side { flex: 0 0 900px; max-width: 900px; }
+/* The form scrolls on its own within the left column, so a tall order does not
+   push the working order on the right down the page. Its Send / Download /
+   Print bar is pinned to the top of that column, in reach without scrolling. */
+.order-split .co-side { flex: 0 0 900px; max-width: 900px;
+  display: flex; flex-direction: column; max-height: 78vh; overflow-y: auto; }
+.order-split .co-actions { position: sticky; top: 0; z-index: 2; background: var(--bg);
+  display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding-bottom: 8px; }
 .order-split .edit-side { flex: 1 1 520px; min-width: 0; }
 .order-split .co-scale { overflow: hidden; }
 @media (max-width: 1500px) {
