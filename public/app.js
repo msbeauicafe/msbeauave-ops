@@ -3002,7 +3002,12 @@ const docLines = (lines, blanks = 5, typed = false, goods = null, qtyToo = false
 function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
                             who = {}, shipping = 0, others = 0, orderNo = null,
                             canEdit = false, catalog = null }) {
-  const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  // Coerced to numbers, because an order read back from the database carries
+  // its money as strings — "0.00", not 0 — and `710 + "0.00"` is the string
+  // "7100.00", which is how a Grand Total came out ₱NaN.
+  const sub = lines.reduce((s, l) => s + Number(l.price) * Number(l.qty), 0);
+  const ship = Number(shipping) || 0;
+  const other = Number(others) || 0;
   const goods = canEdit && catalog ? catalog : [];
   return `
     <div class="doc cof">
@@ -3027,10 +3032,10 @@ function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
         </div>
         <div class="totals">
           <div><span>Subtotal:</span><span data-cofsub>${peso(sub)}</span></div>
-          <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
-          <div><span>Others:</span><span>${peso(others)}</span></div>
+          <div><span>Shipping/Delivery Fee:</span><span>${peso(ship)}</span></div>
+          <div><span>Others:</span><span>${peso(other)}</span></div>
           <div class="grand"><span>Grand Total:</span>
-            <span data-cofgrand>${peso(sub + shipping + others)}</span></div>
+            <span data-cofgrand>${peso(sub + ship + other)}</span></div>
         </div>
       </div>
       <div class="sign1">
