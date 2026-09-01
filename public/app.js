@@ -5239,7 +5239,7 @@ async function openReseller(id, reload, part = 'account') {
       el.value = parts.length > 1 ? `${whole || '0'}.${parts[1].slice(0, 2)}` : whole;
     };
     dialog(`
-      <h3>Record a payment — ${esc(r.name)}</h3>
+      <h3>${esc(r.name)}</h3>
       <div class="dim">Invoice #${esc(invoiceNo)}${orderNo && orderNo !== invoiceNo
         ? ` · sales order no. ${esc(orderNo)}` : ''} · <b>${peso(owed)}</b> still on it.
         All five rows go against this invoice and no other, so fill in as many
@@ -5267,6 +5267,27 @@ async function openReseller(id, reload, part = 'account') {
                       title="Preview the screenshot">👁</button>
             </div></div>
         </div>`).join('')}
+      <h3 class="mt" style="font-size:.92rem;margin-bottom:2px">Pending payment — optional</h3>
+      <div class="dim" style="margin-bottom:6px">Money beyond this invoice — an advance.
+        It is not applied to this bill; it settles anything else open, oldest first, and
+        whatever is left is held on the account as credit, taken off their next invoice by itself.</div>
+      <div class="row payrow prepay">
+        <div><label class="sr">Amount received</label>
+          <input class="ip_amt" type="text" inputmode="decimal" placeholder="0.00"></div>
+        <div><label class="sr">Received on</label>
+          <input class="ip_on" type="date" value="${localDay()}"></div>
+        <div><label class="sr">Through (MOP)</label>
+          <input class="ip_mop" type="text" list="inv_banks" placeholder="BANCO DE ORO (BDO)"></div>
+        <div><label class="sr">Reference no.</label>
+          <input class="ip_ref" type="text" placeholder="the bank's own reference"></div>
+        <div style="flex:0 0 auto"><label class="sr">Proof</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input class="ip_ss" type="file" accept="image/jpeg,image/png,image/webp"
+                   title="Screenshot of this transfer">
+            <button type="button" class="btn sm quiet ip_view" disabled
+                    title="Preview the screenshot">👁</button>
+          </div></div>
+      </div>
       ${mopList('inv_banks')}
       <div class="dim">Paying a 30-day invoice within 10 days takes 2% off by
         itself. Clearing the last past-due invoice lets the account order again.
@@ -5278,7 +5299,9 @@ async function openReseller(id, reload, part = 'account') {
     // Running total against what is left, in bold because it is the figure
     // being checked against the bank.
     const retotal = () => {
-      const taken = $$('.ip_amt').reduce((n, el) => n + num(el.value), 0);
+      // Only the five invoice rows count against what this bill owes — the
+      // pending-payment row is an advance and is allowed to exceed it.
+      const taken = $$('.payrow:not(.prepay) .ip_amt').reduce((n, el) => n + num(el.value), 0);
       const over = taken > owed + 0.005;
       $('#ip_sum').innerHTML = taken
         ? `<b>${peso(taken)}</b> of ${peso(owed)}${over
@@ -5334,35 +5357,56 @@ async function openReseller(id, reload, part = 'account') {
       reload?.();
     };
 
-    $('#p_save').addEventListener('click', async () => {
-      const payments = $$('.payrow').map((row) => ({
-        amount: String(num($('.ip_amt', row).value)),
+    // Read one row into a payment object, or null if it carries no amount.
+    const rowPayment = (row) => {
+      const amount = num($('.ip_amt', row).value);
+      if (!(amount > 0)) return null;
+      return {
+        amount: String(amount),
         paid_on: $('.ip_on', row).value,
         method: $('.ip_mop', row).value.trim() || null,
         reference_no: $('.ip_ref', row).value.trim() || null,
-      })).filter((p) => Number(p.amount) > 0);
-      if (!payments.length) return notice('How much actually landed?', 'bad');
+      };
+    };
+
+    $('#p_save').addEventListener('click', async () => {
+      const payments = $$('.payrow:not(.prepay)').map(rowPayment).filter(Boolean);
+      const advance = $$('.payrow.prepay').map(rowPayment).filter(Boolean);
+      if (!payments.length && !advance.length) return notice('How much actually landed?', 'bad');
       $('#p_save').disabled = true;
       try {
-        const out = await POST(`/api/invoices/${invoiceNo}/payments`, { payments });
+        let out = null;
+        if (payments.length) out = await POST(`/api/invoices/${invoiceNo}/payments`, { payments });
+        // The pending row is an advance against the account: it settles whatever
+        // else is open oldest-first and the rest is held as credit — a prepayment.
+        let credited = 0;
+        if (advance.length) {
+          const adv = await POST(`/api/resellers/${id}/confirm`, { payments: advance });
+          credited = (adv.confirmed || []).reduce((t, c) => t + Number(c.credited || c.credit || 0), 0);
+        }
         // Each row's bank screenshot, filed against the account as a payment
-        // proof and labelled by the invoice and that row's reference, so one
-        // proof per bank reference is found again on the account's papers.
+        // proof, labelled by the invoice (or as a prepayment) and that row's
+        // reference, so one proof per bank reference is found on the account.
         const shots = $$('.payrow').map((row) => ({
           file: $('.ip_ss', row).files[0],
           ref: $('.ip_ref', row).value.trim(),
           amount: num($('.ip_amt', row).value),
+          prepay: row.classList.contains('prepay'),
         })).filter((s) => s.file && s.amount > 0);
         for (const s of shots) {
           try {
             await uploadResellerFile(id, s.file, 'payment_proof',
-              `Invoice #${invoiceNo}${s.ref ? ` · ${s.ref}` : ''}`);
+              `${s.prepay ? 'Prepayment' : `Invoice #${invoiceNo}`}${s.ref ? ` · ${s.ref}` : ''}`);
           } catch (e) { whoops(e); }
         }
-        notice(out.status === 'paid'
-          ? `Invoice #${out.invoice_id} settled 🌸`
-          : `${peso(out.taken)} recorded — ${peso(out.balance)} left on #${out.invoice_id}`,
-          'good');
+        const parts = [];
+        if (out) parts.push(out.status === 'paid'
+          ? `Invoice #${out.invoice_id} settled`
+          : `${peso(out.taken)} recorded — ${peso(out.balance)} left on #${out.invoice_id}`);
+        if (advance.length) parts.push(credited > 0
+          ? `${peso(credited)} held as credit`
+          : 'advance applied');
+        notice(`${parts.join(' · ')} 🌸`, 'good');
         showThisInvoice();
       } catch (e) { whoops(e); $('#p_save').disabled = false; }
     });
