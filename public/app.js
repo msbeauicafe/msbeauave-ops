@@ -4092,7 +4092,12 @@ SCREENS.customerorder = async (page) => {
 SCREENS.pendingorders = async (page) => {
   const load = async () => {
     const rows = (await GET('/api/orders?status='))
-      .filter((o) => o.status === 'placed' || o.status === 'picking');
+      .filter((o) => o.status === 'placed' || o.status === 'picking')
+      // Grouped by account, so every order of one reseller's sits together
+      // rather than scattered through the day it was taken — newest of theirs
+      // first within the run, the same arrangement for everybody.
+      .sort((a, b) => (a.reseller || '').localeCompare(b.reseller || '')
+        || new Date(b.placed_at) - new Date(a.placed_at));
     $('#pending', page).innerHTML = table(rows, [
       { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
       { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
