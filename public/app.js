@@ -5298,6 +5298,9 @@ async function openReseller(id, reload, part = 'account') {
                    placeholder="BANCO DE ORO (BDO)"></div>
           <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
             <input class="ip_ref" type="text" placeholder="the bank's own reference"></div>
+          <div style="flex:0 0 auto"><label${n ? ' class="sr"' : ''}>Proof</label>
+            <input class="ip_ss" type="file" accept="image/jpeg,image/png,image/webp"
+                   title="Screenshot of this transfer"></div>
         </div>`).join('')}
       ${mopList('inv_banks')}
       <div class="dim">Paying a 30-day invoice within 10 days takes 2% off by
@@ -5358,6 +5361,20 @@ async function openReseller(id, reload, part = 'account') {
       $('#p_save').disabled = true;
       try {
         const out = await POST(`/api/invoices/${invoiceNo}/payments`, { payments });
+        // Each row's bank screenshot, filed against the account as a payment
+        // proof and labelled by the invoice and that row's reference, so one
+        // proof per bank reference is found again on the account's papers.
+        const shots = $$('.payrow').map((row) => ({
+          file: $('.ip_ss', row).files[0],
+          ref: $('.ip_ref', row).value.trim(),
+          amount: num($('.ip_amt', row).value),
+        })).filter((s) => s.file && s.amount > 0);
+        for (const s of shots) {
+          try {
+            await uploadResellerFile(id, s.file, 'payment_proof',
+              `Invoice #${invoiceNo}${s.ref ? ` · ${s.ref}` : ''}`);
+          } catch (e) { whoops(e); }
+        }
         notice(out.status === 'paid'
           ? `Invoice #${out.invoice_id} settled 🌸`
           : `${peso(out.taken)} recorded — ${peso(out.balance)} left on #${out.invoice_id}`,
