@@ -4036,6 +4036,7 @@ SCREENS.chatorders = async (page) => {
     if (!picked) { workingBox.innerHTML = ''; return; }
     workingBox.innerHTML = `
       <div class="picked-bar">
+        <span class="tools-gap" aria-hidden="true"></span>
         <b>${esc(picked.name)}</b>
         ${Number(picked.owed) > 0 ? tag(`owes ${peso(picked.owed)}`, picked.overdue ? 'red' : 'amber') : tag('nothing owed', 'green')}
         ${picked.blocked ? tag('cannot order', 'red') : ''}
