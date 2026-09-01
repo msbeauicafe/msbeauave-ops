@@ -263,6 +263,19 @@ textarea.sheet {
 /* A price list is seven columns wide before it is anything else. */
 .dialog.wide { max-width: 1000px; }
 .dialog.wide td:first-child, .dialog.wide th:first-child { white-space: nowrap; }
+/* Opening a pending order: the customer order form on the left at its full
+   printed width (so it stays crisp), the working order on the right, both in
+   one popup. Stacks to one column when the screen is too narrow to hold them. */
+.dialog.co-open { max-width: 96vw; width: min(1780px, 96vw); }
+.order-split { display: flex; gap: 20px; align-items: flex-start; }
+.order-split .co-side { flex: 0 0 900px; max-width: 900px; }
+.order-split .edit-side { flex: 1 1 520px; min-width: 0; }
+.order-split .co-scale { overflow: hidden; }
+@media (max-width: 1500px) {
+  .dialog.co-open { width: 96vw; }
+  .order-split { flex-direction: column; }
+  .order-split .co-side, .order-split .edit-side { flex: 1 1 auto; width: 100%; max-width: 100%; }
+}
 /* A line struck off an order with the ✕ — greyed and ruled through while it
    stays on screen to bring back, until the order is saved. */
 tr.struck td { opacity: .5; text-decoration: line-through; }
