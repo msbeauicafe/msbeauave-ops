@@ -3959,6 +3959,10 @@ SCREENS.chatorders = async (page) => {
   let picked = null;
   let catalog = null;
   let codes = null;
+  // The draft this basket came from, if any. One order keeps one draft: saving
+  // again updates this one rather than parking a second copy, and placing the
+  // order clears it away. A fresh basket has none, so its first save is new.
+  let draftId = null;
   const basket = new Map();
 
   page.innerHTML = `
@@ -4012,6 +4016,7 @@ SCREENS.chatorders = async (page) => {
   const pick = (r) => {
     picked = r;
     basket.clear();
+    draftId = null;
     findBox.value = '';
     hitsBox.innerHTML = '';
     drawWorking();
@@ -4020,6 +4025,7 @@ SCREENS.chatorders = async (page) => {
   const backToPicker = () => {
     picked = null;
     basket.clear();
+    draftId = null;
     workingBox.innerHTML = '';
     drawHits();
     findBox.focus();
@@ -4106,6 +4112,7 @@ SCREENS.chatorders = async (page) => {
     $('#ch_cancel', workingBox).addEventListener('click', () => {
       if (basket.size && !confirm('Clear this order?')) return;
       basket.clear();
+      draftId = null;
       $('#ch_order_out', workingBox).innerHTML = '';
       drawBasket();
     });
@@ -4362,6 +4369,9 @@ SCREENS.chatorders = async (page) => {
           now = await GET(`/api/orders/${out.orderId}`);
         }
       }
+      // The draft is done once its order is placed — clear it away so it does
+      // not linger to be reordered as if it were still open.
+      if (draftId) { await DELETE(`/api/order-drafts/${draftId}`).catch(() => {}); draftId = null; }
       basket.clear();
       drawBasket();
       $('#ch_order_out', workingBox).innerHTML = '';
@@ -4388,11 +4398,20 @@ SCREENS.chatorders = async (page) => {
     }
   }
 
-  // Park the current basket to finish later; it turns up under Drafts.
+  // Park the current basket to finish later; it turns up under Drafts. A basket
+  // reopened from a draft saves back onto that same draft; a fresh one parks a
+  // new draft of its own, so one order is one draft — a different order another
+  // day is a draft apart from it.
   async function saveDraft() {
     if (!picked || !basket.size) return notice('Add what they ordered first.', 'bad');
+    const lines = [...basket.values()];
     try {
-      await POST('/api/order-drafts', { reseller_id: picked.id, lines: [...basket.values()] });
+      if (draftId) {
+        await PUT(`/api/order-drafts/${draftId}`, { lines });
+      } else {
+        const out = await POST('/api/order-drafts', { reseller_id: picked.id, lines });
+        draftId = out.id;
+      }
       notice('Draft saved 🌸 — it is under Drafts, up top', 'good');
     } catch (e) { whoops(e); }
   }
@@ -4406,6 +4425,7 @@ SCREENS.chatorders = async (page) => {
     picked = r;
     basket.clear();
     (draft.lines || []).forEach((l) => { if (l && l.sku) basket.set(l.sku, { ...l, qty: Number(l.qty) || 1 }); });
+    draftId = draft.id;
     findBox.value = '';
     hitsBox.innerHTML = '';
     drawWorking();
