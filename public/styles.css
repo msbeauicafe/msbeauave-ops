@@ -278,6 +278,9 @@ textarea.sheet {
 /* The chat bar rides at the top, right after the order title. */
 .chatbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 12px; }
 .chatbar #co_chat { flex: 1 1 260px; max-width: 460px; }
+/* The running total on Record a payment — the figure checked against the bank,
+   so big and in the house dark pink. */
+.paytot { font-size: 1.35rem; color: var(--rose-deep); }
 .order-split .edit-side { flex: 1 1 520px; min-width: 0; }
 .order-split .co-scale { overflow: hidden; }
 @media (max-width: 1500px) {
