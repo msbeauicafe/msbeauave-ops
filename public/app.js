@@ -2303,7 +2303,8 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
             <td></td>
             <td class="n"><input class="cellbox open n" data-addqty="${i}"
                   inputmode="numeric" disabled></td>
-            <td class="n" data-addprice="${i}"></td>
+            <td class="n"><input class="cellbox open n" data-addprice="${i}"
+                  inputmode="decimal" disabled></td>
             <td class="n" data-addtotal="${i}"></td>
             ${canEdit ? `<td class="n"><button class="btn sm stop" data-clear="${i}"
                  title="Clear this row">✕</button></td>` : ''}
@@ -2447,11 +2448,17 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
       // takes the standing wholesale price, and the office corrects it after
       // like any other line. Showing that now keeps the total honest.
       each.added().forEach((g, i) => {
-        const line = Number(g.wholesale_price || 0) * g.qty;
-        running += line;
+        // The price box opens the moment a product is on the row and is seeded
+        // with its standing wholesale price; typed over, that hand price is what
+        // the line comes to and, below, what it is saved at.
         const price = $(`[data-addprice="${i}"]`, box);
+        if (price) {
+          price.disabled = false;
+          if (price.value.trim() === '') price.value = Number(g.wholesale_price || 0).toFixed(2);
+        }
+        const line = money(price) * g.qty;
+        running += line;
         const total = $(`[data-addtotal="${i}"]`, box);
-        if (price) price.textContent = peso(g.wholesale_price || 0);
         if (total) total.textContent = peso(line);
       });
       const whole = running + money($('#ol_ship')) + money($('#ol_oth'));
@@ -2483,8 +2490,12 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
           price: money(p), code: p?.dataset.swapped ? '' : (l.price_code || ''),
           unit: l.unit_type });
       }
-      each.added().forEach((g) => out.push({ sku: g.sku, name: g.name, qty: g.qty,
-        price: Number(g.wholesale_price || 0), code: '', unit: g.unit_type }));
+      each.added().forEach((g, i) => {
+        const pr = $(`[data-addprice="${i}"]`, box);
+        out.push({ sku: g.sku, name: g.name, qty: g.qty,
+          price: pr && pr.value.trim() !== '' ? money(pr) : Number(g.wholesale_price || 0),
+          code: '', unit: g.unit_type });
+      });
       return out;
     };
     function refreshForm() {
@@ -2511,12 +2522,17 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
       const row = b.closest('tr');
       const pick = $('[data-add]', row);
       const qty = $('[data-addqty]', row);
+      const price = $('[data-addprice]', row);
       if (pick) { pick.value = ''; pick.classList.remove('named'); }
       if (qty) { qty.value = ''; qty.disabled = true; }
-      ['[data-addprice]', '[data-addtotal]'].forEach((s) => {
-        const c = $(s, row); if (c) c.textContent = '';
-      });
+      if (price) { price.value = ''; price.disabled = true; }
+      const tot = $('[data-addtotal]', row); if (tot) tot.textContent = '';
       retotal();
+    });
+    // A hand price typed into an added row recomputes the line and the sheet —
+    // delegated, so a freshly grown row's price box counts the same way.
+    box.addEventListener('input', (e) => {
+      if (e.target.matches('[data-addprice]')) retotal();
     });
 
     // The delivery fee and whatever else the order carried used to be typed on
@@ -2564,12 +2580,31 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
           shipping: money($('#ol_ship')),
           others: money($('#ol_oth')),
         });
+        // A hand price typed against an added product, kept by its sku: the
+        // revise below brings the line in at its standing price, and this is
+        // what it is corrected to once it exists — the same as a placed order.
+        const handed = new Map();
+        each.added().forEach((g, i) => {
+          const pr = $(`[data-addprice="${i}"]`, box);
+          if (pr && pr.value.trim() !== '' && money(pr) !== Number(g.wholesale_price || 0)) {
+            handed.set(g.sku, money(pr));
+          }
+        });
         const now = each.picture().filter((l) => l.qty > 0);
         const moved = now.length !== asPlaced.length || now.some(({ sku, qty }) =>
           qty !== asPlaced.find((l) => l.sku === sku)?.qty);
-        const out = moved
+        let out = moved
           ? await POST(`/api/orders/${id}/lines`, { lines: now })
           : { total: null };
+        if (handed.size) {
+          const fresh = await GET(`/api/orders/${id}`);
+          const reprice = (fresh.lines || []).filter((l) => handed.has(l.sku))
+            .map((l) => ({ id: l.id, price: handed.get(l.sku) }));
+          if (reprice.length) {
+            await POST(`/api/orders/${id}/invoice`, { lines: reprice });
+            out = await GET(`/api/orders/${id}`);
+          }
+        }
         notice(`This order now comes to ${
           out.total == null ? $('#ol_total').textContent : peso(out.total)} 🌸`, 'good');
         closeDialog();
@@ -2807,7 +2842,7 @@ function sheetBoxes(root, goods = [], onChange = null) {
     $$('input', fresh).forEach((el) => {
       el.value = '';
       el.classList.remove('named');
-      if (el.hasAttribute('data-addqty')) el.disabled = true;
+      if (el.hasAttribute('data-addqty') || el.hasAttribute('data-addprice')) el.disabled = true;
     });
     ['[data-addunit]', '[data-addprice]', '[data-addtotal]'].forEach((sel) => {
       const cell = $(sel, fresh);
