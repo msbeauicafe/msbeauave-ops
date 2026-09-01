@@ -4056,7 +4056,7 @@ SCREENS.chatorders = async (page) => {
         </div>` : ''}
       <div class="split">
         <div class="panel">
-          <h3>What they ordered</h3>
+          <h3>Product list</h3>
           <input type="search" id="ch_find" placeholder="Search products…">
           <div class="dim" id="ch_count" style="font-size:.72rem;margin:4px 0 2px"></div>
           <div id="ch_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
@@ -4416,6 +4416,9 @@ SCREENS.chatorders = async (page) => {
     findBox.value = '';
     hitsBox.innerHTML = '';
     drawWorking();
+    // Straight to the customer order form for the draft — the whole point of
+    // opening it is to see it, not to hunt for where the basket landed.
+    openDraft();
   }
 
   async function openDraftsList() {
