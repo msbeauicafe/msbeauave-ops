@@ -2187,11 +2187,34 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
   // up by moving both together.
   const mayNumber = !readOnly && ['admin', 'office'].includes(user?.role)
     && o.channel === 'b2b';
+  // The customer order form itself, drawn full size on the left of the working
+  // order — one view, both things: the paper to read, print, download and send,
+  // beside the order it is drawn from. It carries the account's tax block and
+  // chat link off order_board, so the Send button knows where the paper goes.
+  const coForm = customerOrderForm({
+    orderId: o.id, orderNo: o.co_no, issuedOn: o.placed_at || o.issued_on || new Date(),
+    amount: o.total, resellerName: o.reseller,
+    lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
+      price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+    who: o, shipping: o.shipping || 0, others: o.others || 0,
+  });
+  const chat = (o.chat_link || '').trim();
   dialog(`
     <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
     <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
       ${o.invoice_id ? tag(`Invoice ${o.invoice_status} · due ${onDay(o.due_on)}`,
           o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
+    <div class="order-split">
+      <div class="co-side">
+        <div class="co-scale">${coForm}</div>
+        <div class="mt right">
+          ${chat ? `<a class="btn go" href="${esc(chat)}" target="_blank"
+            rel="noopener noreferrer">💬 Send to ${esc(o.reseller || 'their chat')}</a>` : ''}
+          <button class="btn quiet" id="co_jpeg">⬇ Download JPEG</button>
+          ${PRINT_BTN}
+        </div>
+      </div>
+      <div class="edit-side">
     ${mayNumber ? `
       <div class="panel">
         <h3>The numbers on the paperwork</h3>
@@ -2287,29 +2310,27 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
           ? '<button class="btn go" id="a_send">Dispatch</button>' : ''}` : ''}
       ${['placed', 'picking'].includes(o.status)
         ? '<button class="btn stop" id="a_cancel">Cancel</button>' : ''}
-      <button class="btn quiet" id="a_preview">👁 Preview form</button>
       ${o.status === 'fulfilled' && !o.delivered_at
         ? '<button class="btn go" id="a_delivered">Mark delivered</button>' : ''}
-    </div>`, 'wide');
+    </div>
+      </div>
+    </div>`, 'wide co-open');
 
-  // The customer order form itself, opened over this one at full size — no
-  // longer a blurry sheet squeezed alongside the working order. Read-only: it
-  // is the paper to read, print, download and send; corrections are made on
-  // the working order behind it. It reads the order live so a change saved on
-  // the working order shows here the next time it is opened.
-  $('#a_preview')?.addEventListener('click', async () => {
-    let fresh = o;
-    try { fresh = await GET(`/api/orders/${id}`); } catch { /* fall back to what we have */ }
-    showInvoice({
-      orderId: fresh.id, orderNo: fresh.co_no,
-      issuedOn: fresh.placed_at || fresh.issued_on || new Date(),
-      amount: fresh.total, resellerName: fresh.reseller,
-      lines: (fresh.lines || []).map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
-        price: l.unit_price, code: l.price_code, unit: l.unit_type })),
-      who: fresh, shipping: fresh.shipping || 0, others: fresh.others || 0,
-      canEdit: false,
-    }, true);
-  });
+  // The form's own picture, straight off the sheet drawn on the left.
+  wireSave('#co_jpeg', '.co-side .doc', `${o.co_no || o.id}.jpg`);
+  // Drawn at its printed 900px and fitted to the column it sits in. With the
+  // wide layout the column is a full 900, so the sheet is 1:1 and crisp; only a
+  // screen too narrow to hold it side by side scales it down at all.
+  const coDoc = $('#dialog .co-scale .doc.cof');
+  if (coDoc) {
+    const scaleBox = coDoc.parentElement;
+    const room = scaleBox.clientWidth || 900;
+    coDoc.style.width = '900px';
+    coDoc.style.transformOrigin = 'top left';
+    const scale = Math.min(1, room / 900);
+    coDoc.style.transform = `scale(${scale})`;
+    scaleBox.style.height = `${coDoc.scrollHeight * scale}px`;
+  }
 
   const act = (sel, path) => $(sel)?.addEventListener('click', async () => {
     try {
