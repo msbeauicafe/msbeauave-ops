@@ -59,6 +59,23 @@ test('a draft saves, lists, reopens and discards', async () => {
   assert.ok(!after.data.some((d) => Number(d.id) === saved.data.id), 'discarded');
 });
 
+test('a draft is the taker\'s own — one desk hand does not see another\'s', async () => {
+  const a = await signIn('orderdesk');
+  const b = await signIn('orderdesk');
+  const rid = await newReseller();
+
+  const mine = await req(a, 'POST', '/api/order-drafts', { reseller_id: rid, lines: [{ sku: 'M', qty: 1 }] });
+  assert.equal(mine.status, 200);
+
+  // B's own list never shows A's draft.
+  const bList = await req(b, 'GET', '/api/order-drafts');
+  assert.ok(!bList.data.some((d) => Number(d.id) === mine.data.id), 'not in another hand\'s list');
+  // Nor can B open or discard it.
+  assert.equal((await req(b, 'GET', `/api/order-drafts/${mine.data.id}`)).status, 404, 'cannot open it');
+  await req(b, 'DELETE', `/api/order-drafts/${mine.data.id}`);
+  assert.equal((await req(a, 'GET', `/api/order-drafts/${mine.data.id}`)).status, 200, 'B\'s discard left A\'s draft standing');
+});
+
 test('a draft needs an account and at least one line', async () => {
   const desk = await signIn('orderdesk');
   const rid = await newReseller();
