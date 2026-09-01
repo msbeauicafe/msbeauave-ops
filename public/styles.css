@@ -1304,6 +1304,10 @@ input.n { text-align: right; }
 #ch_goods td { border-bottom: 2px solid var(--rose-dust); }
 
 /* Saved chat-order drafts. */
+.draft-group { margin-top: 12px; }
+.draft-group:first-of-type { margin-top: 4px; }
+.draft-head { color: var(--rose-deep); font-size: .82rem; padding-bottom: 2px;
+  border-bottom: 2px solid var(--rose-soft); }
 .draft-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
 .draft-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

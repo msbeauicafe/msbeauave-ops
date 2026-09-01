@@ -4436,16 +4436,33 @@ SCREENS.chatorders = async (page) => {
   async function openDraftsList() {
     let drafts;
     try { drafts = await GET('/api/order-drafts'); } catch (e) { return whoops(e); }
-    dialog(`<h3>Saved drafts</h3>
-      ${drafts.length ? `<div class="draft-list">${drafts.map((d) => `
-        <div class="draft-row">
-          <div><b>${esc(d.reseller)}</b> · ${d.items} item${Number(d.items) === 1 ? '' : 's'}
-            <div class="dim">${esc(d.saved_by || '')} · ${when(d.updated_at)}</div></div>
-          <div style="display:flex;gap:6px">
-            <button class="btn sm" data-open="${d.id}">Preview</button>
-            <button class="btn sm stop" data-drop="${d.id}">Discard</button></div>
-        </div>`).join('')}</div>`
-        : '<div class="none">No drafts parked.</div>'}
+    // A customer's drafts are their own. With one picked, this is their shelf
+    // and nobody else's; with none picked, the drafts stand grouped by account
+    // rather than jumbled into one run, so one customer's never mixes with
+    // another's.
+    if (picked) drafts = drafts.filter((d) => String(d.reseller_id) === String(picked.id));
+    const groups = new Map();
+    for (const d of drafts) {
+      const key = d.reseller || '—';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(d);
+    }
+    const row = (d) => `
+      <div class="draft-row">
+        <div>${d.items} item${Number(d.items) === 1 ? '' : 's'}
+          <div class="dim">${esc(d.saved_by || '')} · ${when(d.updated_at)}</div></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn sm" data-open="${d.id}">Preview</button>
+          <button class="btn sm stop" data-drop="${d.id}">Discard</button></div>
+      </div>`;
+    const title = picked ? `Saved drafts — ${esc(picked.name)}` : 'Saved drafts';
+    dialog(`<h3>${title}</h3>
+      ${drafts.length ? [...groups.entries()].map(([name, list]) => `
+        <div class="draft-group">
+          <div class="draft-head"><b>${esc(name)}</b> · ${list.length} draft${list.length === 1 ? '' : 's'}</div>
+          <div class="draft-list">${list.map(row).join('')}</div>
+        </div>`).join('')
+        : `<div class="none">No drafts parked${picked ? ` for ${esc(picked.name)}` : ''}.</div>`}
       <div class="mt right"><button class="btn quiet" id="dr_close">Close</button></div>`);
     $('#dr_close').addEventListener('click', closeDialog);
     $$('[data-open]').forEach((b) => b.addEventListener('click', async () => {
