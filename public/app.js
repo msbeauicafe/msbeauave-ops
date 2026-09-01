@@ -126,6 +126,16 @@ function notice(text, kind = '') {
 }
 const whoops = (e) => notice(e.message, 'bad');
 
+// A short-stock refusal names the product by its code, which is what the
+// database has to hand. Given the catalogue it was placed against, the code is
+// swapped back for the name the person taking the order actually knows — "888
+// Total White Whitening Soap 80g. is short 3 unit(s)", not "888-TWWS-80".
+const withProductName = (e, goods = []) => {
+  const m = /^NOT_ENOUGH_STOCK:\s*(\S+)\s+is short\b/.exec(e?.message || '');
+  const g = m && (goods || []).find((x) => x.sku === m[1]);
+  return g ? { message: e.message.replace(m[1], g.name) } : e;
+};
+
 // Dialogs opened from inside another one are stacked, not swapped. Reading an
 // invoice from an account should put the account back when it is closed —
 // having to find the name in the list again is the sort of thing that makes a
@@ -2443,7 +2453,7 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
           out.total == null ? $('#ol_total').textContent : peso(out.total)} 🌸`, 'good');
         closeDialog();
         reload();
-      } catch (e) { whoops(e); button.disabled = false; }
+      } catch (e) { whoops(withProductName(e, goods)); button.disabled = false; }
     });
   }
 
@@ -3020,9 +3030,12 @@ function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
  */
 function showInvoice(opts, over = false) {
   const canEdit = opts.canEdit && !!opts.orderNo && !!opts.orderId;
+  const chat = (opts.who?.chat_link || '').trim();
   dialog(`${customerOrderForm(opts)}
     <div class="mt right">
       ${canEdit ? '<span class="dim" id="inv_state"></span>' : ''}
+      ${chat ? `<a class="btn go" id="inv_chat" href="${esc(chat)}" target="_blank"
+        rel="noopener noreferrer">💬 Send to ${esc(opts.resellerName || 'their chat')}</a>` : ''}
       <button class="btn quiet" id="inv_save">⬇ Download JPEG</button>
       ${PRINT_BTN}
       ${canEdit ? '<button class="btn" id="inv_keep">Save the changes</button>' : ''}
@@ -4428,7 +4441,7 @@ SCREENS.chatorders = async (page) => {
       orderPanel = 'pendingorders';
       const outer = page.parentElement;
       if (outer) SCREENS.customerorder(outer).catch(whoops);
-    } catch (e) { whoops(e); } finally {
+    } catch (e) { whoops(withProductName(e, catalog || [])); } finally {
       $('#ch_place', workingBox).disabled = false;
     }
   }
@@ -4657,8 +4670,8 @@ function eventDetail(e) {
   const d = e.detail || {};
   if (e.kind === 'details_changed' && d.from && d.to) {
     const parts = [];
-    for (const k of ['name', 'contact', 'email']) {
-      if ((d.from[k] || '') !== (d.to[k] || '')) parts.push(`${k}: ${esc(d.from[k] || '—')} → ${esc(d.to[k] || '—')}`);
+    for (const k of ['name', 'contact', 'email', 'chat_link']) {
+      if ((d.from[k] || '') !== (d.to[k] || '')) parts.push(`${k.replace('_', ' ')}: ${esc(d.from[k] || '—')} → ${esc(d.to[k] || '—')}`);
     }
     return parts.length ? ` — ${parts.join('; ')}` : '';
   }
@@ -4711,7 +4724,14 @@ async function openReseller(id, reload, part = 'account') {
       <div style="flex:2"><label>Name</label><input id="d_name" type="text" value="${esc(r.name || '')}"></div>
       <div style="flex:2"><label>Contact</label><input id="d_contact" type="text" value="${esc(r.contact || '')}"></div>
       <div style="flex:2"><label>Email</label><input id="d_email" type="text" value="${esc(r.email || '')}"></div>
-      <div style="flex:0 0 auto"><button class="btn" id="d_details">Save</button></div>
+    </div>
+    <div class="row">
+      <div style="flex:3"><label>Messenger / group chat link</label>
+        <input id="d_chat" type="text" placeholder="https://m.me/… or the group chat link"
+          value="${esc(r.chat_link || '')}">
+        <div class="dim" style="font-size:.72rem;margin-top:2px">Where their order form and
+          invoice are sent — it becomes a button on the form.</div></div>
+      <div style="flex:0 0 auto;align-self:flex-start"><button class="btn" id="d_details">Save</button></div>
     </div>
 
     <h3 class="mt">Terms</h3>
@@ -4907,7 +4927,8 @@ async function openReseller(id, reload, part = 'account') {
       await POST(`/api/resellers/${id}/details`, {
         name: $('#d_name').value.trim(),
         contact: $('#d_contact').value.trim(),
-        email: $('#d_email').value.trim() });
+        email: $('#d_email').value.trim(),
+        chat_link: $('#d_chat').value.trim() });
       notice('Details saved 🌸', 'good');
       closeDialog();
       reload();
