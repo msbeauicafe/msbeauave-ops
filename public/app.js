@@ -126,6 +126,18 @@ function notice(text, kind = '') {
 }
 const whoops = (e) => notice(e.message, 'bad');
 
+// The wholesale catalogue is a thousand-odd rows and the same all through a
+// sitting, so it is fetched once and kept: opening an order to correct it, or
+// prefetched the moment its list is on screen, no longer waits on that fetch
+// every time. A failed fetch is not cached, so it simply tries again.
+let _wholesale = null;
+async function wholesaleCatalog() {
+  if (_wholesale) return _wholesale;
+  const rows = await GET('/api/wholesale/catalog').catch(() => null);
+  if (rows) _wholesale = rows;
+  return rows;
+}
+
 // A short-stock refusal names the product by its code, which is what the
 // database has to hand. Given the catalogue it was placed against, the code is
 // swapped back for the name the person taking the order actually knows — "888
@@ -2178,7 +2190,7 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
   // actually holds. Fetched rather than assumed: if it does not arrive the
   // dialog still opens, still corrects what is on the order, and simply has
   // nothing to offer for adding something new.
-  const catalog = canEdit ? await GET('/api/wholesale/catalog').catch(() => null) : null;
+  const catalog = canEdit ? await wholesaleCatalog() : null;
   const goods = catalog || [];
   const SPARE = canEdit && goods.length ? 3 : 0;
 
@@ -4125,6 +4137,10 @@ SCREENS.pendingorders = async (page) => {
     $('#pending_count', page).textContent = rows.length
       ? `${count(rows.length)} waiting · ${peso(rows.reduce((t, o) => t + Number(o.total), 0))}`
       : '';
+
+    // Warm the catalogue in the background while the list is being read, so the
+    // first Open does not wait on it. Order-desk hands only — nobody else edits.
+    if (['admin', 'office'].includes(user?.role)) wholesaleCatalog();
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openOrder(b.dataset.open, load).catch(whoops)));
