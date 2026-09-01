@@ -5267,10 +5267,20 @@ async function openReseller(id, reload, part = 'account') {
     const owed = Number(b.dataset.owed);
     const invoiceNo = b.dataset.pay;
     const orderNo = b.dataset.order;
+    // Commas as they type, because six figures without them is where a nought
+    // goes astray. Stripped back to a plain number on the way out.
+    const num = (v) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
+    const comma = (el) => {
+      const raw = String(el.value).replace(/[^0-9.]/g, '');
+      const parts = raw.split('.');
+      const intp = parts[0].replace(/^0+(?=\d)/, '');
+      const whole = intp === '' ? '' : Number(intp).toLocaleString('en-US');
+      el.value = parts.length > 1 ? `${whole || '0'}.${parts[1].slice(0, 2)}` : whole;
+    };
     dialog(`
-      <h3>Record a payment — invoice #${esc(invoiceNo)}</h3>
-      <div class="dim">${orderNo && orderNo !== invoiceNo
-        ? `Sales order no. ${esc(orderNo)} · ` : ''}<b>${peso(owed)}</b> still on it.
+      <h3>Record a payment — ${esc(r.name)}</h3>
+      <div class="dim">Invoice #${esc(invoiceNo)}${orderNo && orderNo !== invoiceNo
+        ? ` · sales order no. ${esc(orderNo)}` : ''} · <b>${peso(owed)}</b> still on it.
         All five rows go against this invoice and no other, so fill in as many
         as it actually arrived in — a BDO transfer, a BPI transfer and GCash is
         three rows, not one. <b>Confirming is not receipting</b>: the receipt is
@@ -5279,8 +5289,8 @@ async function openReseller(id, reload, part = 'account') {
       ${[0, 1, 2, 3, 4].map((n) => `
         <div class="row payrow">
           <div><label${n ? ' class="sr"' : ''}>Amount received</label>
-            <input class="ip_amt" type="number" step="0.01" min="0.01"
-                   placeholder="${n ? '' : '0.00'}"${n ? '' : ` value="${owed}"`}></div>
+            <input class="ip_amt" type="text" inputmode="decimal"
+                   placeholder="${n ? '' : '0.00'}"${n ? '' : ` value="${Number(owed).toLocaleString('en-US')}"`}></div>
           <div><label${n ? ' class="sr"' : ''}>Received on</label>
             <input class="ip_on" type="date" value="${localDay()}"></div>
           <div><label${n ? ' class="sr"' : ''}>Through (MOP)</label>
@@ -5294,28 +5304,52 @@ async function openReseller(id, reload, part = 'account') {
         itself. Clearing the last past-due invoice lets the account order again.
         The reference is the bank's own — what they quote to say the money left,
         and what the statement is matched against later. It prints on the invoice.</div>
-      <div class="row mt"><div class="dim" id="ip_sum"></div></div>
+      <div class="row mt"><div id="ip_sum"></div></div>
       <div class="mt right"><button class="btn" id="p_save">Record</button></div>`, 'wide');
 
-    // Running total against what is left, because five boxes of pesos is
-    // exactly where a nought goes astray, and the message afterwards is a
-    // worse place to find out than the moment it is typed.
+    // Running total against what is left, in bold because it is the figure
+    // being checked against the bank.
     const retotal = () => {
-      const taken = $$('.ip_amt').reduce((n, el) => n + (+el.value || 0), 0);
+      const taken = $$('.ip_amt').reduce((n, el) => n + num(el.value), 0);
       const over = taken > owed + 0.005;
       $('#ip_sum').innerHTML = taken
-        ? `${peso(taken)} of ${peso(owed)}${over
+        ? `<b>${peso(taken)}</b> of ${peso(owed)}${over
             ? ' — <b class="over">more than this invoice owes</b>'
             : taken >= owed - 0.005 ? ' — settles it' : `, leaving ${peso(owed - taken)}`}`
         : '';
       $('#p_save').disabled = over;
     };
-    $$('.ip_amt').forEach((el) => el.addEventListener('input', retotal));
+    $$('.ip_amt').forEach((el) => {
+      el.addEventListener('input', () => { comma(el); retotal(); });
+    });
     retotal();
+
+    // Stay on the invoice after recording, so the payment shows against it
+    // rather than dropping back to the account list.
+    const showThisInvoice = async () => {
+      // Close the payment dialog first so the invoice opens over the account
+      // beneath it, not stacked on top of the payment form.
+      closeDialog();
+      try {
+        const [o, payments] = await Promise.all([
+          GET(`/api/orders/${orderNo}`),
+          GET(`/api/resellers/${id}/payments?order_id=${orderNo}`).catch(() => []),
+        ]);
+        showInvoiceDoc({
+          over: true,
+          orderId: o.id, issuedOn: o.placed_at, resellerName: o.reseller, payments, who: o,
+          invoiceNo: o.si_no,
+          shipping: Number(o.shipping || 0), others: Number(o.others || 0),
+          lines: o.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
+            price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+        });
+      } catch (e) { whoops(e); }
+      reload?.();
+    };
 
     $('#p_save').addEventListener('click', async () => {
       const payments = $$('.payrow').map((row) => ({
-        amount: $('.ip_amt', row).value,
+        amount: String(num($('.ip_amt', row).value)),
         paid_on: $('.ip_on', row).value,
         method: $('.ip_mop', row).value.trim() || null,
         reference_no: $('.ip_ref', row).value.trim() || null,
@@ -5328,7 +5362,7 @@ async function openReseller(id, reload, part = 'account') {
           ? `Invoice #${out.invoice_id} settled 🌸`
           : `${peso(out.taken)} recorded — ${peso(out.balance)} left on #${out.invoice_id}`,
           'good');
-        openReseller(id, reload);
+        showThisInvoice();
       } catch (e) { whoops(e); $('#p_save').disabled = false; }
     });
   }));
