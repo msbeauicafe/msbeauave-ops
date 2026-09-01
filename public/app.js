@@ -3959,7 +3959,6 @@ SCREENS.chatorders = async (page) => {
   let picked = null;
   let catalog = null;
   let codes = null;
-  let previewOn = false;
   const basket = new Map();
 
   page.innerHTML = `
@@ -4013,7 +4012,6 @@ SCREENS.chatorders = async (page) => {
   const pick = (r) => {
     picked = r;
     basket.clear();
-    previewOn = false;
     findBox.value = '';
     hitsBox.innerHTML = '';
     drawWorking();
@@ -4022,7 +4020,6 @@ SCREENS.chatorders = async (page) => {
   const backToPicker = () => {
     picked = null;
     basket.clear();
-    previewOn = false;
     workingBox.innerHTML = '';
     drawHits();
     findBox.focus();
@@ -4065,27 +4062,19 @@ SCREENS.chatorders = async (page) => {
           <div id="ch_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
         </div>
         <div class="panel">
-          ${previewOn ? `
-            <div class="picked-bar" style="margin-bottom:8px">
-              <h3 style="margin:0">Preview</h3>
-              <button class="btn sm quiet" id="ch_unpreview" style="margin-left:auto">← Back to order</button>
-            </div>
-            <div id="ch_preview" class="co-inline"></div>
-          ` : `
-            <h3>List of orders</h3>
-            <div id="ch_basket"></div>
-            <div class="basket-sum">
-              <div class="sumrow"><span>Subtotal</span><span id="ch_sub">₱0.00</span></div>
-              <div class="sumrow grand"><span>Total</span><span id="ch_total">₱0.00</span></div>
-            </div>
-            <div id="ch_nocode"></div>
-            <div class="mt right">
-              <button class="btn quiet" id="ch_draft">Draft</button>
-              <button class="btn" id="ch_place">Place order</button>
-              <button class="btn stop" id="ch_cancel">Cancel</button>
-            </div>
-            <div id="ch_order_out" class="mt"></div>
-          `}
+          <h3>List of orders</h3>
+          <div id="ch_basket"></div>
+          <div class="basket-sum">
+            <div class="sumrow"><span>Subtotal</span><span id="ch_sub">₱0.00</span></div>
+            <div class="sumrow grand"><span>Total</span><span id="ch_total">₱0.00</span></div>
+          </div>
+          <div id="ch_nocode"></div>
+          <div class="mt right">
+            <button class="btn quiet" id="ch_draft">Draft</button>
+            <button class="btn" id="ch_place">Place order</button>
+            <button class="btn stop" id="ch_cancel">Cancel</button>
+          </div>
+          <div id="ch_order_out" class="mt"></div>
         </div>
       </div>`;
 
@@ -4111,24 +4100,16 @@ SCREENS.chatorders = async (page) => {
     });
     $('#ch_ds', workingBox)?.addEventListener('input', drawPreview);
     $('#ch_find', workingBox).addEventListener('input', drawGoods);
-    if (previewOn) {
-      // The other split is the customer order form itself now. One way back to
-      // the basket, and the form drawn from what is in it.
-      $('#ch_unpreview', workingBox).addEventListener('click', () => { previewOn = false; drawWorking(); });
-      drawPreview();
-    } else {
-      $('#ch_place', workingBox).addEventListener('click', placeOrder);
-      // Draft parks the basket and says so — it does not open anything. The
-      // form is under Preview, up top.
-      $('#ch_draft', workingBox).addEventListener('click', saveDraft);
-      $('#ch_cancel', workingBox).addEventListener('click', () => {
-        if (basket.size && !confirm('Clear this order?')) return;
-        basket.clear();
-        $('#ch_order_out', workingBox).innerHTML = '';
-        drawBasket();
-      });
+    $('#ch_place', workingBox).addEventListener('click', placeOrder);
+    // Draft parks the basket and says so — it does not open anything.
+    $('#ch_draft', workingBox).addEventListener('click', saveDraft);
+    $('#ch_cancel', workingBox).addEventListener('click', () => {
+      if (basket.size && !confirm('Clear this order?')) return;
+      basket.clear();
+      $('#ch_order_out', workingBox).innerHTML = '';
       drawBasket();
-    }
+    });
+    drawBasket();
   };
 
   const drawGoods = () => {
@@ -4417,8 +4398,8 @@ SCREENS.chatorders = async (page) => {
   }
 
   // Reopen a parked basket: put its account and its lines back on the bench,
-  // straight into the preview. Previewing a draft is how you look at it — the
-  // customer order form fills the other split, with Back to order to edit it.
+  // in the editable List of orders — the draft to carry on adding to and place,
+  // not a form to look at.
   function reopenDraft(draft) {
     const r = resellers.find((x) => String(x.id) === String(draft.reseller_id));
     if (!r) return notice('That account is no longer on the list.', 'bad');
@@ -4427,7 +4408,6 @@ SCREENS.chatorders = async (page) => {
     (draft.lines || []).forEach((l) => { if (l && l.sku) basket.set(l.sku, { ...l, qty: Number(l.qty) || 1 }); });
     findBox.value = '';
     hitsBox.innerHTML = '';
-    previewOn = true;
     drawWorking();
   }
 
