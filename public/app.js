@@ -2177,23 +2177,11 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
   // up by moving both together.
   const mayNumber = !readOnly && ['admin', 'office'].includes(user?.role)
     && o.channel === 'b2b';
-  // The customer order form as it was handed over, drawn read-only beside the
-  // working order so the paperwork and what is being picked sit on one page.
-  const coForm = customerOrderForm({
-    orderId: o.id, orderNo: o.co_no, issuedOn: o.placed_at || o.issued_on || new Date(),
-    amount: o.total, resellerName: o.reseller,
-    lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
-      price: l.unit_price, code: l.price_code, unit: l.unit_type })),
-    who: o, shipping: o.shipping || 0, others: o.others || 0,
-  });
   dialog(`
     <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
     <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
       ${o.invoice_id ? tag(`Invoice ${o.invoice_status} · due ${onDay(o.due_on)}`,
           o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
-    <div class="order-split">
-      <div class="co-side"><div class="co-scale">${coForm}</div></div>
-      <div class="edit-side">
     ${mayNumber ? `
       <div class="panel">
         <h3>The numbers on the paperwork</h3>
@@ -2231,6 +2219,7 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
         <thead><tr>
           <th>Product</th><th>Batch</th><th>Expires</th>
           <th class="n">Qty</th><th class="n">Price</th><th class="n">Total</th>
+          ${canEdit ? '<th></th>' : ''}
         </tr></thead>
         <tbody>
           ${o.lines.map((l) => `<tr>
@@ -2250,6 +2239,8 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
                    value="${Number(l.unit_price).toFixed(2)}">`
               : peso(l.unit_price)}</td>
             <td class="n" data-linetotal="${esc(String(l.id))}">${peso(l.unit_price * l.qty)}</td>
+            ${canEdit ? `<td class="n"><button class="btn sm stop" data-remove="${esc(String(l.id))}"
+                 title="Take ${esc(l.name)} off this order">✕</button></td>` : ''}
           </tr>`).join('')}
           ${Array.from({ length: SPARE }, (_x, i) => `<tr>
             <td><input class="cellbox open" list="doc_goods" data-add="${i}"
@@ -2260,6 +2251,7 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
                   inputmode="numeric" disabled></td>
             <td class="n" data-addprice="${i}"></td>
             <td class="n" data-addtotal="${i}"></td>
+            ${canEdit ? '<td></td>' : ''}
           </tr>`).join('')}
         </tbody>
       </table></div>${goodsList(goods)}`
@@ -2285,25 +2277,29 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
           ? '<button class="btn go" id="a_send">Dispatch</button>' : ''}` : ''}
       ${['placed', 'picking'].includes(o.status)
         ? '<button class="btn stop" id="a_cancel">Cancel</button>' : ''}
+      <button class="btn quiet" id="a_preview">👁 Preview form</button>
       ${o.status === 'fulfilled' && !o.delivered_at
         ? '<button class="btn go" id="a_delivered">Mark delivered</button>' : ''}
-    </div>
-      </div>
-    </div>`, 'wide co-open');
+    </div>`, 'wide');
 
-  // Fit the handed-over form into its column beside the working order — the
-  // sheet is drawn at its printed 900px and scaled down to whatever room the
-  // left side has, the same way the chat-order preview does.
-  const coDoc = $('#dialog .co-scale .doc.cof');
-  if (coDoc) {
-    const box = coDoc.parentElement;
-    const room = box.clientWidth || 900;
-    coDoc.style.width = '900px';
-    coDoc.style.transformOrigin = 'top left';
-    const scale = Math.min(1, room / 900);
-    coDoc.style.transform = `scale(${scale})`;
-    box.style.height = `${coDoc.scrollHeight * scale}px`;
-  }
+  // The customer order form itself, opened over this one at full size — no
+  // longer a blurry sheet squeezed alongside the working order. Read-only: it
+  // is the paper to read, print, download and send; corrections are made on
+  // the working order behind it. It reads the order live so a change saved on
+  // the working order shows here the next time it is opened.
+  $('#a_preview')?.addEventListener('click', async () => {
+    let fresh = o;
+    try { fresh = await GET(`/api/orders/${id}`); } catch { /* fall back to what we have */ }
+    showInvoice({
+      orderId: fresh.id, orderNo: fresh.co_no,
+      issuedOn: fresh.placed_at || fresh.issued_on || new Date(),
+      amount: fresh.total, resellerName: fresh.reseller,
+      lines: (fresh.lines || []).map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
+        price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+      who: fresh, shipping: fresh.shipping || 0, others: fresh.others || 0,
+      canEdit: false,
+    }, true);
+  });
 
   const act = (sel, path) => $(sel)?.addEventListener('click', async () => {
     try {
@@ -2400,6 +2396,26 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
       el.addEventListener('input', retotal);
       el.addEventListener('change', () => { el.value = money(el).toFixed(2); retotal(); });
     });
+    // The ✕ takes a line off the order: its quantity goes to nought — which is
+    // how a line leaves when the picture is saved — its price is held back so a
+    // line about to be deleted is not repriced first, and the row is struck out
+    // so it reads as gone while still on screen to bring back if it was a slip.
+    $$('[data-remove]', box).forEach((b) => b.addEventListener('click', () => {
+      const line = b.dataset.remove;
+      const qty = $(`[data-qtyfor="${line}"]`, box);
+      const price = $(`[data-line="${line}"]`, box);
+      const gone = b.closest('tr').classList.toggle('struck');
+      if (gone) {
+        if (qty) { qty.dataset.was = qty.value; qty.value = '0'; qty.disabled = true; }
+        if (price) price.dataset.removed = '1';
+        b.textContent = '↺';
+      } else {
+        if (qty) { qty.value = qty.dataset.was ?? '1'; qty.disabled = false; }
+        if (price) delete price.dataset.removed;
+        b.textContent = '✕';
+      }
+      retotal();
+    }));
     retotal();
 
     $('#ol_keep').addEventListener('click', async () => {
@@ -2412,7 +2428,7 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
           // anything anybody agreed to. Sending it would price the old line a
           // moment before it is deleted.
           lines: $$('[data-line]', box)
-            .filter((el) => !el.dataset.swapped)
+            .filter((el) => !el.dataset.swapped && !el.dataset.removed)
             .map((el) => ({ id: el.dataset.line, price: money(el) })),
           shipping: money($('#ol_ship')),
           others: money($('#ol_oth')),

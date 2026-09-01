@@ -263,17 +263,10 @@ textarea.sheet {
 /* A price list is seven columns wide before it is anything else. */
 .dialog.wide { max-width: 1000px; }
 .dialog.wide td:first-child, .dialog.wide th:first-child { white-space: nowrap; }
-/* Opening a pending order: the handed-over customer order form on the left,
-   the working order on the right, both on one page. */
-.dialog.co-open { max-width: 1260px; }
-.order-split { display: flex; gap: 18px; align-items: flex-start; }
-.order-split .co-side { flex: 0 0 42%; min-width: 0; }
-.order-split .edit-side { flex: 1 1 58%; min-width: 0; }
-.order-split .co-scale { overflow: hidden; }
-@media (max-width: 1100px) {
-  .order-split { flex-direction: column; }
-  .order-split .co-side, .order-split .edit-side { flex: 1 1 auto; width: 100%; }
-}
+/* A line struck off an order with the ✕ — greyed and ruled through while it
+   stays on screen to bring back, until the order is saved. */
+tr.struck td { opacity: .5; text-decoration: line-through; }
+tr.struck td:last-child { opacity: 1; text-decoration: none; }
 
 /* Things that cannot be undone, kept apart from the things that can. */
 .danger {
