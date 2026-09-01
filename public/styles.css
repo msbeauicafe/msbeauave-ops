@@ -314,7 +314,14 @@ label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3
 .good .pr { color: var(--rose-deep); font-weight: 700; }
 .good .st { font-size: .72rem; color: var(--muted); }
 .good.empty { opacity: .45; cursor: not-allowed; }
-.pick { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--rose-blush); }
+.pick { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 2px solid var(--rose-dust); }
+.pick .linetot { min-width: 84px; text-align: right; color: var(--rose-deep); font-size: .95rem; }
+.basket-sum { margin: 10px 0; }
+.sumrow { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: .95rem; }
+.sumrow > span:first-child { color: var(--muted); }
+.sumrow.grand { border-top: 2px solid var(--rose-dust); margin-top: 4px; padding-top: 8px;
+  font-size: 1.5rem; font-weight: 700; color: var(--rose-deep); }
+.sumrow.grand > span:first-child { color: var(--rose-deep); font-size: 1rem; align-self: center; }
 .pick .nm { flex: 1; font-size: .85rem; }
 .pick input { width: 56px; text-align: center; padding: 4px; }
 .total { font-size: 1.6rem; font-weight: 700; text-align: right; margin: 10px 0; color: var(--rose-deep); }
@@ -824,7 +831,8 @@ label.inline input { width: auto; }
 .pick .pcode { order: 2; }
 .pick input[data-qty] { order: 3; }
 .pick input.unit { order: 4; }
-.pick .btn.stop { order: 5; }
+.pick .linetot { order: 5; margin-left: auto; }
+.pick .btn.stop { order: 6; }
 
 /* The same round frame on the profile, so what is being set is plainly the
    thing that will appear on the card. */
