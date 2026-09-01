@@ -3969,7 +3969,8 @@ SCREENS.chatorders = async (page) => {
     <div class="head"><h2>Chat orders</h2>
       <span class="hint">An order from Messenger — place it, send the form; payment is confirmed under Invoice.</span></div>
     <div class="tools">
-      <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus style="margin-left:auto">
+      <span class="tools-gap" aria-hidden="true"></span>
+      <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus>
       <button class="btn quiet" id="rs_drafts">🗒 Drafts</button>
     </div>
     <div id="rs_hits"></div>
