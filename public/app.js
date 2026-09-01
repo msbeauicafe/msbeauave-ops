@@ -3963,9 +3963,7 @@ SCREENS.chatorders = async (page) => {
 
   page.innerHTML = `
     <div class="head"><h2>Chat orders</h2>
-      <span class="hint">For an order that came in over Messenger — place it,
-        then send them the order form. The payment is confirmed on their own
-        page, under Invoice</span></div>
+      <span class="hint">An order from Messenger — place it, send the form; payment is confirmed under Invoice.</span></div>
     <div class="tools">
       <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus>
     </div>
@@ -4029,11 +4027,11 @@ SCREENS.chatorders = async (page) => {
   const drawWorking = () => {
     if (!picked) { workingBox.innerHTML = ''; return; }
     workingBox.innerHTML = `
-      <div class="panel">
-        <h3>${esc(picked.name)}
-          ${Number(picked.owed) > 0 ? tag(`owes ${peso(picked.owed)}`, picked.overdue ? 'red' : 'amber') : tag('nothing owed', 'green')}
-          ${picked.blocked ? tag('cannot order', 'red') : ''}</h3>
-        <button class="btn sm quiet" id="rs_change">Change reseller</button>
+      <div class="picked-bar">
+        <b>${esc(picked.name)}</b>
+        ${Number(picked.owed) > 0 ? tag(`owes ${peso(picked.owed)}`, picked.overdue ? 'red' : 'amber') : tag('nothing owed', 'green')}
+        ${picked.blocked ? tag('cannot order', 'red') : ''}
+        <button class="btn sm quiet" id="rs_change" style="margin-left:auto">Change reseller</button>
       </div>
       ${picked.blocked ? `<div class="banner bad">This account cannot order right now:
         ${esc(picked.blocked_reason || 'a past-due invoice')}. Confirm their bank
