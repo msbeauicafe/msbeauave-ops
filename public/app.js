@@ -2619,8 +2619,13 @@ async function saveDocument(node, filename, scale = 2) {
   sheetCss ??= await (await fetch('/styles.css')).text();
   logoData ??= await asDataUri('/logo.png');
 
-  const width = Math.ceil(node.getBoundingClientRect().width);
   const clone = node.cloneNode(true);
+  // On screen the sheet may be scaled down to fit its column; the picture is
+  // drawn full size. So the clone sheds any transform before it is measured — a
+  // scaled node reports its scaled width, and the SVG cut to that clips the
+  // right-hand edge of the sheet off the picture.
+  clone.style.transform = 'none';
+  clone.style.transformOrigin = '';
   clone.querySelectorAll('img').forEach((img) => { img.setAttribute('src', logoData); });
 
   const shot = document.createElement('div');
@@ -2629,15 +2634,19 @@ async function saveDocument(node, filename, scale = 2) {
   if (document.documentElement.dataset.brand) {
     shot.dataset.brand = document.documentElement.dataset.brand;
   }
+  // Inline-block so it takes the sheet's own full width rather than a width
+  // read off a scaled copy of it.
   shot.setAttribute('style',
-    `width:${width}px;background:#fff;padding:18px;box-sizing:border-box;` +
+    'display:inline-block;background:#fff;padding:18px;box-sizing:border-box;' +
     'font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px');
   shot.append(clone);
 
-  // Measured on the page, because a foreignObject does not report its own
-  // height back and an SVG cut short simply loses the bottom of the sheet.
+  // Measured on the page, because a foreignObject does not report its own size
+  // back and an SVG cut short simply loses the edge of the sheet.
   document.body.append(shot);
-  const height = Math.ceil(shot.getBoundingClientRect().height);
+  const rect = shot.getBoundingClientRect();
+  const width = Math.ceil(rect.width);
+  const height = Math.ceil(rect.height);
   const body = new XMLSerializer().serializeToString(shot);
   shot.remove();
 
