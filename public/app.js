@@ -4130,8 +4130,13 @@ SCREENS.chatorders = async (page) => {
     const box = $('#ch_goods', workingBox);
     if (!box) return;
     const term = ($('#ch_find', workingBox)?.value || '').trim().toLowerCase();
+    // Freebies sink to the bottom of the list — they are not what an order is
+    // built from, so they do not lead it. A stable sort keeps everything else
+    // in the order it came, only the freebies moved down.
+    const isFreebie = (p) => /freebie/i.test(p.name || '');
     const rows = (catalog || []).filter((p) => !term
-      || p.name.toLowerCase().includes(term) || (p.brand || '').toLowerCase().includes(term));
+      || p.name.toLowerCase().includes(term) || (p.brand || '').toLowerCase().includes(term))
+      .sort((a, b) => (isFreebie(a) ? 1 : 0) - (isFreebie(b) ? 1 : 0));
     // Named for what it is rather than what it holds: `count` is the shared
     // formatter three lines below, and taking that name here left the table
     // calling a div.
