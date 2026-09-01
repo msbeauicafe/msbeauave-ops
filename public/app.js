@@ -5239,9 +5239,9 @@ async function openReseller(id, reload, part = 'account') {
       el.value = parts.length > 1 ? `${whole || '0'}.${parts[1].slice(0, 2)}` : whole;
     };
     dialog(`
-      <h3>${esc(r.name)}</h3>
-      <div class="dim">Invoice #${esc(invoiceNo)}${orderNo && orderNo !== invoiceNo
-        ? ` · sales order no. ${esc(orderNo)}` : ''} · <b>${peso(owed)}</b> still on it.
+      <h3>${esc(r.name)} — Invoice #${esc(invoiceNo)}</h3>
+      <div class="dim">${orderNo && orderNo !== invoiceNo
+        ? `Sales order no. ${esc(orderNo)} · ` : ''}<b>${peso(owed)}</b> still on it.
         All five rows go against this invoice and no other, so fill in as many
         as it actually arrived in — a BDO transfer, a BPI transfer and GCash is
         three rows, not one. <b>Confirming is not receipting</b>: the receipt is
@@ -5299,16 +5299,16 @@ async function openReseller(id, reload, part = 'account') {
     // Running total against what is left, in bold because it is the figure
     // being checked against the bank.
     const retotal = () => {
-      // Only the five invoice rows count against what this bill owes — the
-      // pending-payment row is an advance and is allowed to exceed it.
+      // The five invoice rows plus the pending row are all the money that came
+      // in. What the invoice owes is paid off it; anything over is sorted into
+      // account credit by itself, so nothing here has to be disabled.
       const taken = $$('.payrow:not(.prepay) .ip_amt').reduce((n, el) => n + num(el.value), 0);
-      const over = taken > owed + 0.005;
+      const excess = taken - owed;
       $('#ip_sum').innerHTML = taken
-        ? `<b>${peso(taken)}</b> of ${peso(owed)}${over
-            ? ' — <b class="over">more than this invoice owes</b>'
+        ? `<b class="paytot">${peso(taken)}</b> of ${peso(owed)}${excess > 0.005
+            ? ` — settles it, <b>${peso(excess)}</b> held as credit`
             : taken >= owed - 0.005 ? ' — settles it' : `, leaving ${peso(owed - taken)}`}`
         : '';
-      $('#p_save').disabled = over;
     };
     $$('.ip_amt').forEach((el) => {
       el.addEventListener('input', () => { comma(el); retotal(); });
@@ -5357,31 +5357,55 @@ async function openReseller(id, reload, part = 'account') {
       reload?.();
     };
 
-    // Read one row into a payment object, or null if it carries no amount.
+    // Read one row into a payment object (numeric amount), or null if empty.
     const rowPayment = (row) => {
       const amount = num($('.ip_amt', row).value);
       if (!(amount > 0)) return null;
       return {
-        amount: String(amount),
+        amount,
         paid_on: $('.ip_on', row).value,
         method: $('.ip_mop', row).value.trim() || null,
         reference_no: $('.ip_ref', row).value.trim() || null,
       };
     };
+    // What one invoice owes is paid off it; anything over spills, transfer by
+    // transfer, into the credit pile — the boundary transfer split across both
+    // so its bank reference is kept on each side. Nobody has to work out by hand
+    // which peso paid the bill and which became an advance.
+    const splitToBalance = (rows, cap) => {
+      const toInvoice = []; const toCredit = []; let filled = 0;
+      for (const r of rows) {
+        const room = Math.max(0, cap - filled);
+        if (room <= 0.005) { toCredit.push(r); continue; }
+        if (r.amount <= room + 0.005) { toInvoice.push(r); filled += r.amount; }
+        else {
+          toInvoice.push({ ...r, amount: room });
+          toCredit.push({ ...r, amount: r.amount - room });
+          filled = cap;
+        }
+      }
+      return { toInvoice, toCredit };
+    };
+    const strAmt = (r) => ({ ...r, amount: String(r.amount) });
 
     $('#p_save').addEventListener('click', async () => {
-      const payments = $$('.payrow:not(.prepay)').map(rowPayment).filter(Boolean);
-      const advance = $$('.payrow.prepay').map(rowPayment).filter(Boolean);
-      if (!payments.length && !advance.length) return notice('How much actually landed?', 'bad');
+      const invRows = $$('.payrow:not(.prepay)').map(rowPayment).filter(Boolean);
+      const prepay = $$('.payrow.prepay').map(rowPayment).filter(Boolean);
+      if (!invRows.length && !prepay.length) return notice('How much actually landed?', 'bad');
+      const { toInvoice, toCredit } = splitToBalance(invRows, owed);
+      // The pending row and any spill-over are an advance against the account:
+      // they settle whatever else is open oldest-first, and the rest is held as
+      // credit — a prepayment.
+      const advance = [...toCredit, ...prepay].filter((r) => r.amount > 0.005);
       $('#p_save').disabled = true;
       try {
         let out = null;
-        if (payments.length) out = await POST(`/api/invoices/${invoiceNo}/payments`, { payments });
-        // The pending row is an advance against the account: it settles whatever
-        // else is open oldest-first and the rest is held as credit — a prepayment.
+        if (toInvoice.length) {
+          out = await POST(`/api/invoices/${invoiceNo}/payments`, { payments: toInvoice.map(strAmt) });
+        }
         let credited = 0;
         if (advance.length) {
-          const adv = await POST(`/api/resellers/${id}/confirm`, { payments: advance });
+          const adv = await POST(`/api/resellers/${id}/confirm`, { payments: advance.map(strAmt) });
           credited = (adv.confirmed || []).reduce((t, c) => t + Number(c.credited || c.credit || 0), 0);
         }
         // Each row's bank screenshot, filed against the account as a payment
