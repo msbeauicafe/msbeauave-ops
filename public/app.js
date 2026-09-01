@@ -4952,13 +4952,9 @@ async function openReseller(id, reload, part = 'account') {
     </div>
 
     <h3 class="mt">Bank transaction proofs</h3>
-    <div class="dim">Screenshots of their bank transfers — kept here for your reference.</div>
+    <div class="dim">Screenshots of their bank transfers — filed from Record a payment,
+      kept here for your reference.</div>
     <div class="filegrid mt">${fileCards(r.files, 'payment_proof')}</div>
-    <div class="row mt">
-      <div style="flex:2"><label>What it is (bank / reference)</label><input id="proof_label" type="text"></div>
-      <div style="flex:2"><label>Choose an image</label>
-        <input id="proof_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
-    </div>
 
     <h3 class="mt">For tax</h3>
     <div class="dim">Printed at the top of this account's invoices, order forms and packing lists.</div>
@@ -4982,20 +4978,6 @@ async function openReseller(id, reload, part = 'account') {
 ` : ''}
 
     ${money ? `
-    <h3 class="mt">Papers</h3>
-    ${r.documents.length
-      ? `<div class="dim">${r.documents.map((d) =>
-          `${esc(d.kind)}: ${esc(d.reference)} ${d.verified ? '✅' : '⏳'}`).join('<br>')}</div>`
-      : '<div class="dim">Nothing on file.</div>'}
-    <div class="row mt">
-      <div><label>Kind</label><select id="d_kind">
-        <option>business licence</option><option>tax paper</option><option>agreement</option>
-      </select></div>
-      <div style="flex:2"><label>Where it is</label>
-        <input id="d_ref" type="text" placeholder="drive link or file name"></div>
-      <div style="flex:0 0 auto"><button class="btn quiet" id="d_attach">Attach</button></div>
-    </div>
-
     <h3 class="mt">Confirm the bank payment</h3>
     <div class="dim">A reseller settles in instalments, so there are five rows —
       fill in as many as have actually landed. Each is applied to whatever is
@@ -5025,14 +5007,9 @@ async function openReseller(id, reload, part = 'account') {
 
     <h3 class="mt">Bank transfer proofs</h3>
     <div class="dim">Screenshots of the bank transaction — the proof the money left,
-      the way it shows in the bank app. Kept on the record beside the confirmed
-      payments.</div>
+      the way it shows in the bank app. Filed from Record a payment, one per bank
+      reference, and kept here beside the confirmed payments.</div>
     <div class="filegrid mt">${fileCards(r.files, 'payment_proof')}</div>
-    <div class="row mt">
-      <div style="flex:2"><label>What it is (bank / reference)</label><input id="proof_label" type="text"></div>
-      <div style="flex:2"><label>Choose an image</label>
-        <input id="proof_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
-    </div>
 
     <h3 class="mt">Issue the receipt</h3>
     <div id="acct_pending"></div>
@@ -5123,14 +5100,6 @@ async function openReseller(id, reload, part = 'account') {
     } catch (err) { whoops(err); }
     e.target.value = '';
   });
-  $('#proof_file')?.addEventListener('change', async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    try {
-      await uploadResellerFile(id, file, 'payment_proof', $('#proof_label')?.value.trim());
-      notice('Proof saved 🌸', 'good'); closeDialog(); reload();
-    } catch (err) { whoops(err); }
-    e.target.value = '';
-  });
   document.querySelectorAll('.del-file').forEach((btn) => btn.addEventListener('click', async () => {
     if (!confirm('Remove this file from the record?')) return;
     try {
@@ -5174,14 +5143,6 @@ async function openReseller(id, reload, part = 'account') {
     } catch (e) { whoops(e); }
   });
 
-  $('#d_attach')?.addEventListener('click', async () => {
-    try {
-      await POST(`/api/resellers/${id}/documents`,
-        { kind: $('#d_kind').value, reference: $('#d_ref').value });
-      notice('Attached', 'good');
-      openReseller(id, reload);
-    } catch (e) { whoops(e); }
-  });
 
   // What an OR would cover if one were asked for now. Drawn on opening and
   // again after every confirmation, because the answer is the whole reason
@@ -5299,8 +5260,12 @@ async function openReseller(id, reload, part = 'account') {
           <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
             <input class="ip_ref" type="text" placeholder="the bank's own reference"></div>
           <div style="flex:0 0 auto"><label${n ? ' class="sr"' : ''}>Proof</label>
-            <input class="ip_ss" type="file" accept="image/jpeg,image/png,image/webp"
-                   title="Screenshot of this transfer"></div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input class="ip_ss" type="file" accept="image/jpeg,image/png,image/webp"
+                     title="Screenshot of this transfer">
+              <button type="button" class="btn sm quiet ip_view" disabled
+                      title="Preview the screenshot">👁</button>
+            </div></div>
         </div>`).join('')}
       ${mopList('inv_banks')}
       <div class="dim">Paying a 30-day invoice within 10 days takes 2% off by
@@ -5326,6 +5291,25 @@ async function openReseller(id, reload, part = 'account') {
       el.addEventListener('input', () => { comma(el); retotal(); });
     });
     retotal();
+
+    // See the bank screenshot without leaving: the preview opens over the
+    // payment form and closes back onto it, so nobody has to record first and
+    // hunt for the picture afterwards to check it is the right transfer.
+    $$('.payrow').forEach((row) => {
+      const fileEl = $('.ip_ss', row);
+      const viewEl = $('.ip_view', row);
+      fileEl.addEventListener('change', () => { viewEl.disabled = !fileEl.files[0]; });
+      viewEl.addEventListener('click', () => {
+        const f = fileEl.files[0];
+        if (!f) return;
+        const url = URL.createObjectURL(f);
+        dialog(`<h3>Bank screenshot</h3>
+          <div class="mt"><img src="${url}" alt="" style="max-width:100%;border-radius:8px"></div>
+          <div class="mt right"><button class="btn quiet" id="ss_done">Close</button></div>`,
+          'wide', true);
+        $('#ss_done').addEventListener('click', () => { URL.revokeObjectURL(url); closeDialog(); });
+      });
+    });
 
     // Stay on the invoice after recording, so the payment shows against it
     // rather than dropping back to the account list.

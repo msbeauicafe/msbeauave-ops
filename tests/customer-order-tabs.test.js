@@ -108,7 +108,6 @@ test('the account splits into the half you came for', () => {
     'Papers on file': 'acct',
     'Bank transaction proofs': 'acct',
     'For tax': 'acct',
-    Papers: 'money',
     'Confirm the bank payment': 'money',
     'Bank transfer proofs': 'money',
     'Issue the receipt': 'money',
