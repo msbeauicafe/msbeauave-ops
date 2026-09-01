@@ -296,6 +296,11 @@ label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3
 .btn.sm { padding: 4px 10px; font-size: .75rem; }
 .tools { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
 .tools input, .tools select { max-width: 290px; }
+/* A spacer the width of the left column, so the name filter and Drafts sit
+   above the List of orders panel — the right half of the split below. It folds
+   away when the split stacks to one column on a narrow screen. */
+.tools .tools-gap { flex: 0 0 calc(50% - 3px); }
+@media (max-width: 1100px) { .tools .tools-gap { display: none; } }
 
 /* ---------- tags ---------- */
 .tag {
