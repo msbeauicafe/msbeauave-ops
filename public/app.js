@@ -3966,6 +3966,7 @@ SCREENS.chatorders = async (page) => {
       <span class="hint">An order from Messenger — place it, send the form; payment is confirmed under Invoice.</span></div>
     <div class="tools">
       <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus>
+      <button class="btn quiet" id="rs_drafts">🗒 Drafts</button>
     </div>
     <div id="rs_hits"></div>
     <div id="working"></div>`;
@@ -4100,7 +4101,7 @@ SCREENS.chatorders = async (page) => {
     $('#ch_ds', workingBox)?.addEventListener('input', drawPreview);
     $('#ch_find', workingBox).addEventListener('input', drawGoods);
     $('#ch_place', workingBox).addEventListener('click', placeOrder);
-    $('#ch_draft', workingBox).addEventListener('click', openDraft);
+    $('#ch_draft', workingBox).addEventListener('click', async () => { await saveDraft(); openDraft(); });
     $('#ch_cancel', workingBox).addEventListener('click', () => {
       if (basket.size && !confirm('Clear this order?')) return;
       basket.clear();
@@ -4395,6 +4396,53 @@ SCREENS.chatorders = async (page) => {
       $('#ch_place', workingBox).disabled = false;
     }
   }
+
+  // Park the current basket to finish later; it turns up under Drafts.
+  async function saveDraft() {
+    if (!picked || !basket.size) return notice('Add what they ordered first.', 'bad');
+    try {
+      await POST('/api/order-drafts', { reseller_id: picked.id, lines: [...basket.values()] });
+      notice('Draft saved 🌸 — it is under Drafts, up top', 'good');
+    } catch (e) { whoops(e); }
+  }
+
+  // Reopen a parked basket: put its account and its lines back on the bench.
+  function reopenDraft(draft) {
+    const r = resellers.find((x) => String(x.id) === String(draft.reseller_id));
+    if (!r) return notice('That account is no longer on the list.', 'bad');
+    picked = r;
+    basket.clear();
+    (draft.lines || []).forEach((l) => { if (l && l.sku) basket.set(l.sku, { ...l, qty: Number(l.qty) || 1 }); });
+    findBox.value = '';
+    hitsBox.innerHTML = '';
+    drawWorking();
+  }
+
+  async function openDraftsList() {
+    let drafts;
+    try { drafts = await GET('/api/order-drafts'); } catch (e) { return whoops(e); }
+    dialog(`<h3>Saved drafts</h3>
+      ${drafts.length ? `<div class="draft-list">${drafts.map((d) => `
+        <div class="draft-row">
+          <div><b>${esc(d.reseller)}</b> · ${d.items} item${Number(d.items) === 1 ? '' : 's'}
+            <div class="dim">${esc(d.saved_by || '')} · ${when(d.updated_at)}</div></div>
+          <div style="display:flex;gap:6px">
+            <button class="btn sm" data-open="${d.id}">Open</button>
+            <button class="btn sm stop" data-drop="${d.id}">Discard</button></div>
+        </div>`).join('')}</div>`
+        : '<div class="none">No drafts parked.</div>'}
+      <div class="mt right"><button class="btn quiet" id="dr_close">Close</button></div>`);
+    $('#dr_close').addEventListener('click', closeDialog);
+    $$('[data-open]').forEach((b) => b.addEventListener('click', async () => {
+      try { const d = await GET(`/api/order-drafts/${b.dataset.open}`); closeDialog(); reopenDraft(d); }
+      catch (e) { whoops(e); }
+    }));
+    $$('[data-drop]').forEach((b) => b.addEventListener('click', async () => {
+      try { await DELETE(`/api/order-drafts/${b.dataset.drop}`); notice('Discarded', 'good'); openDraftsList(); }
+      catch (e) { whoops(e); }
+    }));
+  }
+  $('#rs_drafts', page).addEventListener('click', openDraftsList);
 
   findBox.addEventListener('input', drawHits);
   resellers = (await GET('/api/resellers'))
