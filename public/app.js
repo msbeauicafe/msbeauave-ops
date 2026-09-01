@@ -4388,12 +4388,10 @@ SCREENS.chatorders = async (page) => {
           id: l.id, sku: l.sku, name: l.name, qty: l.qty,
           price: l.unit_price, code: l.price_code, unit: l.unit_type })),
         who: picked,
-        canEdit: ['admin', 'office'].includes(user?.role),
-        catalog: catalog || await GET('/api/wholesale/catalog').catch(() => null),
-        // The panel behind is the same sheet, drawn live, and it quotes the
-        // number as well — left alone it would go on showing the one that was
-        // just corrected.
-        onSaved: (co) => { placedCo = co; drawPreview(); },
+        // The customer order form is read here to send into the chat, not
+        // edited — it is a form to read, not a price to change. Corrections
+        // to a placed order are made on its Invoice, not on this sheet.
+        canEdit: false,
       });
     } catch (e) { whoops(e); } finally {
       $('#ch_place', workingBox).disabled = false;
