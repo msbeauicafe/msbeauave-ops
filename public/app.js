@@ -2207,16 +2207,18 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
     <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
       ${o.invoice_id ? tag(`Invoice ${o.invoice_status} · due ${onDay(o.due_on)}`,
           o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
+    <div class="chatbar">
+      ${['admin', 'office'].includes(user?.role) ? `
+        <input id="co_chat" type="url" placeholder="Paste their FB / group-chat link"
+          value="${esc(chat)}">
+        <button class="btn quiet" id="co_chat_save">Save link</button>` : ''}
+      <a class="btn go" id="co_send" href="${chat ? esc(chat) : '#'}" target="_blank"
+        rel="noopener noreferrer" ${chat ? '' : 'hidden'}>💬 Open chat</a>
+    </div>
     <div class="order-split">
       <div class="co-side">
         <div class="co-scale">${coForm}</div>
         <div class="co-actions">
-          ${['admin', 'office'].includes(user?.role) ? `
-            <input id="co_chat" type="url" placeholder="Paste their FB / group-chat link"
-              value="${esc(chat)}">
-            <button class="btn quiet" id="co_chat_save">Save link</button>` : ''}
-          <a class="btn go" id="co_send" href="${chat ? esc(chat) : '#'}" target="_blank"
-            rel="noopener noreferrer" ${chat ? '' : 'hidden'}>💬 Open chat</a>
           <button class="btn quiet" id="co_jpeg">⬇ Download JPEG</button>
           ${PRINT_BTN}
         </div>
@@ -2291,7 +2293,8 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
                   inputmode="numeric" disabled></td>
             <td class="n" data-addprice="${i}"></td>
             <td class="n" data-addtotal="${i}"></td>
-            ${canEdit ? '<td></td>' : ''}
+            ${canEdit ? `<td class="n"><button class="btn sm stop" data-clear="${i}"
+                 title="Clear this row">✕</button></td>` : ''}
           </tr>`).join('')}
         </tbody>
       </table></div>${goodsList(goods)}`
@@ -2351,8 +2354,9 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
   // Drawn at its printed 900px and fitted to the column it sits in. With the
   // wide layout the column is a full 900, so the sheet is 1:1 and crisp; only a
   // screen too narrow to hold it side by side scales it down at all.
-  const coDoc = $('#dialog .co-scale .doc.cof');
-  if (coDoc) {
+  const scaleCoForm = () => {
+    const coDoc = $('#dialog .co-scale .doc.cof');
+    if (!coDoc) return;
     const scaleBox = coDoc.parentElement;
     const room = scaleBox.clientWidth || 900;
     coDoc.style.width = '900px';
@@ -2360,7 +2364,8 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
     const scale = Math.min(1, room / 900);
     coDoc.style.transform = `scale(${scale})`;
     scaleBox.style.height = `${coDoc.scrollHeight * scale}px`;
-  }
+  };
+  scaleCoForm();
 
   const act = (sel, path) => $(sel)?.addEventListener('click', async () => {
     try {
@@ -2448,7 +2453,60 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
           ? `<span class="over">${peso(paid)} has already been settled against
              this order — it cannot come to less</span>` : '';
       $('#ol_keep').disabled = empty || short;
+      refreshForm();
     }
+
+    // The sheet on the left redrawn from the working order as it stands right
+    // now — a product added, a quantity changed, a line struck off all show on
+    // the customer order form as they happen, so what will be sent is read off
+    // the same figures that will be saved.
+    const currentFormLines = () => {
+      const out = [];
+      for (const l of o.lines) {
+        const q = $(`[data-qtyfor="${l.id}"]`, box);
+        const p = $(`[data-line="${l.id}"]`, box);
+        const nm = $(`[data-swap="${l.id}"]`, box);
+        if (!q || wholeUnits(q) <= 0 || p?.dataset.removed) continue;
+        out.push({ sku: l.sku, name: nm ? nm.value : l.name, qty: wholeUnits(q),
+          price: money(p), code: p?.dataset.swapped ? '' : (l.price_code || ''),
+          unit: l.unit_type });
+      }
+      each.added().forEach((g) => out.push({ sku: g.sku, name: g.name, qty: g.qty,
+        price: Number(g.wholesale_price || 0), code: '', unit: g.unit_type }));
+      return out;
+    };
+    function refreshForm() {
+      const scaleBox = $('#dialog .co-scale');
+      if (!scaleBox) return;
+      const lines = currentFormLines();
+      const ship = money($('#ol_ship'));
+      const oth = money($('#ol_oth'));
+      const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+      scaleBox.innerHTML = customerOrderForm({
+        orderId: o.id, orderNo: $('#on_co')?.value?.trim() || o.co_no,
+        issuedOn: o.placed_at || o.issued_on || new Date(),
+        amount: sub + ship + oth, resellerName: o.reseller, lines,
+        who: o, shipping: ship, others: oth,
+      });
+      scaleCoForm();
+    }
+
+    // Clearing an added row empties its picker and quantity — row-scoped so a
+    // freshly grown row clears the same way — and the totals settle back.
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-clear]');
+      if (!b) return;
+      const row = b.closest('tr');
+      const pick = $('[data-add]', row);
+      const qty = $('[data-addqty]', row);
+      if (pick) { pick.value = ''; pick.classList.remove('named'); }
+      if (qty) { qty.value = ''; qty.disabled = true; }
+      ['[data-addprice]', '[data-addtotal]'].forEach((s) => {
+        const c = $(s, row); if (c) c.textContent = '';
+      });
+      retotal();
+    });
+
     // The delivery fee and whatever else the order carried used to be typed on
     // the invoice. The invoice is a document now, so they are here, beside the
     // figures they are added to — and they go up in the same call the prices
