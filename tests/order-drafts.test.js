@@ -76,6 +76,27 @@ test('a draft is the taker\'s own — one desk hand does not see another\'s', as
   assert.equal((await req(a, 'GET', `/api/order-drafts/${mine.data.id}`)).status, 200, 'B\'s discard left A\'s draft standing');
 });
 
+test('editing a parked basket updates that one draft, not a second copy', async () => {
+  const desk = await signIn('orderdesk');
+  const rid = await newReseller();
+
+  const saved = await req(desk, 'POST', '/api/order-drafts', { reseller_id: rid, lines: [{ sku: 'X', qty: 1 }] });
+  assert.equal(saved.status, 200);
+
+  // Save again onto the same draft — two lines now, still one draft.
+  const upd = await req(desk, 'PUT', `/api/order-drafts/${saved.data.id}`,
+    { lines: [{ sku: 'X', qty: 3 }, { sku: 'Y', qty: 1 }] });
+  assert.equal(upd.status, 200);
+  assert.equal(Number(upd.data.id), saved.data.id, 'the same draft came back');
+
+  const one = await req(desk, 'GET', `/api/order-drafts/${saved.data.id}`);
+  assert.equal(one.data.lines.length, 2, 'its lines are the edited ones');
+  assert.equal(one.data.lines[0].qty, 3);
+
+  const mine = (await req(desk, 'GET', '/api/order-drafts')).data.filter((d) => Number(d.reseller_id) === Number(rid));
+  assert.equal(mine.length, 1, 'no second copy was parked');
+});
+
 test('a draft needs an account and at least one line', async () => {
   const desk = await signIn('orderdesk');
   const rid = await newReseller();
