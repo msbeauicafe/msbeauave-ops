@@ -314,12 +314,12 @@ label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3
 .good .pr { color: var(--rose-deep); font-weight: 700; }
 .good .st { font-size: .72rem; color: var(--muted); }
 .good.empty { opacity: .45; cursor: not-allowed; }
-.pick { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 2px solid var(--rose-dust); }
+.pick { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 3px solid var(--rose-dust); }
 .pick .linetot { min-width: 84px; text-align: right; color: var(--rose-deep); font-size: .95rem; }
 .basket-sum { margin: 10px 0; }
 .sumrow { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: .95rem; }
 .sumrow > span:first-child { color: var(--muted); }
-.sumrow.grand { border-top: 2px solid var(--rose-dust); margin-top: 4px; padding-top: 8px;
+.sumrow.grand { border-top: 3px solid var(--rose-dust); margin-top: 4px; padding-top: 8px;
   font-size: 1.5rem; font-weight: 700; color: var(--rose-deep); }
 .sumrow.grand > span:first-child { color: var(--rose-deep); font-size: 1rem; align-self: center; }
 .pick .nm { flex: 1; font-size: .85rem; }
