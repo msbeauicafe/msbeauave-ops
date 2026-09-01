@@ -4055,26 +4055,24 @@ SCREENS.chatorders = async (page) => {
                 placeholder="Who it goes on to"></div>
           </div>
         </div>` : ''}
-      <div class="split">
-        <div class="panel">
-          <h3>1 · What they ordered</h3>
-          <input type="search" id="ch_find" placeholder="Search products…">
-          <div class="dim" id="ch_count" style="font-size:.72rem;margin:4px 0 2px"></div>
-          <div id="ch_goods" class="scroll" style="max-height:420px;overflow-y:auto"></div>
-          <h4 class="mt">Basket</h4>
-          <div id="ch_basket"></div>
-          <div class="total" id="ch_total">₱0.00</div>
-          <div id="ch_nocode"></div>
-          <div class="mt right"><button class="btn" id="ch_place">Place order &amp; raise invoice</button></div>
-          <div id="ch_order_out" class="mt"></div>
+      <div class="panel">
+        <h3>What they ordered</h3>
+        <input type="search" id="ch_find" placeholder="Search products…">
+        <div class="dim" id="ch_count" style="font-size:.72rem;margin:4px 0 2px"></div>
+        <div id="ch_goods" class="scroll" style="max-height:420px;overflow-y:auto"></div>
+        <h4 class="mt">Basket</h4>
+        <div id="ch_basket"></div>
+        <div class="basket-sum">
+          <div class="sumrow"><span>Subtotal</span><span id="ch_sub">₱0.00</span></div>
+          <div class="sumrow grand"><span>Total</span><span id="ch_total">₱0.00</span></div>
         </div>
-        <div class="panel">
-          <h3>2 · What they will be sent</h3>
-          <div class="dim">The customer order form itself, filled in as you add
-            to the basket — so what goes into the chat is read here first,
-            rather than after it has been raised.</div>
-          <div id="ch_preview" class="preview mt"></div>
+        <div id="ch_nocode"></div>
+        <div class="mt right">
+          <button class="btn quiet" id="ch_draft">Draft</button>
+          <button class="btn" id="ch_place">Place order</button>
+          <button class="btn stop" id="ch_cancel">Cancel</button>
         </div>
+        <div id="ch_order_out" class="mt"></div>
       </div>`;
 
     $('#rs_change', workingBox).addEventListener('click', backToPicker);
@@ -4100,8 +4098,30 @@ SCREENS.chatorders = async (page) => {
     $('#ch_ds', workingBox)?.addEventListener('input', drawPreview);
     $('#ch_find', workingBox).addEventListener('input', drawGoods);
     $('#ch_place', workingBox).addEventListener('click', placeOrder);
+    $('#ch_draft', workingBox).addEventListener('click', openDraft);
+    $('#ch_cancel', workingBox).addEventListener('click', () => {
+      if (basket.size && !confirm('Clear this order?')) return;
+      basket.clear();
+      $('#ch_order_out', workingBox).innerHTML = '';
+      drawBasket();
+    });
     drawBasket();
   };
+
+  // The customer order form for what is in the basket right now — the draft to
+  // paste into the chat, before anything is placed. Read-only: it is a draft,
+  // not a placed order, so there is nothing on it to correct yet.
+  function openDraft() {
+    if (!basket.size) return notice('Add what they ordered first.', 'bad');
+    const lines = [...basket.values()];
+    showInvoice({
+      orderId: 'DRAFT', issuedOn: new Date(),
+      amount: lines.reduce((t, l) => t + l.price * l.qty, 0),
+      resellerName: picked.name, lines,
+      who: { ...picked, drop_ship: sendingOn() || null },
+      canEdit: false,
+    });
+  }
 
   const drawGoods = () => {
     const box = $('#ch_goods', workingBox);
@@ -4170,10 +4190,13 @@ SCREENS.chatorders = async (page) => {
         <input class="unit" type="text" inputmode="decimal" data-price="${esc(l.sku)}"
           value="${plain(l.price)}" title="The unit price charged on this line">
         <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
+        <b class="linetot">${l.price === 0 ? 'FREE' : peso(l.price * l.qty)}</b>
         <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
       </div>`).join('') : '<div class="none">Nothing added yet.</div>';
-    $('#ch_total', workingBox).textContent =
-      peso([...basket.values()].reduce((s, l) => s + l.price * l.qty, 0));
+    const sum = [...basket.values()].reduce((s, l) => s + l.price * l.qty, 0);
+    $('#ch_total', workingBox).textContent = peso(sum);
+    const subEl = $('#ch_sub', workingBox);
+    if (subEl) subEl.textContent = peso(sum);
     $$('[data-qty]', box).forEach((i) => i.addEventListener('change', () => {
       basket.get(i.dataset.qty).qty = Math.max(1, +i.value || 1);
       drawBasket();
@@ -4347,14 +4370,7 @@ SCREENS.chatorders = async (page) => {
       }
       basket.clear();
       drawBasket();
-      $('#ch_order_out', workingBox).innerHTML =
-        `<div class="banner good">Order placed. Here is the invoice to send back.
-         <button class="btn sm quiet" id="ch_packing">🖨 Packing list</button></div>`;
-      $('#ch_order_out', workingBox).querySelector('#ch_packing')
-        .addEventListener('click', () => showPackingList({
-          orderId: out.orderId, packingNo: out.pl_no,
-          resellerName: picked.name, placedAt: new Date(), lines, who: picked,
-        }));
+      $('#ch_order_out', workingBox).innerHTML = '';
       notice('Order placed 🌸', 'good');
       if (out.invoice) showInvoice({
         orderId: out.orderId, orderNo: out.co_no,
