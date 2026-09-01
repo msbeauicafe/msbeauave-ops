@@ -3967,7 +3967,6 @@ SCREENS.chatorders = async (page) => {
       <span class="hint">An order from Messenger — place it, send the form; payment is confirmed under Invoice.</span></div>
     <div class="tools">
       <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus>
-      <button class="btn quiet" id="rs_preview">👁 Preview</button>
       <button class="btn quiet" id="rs_drafts">🗒 Drafts</button>
     </div>
     <div id="rs_hits"></div>
@@ -4131,21 +4130,6 @@ SCREENS.chatorders = async (page) => {
       drawBasket();
     }
   };
-
-  // The customer order form for what is in the basket right now — the draft to
-  // paste into the chat, before anything is placed. Read-only: it is a draft,
-  // not a placed order, so there is nothing on it to correct yet.
-  function openDraft() {
-    if (!basket.size) return notice('Add what they ordered first.', 'bad');
-    const lines = [...basket.values()];
-    showInvoice({
-      orderId: 'DRAFT', issuedOn: new Date(),
-      amount: lines.reduce((t, l) => t + l.price * l.qty, 0),
-      resellerName: picked.name, lines,
-      who: { ...picked, drop_ship: sendingOn() || null },
-      canEdit: false,
-    });
-  }
 
   const drawGoods = () => {
     const box = $('#ch_goods', workingBox);
@@ -4432,7 +4416,9 @@ SCREENS.chatorders = async (page) => {
     } catch (e) { whoops(e); }
   }
 
-  // Reopen a parked basket: put its account and its lines back on the bench.
+  // Reopen a parked basket: put its account and its lines back on the bench,
+  // straight into the preview. Previewing a draft is how you look at it — the
+  // customer order form fills the other split, with Back to order to edit it.
   function reopenDraft(draft) {
     const r = resellers.find((x) => String(x.id) === String(draft.reseller_id));
     if (!r) return notice('That account is no longer on the list.', 'bad');
@@ -4441,10 +4427,8 @@ SCREENS.chatorders = async (page) => {
     (draft.lines || []).forEach((l) => { if (l && l.sku) basket.set(l.sku, { ...l, qty: Number(l.qty) || 1 }); });
     findBox.value = '';
     hitsBox.innerHTML = '';
+    previewOn = true;
     drawWorking();
-    // Straight to the customer order form for the draft — the whole point of
-    // opening it is to see it, not to hunt for where the basket landed.
-    openDraft();
   }
 
   async function openDraftsList() {
@@ -4456,7 +4440,7 @@ SCREENS.chatorders = async (page) => {
           <div><b>${esc(d.reseller)}</b> · ${d.items} item${Number(d.items) === 1 ? '' : 's'}
             <div class="dim">${esc(d.saved_by || '')} · ${when(d.updated_at)}</div></div>
           <div style="display:flex;gap:6px">
-            <button class="btn sm" data-open="${d.id}">Open</button>
+            <button class="btn sm" data-open="${d.id}">Preview</button>
             <button class="btn sm stop" data-drop="${d.id}">Discard</button></div>
         </div>`).join('')}</div>`
         : '<div class="none">No drafts parked.</div>'}
@@ -4472,16 +4456,6 @@ SCREENS.chatorders = async (page) => {
     }));
   }
   $('#rs_drafts', page).addEventListener('click', openDraftsList);
-
-  // Preview records the draft first, then swaps the List-of-orders split for
-  // the customer order form itself — the paper to read before it goes in the
-  // chat, without a popup over the top of everything.
-  $('#rs_preview', page).addEventListener('click', async () => {
-    if (!picked || !basket.size) return notice('Add what they ordered first.', 'bad');
-    await saveDraft();
-    previewOn = true;
-    drawWorking();
-  });
 
   findBox.addEventListener('input', drawHits);
   resellers = (await GET('/api/resellers'))
