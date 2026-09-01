@@ -2177,11 +2177,23 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
   // up by moving both together.
   const mayNumber = !readOnly && ['admin', 'office'].includes(user?.role)
     && o.channel === 'b2b';
+  // The customer order form as it was handed over, drawn read-only beside the
+  // working order so the paperwork and what is being picked sit on one page.
+  const coForm = customerOrderForm({
+    orderId: o.id, orderNo: o.co_no, issuedOn: o.placed_at || o.issued_on || new Date(),
+    amount: o.total, resellerName: o.reseller,
+    lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
+      price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+    who: o, shipping: o.shipping || 0, others: o.others || 0,
+  });
   dialog(`
     <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
     <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
       ${o.invoice_id ? tag(`Invoice ${o.invoice_status} · due ${onDay(o.due_on)}`,
           o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
+    <div class="order-split">
+      <div class="co-side"><div class="co-scale">${coForm}</div></div>
+      <div class="edit-side">
     ${mayNumber ? `
       <div class="panel">
         <h3>The numbers on the paperwork</h3>
@@ -2275,7 +2287,23 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
         ? '<button class="btn stop" id="a_cancel">Cancel</button>' : ''}
       ${o.status === 'fulfilled' && !o.delivered_at
         ? '<button class="btn go" id="a_delivered">Mark delivered</button>' : ''}
-    </div>`, 'wide');
+    </div>
+      </div>
+    </div>`, 'wide co-open');
+
+  // Fit the handed-over form into its column beside the working order — the
+  // sheet is drawn at its printed 900px and scaled down to whatever room the
+  // left side has, the same way the chat-order preview does.
+  const coDoc = $('#dialog .co-scale .doc.cof');
+  if (coDoc) {
+    const box = coDoc.parentElement;
+    const room = box.clientWidth || 900;
+    coDoc.style.width = '900px';
+    coDoc.style.transformOrigin = 'top left';
+    const scale = Math.min(1, room / 900);
+    coDoc.style.transform = `scale(${scale})`;
+    box.style.height = `${coDoc.scrollHeight * scale}px`;
+  }
 
   const act = (sel, path) => $(sel)?.addEventListener('click', async () => {
     try {
