@@ -3959,6 +3959,7 @@ SCREENS.chatorders = async (page) => {
   let picked = null;
   let catalog = null;
   let codes = null;
+  let previewOn = false;
   const basket = new Map();
 
   page.innerHTML = `
@@ -3966,6 +3967,7 @@ SCREENS.chatorders = async (page) => {
       <span class="hint">An order from Messenger — place it, send the form; payment is confirmed under Invoice.</span></div>
     <div class="tools">
       <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus>
+      <button class="btn quiet" id="rs_preview">👁 Preview</button>
       <button class="btn quiet" id="rs_drafts">🗒 Drafts</button>
     </div>
     <div id="rs_hits"></div>
@@ -4012,6 +4014,7 @@ SCREENS.chatorders = async (page) => {
   const pick = (r) => {
     picked = r;
     basket.clear();
+    previewOn = false;
     findBox.value = '';
     hitsBox.innerHTML = '';
     drawWorking();
@@ -4020,6 +4023,7 @@ SCREENS.chatorders = async (page) => {
   const backToPicker = () => {
     picked = null;
     basket.clear();
+    previewOn = false;
     workingBox.innerHTML = '';
     drawHits();
     findBox.focus();
@@ -4062,19 +4066,27 @@ SCREENS.chatorders = async (page) => {
           <div id="ch_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
         </div>
         <div class="panel">
-          <h3>List of orders</h3>
-          <div id="ch_basket"></div>
-          <div class="basket-sum">
-            <div class="sumrow"><span>Subtotal</span><span id="ch_sub">₱0.00</span></div>
-            <div class="sumrow grand"><span>Total</span><span id="ch_total">₱0.00</span></div>
-          </div>
-          <div id="ch_nocode"></div>
-          <div class="mt right">
-            <button class="btn quiet" id="ch_draft">Draft</button>
-            <button class="btn" id="ch_place">Place order</button>
-            <button class="btn stop" id="ch_cancel">Cancel</button>
-          </div>
-          <div id="ch_order_out" class="mt"></div>
+          ${previewOn ? `
+            <div class="picked-bar" style="margin-bottom:8px">
+              <h3 style="margin:0">Preview</h3>
+              <button class="btn sm quiet" id="ch_unpreview" style="margin-left:auto">← Back to order</button>
+            </div>
+            <div id="ch_preview" class="co-inline"></div>
+          ` : `
+            <h3>List of orders</h3>
+            <div id="ch_basket"></div>
+            <div class="basket-sum">
+              <div class="sumrow"><span>Subtotal</span><span id="ch_sub">₱0.00</span></div>
+              <div class="sumrow grand"><span>Total</span><span id="ch_total">₱0.00</span></div>
+            </div>
+            <div id="ch_nocode"></div>
+            <div class="mt right">
+              <button class="btn quiet" id="ch_draft">Draft</button>
+              <button class="btn" id="ch_place">Place order</button>
+              <button class="btn stop" id="ch_cancel">Cancel</button>
+            </div>
+            <div id="ch_order_out" class="mt"></div>
+          `}
         </div>
       </div>`;
 
@@ -4100,15 +4112,24 @@ SCREENS.chatorders = async (page) => {
     });
     $('#ch_ds', workingBox)?.addEventListener('input', drawPreview);
     $('#ch_find', workingBox).addEventListener('input', drawGoods);
-    $('#ch_place', workingBox).addEventListener('click', placeOrder);
-    $('#ch_draft', workingBox).addEventListener('click', async () => { await saveDraft(); openDraft(); });
-    $('#ch_cancel', workingBox).addEventListener('click', () => {
-      if (basket.size && !confirm('Clear this order?')) return;
-      basket.clear();
-      $('#ch_order_out', workingBox).innerHTML = '';
+    if (previewOn) {
+      // The other split is the customer order form itself now. One way back to
+      // the basket, and the form drawn from what is in it.
+      $('#ch_unpreview', workingBox).addEventListener('click', () => { previewOn = false; drawWorking(); });
+      drawPreview();
+    } else {
+      $('#ch_place', workingBox).addEventListener('click', placeOrder);
+      // Draft parks the basket and says so — it does not open anything. The
+      // form is under Preview, up top.
+      $('#ch_draft', workingBox).addEventListener('click', saveDraft);
+      $('#ch_cancel', workingBox).addEventListener('click', () => {
+        if (basket.size && !confirm('Clear this order?')) return;
+        basket.clear();
+        $('#ch_order_out', workingBox).innerHTML = '';
+        drawBasket();
+      });
       drawBasket();
-    });
-    drawBasket();
+    }
   };
 
   // The customer order form for what is in the basket right now — the draft to
@@ -4451,6 +4472,16 @@ SCREENS.chatorders = async (page) => {
     }));
   }
   $('#rs_drafts', page).addEventListener('click', openDraftsList);
+
+  // Preview records the draft first, then swaps the List-of-orders split for
+  // the customer order form itself — the paper to read before it goes in the
+  // chat, without a popup over the top of everything.
+  $('#rs_preview', page).addEventListener('click', async () => {
+    if (!picked || !basket.size) return notice('Add what they ordered first.', 'bad');
+    await saveDraft();
+    previewOn = true;
+    drawWorking();
+  });
 
   findBox.addEventListener('input', drawHits);
   resellers = (await GET('/api/resellers'))
