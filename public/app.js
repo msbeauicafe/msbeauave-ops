@@ -3970,7 +3970,7 @@ SCREENS.chatorders = async (page) => {
       <span class="hint">An order from Messenger — place it, send the form; payment is confirmed under Invoice.</span></div>
     <div class="tools">
       <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus>
-      <button class="btn quiet" id="rs_drafts">🗒 Drafts</button>
+      <button class="btn quiet" id="rs_drafts" style="margin-left:auto">🗒 Drafts</button>
     </div>
     <div id="rs_hits"></div>
     <div id="working"></div>`;
