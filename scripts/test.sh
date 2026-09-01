@@ -145,6 +145,9 @@ node --test tests/books-autopost.test.js
 echo "==> the books: the cost side — perpetual inventory & COGS"
 node --test tests/books-cost.test.js
 
+echo "==> chat-order drafts: park a basket, finish it later"
+node --test tests/order-drafts.test.js
+
 echo "==> an account's details, papers and proofs"
 node --test tests/reseller-profile-files.test.js
 
