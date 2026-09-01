@@ -275,7 +275,9 @@ textarea.sheet {
   display: flex; flex-direction: column; max-height: 78vh; overflow-y: auto; }
 .order-split .co-actions { display: flex; gap: 8px; align-items: center;
   justify-content: flex-end; flex-wrap: wrap; padding-top: 10px; }
-.order-split .co-actions #co_chat { flex: 1 1 240px; max-width: 420px; }
+/* The chat bar rides at the top, right after the order title. */
+.chatbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 12px; }
+.chatbar #co_chat { flex: 1 1 260px; max-width: 460px; }
 .order-split .edit-side { flex: 1 1 520px; min-width: 0; }
 .order-split .co-scale { overflow: hidden; }
 @media (max-width: 1500px) {
