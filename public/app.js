@@ -2209,13 +2209,17 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
           o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
     <div class="order-split">
       <div class="co-side">
+        <div class="co-scale">${coForm}</div>
         <div class="co-actions">
-          ${chat ? `<a class="btn go" href="${esc(chat)}" target="_blank"
-            rel="noopener noreferrer">💬 Send to ${esc(o.reseller || 'their chat')}</a>` : ''}
+          ${['admin', 'office'].includes(user?.role) ? `
+            <input id="co_chat" type="url" placeholder="Paste their FB / group-chat link"
+              value="${esc(chat)}">
+            <button class="btn quiet" id="co_chat_save">Save link</button>` : ''}
+          <a class="btn go" id="co_send" href="${chat ? esc(chat) : '#'}" target="_blank"
+            rel="noopener noreferrer" ${chat ? '' : 'hidden'}>💬 Open chat</a>
           <button class="btn quiet" id="co_jpeg">⬇ Download JPEG</button>
           ${PRINT_BTN}
         </div>
-        <div class="co-scale">${coForm}</div>
       </div>
       <div class="edit-side">
     ${mayNumber ? `
@@ -2321,6 +2325,29 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
 
   // The form's own picture, straight off the sheet drawn on the left.
   wireSave('#co_jpeg', '.co-side .doc', `${o.co_no || o.id}.jpg`);
+
+  // The chat link where this account's paperwork is sent. Typed here, it turns
+  // the Open chat button live at once, and Save keeps it on the account so it
+  // is already there the next time — set once, clickable from every order.
+  const chatIn = $('#co_chat');
+  const chatOpen = $('#co_send');
+  const syncChat = () => {
+    const v = (chatIn?.value || '').trim();
+    if (chatOpen) { if (v) { chatOpen.href = v; chatOpen.hidden = false; } else chatOpen.hidden = true; }
+  };
+  chatIn?.addEventListener('input', syncChat);
+  $('#co_chat_save')?.addEventListener('click', async () => {
+    const v = (chatIn?.value || '').trim();
+    try {
+      // The account's own name, contact and email travel back untouched, so
+      // saving the link is not also blanking the rest of the details.
+      const r = await GET(`/api/resellers/${o.reseller_id}`);
+      await POST(`/api/resellers/${o.reseller_id}/details`, {
+        name: r.name, contact: r.contact, email: r.email, chat_link: v });
+      notice('Chat link saved 🌸 — it is on the account now', 'good');
+      syncChat();
+    } catch (e) { whoops(e); }
+  });
   // Drawn at its printed 900px and fitted to the column it sits in. With the
   // wide layout the column is a full 900, so the sheet is 1:1 and crisp; only a
   // screen too narrow to hold it side by side scales it down at all.
