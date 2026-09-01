@@ -269,12 +269,13 @@ textarea.sheet {
 .dialog.co-open { max-width: 96vw; width: min(1780px, 96vw); }
 .order-split { display: flex; gap: 20px; align-items: flex-start; }
 /* The form scrolls on its own within the left column, so a tall order does not
-   push the working order on the right down the page. Its Send / Download /
-   Print bar is pinned to the top of that column, in reach without scrolling. */
+   push the working order on the right down the page. The chat link, Download
+   and Print sit all the way below the sheet. */
 .order-split .co-side { flex: 0 0 900px; max-width: 900px;
   display: flex; flex-direction: column; max-height: 78vh; overflow-y: auto; }
-.order-split .co-actions { position: sticky; top: 0; z-index: 2; background: var(--bg);
-  display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding-bottom: 8px; }
+.order-split .co-actions { display: flex; gap: 8px; align-items: center;
+  justify-content: flex-end; flex-wrap: wrap; padding-top: 10px; }
+.order-split .co-actions #co_chat { flex: 1 1 240px; max-width: 420px; }
 .order-split .edit-side { flex: 1 1 520px; min-width: 0; }
 .order-split .co-scale { overflow: hidden; }
 @media (max-width: 1500px) {
