@@ -4416,6 +4416,9 @@ SCREENS.chatorders = async (page) => {
     findBox.value = '';
     hitsBox.innerHTML = '';
     drawWorking();
+    // Straight to the customer order form for the draft — the whole point of
+    // opening it is to see it, not to hunt for where the basket landed.
+    openDraft();
   }
 
   async function openDraftsList() {
