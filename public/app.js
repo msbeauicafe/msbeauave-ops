@@ -4992,7 +4992,7 @@ async function openReseller(id, reload, part = 'account') {
     <details class="fold"><summary><h3 class="mt">Papers &amp; IDs on file</h3></summary>
     <div class="dim">Photos of who they are and their papers — a valid ID, BIR 2303,
       business permit, tax certificate.</div>
-    <div class="filegrid mt">${fileCards(r.files, 'document')}</div>
+    <div class="filegrid mt" id="grid_document">${fileCards(r.files, 'document')}</div>
     <div class="row mt">
       <div style="flex:2"><label>What it is (e.g. valid ID, BIR 2303)</label><input id="doc_label" type="text"></div>
       <div style="flex:2"><label>Choose an image</label>
@@ -5002,7 +5002,7 @@ async function openReseller(id, reload, part = 'account') {
     <h3 class="mt">Bank transaction proofs</h3>
     <div class="dim">Screenshots of their bank transfers — filed here from Record a
       payment, or added straight below. Latest first.</div>
-    <div class="filegrid mt">${fileCards(r.files, 'payment_proof')}</div>
+    <div class="filegrid mt" id="grid_proof">${fileCards(r.files, 'payment_proof')}</div>
     <div class="row mt">
       <div style="flex:2"><label>Reference (e.g. GCash ref, bank &amp; date)</label>
         <input id="proof_label" type="text"></div>
@@ -5149,34 +5149,55 @@ async function openReseller(id, reload, part = 'account') {
     } catch (err) { whoops(err); }
   });
 
-  // A paper (BIR, permit) or a bank-transfer proof — the image itself.
+  // Re-draw just the two file grids from fresh data, without closing the
+  // dialog or losing the scroll — a new upload shows up in place, at the top,
+  // the moment it lands. The zoom is a delegated listener, so new thumbnails
+  // are clickable without rebinding; only the remove buttons need it.
+  const bindDelFiles = () => {
+    document.querySelectorAll('.del-file').forEach((btn) => {
+      btn.onclick = async () => {
+        if (!confirm('Remove this file from the record?')) return;
+        try {
+          await DELETE(`/api/reseller-files/${btn.dataset.file}`);
+          notice('Removed', 'good'); await refreshFiles();
+        } catch (err) { whoops(err); }
+      };
+    });
+  };
+  const refreshFiles = async () => {
+    const fresh = await GET(`/api/resellers/${id}`);
+    const dg = $('#grid_document'); if (dg) dg.innerHTML = fileCards(fresh.files, 'document');
+    const pg = $('#grid_proof'); if (pg) pg.innerHTML = fileCards(fresh.files, 'payment_proof');
+    bindDelFiles();
+    reload();
+  };
+  bindDelFiles();
+
+  // A paper (BIR, permit) — the image itself, appearing in its grid at once.
   $('#doc_file')?.addEventListener('change', async (e) => {
     const file = e.target.files[0]; if (!file) return;
     try {
       await uploadResellerFile(id, file, 'document', $('#doc_label')?.value.trim());
-      notice('Paper saved 🌸', 'good'); closeDialog(); reload();
+      notice('Paper saved 🌸', 'good');
+      if ($('#doc_label')) $('#doc_label').value = '';
+      await refreshFiles();
     } catch (err) { whoops(err); }
     e.target.value = '';
   });
 
-  // Bank-transfer screenshots, added straight from the account — several at once.
+  // Bank-transfer screenshots, added straight from the account — several at
+  // once, each dropping into the grid above the moment it saves.
   $('#proof_file')?.addEventListener('change', async (e) => {
     const files = [...e.target.files]; if (!files.length) return;
     const label = $('#proof_label')?.value.trim();
     try {
       for (const file of files) await uploadResellerFile(id, file, 'payment_proof', label);
       notice(`${files.length > 1 ? files.length + ' proofs' : 'Proof'} saved 🌸`, 'good');
-      closeDialog(); reload();
+      if ($('#proof_label')) $('#proof_label').value = '';
+      await refreshFiles();
     } catch (err) { whoops(err); }
     e.target.value = '';
   });
-  document.querySelectorAll('.del-file').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!confirm('Remove this file from the record?')) return;
-    try {
-      await DELETE(`/api/reseller-files/${btn.dataset.file}`);
-      notice('Removed', 'good'); closeDialog(); reload();
-    } catch (err) { whoops(err); }
-  }));
 
 
   $('#d_tax')?.addEventListener('click', async () => {
