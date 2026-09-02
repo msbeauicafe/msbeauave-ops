@@ -4999,7 +4999,7 @@ async function openReseller(id, reload, part = 'account') {
         <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
     </div></details>
 
-    <h3 class="mt">Bank transaction proofs</h3>
+    <details class="fold"><summary><h3 class="mt">Bank transaction proofs</h3></summary>
     <div class="dim">Screenshots of their bank transfers — filed here from Record a
       payment, or added straight below. Latest first.</div>
     <div class="filegrid mt" id="grid_proof">${fileCards(r.files, 'payment_proof')}</div>
@@ -5008,7 +5008,7 @@ async function openReseller(id, reload, part = 'account') {
         <input id="proof_label" type="text"></div>
       <div style="flex:2"><label>Choose screenshots — you can pick several</label>
         <input id="proof_file" type="file" accept="image/jpeg,image/png,image/webp" multiple></div>
-    </div>
+    </div></details>
 
     <details class="fold"><summary><h3 class="mt">For tax</h3></summary>
     <div class="dim">Printed at the top of this account's invoices, order forms and packing lists.</div>
