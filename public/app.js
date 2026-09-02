@@ -4774,6 +4774,19 @@ const resellerList = (part, tier) => async (page) => {
     );
     $('#list', page).innerHTML = table(rows, cols, 'No reseller accounts yet.');
 
+    // A standing summary over this tier — the whole tier, not just what the
+    // search left showing — the way the shop list carries one over its own.
+    const rtiles = $('#rtiles', page);
+    if (rtiles) {
+      const scope = all.filter((r) => !tier || Number(r.tier) === tier);
+      const off = scope.filter(isInactive).length;
+      rtiles.innerHTML = `
+        <div class="tile good"><div class="big">${scope.length - off}</div>
+          <div class="label">Active</div></div>
+        <div class="tile bad"><div class="big">${off}</div>
+          <div class="label">Inactive — no order in 90 days</div></div>`;
+    }
+
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openReseller(+b.dataset.open, load, part).catch(whoops)));
   };
@@ -4792,6 +4805,7 @@ const resellerList = (part, tier) => async (page) => {
           : `<span><i class="blip"></i>owes money, not yet past due</span>
              <span><i class="blip late"></i>past due</span>`}
       </div></div>
+    ${acct ? '<div class="tiles half" id="rtiles"></div>' : ''}
     <div class="tools">
       <input type="search" id="find" placeholder="Search name or email…">
       ${acct ? '<button class="btn" id="add">＋ New reseller</button>' : ''}

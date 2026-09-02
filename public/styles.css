@@ -219,6 +219,9 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
 
 /* ---------- surfaces ---------- */
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 14px; margin-bottom: 16px; }
+/* A summary that sits on one half of the width, not the whole span. */
+.tiles.half { max-width: 620px; }
+@media (max-width: 720px) { .tiles.half { max-width: none; } }
 .tile, .panel {
   background: var(--card); border: 1px solid var(--rose-soft); border-radius: var(--round);
 }
