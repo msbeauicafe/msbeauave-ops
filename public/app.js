@@ -4973,17 +4973,6 @@ async function openReseller(id, reload, part = 'account') {
       ${r.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="d_photo_x">Remove</button></div>' : ''}
     </div>
 
-    <details class="fold"><summary><h3 class="mt">Bank transaction proofs</h3></summary>
-    <div class="dim">Screenshots of their bank transfers — filed here from Record a
-      payment, or added straight below. Latest first.</div>
-    <div class="filegrid mt" id="grid_proof">${fileCards(r.files, 'payment_proof')}</div>
-    <div class="row mt">
-      <div style="flex:2"><label>Reference (e.g. GCash ref, bank &amp; date)</label>
-        <input id="proof_label" type="text"></div>
-      <div style="flex:2"><label>Choose screenshots — you can pick several</label>
-        <input id="proof_file" type="file" accept="image/jpeg,image/png,image/webp" multiple></div>
-    </div></details>
-
     <details class="fold"><summary><h3 class="mt">Business details</h3></summary>
     <div class="dim">Printed at the top of this account's invoices, order forms and packing lists.</div>
     <div class="row mt">
