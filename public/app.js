@@ -4795,37 +4795,58 @@ const resellerList = (part, tier) => async (page) => {
 
   // Opening an account is account work, so it is offered on that half only.
   $('#add', page)?.addEventListener('click', () => {
+    // The same profile the account carries, taken up front — who they are on
+    // Messenger and for real, how to reach them, their tier — so a new account
+    // starts whole. Credit limit and days-to-pay are gone: an order is never
+    // gated, so there is nothing for them to set.
     dialog(`
       <h3>New reseller</h3>
       <div class="row">
-        <div style="flex:2"><label>Business name</label><input id="n_name" type="text"></div>
+        <div style="flex:2"><label>Name (as on Messenger)</label><input id="n_name" type="text"></div>
+        <div style="flex:2"><label>Full name</label><input id="n_full" type="text"
+          placeholder="their real / legal name"></div>
+      </div>
+      <div class="row">
+        <div style="flex:2"><label>Contact person</label><input id="n_contact" type="text"></div>
         <div style="flex:2"><label>Email</label><input id="n_email" type="text"></div>
       </div>
       <div class="row">
-        <div><label>Contact person</label><input id="n_contact" type="text"></div>
+        <div style="flex:2"><label>Contact number</label><input id="n_phone" type="text"></div>
+        <div style="flex:2"><label>Birthday</label><input id="n_bday" type="date"></div>
+      </div>
+      <div class="row">
+        <div style="flex:3"><label>Real address</label><input id="n_addr" type="text"
+          placeholder="home or shop address"></div>
         <div><label>Tier</label><select id="n_tier">
           <option value="1"${tier === 1 ? ' selected' : ''}>Reseller</option>
           <option value="2"${tier === 2 ? ' selected' : ''}>Distributor</option>
           <option value="3"${tier === 3 ? ' selected' : ''}>Retailer</option></select></div>
-        <div><label>Credit limit</label><input id="n_limit" type="number" value="0"></div>
-        <div><label>Days to pay</label><input id="n_days" type="number" value="0"></div>
       </div>
-      <div class="dim mt">New accounts start as pending. Approve them once the
-        licence and tax papers are on file.</div>
+      <div class="row">
+        <div style="flex:3"><label>Messenger / group chat link</label>
+          <input id="n_chat" type="text" placeholder="https://m.me/… or the group chat link"></div>
+      </div>
+      <div class="dim mt">Their ID and papers go on next, on the account itself.</div>
       <div class="mt right"><button class="btn" id="n_save">Create</button></div>`);
     $('#n_save').addEventListener('click', async () => {
       try {
         const created = await POST('/api/resellers', {
           name: $('#n_name').value, email: $('#n_email').value,
           contact: $('#n_contact').value, tier: +$('#n_tier').value,
-          credit_limit: +$('#n_limit').value, terms_days: +$('#n_days').value,
         });
-        notice('Account created 🌸 — now their full profile', 'good');
+        // Everything else on the profile in the same breath, then straight into
+        // the account so the ID and papers can be uploaded now.
+        if (created?.id) {
+          await POST(`/api/resellers/${created.id}/details`, {
+            name: $('#n_name').value, contact: $('#n_contact').value,
+            email: $('#n_email').value, chat_link: $('#n_chat').value,
+            full_name: $('#n_full').value, birthday: $('#n_bday').value || null,
+            real_address: $('#n_addr').value, contact_number: $('#n_phone').value,
+          });
+        }
+        notice('Account created 🌸 — now their ID & papers', 'good');
         closeDialog();
         load();
-        // Straight into the whole account, so the rest of who they are — full
-        // name, birthday, address, contact number, their ID and papers — is
-        // put on the record now, while the account is in front of you.
         if (created?.id) openReseller(created.id, load, 'account').catch(whoops);
       } catch (e) { whoops(e); }
     });
