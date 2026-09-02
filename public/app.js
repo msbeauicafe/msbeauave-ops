@@ -4847,13 +4847,27 @@ function fileCards(files, category) {
     .sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
   if (!list.length) return '<div class="dim">None yet.</div>';
   return list.map((f) => `<figure class="filecard">
-    <a href="/api/reseller-files/${f.id}" target="_blank" rel="noopener">
-      <img src="/api/reseller-files/${f.id}" alt="${esc(f.label || 'file')}" loading="lazy"></a>
+    <img class="filethumb" src="/api/reseller-files/${f.id}" alt="${esc(f.label || 'file')}"
+      loading="lazy" data-zoom="/api/reseller-files/${f.id}"
+      data-zoom-cap="${esc(f.label || '')}">
     <figcaption><b>${esc(f.label || '—')}</b><br>
       <span class="dim">${esc(f.uploaded_by || '')} · ${onDay(f.uploaded_at)}</span>
       <button class="linkbtn del-file" data-file="${f.id}">remove</button></figcaption>
   </figure>`).join('');
 }
+
+// Click a thumbnail — a bank screenshot, an ID — and it fills the screen, so a
+// blurry reference number can actually be read without leaving the account.
+document.addEventListener('click', (e) => {
+  const thumb = e.target.closest('[data-zoom]');
+  if (!thumb) return;
+  const box = document.createElement('div');
+  box.className = 'lightbox';
+  box.innerHTML = `<img src="${thumb.dataset.zoom}" alt="">${
+    thumb.dataset.zoomCap ? `<div class="cap">${esc(thumb.dataset.zoomCap)}</div>` : ''}`;
+  box.addEventListener('click', () => box.remove());
+  document.body.appendChild(box);
+});
 async function uploadResellerFile(id, file, category, label) {
   // A larger edge than a card photo — a certificate or a bank screenshot has to
   // stay readable. The server shrinks it again and caps the size.
