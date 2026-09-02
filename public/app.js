@@ -4909,15 +4909,9 @@ async function openReseller(id, reload, part = 'account') {
   const r = await GET(`/api/resellers/${id}`);
   dialog(`
     <h3>${esc(r.name)}</h3>
-    <div class="tags">${tierTag(r.tier)}
-      ${activeTag(r)}
-      ${tag(`owes ${peso(r.owed)}`, Number(r.owed) > 0 ? 'amber' : 'green')}
+    <div class="tags">${activeTag(r)}
+      ${money ? tag(`owes ${peso(r.owed)}`, Number(r.owed) > 0 ? 'amber' : 'green') : ''}
       ${Number(r.credit) > 0 ? tag(`${peso(r.credit)} in credit`, 'green') : ''}</div>
-
-    ${r.blocked || r.overdue ? `<div class="banner bad">Past due:
-      ${esc(r.blocked_reason || 'there is a past-due invoice')}. Recording the payment
-      clears it — an override below is only for when you have decided to let an order
-      through anyway.</div>` : ''}
 
     ${Number(r.credit) > 0 ? `<div class="banner good">Holding ${peso(r.credit)} of
       theirs — money that arrived with nothing open left to pay. It is taken off
@@ -4961,11 +4955,6 @@ async function openReseller(id, reload, part = 'account') {
       <div style="flex:0 0 auto"><button class="btn" id="d_terms">Save tier</button></div>
     </div>
 
-    ${r.blocked || r.overdue ? `<h3 class="mt">Let this one through anyway</h3>
-      <div class="row">
-        <div style="flex:3"><label>Reason (kept on the record)</label><input id="d_note" type="text"></div>
-        <div style="flex:0 0 auto"><button class="btn stop" id="d_override">Override</button></div>
-      </div>` : ''}
 
     <h3 class="mt">Profile picture</h3>
     <div class="dim">On their card on the Customer order screen — a face, shopfront or logo.
