@@ -4962,11 +4962,12 @@ async function openReseller(id, reload, part = 'account') {
       ${r.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="d_photo_x">Remove</button></div>' : ''}
     </div>
 
-    <h3 class="mt">Papers on file</h3>
-    <div class="dim">Photos of their papers — BIR 2303, business permit, tax certificate.</div>
+    <h3 class="mt">Papers &amp; IDs on file</h3>
+    <div class="dim">Photos of who they are and their papers — a valid ID, BIR 2303,
+      business permit, tax certificate.</div>
     <div class="filegrid mt">${fileCards(r.files, 'document')}</div>
     <div class="row mt">
-      <div style="flex:2"><label>What it is (e.g. BIR 2303)</label><input id="doc_label" type="text"></div>
+      <div style="flex:2"><label>What it is (e.g. valid ID, BIR 2303)</label><input id="doc_label" type="text"></div>
       <div style="flex:2"><label>Choose an image</label>
         <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
     </div>
