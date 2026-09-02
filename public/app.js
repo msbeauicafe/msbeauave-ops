@@ -4103,6 +4103,8 @@ SCREENS.pricelists = async (page) => {
 SCREENS.customers = async (page) => {
   const PANELS = [
     ['reselleraccounts', 'Resellers'],
+    ['distributoraccounts', 'Distributor'],
+    ['retaileraccounts', 'Retailer'],
     ['crm', 'Shop customers'],
   ];
   if (!PANELS.some(([id]) => id === customerPanel)) customerPanel = 'reselleraccounts';
@@ -4734,15 +4736,17 @@ SCREENS.chatorders = async (page) => {
  * opens behind them, and what the screen says it is for. Two copies of the
  * list would be two lists to keep right; this is one, told where it is.
  */
-const resellerList = (part) => async (page) => {
+const TIER_HEADINGS = { 1: 'Resellers', 2: 'Distributors', 3: 'Retailers' };
+const resellerList = (part, tier) => async (page) => {
   const acct = part === 'account';
   let term = '';
   const load = async () => {
     const all = await GET('/api/resellers');
-    const rows = all.filter((r) => !term
-      || r.name.toLowerCase().includes(term)
-      || (r.full_name || '').toLowerCase().includes(term)
-      || (r.email || '').toLowerCase().includes(term));
+    const rows = all.filter((r) => (!tier || Number(r.tier) === tier)
+      && (!term
+        || r.name.toLowerCase().includes(term)
+        || (r.full_name || '').toLowerCase().includes(term)
+        || (r.email || '').toLowerCase().includes(term)));
     $('#list', page).innerHTML = table(rows, [
       // The name is the way in. A row with a button at the far end asks you to
       // cross it to act on the thing you are already pointing at.
@@ -4769,7 +4773,7 @@ const resellerList = (part) => async (page) => {
   };
 
   page.innerHTML = `
-    <div class="head"><h2>${acct ? 'Resellers' : 'Invoice'}</h2>
+    <div class="head"><h2>${acct ? (TIER_HEADINGS[tier] || 'Resellers') : 'Invoice'}</h2>
       <span class="hint">Whoever was invoiced most recently is at the top, and
         stays there until they pay${acct
           ? ' · Reseller pays first · Distributor gets terms · Retailer gets the best terms'
@@ -4801,9 +4805,9 @@ const resellerList = (part) => async (page) => {
       <div class="row">
         <div><label>Contact person</label><input id="n_contact" type="text"></div>
         <div><label>Tier</label><select id="n_tier">
-          <option value="1">Reseller</option>
-          <option value="2">Distributor</option>
-          <option value="3">Retailer</option></select></div>
+          <option value="1"${tier === 1 ? ' selected' : ''}>Reseller</option>
+          <option value="2"${tier === 2 ? ' selected' : ''}>Distributor</option>
+          <option value="3"${tier === 3 ? ' selected' : ''}>Retailer</option></select></div>
         <div><label>Credit limit</label><input id="n_limit" type="number" value="0"></div>
         <div><label>Days to pay</label><input id="n_days" type="number" value="0"></div>
       </div>
@@ -4831,7 +4835,9 @@ const resellerList = (part) => async (page) => {
 // What is owed and what has landed, in Customer order beside the orders it
 // answers; and who they are, under Customers beside the shop's own list.
 SCREENS.resellers = resellerList('money');
-SCREENS.reselleraccounts = resellerList('account');
+SCREENS.reselleraccounts = resellerList('account', 1);
+SCREENS.distributoraccounts = resellerList('account', 2);
+SCREENS.retaileraccounts = resellerList('account', 3);
 
 // Papers (BIR, permits) and bank-transfer proofs on an account: thumbnails that
 // open the full image, each captioned with who put it there and when.
