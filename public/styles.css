@@ -922,6 +922,10 @@ label.inline input { width: auto; }
   background: var(--danger); box-shadow: 0 0 0 0 rgba(176, 74, 74, .55);
   animation-name: blip-late;
 }
+/* Standing, not money: a steady dot — green for active, red for inactive — that
+   does not pulse, since it is on every row. */
+.blip.on  { background: var(--success); box-shadow: none; animation: none; }
+.blip.off { background: var(--danger);  box-shadow: none; animation: none; }
 @keyframes blip {
   0%   { box-shadow: 0 0 0 0   rgba(201, 150, 63, .55); }
   70%  { box-shadow: 0 0 0 7px rgba(201, 150, 63, 0); }
