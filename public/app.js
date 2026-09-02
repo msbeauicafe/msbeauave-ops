@@ -3060,6 +3060,10 @@ const docParty = (name, dateOn, orderNo, who = {}, numberLabel = 'SALES ORDER NO
   <div class="party" style="display:flex;justify-content:space-between;gap:20px;margin-bottom:6px;line-height:1.3">
     <div>
       <div style="font-weight:700;font-size:1.02rem">${esc(name || 'counter sale')}${
+        // The real name after the one they are known by, smaller and lighter —
+        // the FB name is what the order is placed under, the real name is who
+        // it is.
+        who?.full_name ? `<span style="font-weight:400;font-size:.72rem;margin-left:10px">${esc(who.full_name)}</span>` : ''}${
         // Beside the name, the way it has been written on these forms by hand
         // for years: DS, then whoever the order is being sent on to.
         who?.drop_ship ? `<span style="font-weight:400;font-size:.72rem;margin-left:14px">
@@ -4250,9 +4254,8 @@ SCREENS.chatorders = async (page) => {
           ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
           : `<span class="face">${esc(initials(r.name))}</span>`}
         <span class="strip"><b>${esc(r.name)}</b>
-          <span class="under ${!r.blocked && Number(r.owed) > 0 ? 'owing' : ''}">${
-            r.blocked ? 'cannot order'
-            : Number(r.owed) > 0 ? `owes ${peso(r.owed)}` : 'clear'}</span></span>
+          <span class="under ${isInactive(r) ? 'dim' : ''}">${
+            isInactive(r) ? 'inactive' : 'active'}</span></span>
       </button>`).join('')}</div>`
       : '<div class="dim">Nobody matches that.</div>';
     // r.id comes back from the API as a string — a bigint column arrives as
