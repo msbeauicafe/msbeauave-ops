@@ -4815,14 +4815,18 @@ const resellerList = (part, tier) => async (page) => {
       <div class="mt right"><button class="btn" id="n_save">Create</button></div>`);
     $('#n_save').addEventListener('click', async () => {
       try {
-        await POST('/api/resellers', {
+        const created = await POST('/api/resellers', {
           name: $('#n_name').value, email: $('#n_email').value,
           contact: $('#n_contact').value, tier: +$('#n_tier').value,
           credit_limit: +$('#n_limit').value, terms_days: +$('#n_days').value,
         });
-        notice('Account created 🌸', 'good');
+        notice('Account created 🌸 — now their full profile', 'good');
         closeDialog();
         load();
+        // Straight into the whole account, so the rest of who they are — full
+        // name, birthday, address, contact number, their ID and papers — is
+        // put on the record now, while the account is in front of you.
+        if (created?.id) openReseller(created.id, load, 'account').catch(whoops);
       } catch (e) { whoops(e); }
     });
   });
