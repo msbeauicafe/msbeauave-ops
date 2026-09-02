@@ -284,7 +284,7 @@ test('a new account cannot have goods dispatched until the invoice is paid', asy
   assert.equal(now.status, 200, JSON.stringify(now.data));
 });
 
-test('a past-due account is stopped, told what to pay, and can be let through on the record',
+test('a past-due account can still order — the debt is shown, not enforced',
   async () => {
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
@@ -302,31 +302,17 @@ test('a past-due account is stopped, told what to pay, and can be let through on
       `update invoices set issued_on = current_date - 60, due_on = current_date - 30
         where order_id = $1`, [first.data.orderId]);
 
-    const stopped = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] });
-    assert.equal(stopped.status, 400);
-    assert.match(stopped.data.error, /cannot order/i);
+    // The account is a record, not a gate: past due does not stop the next order.
+    const again = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] });
+    assert.equal(again.status, 200, JSON.stringify(again.data));
 
-    // The portal says why, and the exact amount, without needing a phone call.
+    // What is owed is still there to see — we just want to know what she owes.
     const account = await GET(buyer, '/api/portal/account');
-    assert.equal(account.data.blocked, true);
-    assert.match(account.data.reason, /past due/i);
-    assert.equal(Number(account.data.toClear), Number(first.data.invoice.amount));
-
-    const noReason = await POST(admin, `/api/resellers/${id}/override`, {});
-    assert.equal(noReason.status, 400, 'an override without a reason must be refused');
-
-    const done = await POST(admin, `/api/resellers/${id}/override`,
-      { note: 'Owner approved — cheque in hand' });
-    assert.equal(done.status, 200);
-
-    const record = await GET(admin, `/api/resellers/${id}`);
-    const entry = record.data.events.find((e) => e.kind === 'override');
-    assert.ok(entry, 'the override is on the account history');
-    assert.match(entry.detail.note, /cheque in hand/);
-    assert.equal(entry.detail.by, admin.username, 'and it names who did it');
+    assert.ok(Number(account.data.toClear) >= Number(first.data.invoice.amount),
+      'the portal still shows the outstanding amount');
   });
 
-test('an order beyond the credit limit is refused, with the numbers spelled out', async () => {
+test('an order beyond the old credit limit goes through — nothing is refused', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
@@ -336,9 +322,7 @@ test('an order beyond the credit limit is refused, with the numbers spelled out'
     await newReseller(admin, { tier: 2, credit_limit: 1000, terms_days: 30 }));
 
   const over = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] }); // ₱2,500
-  assert.equal(over.status, 400);
-  assert.match(over.data.error, /credit limit/i);
-  assert.match(over.data.error, /₱/, 'the amounts are quoted in pesos');
+  assert.equal(over.status, 200, JSON.stringify(over.data));
 });
 
 test('paying a 30-day invoice within ten days takes 2% off by itself', async () => {
@@ -362,7 +346,7 @@ test('paying a 30-day invoice within ten days takes 2% off by itself', async () 
   assert.equal(Number(account.data.owed), 0);
 });
 
-test('clearing the last past-due invoice lets the account order again on its own', async () => {
+test('a past-due account orders freely before and after it pays up', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
@@ -375,13 +359,15 @@ test('clearing the last past-due invoice lets the account order again on its own
     `update invoices set issued_on = current_date - 60, due_on = current_date - 30
       where order_id = $1`, [first.data.orderId]);
 
-  assert.equal((await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] })).status, 400);
+  // Past due, still ordering.
+  assert.equal((await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] })).status, 200);
 
   await POST(admin, `/api/invoices/${first.data.invoice.id}/payment`,
     { amount: first.data.invoice.amount });
 
+  // Paid up, still ordering — nothing about the balance ever gates the order.
   const again = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] });
-  assert.equal(again.status, 200, 'paying up should be enough — no admin action needed');
+  assert.equal(again.status, 200);
 });
 
 // ===========================================================================

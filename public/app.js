@@ -4250,8 +4250,7 @@ SCREENS.chatorders = async (page) => {
       || r.name.toLowerCase().includes(term)
       || (r.email || '').toLowerCase().includes(term));
     hitsBox.innerHTML = shown.length ? `<div class="face-grid">${shown.map((r) => `
-      <button class="face-card ${r.blocked ? 'stopped' : ''}" data-pick="${r.id}"
-        ${r.blocked ? 'disabled' : ''} title="${esc(r.name)}">
+      <button class="face-card" data-pick="${r.id}" title="${esc(r.name)}">
         ${r.photo_at
           ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
           : `<span class="face">${esc(initials(r.name))}</span>`}
