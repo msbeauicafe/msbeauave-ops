@@ -223,6 +223,13 @@ const TIER_NAMES = { 1: 'Reseller', 2: 'Distributor', 3: 'Retailer' };
 const tierName = (t) => TIER_NAMES[t] || `Tier ${t}`;
 const tierTag = (t) => tag(tierName(t), t === 3 ? 'green' : t === 2 ? 'pink' : 'grey');
 
+// Active or inactive by trading, not by any block: an account that has not
+// placed an order in ninety days straight is inactive; one that has is active.
+const NINETY_DAYS = 90 * 86400000;
+const isInactive = (r) => !r.last_order_at
+  || Date.now() - new Date(r.last_order_at).getTime() > NINETY_DAYS;
+const activeTag = (r) => (isInactive(r) ? tag('inactive', 'grey') : tag('active', 'green'));
+
 // How somebody proved who they were at the door.
 //
 // A blank rather than a guess for the ones recorded before the clock started
@@ -4743,10 +4750,7 @@ const resellerList = (part) => async (page) => {
                 }"></span>` : ''}<b>${esc(r.name)}</b>
           </button>${r.email ? `<div class="dim">${esc(r.email)}</div>` : ''}` },
       { head: 'Tier', cell: (r) => tierTag(r.tier) },
-      { head: 'Standing', cell: (r) => (r.blocked || r.overdue
-          ? tag('cannot order', 'red')
-          : r.status === 'active' ? tag('active', 'green') : tag(r.status, 'amber'))
-          + (r.docs_verified ? '' : ' ' + tag('papers pending', 'grey')) },
+      { head: 'Standing', cell: (r) => activeTag(r) },
       { head: 'Limit', n: true, cell: (r) => peso(r.credit_limit) },
       { head: 'Owes', n: true, cell: (r) => peso(r.owed) },
       { head: 'Payment record', cell: (r) => `<span class="dim">${r.paid_on_time} on time · ${
@@ -4854,7 +4858,8 @@ function eventDetail(e) {
   const d = e.detail || {};
   if (e.kind === 'details_changed' && d.from && d.to) {
     const parts = [];
-    for (const k of ['name', 'contact', 'email', 'chat_link']) {
+    for (const k of ['name', 'full_name', 'contact', 'contact_number', 'email',
+                     'birthday', 'real_address', 'chat_link']) {
       if ((d.from[k] || '') !== (d.to[k] || '')) parts.push(`${k.replace('_', ' ')}: ${esc(d.from[k] || '—')} → ${esc(d.to[k] || '—')}`);
     }
     return parts.length ? ` — ${parts.join('; ')}` : '';
@@ -4884,16 +4889,14 @@ async function openReseller(id, reload, part = 'account') {
   dialog(`
     <h3>${esc(r.name)}</h3>
     <div class="tags">${tierTag(r.tier)}
-      ${r.blocked || r.overdue ? tag('cannot order', 'red') : tag(r.status, 'green')}
-      ${r.docs_verified ? tag('papers verified', 'green') : tag('papers pending', 'amber')}
-      ${tag(`limit ${peso(r.credit_limit)}`, 'pink')}
+      ${activeTag(r)}
       ${tag(`owes ${peso(r.owed)}`, Number(r.owed) > 0 ? 'amber' : 'green')}
       ${Number(r.credit) > 0 ? tag(`${peso(r.credit)} in credit`, 'green') : ''}</div>
 
-    ${r.blocked || r.overdue ? `<div class="banner bad">Cannot order:
+    ${r.blocked || r.overdue ? `<div class="banner bad">Past due:
       ${esc(r.blocked_reason || 'there is a past-due invoice')}. Recording the payment
-      lifts this by itself — an override below is only for when you have decided to
-      let it through anyway.</div>` : ''}
+      clears it — an override below is only for when you have decided to let an order
+      through anyway.</div>` : ''}
 
     ${Number(r.credit) > 0 ? `<div class="banner good">Holding ${peso(r.credit)} of
       theirs — money that arrived with nothing open left to pay. It is taken off
@@ -4905,9 +4908,23 @@ async function openReseller(id, reload, part = 'account') {
     ${acct ? `
     <h3 class="mt">Account details</h3>
     <div class="row">
-      <div style="flex:2"><label>Name</label><input id="d_name" type="text" value="${esc(r.name || '')}"></div>
-      <div style="flex:2"><label>Contact</label><input id="d_contact" type="text" value="${esc(r.contact || '')}"></div>
+      <div style="flex:2"><label>Name (as on Messenger)</label><input id="d_name" type="text" value="${esc(r.name || '')}"></div>
+      <div style="flex:2"><label>Full name</label><input id="d_full" type="text"
+        placeholder="their real / legal name" value="${esc(r.full_name || '')}"></div>
+    </div>
+    <div class="row">
+      <div style="flex:2"><label>Contact person</label><input id="d_contact" type="text" value="${esc(r.contact || '')}"></div>
       <div style="flex:2"><label>Email</label><input id="d_email" type="text" value="${esc(r.email || '')}"></div>
+    </div>
+    <div class="row">
+      <div style="flex:2"><label>Contact number</label><input id="d_phone" type="text"
+        inputmode="tel" value="${esc(r.contact_number || '')}"></div>
+      <div style="flex:2"><label>Birthday</label><input id="d_bday" type="date"
+        value="${r.birthday ? String(r.birthday).slice(0, 10) : ''}"></div>
+    </div>
+    <div class="row">
+      <div style="flex:3"><label>Real address</label><input id="d_addr2" type="text"
+        placeholder="home or shop address" value="${esc(r.real_address || '')}"></div>
     </div>
     <div class="row">
       <div style="flex:3"><label>Messenger / group chat link</label>
@@ -5085,8 +5102,12 @@ async function openReseller(id, reload, part = 'account') {
     try {
       await POST(`/api/resellers/${id}/details`, {
         name: $('#d_name').value.trim(),
+        full_name: $('#d_full').value.trim(),
         contact: $('#d_contact').value.trim(),
         email: $('#d_email').value.trim(),
+        contact_number: $('#d_phone').value.trim(),
+        birthday: $('#d_bday').value || null,
+        real_address: $('#d_addr2').value.trim(),
         chat_link: $('#d_chat').value.trim() });
       notice('Details saved 🌸', 'good');
       closeDialog();
