@@ -5001,7 +5001,7 @@ async function openReseller(id, reload, part = 'account') {
       ${r.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="d_photo_x">Remove</button></div>' : ''}
     </div>
 
-    <details class="fold"><summary><h3 class="mt">Business details</h3></summary>
+    <h3 class="mt">Business details</h3>
     <div class="dim">Printed at the top of this account's invoices, order forms and packing lists.</div>
     <div class="row mt">
       <div><label>Tax Type</label>
@@ -5026,7 +5026,7 @@ async function openReseller(id, reload, part = 'account') {
       <div style="flex:2"><label>What it is (e.g. valid ID, BIR 2303)</label><input id="doc_label" type="text"></div>
       <div style="flex:2"><label>Choose an image</label>
         <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
-    </div></details>
+    </div>
 
 ` : ''}
 
