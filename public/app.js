@@ -4738,6 +4738,7 @@ const resellerList = (part) => async (page) => {
     const all = await GET('/api/resellers');
     const rows = all.filter((r) => !term
       || r.name.toLowerCase().includes(term)
+      || (r.full_name || '').toLowerCase().includes(term)
       || (r.email || '').toLowerCase().includes(term));
     $('#list', page).innerHTML = table(rows, [
       // The name is the way in. A row with a button at the far end asks you to
@@ -4747,7 +4748,8 @@ const resellerList = (part) => async (page) => {
             ${Number(r.owed) > 0
               ? `<span class="blip ${r.overdue ? 'late' : ''}" title="${
                   r.overdue ? 'has a past-due invoice' : 'has an invoice waiting to be paid'
-                }"></span>` : ''}<b>${esc(r.name)}</b>
+                }"></span>` : ''}<b>${esc(r.name)}</b>${r.full_name
+                  ? ` <span class="dim">· ${esc(r.full_name)}</span>` : ''}
           </button>${r.email ? `<div class="dim">${esc(r.email)}</div>` : ''}` },
       { head: 'Tier', cell: (r) => tierTag(r.tier) },
       { head: 'Standing', cell: (r) => activeTag(r) },
