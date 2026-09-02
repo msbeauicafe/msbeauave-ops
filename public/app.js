@@ -4808,7 +4808,7 @@ const resellerList = (part, tier) => async (page) => {
     ${acct ? '<div class="tiles half" id="rtiles"></div>' : ''}
     <div class="tools">
       <input type="search" id="find" placeholder="Search name or email…">
-      ${acct ? '<button class="btn" id="add">＋ New reseller</button>' : ''}
+      ${acct ? `<button class="btn" id="add">＋ New ${esc(tierName(tier))}</button>` : ''}
     </div>
     <div class="panel" id="list"></div>`;
 
@@ -4824,7 +4824,7 @@ const resellerList = (part, tier) => async (page) => {
   // there to be typed over.
   $('#add', page)?.addEventListener('click', async () => {
     try {
-      const created = await POST('/api/resellers', { name: 'New reseller', tier: tier || 1 });
+      const created = await POST('/api/resellers', { name: `New ${tierName(tier)}`, tier: tier || 1 });
       load();
       if (created?.id) openReseller(created.id, load, 'account').catch(whoops);
     } catch (e) { whoops(e); }
