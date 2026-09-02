@@ -4842,7 +4842,9 @@ SCREENS.retaileraccounts = resellerList('account', 3);
 // Papers (BIR, permits) and bank-transfer proofs on an account: thumbnails that
 // open the full image, each captioned with who put it there and when.
 function fileCards(files, category) {
-  const list = (files || []).filter((f) => f.category === category);
+  const list = (files || []).filter((f) => f.category === category)
+    // Latest first — the most recent transfer is the one being looked for.
+    .sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
   if (!list.length) return '<div class="dim">None yet.</div>';
   return list.map((f) => `<figure class="filecard">
     <a href="/api/reseller-files/${f.id}" target="_blank" rel="noopener">
@@ -4973,7 +4975,7 @@ async function openReseller(id, reload, part = 'account') {
       ${r.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="d_photo_x">Remove</button></div>' : ''}
     </div>
 
-    <h3 class="mt">Papers &amp; IDs on file</h3>
+    <details class="fold"><summary><h3 class="mt">Papers &amp; IDs on file</h3></summary>
     <div class="dim">Photos of who they are and their papers — a valid ID, BIR 2303,
       business permit, tax certificate.</div>
     <div class="filegrid mt">${fileCards(r.files, 'document')}</div>
@@ -4981,14 +4983,20 @@ async function openReseller(id, reload, part = 'account') {
       <div style="flex:2"><label>What it is (e.g. valid ID, BIR 2303)</label><input id="doc_label" type="text"></div>
       <div style="flex:2"><label>Choose an image</label>
         <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
-    </div>
+    </div></details>
 
     <h3 class="mt">Bank transaction proofs</h3>
-    <div class="dim">Screenshots of their bank transfers — filed from Record a payment,
-      kept here for your reference.</div>
+    <div class="dim">Screenshots of their bank transfers — filed here from Record a
+      payment, or added straight below. Latest first.</div>
     <div class="filegrid mt">${fileCards(r.files, 'payment_proof')}</div>
+    <div class="row mt">
+      <div style="flex:2"><label>Reference (e.g. GCash ref, bank &amp; date)</label>
+        <input id="proof_label" type="text"></div>
+      <div style="flex:2"><label>Choose screenshots — you can pick several</label>
+        <input id="proof_file" type="file" accept="image/jpeg,image/png,image/webp" multiple></div>
+    </div>
 
-    <h3 class="mt">For tax</h3>
+    <details class="fold"><summary><h3 class="mt">For tax</h3></summary>
     <div class="dim">Printed at the top of this account's invoices, order forms and packing lists.</div>
     <div class="row mt">
       <div><label>Tax Type</label>
@@ -5005,7 +5013,7 @@ async function openReseller(id, reload, part = 'account') {
       <div style="flex:3"><label>Business Address</label>
         <input id="d_addr" type="text" value="${esc(r.business_address || '')}"></div>
       <div style="flex:0 0 auto"><button class="btn" id="d_tax">Save</button></div>
-    </div>
+    </div></details>
 
 ` : ''}
 
@@ -5133,6 +5141,18 @@ async function openReseller(id, reload, part = 'account') {
     try {
       await uploadResellerFile(id, file, 'document', $('#doc_label')?.value.trim());
       notice('Paper saved 🌸', 'good'); closeDialog(); reload();
+    } catch (err) { whoops(err); }
+    e.target.value = '';
+  });
+
+  // Bank-transfer screenshots, added straight from the account — several at once.
+  $('#proof_file')?.addEventListener('change', async (e) => {
+    const files = [...e.target.files]; if (!files.length) return;
+    const label = $('#proof_label')?.value.trim();
+    try {
+      for (const file of files) await uploadResellerFile(id, file, 'payment_proof', label);
+      notice(`${files.length > 1 ? files.length + ' proofs' : 'Proof'} saved 🌸`, 'good');
+      closeDialog(); reload();
     } catch (err) { whoops(err); }
     e.target.value = '';
   });

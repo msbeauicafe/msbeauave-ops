@@ -1317,6 +1317,20 @@ input.n { text-align: right; }
 }
 
 /* Papers and proofs on an account — a small grid of thumbnails. */
+/* A section folded away until it is wanted, so it does not eat the dialog.
+   The heading stays the summary, with a chevron that turns when it opens. */
+.fold { margin-top: 14px; }
+.fold > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before {
+  content: '›'; color: var(--rose-deep); font-size: 1.2rem; line-height: 1;
+  transition: transform .15s; display: inline-block;
+}
+.fold[open] > summary::before { transform: rotate(90deg); }
+.fold > summary h3.mt { margin-top: 0; }
+
 .filegrid { display: flex; flex-wrap: wrap; gap: 12px; }
 .filecard { margin: 0; width: 132px; }
 .filecard img {
