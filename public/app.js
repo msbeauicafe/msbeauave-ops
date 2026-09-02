@@ -2982,6 +2982,19 @@ function printOneSheet() {
   const WIDE = 8.5 * 96 - (20 / 25.4) * 96;
   const TALL = 11 * 96 - (20 / 25.4) * 96;
 
+  // The order preview is fitted to its column on screen with a CSS scale set
+  // inline on the sheet, inside a wrapper pinned to that shrunk height and
+  // clipped. Left in place, the scale would shrink the height this measures
+  // against — so the fit below would read it already small and stop short —
+  // and the wrapper would crop the very page being fitted. Both are lifted for
+  // the measuring and the print, and put back after. The fit itself is by zoom
+  // alone; this only clears a screen-only shrink, it does not add one.
+  const box = doc.closest('.co-scale');
+  const boxWas = box ? { height: box.style.height, overflow: box.style.overflow } : null;
+  if (box) { box.style.height = 'auto'; box.style.overflow = 'visible'; }
+  const fitScreen = doc.style.getPropertyValue('transform');
+  doc.style.setProperty('transform', 'none');
+
   const was = { width: doc.style.width, zoom: doc.style.zoom,
                 minHeight: doc.style.minHeight };
   doc.style.zoom = '';
@@ -3028,6 +3041,8 @@ function printOneSheet() {
 
   const undo = () => {
     Object.assign(doc.style, was);
+    doc.style.setProperty('transform', fitScreen);
+    if (box && boxWas) Object.assign(box.style, boxWas);
     window.removeEventListener('afterprint', undo);
   };
   window.addEventListener('afterprint', undo);
