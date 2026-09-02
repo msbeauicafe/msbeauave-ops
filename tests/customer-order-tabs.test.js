@@ -105,7 +105,7 @@ test('the account splits into the half you came for', () => {
     Terms: 'acct',
     'Let this one through anyway': 'acct',
     'Their picture': 'acct',
-    'Papers on file': 'acct',
+    'Papers &amp; IDs on file': 'acct',
     'Bank transaction proofs': 'acct',
     'For tax': 'acct',
     'Confirm the bank payment': 'money',
