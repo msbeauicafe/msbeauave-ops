@@ -4839,11 +4839,17 @@ function fileCards(files, category) {
 document.addEventListener('click', (e) => {
   const thumb = e.target.closest('[data-zoom]');
   if (!thumb) return;
+  const src = thumb.dataset.zoom;
   const box = document.createElement('div');
   box.className = 'lightbox';
-  box.innerHTML = `<img src="${thumb.dataset.zoom}" alt="">${
-    thumb.dataset.zoomCap ? `<div class="cap">${esc(thumb.dataset.zoomCap)}</div>` : ''}`;
-  box.addEventListener('click', () => box.remove());
+  box.innerHTML = `<img src="${src}" alt="">
+    <div class="lightbar">
+      ${thumb.dataset.zoomCap ? `<span class="cap">${esc(thumb.dataset.zoomCap)}</span>` : ''}
+      <a class="btn sm" href="${src}" download>⤓ Download</a>
+    </div>`;
+  // Click the picture or the dark surround to close; the download link is left
+  // to do its job.
+  box.addEventListener('click', (ev) => { if (!ev.target.closest('a')) box.remove(); });
   document.body.appendChild(box);
 });
 async function uploadResellerFile(id, file, category, label) {
@@ -4918,33 +4924,31 @@ async function openReseller(id, reload, part = 'account') {
         placeholder="their real / legal name" value="${esc(r.full_name || '')}"></div>
     </div>
     <div class="row">
-      <div style="flex:2"><label>Contact person</label><input id="d_contact" type="text" value="${esc(r.contact || '')}"></div>
+      <div style="flex:2"><label>Contact number</label><input id="d_phone" type="text"
+        inputmode="tel" value="${esc(r.contact_number || '')}"></div>
       <div style="flex:2"><label>Email</label><input id="d_email" type="text" value="${esc(r.email || '')}"></div>
     </div>
     <div class="row">
-      <div style="flex:2"><label>Contact number</label><input id="d_phone" type="text"
-        inputmode="tel" value="${esc(r.contact_number || '')}"></div>
+      <div style="flex:2"><label>Real address</label><input id="d_addr2" type="text"
+        placeholder="home or shop address" value="${esc(r.real_address || '')}"></div>
       <div style="flex:2"><label>Birthday</label><input id="d_bday" type="date"
         value="${r.birthday ? String(r.birthday).slice(0, 10) : ''}"></div>
     </div>
-    <div class="row">
-      <div style="flex:3"><label>Real address</label><input id="d_addr2" type="text"
-        placeholder="home or shop address" value="${esc(r.real_address || '')}"></div>
-    </div>
-    <div class="row">
+    <div class="row" style="align-items:flex-start">
       <div style="flex:3"><label>Messenger / group chat link</label>
         <input id="d_chat" type="text" placeholder="https://m.me/… or the group chat link"
           value="${esc(r.chat_link || '')}">
         <div class="dim" style="font-size:.72rem;margin-top:2px">Where their order form and
           invoice are sent — it becomes a button on the form.</div></div>
-      <div style="flex:0 0 auto;align-self:flex-start"><button class="btn" id="d_details">Save</button></div>
+      <div style="flex:0 0 auto"><label>&nbsp;</label>
+        <button class="btn" id="d_details">Save</button></div>
     </div>
 
-    <h3 class="mt">Terms</h3>
-    <div class="row">
-      <div><label>Tier</label><select id="d_tier">${[1, 2, 3].map((t) =>
+    <h3 class="mt">Tier</h3>
+    <div class="row" style="align-items:flex-end">
+      <div style="flex:2"><select id="d_tier" style="font-size:1.3rem;font-weight:700;padding:10px">${[1, 2, 3].map((t) =>
         `<option value="${t}" ${t === r.tier ? 'selected' : ''}>${esc(tierName(t))}</option>`).join('')}</select></div>
-      <div style="flex:0 0 auto;align-self:flex-end"><button class="btn" id="d_terms">Save terms</button></div>
+      <div style="flex:0 0 auto"><button class="btn" id="d_terms">Save tier</button></div>
     </div>
 
     ${r.blocked || r.overdue ? `<h3 class="mt">Let this one through anyway</h3>
@@ -4953,12 +4957,14 @@ async function openReseller(id, reload, part = 'account') {
         <div style="flex:0 0 auto"><button class="btn stop" id="d_override">Override</button></div>
       </div>` : ''}
 
-    <h3 class="mt">Their picture</h3>
-    <div class="dim">On their card on the Customer order screen — a face, shopfront or logo.</div>
+    <h3 class="mt">Profile picture</h3>
+    <div class="dim">On their card on the Customer order screen — a face, shopfront or logo.
+      ${r.photo_at ? 'Click it to see it full-size and download.' : ''}</div>
     <div class="row mt" style="align-items:center">
       <div style="flex:0 0 auto">
         ${r.photo_at
-          ? `<img class="face" src="/api/resellers/${id}/photo?v=${r.photo_at}" alt="">`
+          ? `<img class="face filethumb" src="/api/resellers/${id}/photo?v=${r.photo_at}" alt=""
+               data-zoom="/api/resellers/${id}/photo?v=${r.photo_at}" data-zoom-cap="${esc(r.name || '')}">`
           : `<span class="face">${esc((r.name || '?').split(/\s+/).filter(Boolean)
                .slice(0, 2).map((w) => w[0]).join('').toUpperCase())}</span>`}
       </div>
@@ -4966,16 +4972,6 @@ async function openReseller(id, reload, part = 'account') {
         <input id="d_photo" type="file" accept="image/jpeg,image/png,image/webp"></div>
       ${r.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="d_photo_x">Remove</button></div>' : ''}
     </div>
-
-    <details class="fold"><summary><h3 class="mt">Papers &amp; IDs on file</h3></summary>
-    <div class="dim">Photos of who they are and their papers — a valid ID, BIR 2303,
-      business permit, tax certificate.</div>
-    <div class="filegrid mt" id="grid_document">${fileCards(r.files, 'document')}</div>
-    <div class="row mt">
-      <div style="flex:2"><label>What it is (e.g. valid ID, BIR 2303)</label><input id="doc_label" type="text"></div>
-      <div style="flex:2"><label>Choose an image</label>
-        <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
-    </div></details>
 
     <details class="fold"><summary><h3 class="mt">Bank transaction proofs</h3></summary>
     <div class="dim">Screenshots of their bank transfers — filed here from Record a
@@ -4988,7 +4984,7 @@ async function openReseller(id, reload, part = 'account') {
         <input id="proof_file" type="file" accept="image/jpeg,image/png,image/webp" multiple></div>
     </div></details>
 
-    <details class="fold"><summary><h3 class="mt">For tax</h3></summary>
+    <details class="fold"><summary><h3 class="mt">Business details</h3></summary>
     <div class="dim">Printed at the top of this account's invoices, order forms and packing lists.</div>
     <div class="row mt">
       <div><label>Tax Type</label>
@@ -5005,6 +5001,14 @@ async function openReseller(id, reload, part = 'account') {
       <div style="flex:3"><label>Business Address</label>
         <input id="d_addr" type="text" value="${esc(r.business_address || '')}"></div>
       <div style="flex:0 0 auto"><button class="btn" id="d_tax">Save</button></div>
+    </div>
+    <div class="dim mt">Their ID and papers — a valid ID, BIR 2303, business permit,
+      tax certificate. Click any to see it full-size and download.</div>
+    <div class="filegrid mt" id="grid_document">${fileCards(r.files, 'document')}</div>
+    <div class="row mt">
+      <div style="flex:2"><label>What it is (e.g. valid ID, BIR 2303)</label><input id="doc_label" type="text"></div>
+      <div style="flex:2"><label>Choose an image</label>
+        <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
     </div></details>
 
 ` : ''}
@@ -5093,9 +5097,11 @@ async function openReseller(id, reload, part = 'account') {
       // whole across the wire; the server shrinks it again, to the shape of
       // the card, which is the size that is actually stored.
       await POST(`/api/resellers/${id}/photo`, { dataUrl: await shrink(file, 900) });
-      notice('Picture saved 🌸', 'good');
-      closeDialog();
+      notice('Picture saved 🌸 — click it to zoom', 'good');
+      // Stay on the account and redraw it so the new photo is here at once,
+      // ready to be clicked open.
       reload();
+      openReseller(id, reload, part).catch(whoops);
     } catch (err) { whoops(err); }
     e.target.value = '';
   });
@@ -5104,8 +5110,8 @@ async function openReseller(id, reload, part = 'account') {
     try {
       await DELETE(`/api/resellers/${id}/photo`);
       notice('Picture removed', 'good');
-      closeDialog();
       reload();
+      openReseller(id, reload, part).catch(whoops);
     } catch (err) { whoops(err); }
   });
 
@@ -5115,15 +5121,16 @@ async function openReseller(id, reload, part = 'account') {
       await POST(`/api/resellers/${id}/details`, {
         name: $('#d_name').value.trim(),
         full_name: $('#d_full').value.trim(),
-        contact: $('#d_contact').value.trim(),
+        contact: r.contact || null,
         email: $('#d_email').value.trim(),
         contact_number: $('#d_phone').value.trim(),
         birthday: $('#d_bday').value || null,
         real_address: $('#d_addr2').value.trim(),
         chat_link: $('#d_chat').value.trim() });
       notice('Details saved 🌸', 'good');
-      closeDialog();
+      // Stay put so the rest of the profile — picture, ID, papers — can follow.
       reload();
+      openReseller(id, reload, part).catch(whoops);
     } catch (err) { whoops(err); }
   });
 

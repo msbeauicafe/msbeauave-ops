@@ -104,12 +104,11 @@ test('the account splits into the half you came for', () => {
 
   assert.deepEqual(halves, {
     'Account details': 'acct',
-    Terms: 'acct',
+    Tier: 'acct',
     'Let this one through anyway': 'acct',
-    'Their picture': 'acct',
-    'Papers &amp; IDs on file': 'acct',
+    'Profile picture': 'acct',
     'Bank transaction proofs': 'acct',
-    'For tax': 'acct',
+    'Business details': 'acct',
     'Confirm the bank payment': 'money',
     'Bank transfer proofs': 'money',
     'Issue the receipt': 'money',
