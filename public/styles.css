@@ -469,6 +469,22 @@ tr:hover [data-person] b, [data-person]:hover b { color: var(--rose-deep); text-
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .receipt { border: 0; padding: 0; }
+  /* The order dialog is an editor beside a preview: the invoice on the left,
+     the picking table and the number boxes on the right. Only the invoice is
+     the document. On paper the editor is the phantom second sheet, so it — and
+     the order's own on-screen title, tags and chat bar — drop away, and the
+     invoice is given the whole width. */
+  #dialog .edit-side, #dialog .co-actions, #dialog .chatbar,
+  #dialog .dialog > h3, #dialog .dialog > .tags { display: none !important; }
+  .order-split { display: block; }
+  .order-split .co-side { flex: 1 1 auto; max-width: none; }
+  /* On screen the preview is fitted to its column with a transform, inside a
+     wrapper pinned to that shrunk height and clipped. Both are for the screen;
+     on paper they would shrink the sheet again and then crop it. printOneSheet
+     lifts them by hand, but a plain Ctrl-P does not, so they are lifted here
+     too. */
+  .co-scale { height: auto !important; overflow: visible !important; }
+  .co-scale .doc.cof { transform: none !important; }
 }
 
 /* ---------- the workspace ---------- */
