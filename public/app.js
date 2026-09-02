@@ -4956,7 +4956,7 @@ async function openReseller(id, reload, part = 'account') {
 
     <h3 class="mt">Tier</h3>
     <div class="row" style="align-items:flex-end">
-      <div style="flex:2"><select id="d_tier" style="font-size:1.3rem;font-weight:700;padding:10px">${[1, 2, 3].map((t) =>
+      <div style="flex:2"><select id="d_tier">${[1, 2, 3].map((t) =>
         `<option value="${t}" ${t === r.tier ? 'selected' : ''}>${esc(tierName(t))}</option>`).join('')}</select></div>
       <div style="flex:0 0 auto"><button class="btn" id="d_terms">Save tier</button></div>
     </div>
