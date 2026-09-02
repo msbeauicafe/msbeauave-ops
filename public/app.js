@@ -216,7 +216,12 @@ function repeat(fn, ms = 8000) {
 }
 
 const tag = (text, kind) => `<span class="tag ${kind}">${esc(text)}</span>`;
-const tierTag = (t) => tag(`Tier ${t}`, t === 3 ? 'green' : t === 2 ? 'pink' : 'grey');
+// The three tiers carry names now, not numbers: 1 Reseller, 2 Distributor,
+// 3 Retailer. The number is still what the database and the price codes run on;
+// only what a person reads has changed.
+const TIER_NAMES = { 1: 'Reseller', 2: 'Distributor', 3: 'Retailer' };
+const tierName = (t) => TIER_NAMES[t] || `Tier ${t}`;
+const tierTag = (t) => tag(tierName(t), t === 3 ? 'green' : t === 2 ? 'pink' : 'grey');
 
 // How somebody proved who they were at the door.
 //
@@ -4758,7 +4763,7 @@ const resellerList = (part) => async (page) => {
     <div class="head"><h2>${acct ? 'Resellers' : 'Invoice'}</h2>
       <span class="hint">Whoever was invoiced most recently is at the top, and
         stays there until they pay${acct
-          ? ' · Tier 1 pays first · Tier 2 gets terms · Tier 3 gets the best terms'
+          ? ' · Reseller pays first · Distributor gets terms · Retailer gets the best terms'
           : ' · open one to confirm a transfer, issue the receipt, or send the invoice again'
         }</span>
       <div class="dotkey">
@@ -4787,9 +4792,9 @@ const resellerList = (part) => async (page) => {
       <div class="row">
         <div><label>Contact person</label><input id="n_contact" type="text"></div>
         <div><label>Tier</label><select id="n_tier">
-          <option value="1">1 — new, pays first</option>
-          <option value="2">2 — established</option>
-          <option value="3">3 — key account</option></select></div>
+          <option value="1">Reseller</option>
+          <option value="2">Distributor</option>
+          <option value="3">Retailer</option></select></div>
         <div><label>Credit limit</label><input id="n_limit" type="number" value="0"></div>
         <div><label>Days to pay</label><input id="n_days" type="number" value="0"></div>
       </div>
@@ -4916,10 +4921,8 @@ async function openReseller(id, reload, part = 'account') {
     <h3 class="mt">Terms</h3>
     <div class="row">
       <div><label>Tier</label><select id="d_tier">${[1, 2, 3].map((t) =>
-        `<option value="${t}" ${t === r.tier ? 'selected' : ''}>Tier ${t}</option>`).join('')}</select></div>
-      <div><label>Credit limit</label><input id="d_limit" type="number" value="${r.credit_limit}"></div>
-      <div><label>Days to pay</label><input id="d_days" type="number" value="${r.terms_days}"></div>
-      <div style="flex:0 0 auto"><button class="btn" id="d_terms">Save terms</button></div>
+        `<option value="${t}" ${t === r.tier ? 'selected' : ''}>${esc(tierName(t))}</option>`).join('')}</select></div>
+      <div style="flex:0 0 auto;align-self:flex-end"><button class="btn" id="d_terms">Save terms</button></div>
     </div>
 
     ${r.blocked || r.overdue ? `<h3 class="mt">Let this one through anyway</h3>
@@ -5124,9 +5127,13 @@ async function openReseller(id, reload, part = 'account') {
 
   $('#d_terms')?.addEventListener('click', async () => {
     try {
+      // Only the tier is edited here now; the account's existing credit limit
+      // and days-to-pay travel back untouched so saving the tier does not wipe
+      // them.
       await POST(`/api/resellers/${id}/terms`, {
-        tier: +$('#d_tier').value, credit_limit: +$('#d_limit').value,
-        terms_days: +$('#d_days').value,
+        tier: +$('#d_tier').value,
+        credit_limit: Number(r.credit_limit) || 0,
+        terms_days: Number(r.terms_days) || 0,
       });
       notice('Terms saved', 'good');
       closeDialog();
