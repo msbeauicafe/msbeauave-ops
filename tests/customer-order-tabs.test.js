@@ -62,8 +62,10 @@ test('Customers carries the reseller account beside the shop list', () => {
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
-  assert.deepEqual(panels, ['reselleraccounts', 'crm'],
-    'the wholesale accounts first, because this company is a distributor');
+  assert.deepEqual(panels,
+    ['reselleraccounts', 'distributoraccounts', 'retaileraccounts', 'crm'],
+    'the wholesale accounts split by tier first, because this company is a '
+    + 'distributor, then the shop’s own loyalty list');
   assert.match(screen, /SCREENS\[customerPanel\]/,
     'the panel is drawn by the screen it names, not by a copy of it');
   assert.match(app, /let customerPanel = 'reselleraccounts';/,
@@ -118,7 +120,9 @@ test('the account splits into the half you came for', () => {
 
   // The list is drawn once and told which half it opens.
   assert.match(app, /SCREENS\.resellers = resellerList\('money'\);/);
-  assert.match(app, /SCREENS\.reselleraccounts = resellerList\('account'\);/);
+  assert.match(app, /SCREENS\.reselleraccounts = resellerList\('account', 1\);/);
+  assert.match(app, /SCREENS\.distributoraccounts = resellerList\('account', 2\);/);
+  assert.match(app, /SCREENS\.retaileraccounts = resellerList\('account', 3\);/);
   assert.match(app, /openReseller\(\+b\.dataset\.open, load, part\)/,
     'the row opens the half its screen is for');
 });
