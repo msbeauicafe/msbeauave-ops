@@ -4746,26 +4746,33 @@ const resellerList = (part, tier) => async (page) => {
         || r.name.toLowerCase().includes(term)
         || (r.full_name || '').toLowerCase().includes(term)
         || (r.email || '').toLowerCase().includes(term)));
-    $('#list', page).innerHTML = table(rows, [
-      // The name is the way in. A row with a button at the far end asks you to
-      // cross it to act on the thing you are already pointing at.
+    // The name is the way in. On the account list the dot is standing — green
+    // active, red inactive; on the Invoice list it is money — amber owing, red
+    // past due.
+    const cols = [
       { head: 'Reseller', cell: (r) => `
           <button class="nameopen" data-open="${r.id}">
-            ${Number(r.owed) > 0
-              ? `<span class="blip ${r.overdue ? 'late' : ''}" title="${
-                  r.overdue ? 'has a past-due invoice' : 'has an invoice waiting to be paid'
-                }"></span>` : ''}<b>${esc(r.name)}</b>${r.full_name
+            ${acct
+              ? `<span class="blip ${isInactive(r) ? 'off' : 'on'}" title="${
+                  isInactive(r) ? 'inactive' : 'active'}"></span>`
+              : (Number(r.owed) > 0
+                ? `<span class="blip ${r.overdue ? 'late' : ''}" title="${
+                    r.overdue ? 'has a past-due invoice' : 'has an invoice waiting to be paid'
+                  }"></span>` : '')}<b>${esc(r.name)}</b>${r.full_name
                   ? ` <span class="dim">· ${esc(r.full_name)}</span>` : ''}
           </button>${r.email ? `<div class="dim">${esc(r.email)}</div>` : ''}` },
       { head: 'Tier', cell: (r) => tierTag(r.tier) },
       { head: 'Standing', cell: (r) => activeTag(r) },
+    ];
+    if (!acct) cols.push(
       { head: 'Limit', n: true, cell: (r) => peso(r.credit_limit) },
       { head: 'Owes', n: true, cell: (r) => peso(r.owed) },
       { head: 'Payment record', cell: (r) => `<span class="dim">${r.paid_on_time} on time · ${
           r.late_this_quarter > 0
             ? `<span class="tag red">${r.late_this_quarter} late this quarter</span>`
             : 'none late this quarter'}</span>` },
-    ], 'No reseller accounts yet.');
+    );
+    $('#list', page).innerHTML = table(rows, cols, 'No reseller accounts yet.');
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openReseller(+b.dataset.open, load, part).catch(whoops)));
@@ -4779,8 +4786,11 @@ const resellerList = (part, tier) => async (page) => {
           : ' · open one to confirm a transfer, issue the receipt, or send the invoice again'
         }</span>
       <div class="dotkey">
-        <span><i class="blip"></i>owes money, not yet past due</span>
-        <span><i class="blip late"></i>past due</span>
+        ${acct
+          ? `<span><i class="blip on"></i>active</span>
+             <span><i class="blip off"></i>inactive</span>`
+          : `<span><i class="blip"></i>owes money, not yet past due</span>
+             <span><i class="blip late"></i>past due</span>`}
       </div></div>
     <div class="tools">
       <input type="search" id="find" placeholder="Search name or email…">
