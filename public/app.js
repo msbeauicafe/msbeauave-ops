@@ -4210,9 +4210,20 @@ SCREENS.birthdays = async (page) => {
   };
 
   // Whoever's birthday is actually today, pulled out under the date so the
-  // people to greet now are never buried in the month's grid.
+  // people to greet now are never buried in the month's grid — and, on its own
+  // line beneath, the soonest date still to come with whoever shares it.
   const byId = new Map([...thisRows, ...nextRows].map((r) => [String(r.id), r]));
   const todayRows = thisRows.filter((r) => r.bday === today);
+  const laterThis = thisRows.filter((r) => r.bday > today);
+  let nextLabel = '';
+  let nextRowsGroup = [];
+  if (laterThis.length) {
+    nextRowsGroup = laterThis.filter((r) => r.bday === laterThis[0].bday);
+    nextLabel = `${nameOf(thisMonth)} ${laterThis[0].bday}`;
+  } else if (nextRows.length) {
+    nextRowsGroup = nextRows.filter((r) => r.bday === nextRows[0].bday);
+    nextLabel = `${nameOf(nextMonth)} ${nextRows[0].bday}`;
+  }
 
   // One face, drawn the same wherever it lands — the queue in the middle or the
   // full month below. Its own month decides the date shown and how far off it is.
@@ -4245,6 +4256,9 @@ SCREENS.birthdays = async (page) => {
     ${todayRows.length ? `
       <div class="qlabel">${esc(nameOf(thisMonth))} ${today}</div>
       <div class="face-grid bdays qrow">${todayRows.map(cardHtml).join('')}</div>` : ''}
+    ${nextRowsGroup.length ? `
+      <div class="qlabel">${esc(nextLabel)}</div>
+      <div class="face-grid bdays qrow">${nextRowsGroup.map(cardHtml).join('')}</div>` : ''}
     <div class="panel" id="blist"></div>`;
 
   // Tapping a face opens the celebrant, not the account editor: the picture
