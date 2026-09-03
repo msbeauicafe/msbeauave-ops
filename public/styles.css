@@ -864,12 +864,7 @@ label.inline input { width: auto; }
 .face-card .strip .under { display: block; font-size: .55rem; color: var(--muted); }
 /* Birthday cards: a little taller than the door-clock face, to carry the date
    above the picture and the tier below the name. */
-.face-grid.bdays .face-card { height: auto; min-height: 148px; }
-.face-card .bdate {
-  font-size: .58rem; font-weight: 700; letter-spacing: .02em;
-  color: var(--rose-deep); line-height: 1;
-}
-.face-card.today .bdate { color: var(--success); }
+.face-grid.bdays .face-card { height: auto; min-height: 138px; justify-content: center; }
 .face-card .strip .tier {
   display: block; font-size: .5rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: .05em; margin-top: 1px;
