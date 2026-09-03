@@ -4134,7 +4134,7 @@ SCREENS.customers = async (page) => {
     ['reselleraccounts', 'Resellers'],
     ['distributoraccounts', 'Distributor'],
     ['retaileraccounts', 'Retailer'],
-    ['crm', 'Shop customers'],
+    ['crm', 'Customers shop account'],
     ['birthdays', 'Birthdays'],
   ];
   if (!PANELS.some(([id]) => id === customerPanel)) customerPanel = 'reselleraccounts';
@@ -8588,11 +8588,10 @@ const STANDING = {
 SCREENS.crm = async (page) => {
   let term = '';
   page.innerHTML = `
-    <div class="head"><h2>Shop customers</h2>
+    <div class="head"><h2>Customers shop account</h2>
       <span class="hint">Everyone with a loyalty account, however they got one</span></div>
     <div class="tools">
       <input type="search" id="find" placeholder="Search by name or number…">
-      <button class="btn" id="add">＋ Register someone</button>
     </div>
     <div class="tiles" id="tiles"></div>
     <div class="panel" id="list"></div>`;
@@ -8681,33 +8680,6 @@ SCREENS.crm = async (page) => {
     term = e.target.value;
     load().catch(whoops);
   });
-  $('#add', page).addEventListener('click', () => {
-    dialog(`
-      <h3>Register a customer</h3>
-      <div class="dim">Takes a name and a number. They set their own password
-        later by joining in the app with the same number — their points will be
-        waiting.</div>
-      <div class="row mt">
-        <div style="flex:2"><label>Name</label><input id="n_name" type="text"></div>
-        <div><label>Mobile number</label><input id="n_phone" type="text"
-          placeholder="09XX XXX XXXX"></div>
-      </div>
-      <div><label>Note</label><input id="n_note" type="text"
-        placeholder="Optional"></div>
-      <div class="mt right"><button class="btn" id="n_go">Register</button></div>`);
-
-    $('#n_go').addEventListener('click', async () => {
-      try {
-        await POST('/api/customers', {
-          name: $('#n_name').value, phone: $('#n_phone').value, note: $('#n_note').value,
-        });
-        closeDialog();
-        notice('Registered 🌸', 'good');
-        load();
-      } catch (e) { whoops(e); }
-    });
-  });
-
   await load();
   repeat(load, 30000);
 };
