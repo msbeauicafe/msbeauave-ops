@@ -1680,7 +1680,9 @@ SCREENS.purchaseorders = async (page) => {
     const links = [linkBtn(s.chat_link, '💬 Open chat'), linkBtn(s.fb_link, '📘 Facebook')]
       .filter(Boolean).join(' ');
     box.innerHTML = `${rows || '<div class="dim">No details on file for this supplier yet.</div>'}
-      ${links ? `<div class="mt">${links}</div>` : ''}`;
+      <div class="mt">${links}
+        <button class="btn sm quiet" id="sup_edit">✎ Edit supplier</button></div>`;
+    $('#sup_edit', page)?.addEventListener('click', () => supplierForm(selectedSup));
   };
 
 
@@ -1820,31 +1822,35 @@ SCREENS.purchaseorders = async (page) => {
   // answering a purchase order it ticks that order off as it goes.
   // -------------------------------------------------------------------------
 
-  $('#po_newsup', page).addEventListener('click', () => {
+  // One form for both a new supplier and an edit of an existing one — the same
+  // fields, pre-filled when there is an id to keep.
+  const supplierForm = (existing) => {
+    const e = existing || {};
     dialog(`
-      <h3>New supplier</h3>
+      <h3>${existing ? 'Edit supplier' : 'New supplier'}</h3>
       <div class="row">
-        <div style="flex:2"><label>Company name</label><input id="s_name" type="text" autofocus></div>
-        <div style="flex:2"><label>Supplier name</label><input id="s_person" type="text"></div>
-        <div style="flex:2"><label>Brand name</label><input id="s_brand" type="text"></div>
+        <div style="flex:2"><label>Company name</label><input id="s_name" type="text" value="${esc(e.name || '')}" autofocus></div>
+        <div style="flex:2"><label>Supplier name</label><input id="s_person" type="text" value="${esc(e.supplier_name || '')}"></div>
+        <div style="flex:2"><label>Brand name</label><input id="s_brand" type="text" value="${esc(e.brand_name || '')}"></div>
       </div>
       <div class="row">
-        <div><label>TIN no.</label><input id="s_tin" type="text"></div>
-        <div style="flex:2"><label>Address</label><input id="s_addr" type="text"></div>
-        <div><label>Contact #</label><input id="s_contact" type="text"></div>
+        <div><label>TIN no.</label><input id="s_tin" type="text" value="${esc(e.tin || '')}"></div>
+        <div style="flex:2"><label>Address</label><input id="s_addr" type="text" value="${esc(e.address || '')}"></div>
+        <div><label>Contact #</label><input id="s_contact" type="text" value="${esc(e.contact || '')}"></div>
       </div>
       <div class="row">
         <div style="flex:2"><label>Group-chat link</label>
-          <input id="s_chat" type="text" placeholder="https://m.me/… or the group chat link"></div>
+          <input id="s_chat" type="text" value="${esc(e.chat_link || '')}" placeholder="https://m.me/… or the group chat link"></div>
         <div style="flex:2"><label>Facebook account</label>
-          <input id="s_fb" type="text" placeholder="https://facebook.com/…"></div>
+          <input id="s_fb" type="text" value="${esc(e.fb_link || '')}" placeholder="https://facebook.com/…"></div>
       </div>
       <div class="dim mt">The company, brand, TIN and address print on the purchase
         order; the rest is for reaching them. Leave blank what they have not given you.</div>
       <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
     $('#s_save').addEventListener('click', async () => {
       try {
-        await POST('/api/suppliers', {
+        const saved = await POST('/api/suppliers', {
+          id: e.id || null,
           name: $('#s_name').value, brand_name: $('#s_brand').value,
           tin: $('#s_tin').value, address: $('#s_addr').value,
           contact: $('#s_contact').value, supplier_name: $('#s_person').value,
@@ -1852,10 +1858,13 @@ SCREENS.purchaseorders = async (page) => {
         });
         notice('Supplier saved 🌸', 'good');
         closeDialog();
+        if (saved && saved.id) selectedSup = { id: saved.id };
         drawSuppliers();
-      } catch (e) { whoops(e); }
+      } catch (err) { whoops(err); }
     });
-  });
+  };
+
+  $('#po_newsup', page).addEventListener('click', () => supplierForm(null));
 
 
   $('#po_new', page).addEventListener('click', async () => {
