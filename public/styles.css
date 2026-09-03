@@ -862,10 +862,32 @@ label.inline input { width: auto; }
   overflow: hidden; font-size: .58rem; line-height: 1.15; letter-spacing: .01em;
 }
 .face-card .strip .under { display: block; font-size: .55rem; color: var(--muted); }
+/* Birthday cards: a little taller than the door-clock face, to carry the date
+   above the picture and the tier below the name. */
+.face-grid.bdays .face-card { height: auto; min-height: 148px; }
+.face-card .bdate {
+  font-size: .58rem; font-weight: 700; letter-spacing: .02em;
+  color: var(--rose-deep); line-height: 1;
+}
+.face-card.today .bdate { color: var(--success); }
+.face-card .strip .tier {
+  display: block; font-size: .5rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; margin-top: 1px;
+}
+.face-card .strip .tier1 { color: var(--muted); }
+.face-card .strip .tier2 { color: var(--rose-deep); }
+.face-card .strip .tier3 { color: var(--success); }
 /* Today's birthday, lit up in the house green so it is the one the eye lands on. */
 .face-card.today { border-color: var(--success); background: #f2f8f3; }
 .face-card.today .strip .under { color: var(--success); font-weight: 600; }
 .face-card.stopped { opacity: .55; cursor: not-allowed; }
+/* The two month tiles are buttons: one picks this month, the other next, and
+   the chosen one is ringed. */
+.tile.pick {
+  cursor: pointer; text-align: left; font: inherit; color: inherit;
+  background: var(--card); display: block; width: 100%;
+}
+.tile.pick.sel { border-color: var(--rose-deep); box-shadow: inset 0 0 0 2px var(--rose-blush); }
 .face-card.stopped .face { background: #f3dddd; color: var(--danger); }
 .face-card.stopped .strip .under { color: var(--danger); }
 .face-card .strip .owing { color: var(--warning); }
