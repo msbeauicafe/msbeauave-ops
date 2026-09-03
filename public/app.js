@@ -8661,17 +8661,20 @@ SCREENS.crm = async (page) => {
   const load = async () => {
     const d = await GET(`/api/customers?q=${encodeURIComponent(term)}`);
 
+    // How many carry each channel, so the reach across Facebook and the
+    // marketplaces can be seen at a glance and filled in where it is missing.
+    const has = (k) => d.customers.filter((c) => c[k]).length;
     $('#tiles', page).innerHTML = `
       <div class="tile"><div class="big">${count(d.counts.all)}</div>
         <div class="label">On the list</div></div>
-      <div class="tile good"><div class="big">${count(d.counts.active)}</div>
-        <div class="label">Bought in the last month</div></div>
-      <div class="tile warn"><div class="big">${count(d.counts.slipping)}</div>
-        <div class="label">Slipping — a month or more</div></div>
-      <div class="tile bad"><div class="big">${count(d.counts.lapsed)}</div>
-        <div class="label">Lapsed — three months or more</div></div>
-      <div class="tile"><div class="big">${count(d.points)}</div>
-        <div class="label">Points owed across everyone</div></div>`;
+      <div class="tile"><div class="big">${has('fb_link')}</div>
+        <div class="label">Have a Facebook link</div></div>
+      <div class="tile"><div class="big">${has('shopee_link')}</div>
+        <div class="label">Have a Shopee link</div></div>
+      <div class="tile"><div class="big">${has('tiktok_link')}</div>
+        <div class="label">Have a TikTok link</div></div>
+      <div class="tile"><div class="big">${has('lazada_link')}</div>
+        <div class="label">Have a Lazada link</div></div>`;
 
     $('#list', page).innerHTML = table(d.customers, [
       { head: 'Name', cell: (c) => `<b>${esc(c.name)}</b>`
