@@ -880,6 +880,9 @@ label.inline input { width: auto; }
 }
 .face-grid.qrow { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--rose-soft); }
 .face-grid.qrow .face-card { border-color: var(--rose-deep); }
+/* One dated section under the next, parted by a hairline, all the way down. */
+.bday-day { padding: 4px 0 14px; border-bottom: 1px solid var(--rose-soft); }
+.bday-day:last-child { border-bottom: 0; }
 .face-card .bdate {
   font-size: 1.2rem; font-weight: 800; letter-spacing: .01em;
   color: var(--rose-deep); line-height: 1;
