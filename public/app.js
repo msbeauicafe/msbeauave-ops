@@ -8676,15 +8676,19 @@ SCREENS.crm = async (page) => {
         <div style="flex:2"><label>Facebook name</label>
           <input id="s_fbname" type="text" value="${esc(c.fb_name || '')}"></div>
         <div style="flex:3"><label>Facebook link</label>
-          <input id="s_fblink" type="text" value="${esc(c.fb_link || '')}" placeholder="https://facebook.com/…"></div>
+          <div class="linkfield"><input id="s_fblink" type="text" value="${esc(c.fb_link || '')}"
+            placeholder="https://facebook.com/…"><button class="btn sm quiet" data-copy="s_fblink">Copy</button></div></div>
       </div>
       <div class="row">
         <div><label>Shopee link</label>
-          <input id="s_shopee" type="text" value="${esc(c.shopee_link || '')}"></div>
+          <div class="linkfield"><input id="s_shopee" type="text" value="${esc(c.shopee_link || '')}">
+            <button class="btn sm quiet" data-copy="s_shopee">Copy</button></div></div>
         <div><label>TikTok link</label>
-          <input id="s_tiktok" type="text" value="${esc(c.tiktok_link || '')}"></div>
+          <div class="linkfield"><input id="s_tiktok" type="text" value="${esc(c.tiktok_link || '')}">
+            <button class="btn sm quiet" data-copy="s_tiktok">Copy</button></div></div>
         <div><label>Lazada link</label>
-          <input id="s_lazada" type="text" value="${esc(c.lazada_link || '')}"></div>
+          <div class="linkfield"><input id="s_lazada" type="text" value="${esc(c.lazada_link || '')}">
+            <button class="btn sm quiet" data-copy="s_lazada">Copy</button></div></div>
       </div>
       <div class="mt right"><button class="btn sm" id="s_save">Save links</button></div>
 
@@ -8719,6 +8723,15 @@ SCREENS.crm = async (page) => {
         load();
       } catch (e) { whoops(e); }
     });
+
+    // Copy the link as typed, straight to the clipboard, so it can be pasted
+    // into a chat without leaving the account.
+    $$('[data-copy]', $('#dialog')).forEach((b) => b.addEventListener('click', async () => {
+      const link = $(`#${b.dataset.copy}`).value.trim();
+      if (!link) return notice('Nothing to copy there yet.', 'bad');
+      try { await navigator.clipboard.writeText(link); notice('Link copied 🌸', 'good'); }
+      catch { notice('Could not copy — select it and copy by hand.', 'bad'); }
+    }));
   };
 
   $('#find', page).addEventListener('input', (e) => {

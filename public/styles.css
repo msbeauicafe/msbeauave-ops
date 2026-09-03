@@ -1019,6 +1019,10 @@ label.inline input { width: auto; }
 }
 .silink:hover { filter: brightness(1.1); }
 .silink.off { background: var(--rose-soft); color: var(--muted); opacity: .6; cursor: default; }
+/* A link field with a Copy beside it. */
+.linkfield { display: flex; gap: 6px; align-items: center; }
+.linkfield input { flex: 1; min-width: 0; }
+.linkfield .btn { flex: 0 0 auto; }
 .blip.on  { background: var(--success); box-shadow: none; animation: none; }
 .blip.off { background: var(--danger);  box-shadow: none; animation: none; }
 @keyframes blip {
