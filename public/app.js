@@ -1599,26 +1599,25 @@ SCREENS.purchaseorders = async (page) => {
     <div class="head"><h2>Purchase order</h2>
       <span class="hint">What has been asked of a supplier, and what is still short</span></div>
 
-    <div class="panel">
-      <h3>Supplier information</h3>
-      <div class="row mt">
-        <div style="flex:2"><label>Supplier</label>
+    <div class="po-split">
+      <div class="panel po-sup">
+        <h3>Supplier information</h3>
+        <div class="mt"><label>Supplier</label>
           <select id="po_supplier"></select></div>
-        <div style="flex:0 0 auto"><label>&nbsp;</label>
-          <div><button class="btn line" id="po_newsup">＋ New supplier</button></div></div>
+        <div class="mt"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
+        <div id="po_supinfo" class="mt"></div>
       </div>
-      <div id="po_supinfo" class="mt"></div>
-    </div>
 
-    <div class="panel mt">
-      <div class="head" style="margin:0"><h3>Purchase order</h3>
-        <button class="btn" id="po_new">＋ Raise a purchase order</button></div>
-      <div class="dim mt">A purchase order carries no prices: it says what is
-        wanted and how much of it, and what it costs lands when the goods are
-        received. Receiving against a line records the batch and the cost
-        exactly as receiving anything does — it also notes how much of the
-        order that delivery covered.</div>
-      <div id="po_list" class="mt"></div>
+      <div class="panel po-orders">
+        <div class="head" style="margin:0"><h3>Purchase order</h3>
+          <button class="btn" id="po_new">＋ Raise a purchase order</button></div>
+        <div class="dim mt">A purchase order carries no prices: it says what is
+          wanted and how much of it, and what it costs lands when the goods are
+          received. Receiving against a line records the batch and the cost
+          exactly as receiving anything does — it also notes how much of the
+          order that delivery covered.</div>
+        <div id="po_list" class="mt"></div>
+      </div>
     </div>`;
 
   const drawSuppliers = async () => {
