@@ -1022,6 +1022,16 @@ label.inline input { width: auto; }
 }
 .silink:hover { filter: brightness(1.1); }
 .silink.off { background: var(--rose-soft); color: var(--muted); opacity: .6; cursor: default; }
+/* A scrollable list of suppliers, the chosen one lit. */
+.suplist { max-height: 340px; overflow-y: auto; border: 1px solid var(--rose-soft); border-radius: 10px; }
+.suprow {
+  display: block; width: 100%; text-align: left; padding: 9px 12px; border: 0;
+  border-bottom: 1px solid var(--rose-blush); background: var(--card); cursor: pointer;
+  font: inherit; color: var(--ink);
+}
+.suprow:last-child { border-bottom: 0; }
+.suprow:hover { background: var(--rose-blush); }
+.suprow.on { background: var(--rose-blush); box-shadow: inset 3px 0 0 var(--rose-deep); }
 /* Purchase order page: supplier information beside the orders. */
 .po-split { display: flex; gap: 20px; align-items: flex-start; }
 .po-split .po-sup { flex: 0 0 340px; }
