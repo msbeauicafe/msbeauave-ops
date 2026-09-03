@@ -4209,10 +4209,10 @@ SCREENS.birthdays = async (page) => {
     return `in ${n} days`;
   };
 
-  // The two coming soonest — today's celebrant included — pulled to the middle
-  // as their own pair, so the very next to greet is never buried in the grid.
+  // Whoever's birthday is actually today, pulled out under the date so the
+  // people to greet now are never buried in the month's grid.
   const byId = new Map([...thisRows, ...nextRows].map((r) => [String(r.id), r]));
-  const upcoming = [...thisRows.filter((r) => r.bday >= today), ...nextRows].slice(0, 2);
+  const todayRows = thisRows.filter((r) => r.bday === today);
 
   // One face, drawn the same wherever it lands — the queue in the middle or the
   // full month below. Its own month decides the date shown and how far off it is.
@@ -4242,9 +4242,9 @@ SCREENS.birthdays = async (page) => {
       <button class="tile pick" data-m="next"><div class="big">${nextRows.length}</div>
         <div class="label">Upcoming · ${esc(nameOf(nextMonth))}</div></button>
     </div>
-    ${upcoming.length ? `
+    ${todayRows.length ? `
       <div class="qlabel">${esc(nameOf(thisMonth))} ${today}</div>
-      <div class="face-grid bdays qrow">${upcoming.map(cardHtml).join('')}</div>` : ''}
+      <div class="face-grid bdays qrow">${todayRows.map(cardHtml).join('')}</div>` : ''}
     <div class="panel" id="blist"></div>`;
 
   // Tapping a face opens the celebrant, not the account editor: the picture
