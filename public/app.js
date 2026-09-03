@@ -1659,14 +1659,12 @@ SCREENS.purchaseorders = async (page) => {
     box.innerHTML = table(list, [
       { head: 'Supplier', cell: (s) => `<button class="nameopen" data-sup="${s.id}"><b>${
           esc(s.name)}</b></button>${s.brand_name ? `<div class="dim">${esc(s.brand_name)}</div>` : ''}` },
-      { head: 'Supplier name', cell: (s) => s.supplier_name ? esc(s.supplier_name) : dash },
       { head: 'Tier', cell: (s) => s.tier === 'distributor'
           ? tag('Distributor', 'pink') : tag('Main', 'grey') },
       { head: 'Standing', cell: (s) => s.active === false
           ? tag('inactive', 'grey') : tag('active', 'green') },
       { head: 'TIN', cell: (s) => s.tin ? esc(s.tin) : dash },
       { head: 'Address', cell: (s) => s.address ? esc(s.address) : dash },
-      { head: 'Contact', cell: (s) => s.contact ? esc(s.contact) : dash },
       { head: 'FB', cell: (s) => socialLink(s.fb_link, 'fb') },
       { head: 'Chat', cell: (s) => chatBadge(s.chat_link) },
     ], term ? 'No suppliers match that.' : 'No suppliers yet.');
