@@ -8591,7 +8591,7 @@ const STANDING = {
 const SOCIALS = {
   fb: { label: 'Facebook', glyph: 'f', color: '#1877F2' },
   shopee: { label: 'Shopee', glyph: 'S', color: '#EE4D2D' },
-  tiktok: { label: 'TikTok', glyph: '♪', color: '#111' },
+  tiktok: { label: 'TikTok', glyph: 'T', color: '#111' },
   lazada: { label: 'Lazada', glyph: 'L', color: '#0F146D' },
 };
 const socialLink = (url, kind) => {
