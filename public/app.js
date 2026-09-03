@@ -8701,27 +8701,12 @@ SCREENS.crm = async (page) => {
   const openCustomer = async (id) => {
     let c;
     try { c = await GET(`/api/customers/${id}`); } catch (e) { return whoops(e); }
-    const [kind] = STANDING[c.standing] ?? ['grey'];
 
     dialog(`
       <h3>${esc(c.name)}</h3>
       <div class="dim">${esc(c.phone || '')} · joined ${onDay(c.joined_at)}
         ${c.joined_via === 'counter' ? 'at the counter' : 'in the app'}
         ${c.claimed ? '' : ' · has not claimed the account yet'}</div>
-
-      <div class="tiles mt">
-        <div class="tile"><div class="big">${count(c.orders)}</div><div class="label">Orders</div></div>
-        <div class="tile"><div class="big">${peso(c.spent)}</div><div class="label">Spent</div></div>
-        <div class="tile"><div class="big">${count(c.points)}</div>
-          <div class="label">Points · ${esc(c.tier)}</div></div>
-      </div>
-      <div class="tags">${tag(c.standing, kind)}
-        ${c.last_bought ? `<span class="dim">last bought ${onDay(c.last_bought)}</span>` : ''}</div>
-
-      <div><label>Note</label>
-        <input id="c_note" type="text" value="${esc(c.note || '')}"
-          placeholder="Skin type, what they like, anything worth remembering"></div>
-      <div class="mt right"><button class="btn sm" id="c_save">Save note</button></div>
 
       <h3 class="mt">Where to reach them</h3>
       <div class="dim">Their Facebook name, and the links to find them. Any may be left blank.</div>
@@ -8756,14 +8741,6 @@ SCREENS.crm = async (page) => {
       { head: 'Total', n: true, cell: (h) => peso(h.total) },
       { head: 'Points', n: true, cell: (h) => count(h.points) },
     ], 'Nothing yet');
-
-    $('#c_save').addEventListener('click', async () => {
-      try {
-        await PUT(`/api/customers/${id}/note`, { note: $('#c_note').value });
-        notice('Saved 🌸', 'good');
-        load();
-      } catch (e) { whoops(e); }
-    });
 
     $('#s_save').addEventListener('click', async () => {
       try {
