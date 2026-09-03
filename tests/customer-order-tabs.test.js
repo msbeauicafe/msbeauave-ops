@@ -107,6 +107,7 @@ test('the account splits into the half you came for', () => {
     Tier: 'acct',
     'Profile picture': 'acct',
     'Business details': 'acct',
+    'Where to reach them': 'acct',
     'Remove this account': 'acct',
     'Confirm the bank payment': 'money',
     'Bank transfer proofs': 'money',
