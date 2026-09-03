@@ -881,7 +881,7 @@ label.inline input { width: auto; }
 .face-grid.qrow { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--rose-soft); }
 .face-grid.qrow .face-card { border-color: var(--rose-deep); }
 .face-card .bdate {
-  font-size: .62rem; font-weight: 700; letter-spacing: .02em;
+  font-size: .9rem; font-weight: 800; letter-spacing: .01em;
   color: var(--rose-deep); line-height: 1;
 }
 .face-card.today .bdate { color: var(--success); }
