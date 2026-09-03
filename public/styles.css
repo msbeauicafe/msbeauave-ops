@@ -888,6 +888,27 @@ label.inline input { width: auto; }
   background: var(--card); display: block; width: 100%;
 }
 .tile.pick.sel { border-color: var(--rose-deep); box-shadow: inset 0 0 0 2px var(--rose-blush); }
+
+/* The birthday card — a celebrant, not the account editor. The picture large,
+   the day larger still under it, and a greeting to read before one is sent. */
+.dialog.birthday { max-width: 380px; }
+.bcard { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 4px 6px 8px; }
+.bcard .bface {
+  width: 150px; height: 150px; border-radius: 50%; object-fit: cover;
+  background: var(--rose-blush); color: var(--rose-deep);
+  display: grid; place-items: center; font-size: 3rem; font-weight: 700; letter-spacing: .03em;
+}
+.bcard.today .bface { box-shadow: 0 0 0 4px #f2f8f3, 0 0 0 6px var(--success); }
+.bcard .bname { margin: 4px 0 0; font-size: 1.35rem; line-height: 1.15; }
+.bcard .btier { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.bcard .btier.tier1 { color: var(--muted); }
+.bcard .btier.tier2 { color: var(--rose-deep); }
+.bcard .btier.tier3 { color: var(--success); }
+.bcard .bbig { font-size: 2.1rem; font-weight: 800; color: var(--rose-deep); margin-top: 4px; }
+.bcard.today .bbig { color: var(--success); }
+.bcard .bwhen { color: var(--muted); font-size: .92rem; margin-top: -4px; }
+.bcard .bgreet { margin-top: 8px; font-size: 1.02rem; line-height: 1.45; }
+.mt.center { text-align: center; }
 .face-card.stopped .face { background: #f3dddd; color: var(--danger); }
 .face-card.stopped .strip .under { color: var(--danger); }
 .face-card .strip .owing { color: var(--warning); }

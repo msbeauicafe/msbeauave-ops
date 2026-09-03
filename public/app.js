@@ -4222,10 +4222,31 @@ SCREENS.birthdays = async (page) => {
     </div>
     <div class="panel" id="blist"></div>`;
 
+  // Tapping a face opens the celebrant, not the account editor: the picture
+  // large, the day large under it, and a greeting — a card to look at before a
+  // message goes out, with a quiet way through to the full account if needed.
+  const openBirthday = (r, mName, whenStr, isToday) => {
+    const face = r.photo_at
+      ? `<img class="bface" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
+      : `<span class="bface">${esc(initials(r.name))}</span>`;
+    dialog(`
+      <div class="bcard ${isToday ? 'today' : ''}">
+        ${face}
+        <h2 class="bname">${esc(r.name)}</h2>
+        <div class="btier tier${r.tier}">${esc(tierName(r.tier))}</div>
+        <div class="bbig">🎂 ${mName} ${r.bday}</div>
+        <div class="bwhen">${whenStr}</div>
+        <div class="bgreet">Happy birthday from everyone at MS BEAU AVE! 🌸<br>
+          <span class="dim">A greeting or a little treat goes a long way.</span></div>
+        <div class="mt center"><button class="btn quiet" data-account="${r.id}">Open account</button></div>
+      </div>`, 'birthday');
+    $('[data-account]', $('#dialog')).addEventListener('click',
+      () => openReseller(r.id, () => SCREENS.birthdays(page)).catch(whoops));
+  };
+
   // Their faces, the way the door clock lays them out — a grid that wraps to fit
   // the page. Each carries its tier, so a Reseller, Distributor or Retailer is
-  // told apart at a glance, and the day with how far off it is. The card opens
-  // the account the same as anywhere else the name appears.
+  // told apart at a glance, and the day with how far off it is.
   const draw = (which) => {
     const isThis = which === 'this';
     const rows = isThis ? thisRows : nextRows;
@@ -4245,8 +4266,10 @@ SCREENS.birthdays = async (page) => {
               <span class="under">${whenText(r, isThis)}</span></span>
           </button>`).join('')}</div>`
       : `<div class="dim" style="padding:16px">No birthdays in ${mName}.</div>`;
-    $$('[data-open]', page).forEach((b) => b.addEventListener('click',
-      () => openReseller(+b.dataset.open, () => SCREENS.birthdays(page)).catch(whoops)));
+    $$('[data-open]', page).forEach((b) => b.addEventListener('click', () => {
+      const r = rows.find((x) => String(x.id) === b.dataset.open);
+      openBirthday(r, mName, whenText(r, isThis), isThis && r.bday === today);
+    }));
   };
 
   $$('[data-m]', page).forEach((b) => b.addEventListener('click', () => draw(b.dataset.m)));
