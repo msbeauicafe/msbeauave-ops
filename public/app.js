@@ -4173,6 +4173,8 @@ SCREENS.birthdays = async (page) => {
   // roll into the month before it, so no timezone is needed to hold it.
   const nameOf = (m) => new Intl.DateTimeFormat('en-US', { month: 'long' })
     .format(new Date(2000, m - 1, 1));
+  const shortOf = (m) => new Intl.DateTimeFormat('en-US', { month: 'short' })
+    .format(new Date(2000, m - 1, 1));
   const daysThisMonth = new Date(year, thisMonth, 0).getDate();
 
   // Two letters off the name, so a card with no picture is still a face to
@@ -4207,6 +4209,28 @@ SCREENS.birthdays = async (page) => {
     return `in ${n} days`;
   };
 
+  // The two coming soonest — today's celebrant included — pulled to the middle
+  // as their own pair, so the very next to greet is never buried in the grid.
+  const byId = new Map([...thisRows, ...nextRows].map((r) => [String(r.id), r]));
+  const upcoming = [...thisRows.filter((r) => r.bday >= today), ...nextRows].slice(0, 2);
+
+  // One face, drawn the same wherever it lands — the queue in the middle or the
+  // full month below. Its own month decides the date shown and how far off it is.
+  const cardHtml = (r) => {
+    const isThis = r.bmonth === thisMonth;
+    const isToday = isThis && r.bday === today;
+    return `<button class="face-card ${isToday ? 'today' : ''}" data-open="${r.id}"
+        title="${esc(r.name)} — ${nameOf(r.bmonth)} ${r.bday}">
+        <span class="bdate">${shortOf(r.bmonth)} ${r.bday}</span>
+        ${r.photo_at
+          ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
+          : `<span class="face">${esc(initials(r.name))}</span>`}
+        <span class="strip"><b>${esc(r.name)}</b>
+          <span class="tier tier${r.tier}">${esc(tierName(r.tier))}</span>
+          <span class="under">${whenText(r, isThis)}</span></span>
+      </button>`;
+  };
+
   page.innerHTML = `
     <div class="head"><h2>Birthdays</h2>
       <span class="hint">Whose accounts have a birthday coming — tap a month to see
@@ -4218,6 +4242,9 @@ SCREENS.birthdays = async (page) => {
       <button class="tile pick" data-m="next"><div class="big">${nextRows.length}</div>
         <div class="label">Upcoming · ${esc(nameOf(nextMonth))}</div></button>
     </div>
+    ${upcoming.length ? `
+      <div class="qlabel">Next up</div>
+      <div class="face-grid bdays qrow">${upcoming.map(cardHtml).join('')}</div>` : ''}
     <div class="panel" id="blist"></div>`;
 
   // Tapping a face opens the celebrant, not the account editor: the picture
@@ -4245,29 +4272,24 @@ SCREENS.birthdays = async (page) => {
   // Their faces, the way the door clock lays them out — a grid that wraps to fit
   // the page. Each carries its tier, so a Reseller, Distributor or Retailer is
   // told apart at a glance, and the day with how far off it is.
+  // Every face — the pair up top and each month below — opens the celebrant.
+  const bindFaces = (scope) => $$('[data-open]', scope).forEach((b) => b.addEventListener('click', () => {
+    const r = byId.get(b.dataset.open);
+    const isThis = r.bmonth === thisMonth;
+    openBirthday(r, nameOf(r.bmonth), whenText(r, isThis), isThis && r.bday === today);
+  }));
+
   const draw = (which) => {
-    const isThis = which === 'this';
-    const rows = isThis ? thisRows : nextRows;
-    const mName = nameOf(isThis ? thisMonth : nextMonth);
+    const rows = which === 'this' ? thisRows : nextRows;
+    const mName = nameOf(which === 'this' ? thisMonth : nextMonth);
     $$('[data-m]', page).forEach((b) => b.classList.toggle('sel', b.dataset.m === which));
     $('#blist', page).innerHTML = rows.length
-      ? `<div class="face-grid bdays">${rows.map((r) => `
-          <button class="face-card ${isThis && r.bday === today ? 'today' : ''}" data-open="${r.id}"
-            title="${esc(r.name)} — ${mName} ${r.bday}">
-            ${r.photo_at
-              ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
-              : `<span class="face">${esc(initials(r.name))}</span>`}
-            <span class="strip"><b>${esc(r.name)}</b>
-              <span class="tier tier${r.tier}">${esc(tierName(r.tier))}</span>
-              <span class="under">${whenText(r, isThis)}</span></span>
-          </button>`).join('')}</div>`
+      ? `<div class="face-grid bdays">${rows.map(cardHtml).join('')}</div>`
       : `<div class="dim" style="padding:16px">No birthdays in ${mName}.</div>`;
-    $$('[data-open]', page).forEach((b) => b.addEventListener('click', () => {
-      const r = rows.find((x) => String(x.id) === b.dataset.open);
-      openBirthday(r, mName, whenText(r, isThis), isThis && r.bday === today);
-    }));
+    bindFaces($('#blist', page));
   };
 
+  bindFaces(page);   // the Next-up pair, drawn once above the grid
   $$('[data-m]', page).forEach((b) => b.addEventListener('click', () => draw(b.dataset.m)));
   draw('this');
 };
