@@ -5162,7 +5162,10 @@ async function openReseller(id, reload, part = 'account') {
         <input id="d_chat" type="text" placeholder="https://m.me/… or the group chat link"
           value="${esc(r.chat_link || '')}">
         <div class="dim" style="font-size:.72rem;margin-top:2px">Where their order form and
-          invoice are sent — it becomes a button on the form.</div></div>
+          invoice are sent — it becomes a button on the form.</div>
+        ${r.chat_link ? `<div style="margin-top:6px"><a class="btn sm quiet" target="_blank"
+          rel="noopener noreferrer" href="${esc(/^https?:\/\//i.test(r.chat_link)
+            ? r.chat_link : `https://${r.chat_link}`)}">💬 Open chat</a></div>` : ''}</div>
       <div style="flex:0 0 auto"><label>&nbsp;</label>
         <button class="btn" id="d_details">Save</button></div>
     </div>
