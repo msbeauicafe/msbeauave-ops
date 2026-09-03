@@ -1598,20 +1598,28 @@ SCREENS.purchaseorders = async (page) => {
   page.innerHTML = `
     <div class="head"><h2>Purchase order</h2>
       <span class="hint">What has been asked of a supplier, and what is still short</span></div>
+
     <div class="panel">
-      <div class="dim">A purchase order carries no prices: it says what is
+      <h3>Supplier information</h3>
+      <div class="row mt">
+        <div style="flex:2"><label>Supplier</label>
+          <select id="po_supplier"></select></div>
+        <div style="flex:0 0 auto"><label>&nbsp;</label>
+          <div><button class="btn line" id="po_newsup">＋ New supplier</button></div></div>
+      </div>
+      <div id="po_supinfo" class="mt"></div>
+    </div>
+
+    <div class="panel mt">
+      <div class="head" style="margin:0"><h3>Purchase order</h3>
+        <button class="btn" id="po_new">＋ Raise a purchase order</button></div>
+      <div class="dim mt">A purchase order carries no prices: it says what is
         wanted and how much of it, and what it costs lands when the goods are
         received. Receiving against a line records the batch and the cost
         exactly as receiving anything does — it also notes how much of the
         order that delivery covered.</div>
-      <div class="row mt">
-        <div style="flex:2"><label>Supplier</label>
-          <select id="po_supplier"></select></div>
-        <div style="flex:0 0 auto"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
-        <div style="flex:0 0 auto"><button class="btn" id="po_new">＋ Raise a purchase order</button></div>
-      </div>
-      <div id="po_supinfo" class="mt"></div>
-      <div id="po_list" class="mt"></div></div>`;
+      <div id="po_list" class="mt"></div>
+    </div>`;
 
   const drawSuppliers = async () => {
     suppliers = await GET('/api/suppliers').catch(() => []);
@@ -1622,9 +1630,9 @@ SCREENS.purchaseorders = async (page) => {
     drawSupInfo();
   };
 
-  // The chosen supplier's own particulars — everything that prints at the top of
-  // their purchase order — kept in view beside the orders so who is being asked
-  // is never a guess.
+  // The chosen supplier's own particulars, shown under the picker — the company,
+  // brand, TIN, address and contact that print on the order, and buttons through
+  // to their group chat and Facebook.
   const drawSupInfo = () => {
     const box = $('#po_supinfo', page);
     if (!box) return;
@@ -1640,9 +1648,8 @@ SCREENS.purchaseorders = async (page) => {
       rel="noopener noreferrer" href="${esc(norm(url))}">${label}</a>` : '';
     const links = [linkBtn(s.chat_link, '💬 Open chat'), linkBtn(s.fb_link, '📘 Facebook')]
       .filter(Boolean).join(' ');
-    box.innerHTML = `<div class="panel"><h3>Supplier information</h3>
-      ${rows || '<div class="dim">No details on file for this supplier yet.</div>'}
-      ${links ? `<div class="mt">${links}</div>` : ''}</div>`;
+    box.innerHTML = `${rows || '<div class="dim">No details on file for this supplier yet.</div>'}
+      ${links ? `<div class="mt">${links}</div>` : ''}`;
   };
 
 
