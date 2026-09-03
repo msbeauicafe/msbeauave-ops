@@ -1661,7 +1661,7 @@ SCREENS.purchaseorders = async (page) => {
           esc(s.name)}</b></button>${s.brand_name ? `<div class="dim">${esc(s.brand_name)}</div>` : ''}` },
       { head: 'Tier', cell: (s) => s.tier === 'distributor'
           ? tag('Distributor', 'pink') : tag('Main', 'grey') },
-      { head: 'Standing', cell: (s) => s.active === false
+      { head: 'Standing', cell: (s) => s.active_standing === false
           ? tag('inactive', 'grey') : tag('active', 'green') },
       { head: 'TIN', cell: (s) => s.tin ? esc(s.tin) : dash },
       { head: 'Address', cell: (s) => s.address ? esc(s.address) : dash },
@@ -1840,8 +1840,8 @@ SCREENS.purchaseorders = async (page) => {
             <option value="distributor"${e.tier === 'distributor' ? ' selected' : ''}>Distributor</option>
           </select></div>
         <div><label>Standing</label>
-          <label class="check"><input id="s_active" type="checkbox"${
-            e.active === false ? '' : ' checked'}> Active</label></div>
+          <div class="dim" style="padding-top:8px">Worked out from supply — a
+            supplier reads inactive once three months pass with no order.</div></div>
       </div>
       <div class="dim mt">The company, brand, TIN and address print on the purchase
         order; the rest is for reaching them. Leave blank what they have not given you.</div>
@@ -1854,7 +1854,7 @@ SCREENS.purchaseorders = async (page) => {
           tin: $('#s_tin').value, address: $('#s_addr').value,
           contact: $('#s_contact').value, supplier_name: $('#s_person').value,
           chat_link: $('#s_chat').value, fb_link: $('#s_fb').value,
-          tier: $('#s_tier').value, active: $('#s_active').checked,
+          tier: $('#s_tier').value,
         });
         notice('Supplier saved 🌸', 'good');
         closeDialog();
