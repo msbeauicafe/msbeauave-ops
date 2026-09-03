@@ -1596,16 +1596,14 @@ SCREENS.purchaseorders = async (page) => {
   const shops = await branches();
   let suppliers = [];
   page.innerHTML = `
-    <div class="head"><h2>Purchase order</h2>
-      <span class="hint">What has been asked of a supplier, and what is still short</span></div>
-
     <div class="subtabs">
       <button data-t="sup" class="on">Supplier information</button>
       <button data-t="ord">Purchase order</button>
     </div>
 
     <div class="panel" id="pt_sup">
-      <div><label>Supplier</label><select id="po_supplier"></select></div>
+      <input type="search" id="po_find" placeholder="Search supplier or brand…">
+      <div class="suplist mt" id="po_suplist"></div>
       <div class="mt"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
       <div id="po_supinfo" class="mt"></div>
     </div>
@@ -1628,13 +1626,39 @@ SCREENS.purchaseorders = async (page) => {
     $('#pt_ord', page).hidden = b.dataset.t !== 'ord';
   }));
 
+  let selectedSup = null;
+
   const drawSuppliers = async () => {
     suppliers = await GET('/api/suppliers').catch(() => []);
-    $('#po_supplier', page).innerHTML = suppliers.length
-      ? suppliers.map((v) => `<option value="${v.id}">${esc(v.name)}${
-          v.brand_name ? ` — ${esc(v.brand_name)}` : ''}</option>`).join('')
-      : '<option value="">No suppliers yet</option>';
+    if (!selectedSup || !suppliers.some((v) => String(v.id) === String(selectedSup.id))) {
+      selectedSup = suppliers[0] || null;
+    } else {
+      selectedSup = suppliers.find((v) => String(v.id) === String(selectedSup.id));
+    }
+    drawSupList();
     drawSupInfo();
+  };
+
+  // A scrollable list rather than a dropdown: the whole book of suppliers in
+  // view, filtered as you type, the chosen one highlighted.
+  const drawSupList = () => {
+    const box = $('#po_suplist', page);
+    if (!box) return;
+    const term = ($('#po_find', page)?.value || '').trim().toLowerCase();
+    const list = suppliers.filter((v) => !term
+      || v.name.toLowerCase().includes(term)
+      || (v.brand_name || '').toLowerCase().includes(term));
+    box.innerHTML = list.length
+      ? list.map((v) => `<button class="suprow ${selectedSup
+          && String(selectedSup.id) === String(v.id) ? 'on' : ''}" data-sup="${v.id}">
+          <b>${esc(v.name)}</b>${v.brand_name ? ` <span class="dim">— ${esc(v.brand_name)}</span>` : ''}
+        </button>`).join('')
+      : '<div class="dim" style="padding:10px">No suppliers match that.</div>';
+    $$('[data-sup]', box).forEach((b) => b.addEventListener('click', () => {
+      selectedSup = suppliers.find((v) => String(v.id) === b.dataset.sup);
+      drawSupList();
+      drawSupInfo();
+    }));
   };
 
   // The chosen supplier's own particulars, shown under the picker — the company,
@@ -1643,7 +1667,7 @@ SCREENS.purchaseorders = async (page) => {
   const drawSupInfo = () => {
     const box = $('#po_supinfo', page);
     if (!box) return;
-    const s = suppliers.find((v) => String(v.id) === $('#po_supplier', page).value);
+    const s = selectedSup;
     if (!s) { box.innerHTML = ''; return; }
     const line = (label, val) => val
       ? `<div><span class="dim">${label}</span> ${esc(val)}</div>` : '';
@@ -1835,14 +1859,15 @@ SCREENS.purchaseorders = async (page) => {
 
 
   $('#po_new', page).addEventListener('click', async () => {
-    const supplier = $('#po_supplier', page).value;
-    if (!supplier) return notice('Add a supplier first.', 'bad');
+    if (!selectedSup) return notice('Pick a supplier first.', 'bad');
+    const supplier = selectedSup.id;
     const catalogue = await GET('/api/products?q=').catch(() => []);
     const basket = new Map();
 
     dialog(`
       <h3>Raise a purchase order</h3>
-      <div class="dim">To <b>${esc(($('#po_supplier', page).selectedOptions[0] || {}).text || '')}</b>.
+      <div class="dim">To <b>${esc(selectedSup.name)}${selectedSup.brand_name
+        ? ` — ${esc(selectedSup.brand_name)}` : ''}</b>.
         No prices: a purchase order says what is wanted and how much of it, and
         what it costs lands when the goods are received.</div>
       <input type="search" id="pn_find" class="mt" placeholder="Search products…">
@@ -1917,7 +1942,7 @@ SCREENS.purchaseorders = async (page) => {
     });
   });
 
-  $('#po_supplier', page).addEventListener('change', drawSupInfo);
+  $('#po_find', page).addEventListener('input', drawSupList);
 
   await drawSuppliers();
   await drawPOs();
