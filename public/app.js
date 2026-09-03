@@ -1599,26 +1599,34 @@ SCREENS.purchaseorders = async (page) => {
     <div class="head"><h2>Purchase order</h2>
       <span class="hint">What has been asked of a supplier, and what is still short</span></div>
 
-    <div class="po-split">
-      <div class="panel po-sup">
-        <h3>Supplier information</h3>
-        <div class="mt"><label>Supplier</label>
-          <select id="po_supplier"></select></div>
-        <div class="mt"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
-        <div id="po_supinfo" class="mt"></div>
-      </div>
+    <div class="subtabs">
+      <button data-t="sup" class="on">Supplier information</button>
+      <button data-t="ord">Purchase order</button>
+    </div>
 
-      <div class="panel po-orders">
-        <div class="head" style="margin:0"><h3>Purchase order</h3>
-          <button class="btn" id="po_new">＋ Raise a purchase order</button></div>
-        <div class="dim mt">A purchase order carries no prices: it says what is
-          wanted and how much of it, and what it costs lands when the goods are
-          received. Receiving against a line records the batch and the cost
-          exactly as receiving anything does — it also notes how much of the
-          order that delivery covered.</div>
-        <div id="po_list" class="mt"></div>
-      </div>
+    <div class="panel" id="pt_sup">
+      <div><label>Supplier</label><select id="po_supplier"></select></div>
+      <div class="mt"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
+      <div id="po_supinfo" class="mt"></div>
+    </div>
+
+    <div class="panel" id="pt_ord" hidden>
+      <div class="head" style="margin:0"><h3 class="sr">Purchase orders</h3>
+        <button class="btn" id="po_new">＋ Raise a purchase order</button></div>
+      <div class="dim mt">A purchase order carries no prices: it says what is
+        wanted and how much of it, and what it costs lands when the goods are
+        received. Receiving against a line records the batch and the cost
+        exactly as receiving anything does — it also notes how much of the
+        order that delivery covered.</div>
+      <div id="po_list" class="mt"></div>
     </div>`;
+
+  // Two tabs, one panel at a time: the supplier and its details, or the orders.
+  $$('[data-t]', page).forEach((b) => b.addEventListener('click', () => {
+    $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x === b));
+    $('#pt_sup', page).hidden = b.dataset.t !== 'sup';
+    $('#pt_ord', page).hidden = b.dataset.t !== 'ord';
+  }));
 
   const drawSuppliers = async () => {
     suppliers = await GET('/api/suppliers').catch(() => []);
