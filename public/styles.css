@@ -1011,6 +1011,13 @@ label.inline input { width: auto; }
   font-size: 1rem; line-height: 1; color: var(--muted); border-radius: 6px;
 }
 .rowx:hover { color: #fff; background: var(--danger); }
+/* A channel's mark — one small coloured badge per link, its letter in white. */
+.silink {
+  display: inline-grid; place-items: center; width: 26px; height: 26px;
+  border-radius: 7px; color: #fff; font-weight: 800; font-size: .95rem;
+  line-height: 1; text-decoration: none;
+}
+.silink:hover { filter: brightness(1.1); }
 .blip.on  { background: var(--success); box-shadow: none; animation: none; }
 .blip.off { background: var(--danger);  box-shadow: none; animation: none; }
 @keyframes blip {

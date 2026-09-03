@@ -8585,6 +8585,23 @@ const STANDING = {
   'never bought': ['grey', 'never bought'],
 };
 
+// Each channel a customer is reached on, with the mark that says which at a
+// glance. The link is taken as typed; a bare address without http gets one, so
+// a pasted "facebook.com/…" still opens rather than being read as a path here.
+const SOCIALS = {
+  fb: { label: 'Facebook', glyph: 'f', color: '#1877F2' },
+  shopee: { label: 'Shopee', glyph: 'S', color: '#EE4D2D' },
+  tiktok: { label: 'TikTok', glyph: '♪', color: '#111' },
+  lazada: { label: 'Lazada', glyph: 'L', color: '#0F146D' },
+};
+const socialLink = (url, kind) => {
+  if (!url) return '<span class="dim">—</span>';
+  const s = SOCIALS[kind];
+  const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  return `<a class="silink" style="background:${s.color}" href="${esc(href)}"
+    target="_blank" rel="noopener noreferrer" title="${s.label}: ${esc(url)}">${s.glyph}</a>`;
+};
+
 SCREENS.crm = async (page) => {
   let term = '';
   page.innerHTML = `
@@ -8614,16 +8631,11 @@ SCREENS.crm = async (page) => {
     $('#list', page).innerHTML = table(d.customers, [
       { head: 'Name', cell: (c) => `<b>${esc(c.name)}</b>`
           + (c.claimed ? '' : ' ' + tag('not claimed', 'grey')) },
-      { head: 'Number', cell: (c) => `<span class="dim">${esc(c.phone || '')}</span>` },
-      { head: 'Standing', cell: (c) => {
-          const [kind, why] = STANDING[c.standing] ?? ['grey', c.standing];
-          return `${tag(c.standing, kind)} <span class="dim">${why}</span>`; } },
-      { head: 'Orders', n: true, cell: (c) => count(c.orders) },
-      { head: 'Spent', n: true, cell: (c) => peso(c.spent) },
-      { head: 'Points', n: true, cell: (c) => `${count(c.points)}
-          <span class="dim">${esc(c.tier)}</span>` },
-      { head: 'Joined', cell: (c) => `${onDay(c.joined_at)}
-          <span class="dim">${c.joined_via === 'counter' ? 'at the counter' : 'in the app'}</span>` },
+      { head: 'FB name', cell: (c) => c.fb_name ? esc(c.fb_name) : '<span class="dim">—</span>' },
+      { head: 'FB link', cell: (c) => socialLink(c.fb_link, 'fb') },
+      { head: 'Shopee', cell: (c) => socialLink(c.shopee_link, 'shopee') },
+      { head: 'TikTok', cell: (c) => socialLink(c.tiktok_link, 'tiktok') },
+      { head: 'Lazada', cell: (c) => socialLink(c.lazada_link, 'lazada') },
       { head: '', cell: (c) => `<button class="btn sm quiet" data-open="${c.id}">Open</button>` },
     ], term ? 'Nobody matches that' : 'No customers yet');
 
@@ -8655,6 +8667,24 @@ SCREENS.crm = async (page) => {
           placeholder="Skin type, what they like, anything worth remembering"></div>
       <div class="mt right"><button class="btn sm" id="c_save">Save note</button></div>
 
+      <h3 class="mt">Where to reach them</h3>
+      <div class="dim">Their Facebook name, and the links to find them. Any may be left blank.</div>
+      <div class="row mt">
+        <div style="flex:2"><label>Facebook name</label>
+          <input id="s_fbname" type="text" value="${esc(c.fb_name || '')}"></div>
+        <div style="flex:3"><label>Facebook link</label>
+          <input id="s_fblink" type="text" value="${esc(c.fb_link || '')}" placeholder="https://facebook.com/…"></div>
+      </div>
+      <div class="row">
+        <div><label>Shopee link</label>
+          <input id="s_shopee" type="text" value="${esc(c.shopee_link || '')}"></div>
+        <div><label>TikTok link</label>
+          <input id="s_tiktok" type="text" value="${esc(c.tiktok_link || '')}"></div>
+        <div><label>Lazada link</label>
+          <input id="s_lazada" type="text" value="${esc(c.lazada_link || '')}"></div>
+      </div>
+      <div class="mt right"><button class="btn sm" id="s_save">Save links</button></div>
+
       <h3 class="mt">What they have bought</h3>
       <div id="c_hist"></div>`);
 
@@ -8670,6 +8700,18 @@ SCREENS.crm = async (page) => {
     $('#c_save').addEventListener('click', async () => {
       try {
         await PUT(`/api/customers/${id}/note`, { note: $('#c_note').value });
+        notice('Saved 🌸', 'good');
+        load();
+      } catch (e) { whoops(e); }
+    });
+
+    $('#s_save').addEventListener('click', async () => {
+      try {
+        await PUT(`/api/customers/${id}/socials`, {
+          fb_name: $('#s_fbname').value, fb_link: $('#s_fblink').value,
+          shopee_link: $('#s_shopee').value, tiktok_link: $('#s_tiktok').value,
+          lazada_link: $('#s_lazada').value,
+        });
         notice('Saved 🌸', 'good');
         load();
       } catch (e) { whoops(e); }
