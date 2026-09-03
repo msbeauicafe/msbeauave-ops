@@ -8595,8 +8595,11 @@ const SOCIALS = {
   lazada: { label: 'Lazada', glyph: 'L', color: '#0F146D' },
 };
 const socialLink = (url, kind) => {
-  if (!url) return '<span class="dim">—</span>';
   const s = SOCIALS[kind];
+  // The badge is always there so the column reads at a glance; it lights up in
+  // the channel's colour and becomes a link once an address is on file, and
+  // sits greyed until then.
+  if (!url) return `<span class="silink off" title="${s.label}: not set yet">${s.glyph}</span>`;
   const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
   return `<a class="silink" style="background:${s.color}" href="${esc(href)}"
     target="_blank" rel="noopener noreferrer" title="${s.label}: ${esc(url)}">${s.glyph}</a>`;
