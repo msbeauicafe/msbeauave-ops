@@ -4974,11 +4974,20 @@ const resellerList = (part, tier) => async (page) => {
     if (rtiles) {
       const scope = all.filter((r) => !tier || Number(r.tier) === tier);
       const off = scope.filter(isInactive).length;
+      const has = (k) => scope.filter((r) => r[k]).length;
       rtiles.innerHTML = `
         <div class="tile good"><div class="big">${scope.length - off}</div>
           <div class="label">Active</div></div>
         <div class="tile bad"><div class="big">${off}</div>
-          <div class="label">Inactive — no order in 90 days</div></div>`;
+          <div class="label">Inactive — no order in 90 days</div></div>
+        <div class="tile"><div class="big">${has('fb_link')}</div>
+          <div class="label">Have a Facebook link</div></div>
+        <div class="tile"><div class="big">${has('shopee_link')}</div>
+          <div class="label">Have a Shopee link</div></div>
+        <div class="tile"><div class="big">${has('tiktok_link')}</div>
+          <div class="label">Have a TikTok link</div></div>
+        <div class="tile"><div class="big">${has('lazada_link')}</div>
+          <div class="label">Have a Lazada link</div></div>`;
     }
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
@@ -4999,7 +5008,7 @@ const resellerList = (part, tier) => async (page) => {
           : `<span><i class="blip"></i>owes money, not yet past due</span>
              <span><i class="blip late"></i>past due</span>`}
       </div></div>
-    ${acct ? '<div class="tiles half" id="rtiles"></div>' : ''}
+    ${acct ? '<div class="tiles" id="rtiles"></div>' : ''}
     <div class="tools">
       <input type="search" id="find" placeholder="Search name or email…">
       ${acct ? `<button class="btn" id="add">＋ New ${esc(tierName(tier))}</button>` : ''}
