@@ -4209,24 +4209,9 @@ SCREENS.birthdays = async (page) => {
     return `in ${n} days`;
   };
 
-  // Whoever's birthday is actually today, pulled out under the date so the
-  // people to greet now are never buried in the month's grid — and, on its own
-  // line beneath, the soonest date still to come with whoever shares it.
   const byId = new Map([...thisRows, ...nextRows].map((r) => [String(r.id), r]));
-  const todayRows = thisRows.filter((r) => r.bday === today);
-  const laterThis = thisRows.filter((r) => r.bday > today);
-  let nextLabel = '';
-  let nextRowsGroup = [];
-  if (laterThis.length) {
-    nextRowsGroup = laterThis.filter((r) => r.bday === laterThis[0].bday);
-    nextLabel = `${nameOf(thisMonth)} ${laterThis[0].bday}`;
-  } else if (nextRows.length) {
-    nextRowsGroup = nextRows.filter((r) => r.bday === nextRows[0].bday);
-    nextLabel = `${nameOf(nextMonth)} ${nextRows[0].bday}`;
-  }
 
-  // One face, drawn the same wherever it lands — the queue in the middle or the
-  // full month below. Its own month decides the date shown and how far off it is.
+  // One face, its own month deciding the date shown and how far off it is.
   const cardHtml = (r) => {
     const isThis = r.bmonth === thisMonth;
     const isToday = isThis && r.bday === today;
@@ -4253,13 +4238,7 @@ SCREENS.birthdays = async (page) => {
       <button class="tile pick" data-m="next"><div class="big">${nextRows.length}</div>
         <div class="label">Upcoming · ${esc(nameOf(nextMonth))}</div></button>
     </div>
-    ${todayRows.length ? `
-      <div class="qlabel">${esc(nameOf(thisMonth))} ${today}</div>
-      <div class="face-grid bdays qrow">${todayRows.map(cardHtml).join('')}</div>` : ''}
-    ${nextRowsGroup.length ? `
-      <div class="qlabel">${esc(nextLabel)}</div>
-      <div class="face-grid bdays qrow">${nextRowsGroup.map(cardHtml).join('')}</div>` : ''}
-    <div class="panel" id="blist"></div>`;
+    <div id="blist"></div>`;
 
   // Tapping a face opens the celebrant, not the account editor: the picture
   // large, the day large under it, and a greeting — a card to look at before a
@@ -4293,17 +4272,27 @@ SCREENS.birthdays = async (page) => {
     openBirthday(r, nameOf(r.bmonth), whenText(r, isThis), isThis && r.bday === today);
   }));
 
+  // A section per date, in day order, each labelled with its date and carrying
+  // everyone who shares it — Sep 3, then Sep 5, then Sep 9, on down the page.
   const draw = (which) => {
     const rows = which === 'this' ? thisRows : nextRows;
     const mName = nameOf(which === 'this' ? thisMonth : nextMonth);
     $$('[data-m]', page).forEach((b) => b.classList.toggle('sel', b.dataset.m === which));
-    $('#blist', page).innerHTML = rows.length
-      ? `<div class="face-grid bdays">${rows.map(cardHtml).join('')}</div>`
-      : `<div class="dim" style="padding:16px">No birthdays in ${mName}.</div>`;
+    const byDay = new Map();
+    for (const r of rows) {
+      if (!byDay.has(r.bday)) byDay.set(r.bday, []);
+      byDay.get(r.bday).push(r);
+    }
+    const days = [...byDay.keys()].sort((a, b) => a - b);
+    $('#blist', page).innerHTML = days.length
+      ? days.map((day) => `<div class="bday-day">
+          <div class="qlabel">${esc(mName)} ${day}</div>
+          <div class="face-grid bdays">${byDay.get(day).map(cardHtml).join('')}</div>
+        </div>`).join('')
+      : `<div class="panel"><div class="dim" style="padding:16px">No birthdays in ${mName}.</div></div>`;
     bindFaces($('#blist', page));
   };
 
-  bindFaces(page);   // the Next-up pair, drawn once above the grid
   $$('[data-m]', page).forEach((b) => b.addEventListener('click', () => draw(b.dataset.m)));
   draw('this');
 };
