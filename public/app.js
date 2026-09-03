@@ -4953,6 +4953,15 @@ const resellerList = (part, tier) => async (page) => {
           ? `${activeTag(r)} <span class="dim">${inactiveFor(r)}</span>`
           : activeTag(r)) },
     ];
+    // The channels a reseller is reached on — FB name and a badge per link, the
+    // same as the shop customers carry, greyed until an address is on file.
+    if (acct) cols.push(
+      { head: 'FB name', cell: (r) => r.fb_name ? esc(r.fb_name) : '<span class="dim">—</span>' },
+      { head: 'FB', cell: (r) => socialLink(r.fb_link, 'fb') },
+      { head: 'Shopee', cell: (r) => socialLink(r.shopee_link, 'shopee') },
+      { head: 'TikTok', cell: (r) => socialLink(r.tiktok_link, 'tiktok') },
+      { head: 'Lazada', cell: (r) => socialLink(r.lazada_link, 'lazada') },
+    );
     // The ✕ at the end of a row opens that account — the same as the name does —
     // where the confirm-and-remove is. A way out that lands on the account it
     // would close, so it is read before it is taken.
@@ -5209,6 +5218,28 @@ async function openReseller(id, reload, part = 'account') {
         <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
     </div>
 
+    <h3 class="mt">Where to reach them</h3>
+    <div class="dim">Their Facebook name, and the links to find them. Any may be left blank.</div>
+    <div class="row mt">
+      <div style="flex:2"><label>Facebook name</label>
+        <input id="rs_fbname" type="text" value="${esc(r.fb_name || '')}"></div>
+      <div style="flex:3"><label>Facebook link</label>
+        <div class="linkfield"><input id="rs_fblink" type="text" value="${esc(r.fb_link || '')}"
+          placeholder="https://facebook.com/…"><button class="btn sm quiet" data-copy="rs_fblink">Copy</button></div></div>
+    </div>
+    <div class="row">
+      <div><label>Shopee link</label>
+        <div class="linkfield"><input id="rs_shopee" type="text" value="${esc(r.shopee_link || '')}">
+          <button class="btn sm quiet" data-copy="rs_shopee">Copy</button></div></div>
+      <div><label>TikTok link</label>
+        <div class="linkfield"><input id="rs_tiktok" type="text" value="${esc(r.tiktok_link || '')}">
+          <button class="btn sm quiet" data-copy="rs_tiktok">Copy</button></div></div>
+      <div><label>Lazada link</label>
+        <div class="linkfield"><input id="rs_lazada" type="text" value="${esc(r.lazada_link || '')}">
+          <button class="btn sm quiet" data-copy="rs_lazada">Copy</button></div></div>
+    </div>
+    <div class="mt right"><button class="btn sm" id="rs_save">Save links</button></div>
+
     <h3 class="mt">Remove this account</h3>
     <div class="dim">Only an account with no orders or invoices can be removed —
       trading history is kept. Its documents, photos and any login go with it.
@@ -5292,6 +5323,25 @@ async function openReseller(id, reload, part = 'account') {
       reload();
     } catch (e) { whoops(e); }
   });
+
+  $('#rs_save')?.addEventListener('click', async () => {
+    try {
+      await PUT(`/api/resellers/${id}/socials`, {
+        fb_name: $('#rs_fbname').value, fb_link: $('#rs_fblink').value,
+        shopee_link: $('#rs_shopee').value, tiktok_link: $('#rs_tiktok').value,
+        lazada_link: $('#rs_lazada').value,
+      });
+      notice('Saved 🌸', 'good');
+      reload();
+    } catch (e) { whoops(e); }
+  });
+
+  $$('[data-copy]', $('#dialog')).forEach((b) => b.addEventListener('click', async () => {
+    const link = $(`#${b.dataset.copy}`).value.trim();
+    if (!link) return notice('Nothing to copy there yet.', 'bad');
+    try { await navigator.clipboard.writeText(link); notice('Link copied 🌸', 'good'); }
+    catch { notice('Could not copy — select it and copy by hand.', 'bad'); }
+  }));
 
   $('#d_remove')?.addEventListener('click', async () => {
     if (!confirm(`Remove ${r.name}? This cannot be undone.`)) return;
