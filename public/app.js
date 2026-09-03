@@ -229,6 +229,20 @@ const NINETY_DAYS = 90 * 86400000;
 const isInactive = (r) => !r.last_order_at
   || Date.now() - new Date(r.last_order_at).getTime() > NINETY_DAYS;
 const activeTag = (r) => (isInactive(r) ? tag('inactive', 'grey') : tag('active', 'green'));
+// How long an inactive account has been quiet, in months and days since its
+// last order — so a name three months gone reads differently from one three
+// years gone. Only ever shown for the inactive; the active are, by definition,
+// current.
+const inactiveFor = (r) => {
+  if (!r.last_order_at) return 'never ordered';
+  const days = Math.floor((Date.now() - new Date(r.last_order_at).getTime()) / 86400000);
+  const mo = Math.floor(days / 30);
+  const d = days % 30;
+  const parts = [];
+  if (mo) parts.push(`${mo} month${mo === 1 ? '' : 's'}`);
+  if (d) parts.push(`${d} day${d === 1 ? '' : 's'}`);
+  return parts.length ? `${parts.join(', ')} since last order` : 'ordered today';
+};
 
 // How somebody proved who they were at the door.
 //
@@ -4777,7 +4791,9 @@ const resellerList = (part, tier) => async (page) => {
                   ? ` <span class="dim">· ${esc(r.full_name)}</span>` : ''}
           </button>${r.email ? `<div class="dim">${esc(r.email)}</div>` : ''}` },
       { head: 'Tier', cell: (r) => tierTag(r.tier) },
-      { head: 'Standing', cell: (r) => activeTag(r) },
+      { head: 'Standing', cell: (r) => (isInactive(r)
+          ? `${activeTag(r)} <span class="dim">${inactiveFor(r)}</span>`
+          : activeTag(r)) },
     ];
     if (!acct) cols.push(
       { head: 'Limit', n: true, cell: (r) => peso(r.credit_limit) },
