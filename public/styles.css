@@ -868,7 +868,7 @@ label.inline input { width: auto; }
    width that lets about four to a row, so five or more spill onto the next. */
 .face-grid.bdays { grid-template-columns: repeat(auto-fill, 132px); }
 .face-grid.bdays .face-card {
-  width: 132px; height: auto; min-height: 158px; justify-content: center; gap: 6px;
+  width: 132px; height: auto; min-height: 158px; justify-content: flex-start; gap: 6px;
 }
 .face-grid.bdays .face-card .face,
 .face-grid.bdays .face-card img.face { width: 68px; height: 68px; font-size: 1.5rem; }
