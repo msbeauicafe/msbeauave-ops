@@ -943,6 +943,13 @@ label.inline input { width: auto; }
 }
 /* Standing, not money: a steady dot — green for active, red for inactive — that
    does not pulse, since it is on every row. */
+/* The ✕ at the end of an account row — quiet until pointed at, then the red of
+   the thing it leads to. */
+.rowx {
+  border: 0; background: none; cursor: pointer; padding: 2px 6px;
+  font-size: 1rem; line-height: 1; color: var(--muted); border-radius: 6px;
+}
+.rowx:hover { color: #fff; background: var(--danger); }
 .blip.on  { background: var(--success); box-shadow: none; animation: none; }
 .blip.off { background: var(--danger);  box-shadow: none; animation: none; }
 @keyframes blip {

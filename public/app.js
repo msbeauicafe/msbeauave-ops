@@ -4799,6 +4799,13 @@ const resellerList = (part, tier) => async (page) => {
           ? `${activeTag(r)} <span class="dim">${inactiveFor(r)}</span>`
           : activeTag(r)) },
     ];
+    // The ✕ at the end of a row opens that account — the same as the name does —
+    // where the confirm-and-remove is. A way out that lands on the account it
+    // would close, so it is read before it is taken.
+    if (acct) cols.push(
+      { head: '', n: true, cell: (r) => `<button class="rowx" data-open="${r.id}"
+          title="Open ${esc(r.name)} to remove">✕</button>` },
+    );
     if (!acct) cols.push(
       { head: 'Limit', n: true, cell: (r) => peso(r.credit_limit) },
       { head: 'Owes', n: true, cell: (r) => peso(r.owed) },
