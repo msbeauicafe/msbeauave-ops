@@ -4953,15 +4953,6 @@ const resellerList = (part, tier) => async (page) => {
           ? `${activeTag(r)} <span class="dim">${inactiveFor(r)}</span>`
           : activeTag(r)) },
     ];
-    // The channels a reseller is reached on — FB name and a badge per link, the
-    // same as the shop customers carry, greyed until an address is on file.
-    if (acct) cols.push(
-      { head: 'FB name', cell: (r) => r.fb_name ? esc(r.fb_name) : '<span class="dim">—</span>' },
-      { head: 'FB', cell: (r) => socialLink(r.fb_link, 'fb') },
-      { head: 'Shopee', cell: (r) => socialLink(r.shopee_link, 'shopee') },
-      { head: 'TikTok', cell: (r) => socialLink(r.tiktok_link, 'tiktok') },
-      { head: 'Lazada', cell: (r) => socialLink(r.lazada_link, 'lazada') },
-    );
     // The ✕ at the end of a row opens that account — the same as the name does —
     // where the confirm-and-remove is. A way out that lands on the account it
     // would close, so it is read before it is taken.
