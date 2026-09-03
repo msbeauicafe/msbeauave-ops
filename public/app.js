@@ -1632,11 +1632,17 @@ SCREENS.purchaseorders = async (page) => {
     if (!s) { box.innerHTML = ''; return; }
     const line = (label, val) => val
       ? `<div><span class="dim">${label}</span> ${esc(val)}</div>` : '';
-    const rows = [line('Company', s.name), line('Brand', s.brand_name),
-      line('TIN', s.tin), line('Address', s.address), line('Contact #', s.contact)]
-      .filter(Boolean).join('');
+    const rows = [line('Company', s.name), line('Supplier', s.supplier_name),
+      line('Brand', s.brand_name), line('TIN', s.tin), line('Address', s.address),
+      line('Contact #', s.contact)].filter(Boolean).join('');
+    const norm = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
+    const linkBtn = (url, label) => url ? `<a class="btn sm quiet" target="_blank"
+      rel="noopener noreferrer" href="${esc(norm(url))}">${label}</a>` : '';
+    const links = [linkBtn(s.chat_link, '💬 Open chat'), linkBtn(s.fb_link, '📘 Facebook')]
+      .filter(Boolean).join(' ');
     box.innerHTML = `<div class="panel"><h3>Supplier information</h3>
-      ${rows || '<div class="dim">No details on file for this supplier yet.</div>'}</div>`;
+      ${rows || '<div class="dim">No details on file for this supplier yet.</div>'}
+      ${links ? `<div class="mt">${links}</div>` : ''}</div>`;
   };
 
 
@@ -1781,6 +1787,7 @@ SCREENS.purchaseorders = async (page) => {
       <h3>New supplier</h3>
       <div class="row">
         <div style="flex:2"><label>Company name</label><input id="s_name" type="text" autofocus></div>
+        <div style="flex:2"><label>Supplier name</label><input id="s_person" type="text"></div>
         <div style="flex:2"><label>Brand name</label><input id="s_brand" type="text"></div>
       </div>
       <div class="row">
@@ -1788,15 +1795,22 @@ SCREENS.purchaseorders = async (page) => {
         <div style="flex:2"><label>Address</label><input id="s_addr" type="text"></div>
         <div><label>Contact #</label><input id="s_contact" type="text"></div>
       </div>
-      <div class="dim mt">All of it prints on the purchase order. Leave blank
-        what they have not given you.</div>
+      <div class="row">
+        <div style="flex:2"><label>Group-chat link</label>
+          <input id="s_chat" type="text" placeholder="https://m.me/… or the group chat link"></div>
+        <div style="flex:2"><label>Facebook account</label>
+          <input id="s_fb" type="text" placeholder="https://facebook.com/…"></div>
+      </div>
+      <div class="dim mt">The company, brand, TIN and address print on the purchase
+        order; the rest is for reaching them. Leave blank what they have not given you.</div>
       <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
     $('#s_save').addEventListener('click', async () => {
       try {
         await POST('/api/suppliers', {
           name: $('#s_name').value, brand_name: $('#s_brand').value,
           tin: $('#s_tin').value, address: $('#s_addr').value,
-          contact: $('#s_contact').value,
+          contact: $('#s_contact').value, supplier_name: $('#s_person').value,
+          chat_link: $('#s_chat').value, fb_link: $('#s_fb').value,
         });
         notice('Supplier saved 🌸', 'good');
         closeDialog();
