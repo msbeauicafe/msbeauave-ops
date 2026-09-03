@@ -4775,6 +4775,10 @@ const resellerList = (part, tier) => async (page) => {
         || r.name.toLowerCase().includes(term)
         || (r.full_name || '').toLowerCase().includes(term)
         || (r.email || '').toLowerCase().includes(term)));
+    // The account lists lead with the ones still trading — green before red —
+    // holding the server's order within each group. The Invoice half keeps the
+    // server's most-recently-invoiced-first, so it is left alone.
+    if (acct) rows.sort((a, b) => isInactive(a) - isInactive(b));
     // The name is the way in. On the account list the dot is standing — green
     // active, red inactive; on the Invoice list it is money — amber owing, red
     // past due.
