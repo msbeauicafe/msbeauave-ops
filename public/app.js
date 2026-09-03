@@ -4209,11 +4209,10 @@ SCREENS.birthdays = async (page) => {
     return `in ${n} days`;
   };
 
-  // Today's celebrant stands alone in a big box; the two coming after are the
-  // Next-up pair, so the very next to greet is never buried in the grid.
+  // The two coming soonest — today's celebrant included — pulled to the middle
+  // as their own pair, so the very next to greet is never buried in the grid.
   const byId = new Map([...thisRows, ...nextRows].map((r) => [String(r.id), r]));
-  const todayRows = thisRows.filter((r) => r.bday === today);
-  const upcoming = [...thisRows.filter((r) => r.bday > today), ...nextRows].slice(0, 2);
+  const upcoming = [...thisRows.filter((r) => r.bday >= today), ...nextRows].slice(0, 2);
 
   // One face, drawn the same wherever it lands — the queue in the middle or the
   // full month below. Its own month decides the date shown and how far off it is.
@@ -4232,38 +4231,20 @@ SCREENS.birthdays = async (page) => {
       </button>`;
   };
 
-  // Today's celebrant, big and set apart — the one the eye should land on first.
-  const bigToday = (r) => `
-    <button class="today-big" data-open="${r.id}" title="${esc(r.name)} — today!">
-      <div class="tb-label">🎂 Birthday today</div>
-      ${r.photo_at
-        ? `<img class="tb-face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
-        : `<span class="tb-face">${esc(initials(r.name))}</span>`}
-      <div class="tb-name">${esc(r.name)}</div>
-      <div class="tb-tier tier${r.tier}">${esc(tierName(r.tier))}</div>
-      <div class="tb-date">${esc(nameOf(thisMonth))} ${r.bday}</div>
-    </button>`;
-
   page.innerHTML = `
     <div class="head"><h2>Birthdays</h2>
       <span class="hint">Whose accounts have a birthday coming — tap a month to see
         the faces, so a greeting or a treat goes out on the day.</span></div>
-    <div class="bday-top">
-      <div class="bday-top-left">
-        <div class="tiles half">
-          <button class="tile good pick" data-m="this"><div class="big">${thisRows.length}</div>
-            <div class="label">${esc(nameOf(thisMonth))} · this month${
-              todayCount ? ` · ${todayCount} today` : ''}</div></button>
-          <button class="tile pick" data-m="next"><div class="big">${nextRows.length}</div>
-            <div class="label">Upcoming · ${esc(nameOf(nextMonth))}</div></button>
-        </div>
-        ${upcoming.length ? `
-          <div class="qlabel">Next up</div>
-          <div class="face-grid bdays qrow">${upcoming.map(cardHtml).join('')}</div>` : ''}
-      </div>
-      ${todayRows.length
-        ? `<div class="bday-today">${todayRows.map(bigToday).join('')}</div>` : ''}
+    <div class="tiles half">
+      <button class="tile good pick" data-m="this"><div class="big">${thisRows.length}</div>
+        <div class="label">${esc(nameOf(thisMonth))} · this month${
+          todayCount ? ` · ${todayCount} today` : ''}</div></button>
+      <button class="tile pick" data-m="next"><div class="big">${nextRows.length}</div>
+        <div class="label">Upcoming · ${esc(nameOf(nextMonth))}</div></button>
     </div>
+    ${upcoming.length ? `
+      <div class="qlabel">${esc(nameOf(thisMonth))} ${today}</div>
+      <div class="face-grid bdays qrow">${upcoming.map(cardHtml).join('')}</div>` : ''}
     <div class="panel" id="blist"></div>`;
 
   // Tapping a face opens the celebrant, not the account editor: the picture
