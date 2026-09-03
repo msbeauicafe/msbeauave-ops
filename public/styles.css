@@ -873,6 +873,35 @@ label.inline input { width: auto; }
 .face-grid.bdays .face-card .face,
 .face-grid.bdays .face-card img.face { width: 68px; height: 68px; font-size: 1.5rem; }
 .face-grid.bdays .face-card .strip b { font-size: .7rem; }
+/* The top of the Birthdays tab: tiles and the Next-up pair on the left, today's
+   celebrant big on the right. */
+.bday-top { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+.bday-top-left { flex: 1 1 460px; min-width: 0; }
+.bday-today { flex: 0 0 300px; }
+.today-big {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  width: 300px; padding: 18px 16px 20px; cursor: pointer; text-align: center;
+  border: 2px solid var(--success); border-radius: 18px; background: #f2f8f3;
+  color: var(--ink); font: inherit;
+}
+.today-big:hover { box-shadow: 0 4px 16px rgba(95, 141, 107, .25); }
+.today-big .tb-label {
+  font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--success);
+}
+.today-big .tb-face {
+  width: 128px; height: 128px; border-radius: 50%; object-fit: cover;
+  background: #fff; color: var(--rose-deep); display: grid; place-items: center;
+  font-size: 2.6rem; font-weight: 700; box-shadow: 0 0 0 4px #fff, 0 0 0 6px var(--success);
+}
+.today-big .tb-name { font-size: 1.35rem; font-weight: 700; line-height: 1.15; }
+.today-big .tb-tier { font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.today-big .tb-tier.tier1 { color: var(--muted); }
+.today-big .tb-tier.tier2 { color: var(--rose-deep); }
+.today-big .tb-tier.tier3 { color: var(--success); }
+.today-big .tb-date { font-size: 1.5rem; font-weight: 800; color: var(--success); }
+@media (max-width: 760px) { .bday-today { flex: 1 1 100%; } .today-big { width: 100%; } }
+
 /* The pair pulled to the middle: labelled, and set off from the grid below. */
 .qlabel {
   font-size: .78rem; font-weight: 700; color: var(--rose-deep);
