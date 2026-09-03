@@ -4163,68 +4163,94 @@ SCREENS.customers = async (page) => {
  * birthday entered on a profile shows up the same day.
  */
 SCREENS.birthdays = async (page) => {
-  page.innerHTML = `
-    <div class="head"><h2>Birthdays</h2>
-      <span class="hint">Accounts with a birthday this month, soonest first — so a
-        greeting or a treat goes out on the day.</span></div>
-    <div class="tiles half" id="btiles"></div>
-    <div class="panel" id="blist"></div>`;
-
   const all = await GET('/api/resellers');
   // Today in the shop's timezone, read as YYYY-MM-DD so the month and the day
   // are Manila's and not the machine's.
-  const [, thisMonth, today] = new Date()
+  const [year, thisMonth, today] = new Date()
     .toLocaleDateString('en-CA', { timeZone: TZ }).split('-').map(Number);
-  const monthName = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'long' })
-    .format(new Date());
-
-  // The stored date is a plain YYYY-MM-DD; its month and day are read straight
-  // off the string so no timezone can nudge it onto the day before.
-  const rows = all
-    .filter((r) => r.birthday)
-    .map((r) => {
-      const [, m, d] = String(r.birthday).slice(0, 10).split('-').map(Number);
-      return { ...r, bmonth: m, bday: d };
-    })
-    .filter((r) => r.bmonth === thisMonth)
-    .sort((a, b) => a.bday - b.bday || a.name.localeCompare(b.name));
-
-  const todayCount = rows.filter((r) => r.bday === today).length;
-  $('#btiles', page).innerHTML = `
-    <div class="tile good"><div class="big">${rows.length}</div>
-      <div class="label">Birthdays in ${monthName}</div></div>
-    <div class="tile"><div class="big">${todayCount}</div>
-      <div class="label">Today</div></div>`;
+  const nextMonth = thisMonth === 12 ? 1 : thisMonth + 1;
+  // The name of any month, off a date built on its own first — day 1 cannot
+  // roll into the month before it, so no timezone is needed to hold it.
+  const nameOf = (m) => new Intl.DateTimeFormat('en-US', { month: 'long' })
+    .format(new Date(2000, m - 1, 1));
+  const shortOf = (m) => new Intl.DateTimeFormat('en-US', { month: 'short' })
+    .format(new Date(2000, m - 1, 1));
+  const daysThisMonth = new Date(year, thisMonth, 0).getDate();
 
   // Two letters off the name, so a card with no picture is still a face to
   // recognise rather than one of a row of identical squares.
   const initials = (name) => (name || '?')
     .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
-  const whenText = (r) => {
-    if (r.bday === today) return '🎂 today';
-    if (r.bday > today) return `in ${r.bday - today} day${r.bday - today === 1 ? '' : 's'}`;
-    return `${today - r.bday} day${today - r.bday === 1 ? '' : 's'} ago`;
+  // The stored date is a plain YYYY-MM-DD; its month and day are read straight
+  // off the string so no timezone can nudge it onto the day before.
+  const forMonth = (m) => all
+    .filter((r) => r.birthday)
+    .map((r) => {
+      const [, bm, bd] = String(r.birthday).slice(0, 10).split('-').map(Number);
+      return { ...r, bmonth: bm, bday: bd };
+    })
+    .filter((r) => r.bmonth === m)
+    .sort((a, b) => a.bday - b.bday || a.name.localeCompare(b.name));
+
+  const thisRows = forMonth(thisMonth);
+  const nextRows = forMonth(nextMonth);
+  const todayCount = thisRows.filter((r) => r.bday === today).length;
+
+  // How far off, counted from today: within this month it may already have
+  // passed; next month is the days left here plus the day itself.
+  const whenText = (r, isThis) => {
+    if (isThis) {
+      if (r.bday === today) return '🎂 today';
+      if (r.bday > today) return `in ${r.bday - today} day${r.bday - today === 1 ? '' : 's'}`;
+      return `${today - r.bday} day${today - r.bday === 1 ? '' : 's'} ago`;
+    }
+    const n = (daysThisMonth - today) + r.bday;
+    return `in ${n} days`;
   };
 
-  // Their faces, the way the door clock lays them out — a grid that wraps to
-  // fit the page rather than a list that runs off it. The card opens the
-  // account, the same as anywhere else their name appears. One line under the
-  // name carries the day and how far off it is, so the card keeps its shape.
-  $('#blist', page).innerHTML = rows.length
-    ? `<div class="face-grid">${rows.map((r) => `
-        <button class="face-card ${r.bday === today ? 'today' : ''}" data-open="${r.id}"
-          title="${esc(r.name)} — ${monthName} ${r.bday}">
-          ${r.photo_at
-            ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
-            : `<span class="face">${esc(initials(r.name))}</span>`}
-          <span class="strip"><b>${esc(r.name)}</b>
-            <span class="under">${monthName} ${r.bday} · ${whenText(r)}</span></span>
-        </button>`).join('')}</div>`
-    : `<div class="dim" style="padding:16px">No birthdays in ${monthName}.</div>`;
+  page.innerHTML = `
+    <div class="head"><h2>Birthdays</h2>
+      <span class="hint">Whose accounts have a birthday coming — tap a month to see
+        the faces, so a greeting or a treat goes out on the day.</span></div>
+    <div class="tiles half">
+      <button class="tile good pick" data-m="this"><div class="big">${thisRows.length}</div>
+        <div class="label">${esc(nameOf(thisMonth))} · this month${
+          todayCount ? ` · ${todayCount} today` : ''}</div></button>
+      <button class="tile pick" data-m="next"><div class="big">${nextRows.length}</div>
+        <div class="label">Upcoming · ${esc(nameOf(nextMonth))}</div></button>
+    </div>
+    <div class="panel" id="blist"></div>`;
 
-  $$('[data-open]', page).forEach((b) => b.addEventListener('click',
-    () => openReseller(+b.dataset.open, () => SCREENS.birthdays(page)).catch(whoops)));
+  // Their faces, the way the door clock lays them out — a grid that wraps to fit
+  // the page. Each carries its tier, so a Reseller, Distributor or Retailer is
+  // told apart at a glance, and the day with how far off it is. The card opens
+  // the account the same as anywhere else the name appears.
+  const draw = (which) => {
+    const isThis = which === 'this';
+    const rows = isThis ? thisRows : nextRows;
+    const mName = nameOf(isThis ? thisMonth : nextMonth);
+    $$('[data-m]', page).forEach((b) => b.classList.toggle('sel', b.dataset.m === which));
+    $('#blist', page).innerHTML = rows.length
+      ? `<div class="face-grid bdays">${rows.map((r) => `
+          <button class="face-card ${isThis && r.bday === today ? 'today' : ''}" data-open="${r.id}"
+            title="${esc(r.name)} — ${mName} ${r.bday}">
+            <span class="bdate">${isThis && r.bday === today ? '🎂 ' : ''}${shortOf(
+              isThis ? thisMonth : nextMonth)} ${r.bday}</span>
+            ${r.photo_at
+              ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
+              : `<span class="face">${esc(initials(r.name))}</span>`}
+            <span class="strip"><b>${esc(r.name)}</b>
+              <span class="tier tier${r.tier}">${esc(tierName(r.tier))}</span>
+              <span class="under">${whenText(r, isThis)}</span></span>
+          </button>`).join('')}</div>`
+      : `<div class="dim" style="padding:16px">No birthdays in ${mName}.</div>`;
+    $$('[data-open]', page).forEach((b) => b.addEventListener('click',
+      () => openReseller(+b.dataset.open, () => SCREENS.birthdays(page)).catch(whoops)));
+  };
+
+  $$('[data-m]', page).forEach((b) => b.addEventListener('click', () => draw(b.dataset.m)));
+  draw('this');
 };
 
 SCREENS.customerorder = async (page) => {
