@@ -5048,6 +5048,12 @@ async function openReseller(id, reload, part = 'account') {
         <input id="doc_file" type="file" accept="image/jpeg,image/png,image/webp"></div>
     </div>
 
+    <h3 class="mt">Remove this account</h3>
+    <div class="dim">Only an account with no orders or invoices can be removed —
+      trading history is kept. Its documents, photos and any login go with it.
+      This cannot be undone.</div>
+    <div class="mt"><button class="btn warn sm" id="d_remove">Remove ${esc(r.name)}</button></div>
+
 ` : ''}
 
     ${money ? `
@@ -5124,6 +5130,20 @@ async function openReseller(id, reload, part = 'account') {
       closeDialog();
       reload();
     } catch (e) { whoops(e); }
+  });
+
+  $('#d_remove')?.addEventListener('click', async () => {
+    if (!confirm(`Remove ${r.name}? This cannot be undone.`)) return;
+    try {
+      await DELETE(`/api/resellers/${id}`);
+      notice('Account removed', 'good');
+      closeDialog();
+      reload();
+    } catch (e) {
+      // The server refuses one with trading history, and says so by name; that
+      // is not a crash, it is the answer, so it is shown plainly.
+      notice(e.message, 'bad');
+    }
   });
 
   $('#d_photo')?.addEventListener('change', async (e) => {
