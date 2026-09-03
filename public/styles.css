@@ -864,7 +864,27 @@ label.inline input { width: auto; }
 .face-card .strip .under { display: block; font-size: .55rem; color: var(--muted); }
 /* Birthday cards: a little taller than the door-clock face, to carry the date
    above the picture and the tier below the name. */
-.face-grid.bdays .face-card { height: auto; min-height: 138px; justify-content: center; }
+/* Birthday faces sit bigger than the door-clock's, and the block is held to a
+   width that lets about four to a row, so five or more spill onto the next. */
+.face-grid.bdays { grid-template-columns: repeat(auto-fill, 132px); }
+.face-grid.bdays .face-card {
+  width: 132px; height: auto; min-height: 158px; justify-content: center; gap: 6px;
+}
+.face-grid.bdays .face-card .face,
+.face-grid.bdays .face-card img.face { width: 68px; height: 68px; font-size: 1.5rem; }
+.face-grid.bdays .face-card .strip b { font-size: .7rem; }
+/* The pair pulled to the middle: labelled, and set off from the grid below. */
+.qlabel {
+  font-size: .78rem; font-weight: 700; color: var(--rose-deep);
+  text-transform: uppercase; letter-spacing: .05em; margin: 4px 2px 2px;
+}
+.face-grid.qrow { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--rose-soft); }
+.face-grid.qrow .face-card { border-color: var(--rose-deep); }
+.face-card .bdate {
+  font-size: .62rem; font-weight: 700; letter-spacing: .02em;
+  color: var(--rose-deep); line-height: 1;
+}
+.face-card.today .bdate { color: var(--success); }
 .face-card .strip .tier {
   display: block; font-size: .5rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: .05em; margin-top: 1px;
