@@ -4135,6 +4135,7 @@ SCREENS.customers = async (page) => {
     ['distributoraccounts', 'Distributor'],
     ['retaileraccounts', 'Retailer'],
     ['crm', 'Shop customers'],
+    ['birthdays', 'Birthdays'],
   ];
   if (!PANELS.some(([id]) => id === customerPanel)) customerPanel = 'reselleraccounts';
 
@@ -4152,6 +4153,78 @@ SCREENS.customers = async (page) => {
 
   // Each panel draws its own heading, as on Customer order.
   await SCREENS[customerPanel]($('#panel', page));
+};
+
+/**
+ * Whose birthday falls in the current month — so a greeting or a small
+ * kindness goes out on the day rather than after it. Only accounts carry a
+ * birthday (resellers, distributors and retailers); the walk-in loyalty list
+ * has none on file, so it is not here. Read from the account's own date, so a
+ * birthday entered on a profile shows up the same day.
+ */
+SCREENS.birthdays = async (page) => {
+  page.innerHTML = `
+    <div class="head"><h2>Birthdays</h2>
+      <span class="hint">Accounts with a birthday this month, soonest first — so a
+        greeting or a treat goes out on the day.</span></div>
+    <div class="tiles half" id="btiles"></div>
+    <div class="panel" id="blist"></div>`;
+
+  const all = await GET('/api/resellers');
+  // Today in the shop's timezone, read as YYYY-MM-DD so the month and the day
+  // are Manila's and not the machine's.
+  const [, thisMonth, today] = new Date()
+    .toLocaleDateString('en-CA', { timeZone: TZ }).split('-').map(Number);
+  const monthName = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'long' })
+    .format(new Date());
+
+  // The stored date is a plain YYYY-MM-DD; its month and day are read straight
+  // off the string so no timezone can nudge it onto the day before.
+  const rows = all
+    .filter((r) => r.birthday)
+    .map((r) => {
+      const [, m, d] = String(r.birthday).slice(0, 10).split('-').map(Number);
+      return { ...r, bmonth: m, bday: d };
+    })
+    .filter((r) => r.bmonth === thisMonth)
+    .sort((a, b) => a.bday - b.bday || a.name.localeCompare(b.name));
+
+  const todayCount = rows.filter((r) => r.bday === today).length;
+  $('#btiles', page).innerHTML = `
+    <div class="tile good"><div class="big">${rows.length}</div>
+      <div class="label">Birthdays in ${monthName}</div></div>
+    <div class="tile"><div class="big">${todayCount}</div>
+      <div class="label">Today</div></div>`;
+
+  // Two letters off the name, so a card with no picture is still a face to
+  // recognise rather than one of a row of identical squares.
+  const initials = (name) => (name || '?')
+    .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+  const whenText = (r) => {
+    if (r.bday === today) return '🎂 today';
+    if (r.bday > today) return `in ${r.bday - today} day${r.bday - today === 1 ? '' : 's'}`;
+    return `${today - r.bday} day${today - r.bday === 1 ? '' : 's'} ago`;
+  };
+
+  // Their faces, the way the door clock lays them out — a grid that wraps to
+  // fit the page rather than a list that runs off it. The card opens the
+  // account, the same as anywhere else their name appears. One line under the
+  // name carries the day and how far off it is, so the card keeps its shape.
+  $('#blist', page).innerHTML = rows.length
+    ? `<div class="face-grid">${rows.map((r) => `
+        <button class="face-card ${r.bday === today ? 'today' : ''}" data-open="${r.id}"
+          title="${esc(r.name)} — ${monthName} ${r.bday}">
+          ${r.photo_at
+            ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
+            : `<span class="face">${esc(initials(r.name))}</span>`}
+          <span class="strip"><b>${esc(r.name)}</b>
+            <span class="under">${monthName} ${r.bday} · ${whenText(r)}</span></span>
+        </button>`).join('')}</div>`
+    : `<div class="dim" style="padding:16px">No birthdays in ${monthName}.</div>`;
+
+  $$('[data-open]', page).forEach((b) => b.addEventListener('click',
+    () => openReseller(+b.dataset.open, () => SCREENS.birthdays(page)).catch(whoops)));
 };
 
 SCREENS.customerorder = async (page) => {

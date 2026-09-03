@@ -63,9 +63,9 @@ test('Customers carries the reseller account beside the shop list', () => {
 
   const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
   assert.deepEqual(panels,
-    ['reselleraccounts', 'distributoraccounts', 'retaileraccounts', 'crm'],
+    ['reselleraccounts', 'distributoraccounts', 'retaileraccounts', 'crm', 'birthdays'],
     'the wholesale accounts split by tier first, because this company is a '
-    + 'distributor, then the shop’s own loyalty list');
+    + 'distributor, then the shop’s own loyalty list, then this month’s birthdays');
   assert.match(screen, /SCREENS\[customerPanel\]/,
     'the panel is drawn by the screen it names, not by a copy of it');
   assert.match(app, /let customerPanel = 'reselleraccounts';/,

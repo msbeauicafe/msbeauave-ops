@@ -862,6 +862,9 @@ label.inline input { width: auto; }
   overflow: hidden; font-size: .58rem; line-height: 1.15; letter-spacing: .01em;
 }
 .face-card .strip .under { display: block; font-size: .55rem; color: var(--muted); }
+/* Today's birthday, lit up in the house green so it is the one the eye lands on. */
+.face-card.today { border-color: var(--success); background: #f2f8f3; }
+.face-card.today .strip .under { color: var(--success); font-weight: 600; }
 .face-card.stopped { opacity: .55; cursor: not-allowed; }
 .face-card.stopped .face { background: #f3dddd; color: var(--danger); }
 .face-card.stopped .strip .under { color: var(--danger); }
