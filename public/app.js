@@ -4173,8 +4173,6 @@ SCREENS.birthdays = async (page) => {
   // roll into the month before it, so no timezone is needed to hold it.
   const nameOf = (m) => new Intl.DateTimeFormat('en-US', { month: 'long' })
     .format(new Date(2000, m - 1, 1));
-  const shortOf = (m) => new Intl.DateTimeFormat('en-US', { month: 'short' })
-    .format(new Date(2000, m - 1, 1));
   const daysThisMonth = new Date(year, thisMonth, 0).getDate();
 
   // Two letters off the name, so a card with no picture is still a face to
@@ -4201,7 +4199,7 @@ SCREENS.birthdays = async (page) => {
   // passed; next month is the days left here plus the day itself.
   const whenText = (r, isThis) => {
     if (isThis) {
-      if (r.bday === today) return '🎂 today';
+      if (r.bday === today) return 'today';
       if (r.bday > today) return `in ${r.bday - today} day${r.bday - today === 1 ? '' : 's'}`;
       return `${today - r.bday} day${today - r.bday === 1 ? '' : 's'} ago`;
     }
@@ -4256,8 +4254,6 @@ SCREENS.birthdays = async (page) => {
       ? `<div class="face-grid bdays">${rows.map((r) => `
           <button class="face-card ${isThis && r.bday === today ? 'today' : ''}" data-open="${r.id}"
             title="${esc(r.name)} — ${mName} ${r.bday}">
-            <span class="bdate">${isThis && r.bday === today ? '🎂 ' : ''}${shortOf(
-              isThis ? thisMonth : nextMonth)} ${r.bday}</span>
             ${r.photo_at
               ? `<img class="face" src="/api/resellers/${r.id}/photo?v=${r.photo_at}" alt="">`
               : `<span class="face">${esc(initials(r.name))}</span>`}
