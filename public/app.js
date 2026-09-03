@@ -1610,6 +1610,7 @@ SCREENS.purchaseorders = async (page) => {
         <div style="flex:0 0 auto"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
         <div style="flex:0 0 auto"><button class="btn" id="po_new">＋ Raise a purchase order</button></div>
       </div>
+      <div id="po_supinfo" class="mt"></div>
       <div id="po_list" class="mt"></div></div>`;
 
   const drawSuppliers = async () => {
@@ -1618,6 +1619,24 @@ SCREENS.purchaseorders = async (page) => {
       ? suppliers.map((v) => `<option value="${v.id}">${esc(v.name)}${
           v.brand_name ? ` — ${esc(v.brand_name)}` : ''}</option>`).join('')
       : '<option value="">No suppliers yet</option>';
+    drawSupInfo();
+  };
+
+  // The chosen supplier's own particulars — everything that prints at the top of
+  // their purchase order — kept in view beside the orders so who is being asked
+  // is never a guess.
+  const drawSupInfo = () => {
+    const box = $('#po_supinfo', page);
+    if (!box) return;
+    const s = suppliers.find((v) => String(v.id) === $('#po_supplier', page).value);
+    if (!s) { box.innerHTML = ''; return; }
+    const line = (label, val) => val
+      ? `<div><span class="dim">${label}</span> ${esc(val)}</div>` : '';
+    const rows = [line('Company', s.name), line('Brand', s.brand_name),
+      line('TIN', s.tin), line('Address', s.address), line('Contact #', s.contact)]
+      .filter(Boolean).join('');
+    box.innerHTML = `<div class="panel"><h3>Supplier information</h3>
+      ${rows || '<div class="dim">No details on file for this supplier yet.</div>'}</div>`;
   };
 
 
@@ -1869,6 +1888,8 @@ SCREENS.purchaseorders = async (page) => {
       } catch (e) { whoops(e); $('#pn_go').disabled = false; }
     });
   });
+
+  $('#po_supplier', page).addEventListener('change', drawSupInfo);
 
   await drawSuppliers();
   await drawPOs();
