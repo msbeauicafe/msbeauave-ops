@@ -315,6 +315,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--rose-deep); }
 label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3px; }
 .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .row > div { flex: 1; min-width: 128px; }
+label.check { display: flex; align-items: center; gap: 7px; font-size: .9rem;
+  color: var(--ink); margin: 10px 0 3px; cursor: pointer; }
+label.check input { width: auto; margin: 0; }
 .btn {
   background: var(--rose-primary); color: #fff; border: none; padding: 8px 14px;
   border-radius: 9px; font: inherit; font-size: .83rem; font-weight: 600; cursor: pointer;

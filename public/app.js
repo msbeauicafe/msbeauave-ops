@@ -1602,10 +1602,11 @@ SCREENS.purchaseorders = async (page) => {
     </div>
 
     <div class="panel" id="pt_sup">
-      <input type="search" id="po_find" placeholder="Search supplier or brand…">
-      <div class="suplist mt" id="po_suplist"></div>
-      <div class="mt"><button class="btn line" id="po_newsup">＋ New supplier</button></div>
-      <div id="po_supinfo" class="mt"></div>
+      <div class="tools">
+        <input type="search" id="po_find" placeholder="Search supplier or brand…">
+        <button class="btn line" id="po_newsup">＋ New supplier</button>
+      </div>
+      <div id="po_suplist"></div>
     </div>
 
     <div class="panel" id="pt_ord" hidden>
@@ -1636,11 +1637,17 @@ SCREENS.purchaseorders = async (page) => {
       selectedSup = suppliers.find((v) => String(v.id) === String(selectedSup.id));
     }
     drawSupList();
-    drawSupInfo();
   };
 
-  // A scrollable list rather than a dropdown: the whole book of suppliers in
-  // view, filtered as you type, the chosen one highlighted.
+  const norm = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
+  const chatBadge = (url) => url
+    ? `<a class="silink" style="background:#0084FF" target="_blank" rel="noopener noreferrer"
+        href="${esc(norm(url))}" title="Group chat">💬</a>`
+    : '<span class="silink off" title="no group-chat link">💬</span>';
+
+  // Suppliers laid out like the customer lists: a searchable table, each row
+  // opening that supplier to edit. Clicking a name also makes it the one a
+  // purchase order is raised to.
   const drawSupList = () => {
     const box = $('#po_suplist', page);
     if (!box) return;
@@ -1648,41 +1655,25 @@ SCREENS.purchaseorders = async (page) => {
     const list = suppliers.filter((v) => !term
       || v.name.toLowerCase().includes(term)
       || (v.brand_name || '').toLowerCase().includes(term));
-    box.innerHTML = list.length
-      ? list.map((v) => `<button class="suprow ${selectedSup
-          && String(selectedSup.id) === String(v.id) ? 'on' : ''}" data-sup="${v.id}">
-          <b>${esc(v.name)}</b>${v.brand_name ? ` <span class="dim">— ${esc(v.brand_name)}</span>` : ''}
-        </button>`).join('')
-      : '<div class="dim" style="padding:10px">No suppliers match that.</div>';
+    const dash = '<span class="dim">—</span>';
+    box.innerHTML = table(list, [
+      { head: 'Supplier', cell: (s) => `<button class="nameopen" data-sup="${s.id}"><b>${
+          esc(s.name)}</b></button>${s.brand_name ? `<div class="dim">${esc(s.brand_name)}</div>` : ''}` },
+      { head: 'Supplier name', cell: (s) => s.supplier_name ? esc(s.supplier_name) : dash },
+      { head: 'Tier', cell: (s) => s.tier === 'distributor'
+          ? tag('Distributor', 'pink') : tag('Main', 'grey') },
+      { head: 'Standing', cell: (s) => s.active === false
+          ? tag('inactive', 'grey') : tag('active', 'green') },
+      { head: 'TIN', cell: (s) => s.tin ? esc(s.tin) : dash },
+      { head: 'Address', cell: (s) => s.address ? esc(s.address) : dash },
+      { head: 'Contact', cell: (s) => s.contact ? esc(s.contact) : dash },
+      { head: 'FB', cell: (s) => socialLink(s.fb_link, 'fb') },
+      { head: 'Chat', cell: (s) => chatBadge(s.chat_link) },
+    ], term ? 'No suppliers match that.' : 'No suppliers yet.');
     $$('[data-sup]', box).forEach((b) => b.addEventListener('click', () => {
       selectedSup = suppliers.find((v) => String(v.id) === b.dataset.sup);
-      drawSupList();
-      drawSupInfo();
+      supplierForm(selectedSup);
     }));
-  };
-
-  // The chosen supplier's own particulars, shown under the picker — the company,
-  // brand, TIN, address and contact that print on the order, and buttons through
-  // to their group chat and Facebook.
-  const drawSupInfo = () => {
-    const box = $('#po_supinfo', page);
-    if (!box) return;
-    const s = selectedSup;
-    if (!s) { box.innerHTML = ''; return; }
-    const line = (label, val) => val
-      ? `<div><span class="dim">${label}</span> ${esc(val)}</div>` : '';
-    const rows = [line('Company', s.name), line('Supplier', s.supplier_name),
-      line('Brand', s.brand_name), line('TIN', s.tin), line('Address', s.address),
-      line('Contact #', s.contact)].filter(Boolean).join('');
-    const norm = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
-    const linkBtn = (url, label) => url ? `<a class="btn sm quiet" target="_blank"
-      rel="noopener noreferrer" href="${esc(norm(url))}">${label}</a>` : '';
-    const links = [linkBtn(s.chat_link, '💬 Open chat'), linkBtn(s.fb_link, '📘 Facebook')]
-      .filter(Boolean).join(' ');
-    box.innerHTML = `${rows || '<div class="dim">No details on file for this supplier yet.</div>'}
-      <div class="mt">${links}
-        <button class="btn sm quiet" id="sup_edit">✎ Edit supplier</button></div>`;
-    $('#sup_edit', page)?.addEventListener('click', () => supplierForm(selectedSup));
   };
 
 
@@ -1844,6 +1835,16 @@ SCREENS.purchaseorders = async (page) => {
         <div style="flex:2"><label>Facebook account</label>
           <input id="s_fb" type="text" value="${esc(e.fb_link || '')}" placeholder="https://facebook.com/…"></div>
       </div>
+      <div class="row">
+        <div><label>Tier</label>
+          <select id="s_tier">
+            <option value="main"${e.tier !== 'distributor' ? ' selected' : ''}>Main</option>
+            <option value="distributor"${e.tier === 'distributor' ? ' selected' : ''}>Distributor</option>
+          </select></div>
+        <div><label>Standing</label>
+          <label class="check"><input id="s_active" type="checkbox"${
+            e.active === false ? '' : ' checked'}> Active</label></div>
+      </div>
       <div class="dim mt">The company, brand, TIN and address print on the purchase
         order; the rest is for reaching them. Leave blank what they have not given you.</div>
       <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
@@ -1855,6 +1856,7 @@ SCREENS.purchaseorders = async (page) => {
           tin: $('#s_tin').value, address: $('#s_addr').value,
           contact: $('#s_contact').value, supplier_name: $('#s_person').value,
           chat_link: $('#s_chat').value, fb_link: $('#s_fb').value,
+          tier: $('#s_tier').value, active: $('#s_active').checked,
         });
         notice('Supplier saved 🌸', 'good');
         closeDialog();
