@@ -1597,12 +1597,12 @@ SCREENS.purchaseorders = async (page) => {
   let suppliers = [];
   page.innerHTML = `
     <div class="subtabs">
-      <button data-t="sup">Supplier information</button>
-      <button data-t="form" class="on">Raise order</button>
+      <button data-t="sup" class="on">Supplier information</button>
+      <button data-t="form">Raise order</button>
       <button data-t="ord">Purchase order</button>
     </div>
 
-    <div class="panel" id="pt_sup" hidden>
+    <div class="panel" id="pt_sup">
       <div class="tools">
         <input type="search" id="po_find" placeholder="Search supplier or brand…">
         <button class="btn line" id="po_newsup">＋ New supplier</button>
@@ -1637,7 +1637,7 @@ SCREENS.purchaseorders = async (page) => {
       </div>
     </div>
 
-    <div id="pt_form">
+    <div id="pt_form" hidden>
       <div class="head" style="margin:0"><h3 class="sr">Raise a purchase order</h3></div>
       <div class="dim mt">Pick the supplier, then say what is wanted and how much
         of it — no prices; what it costs lands when the goods are received.</div>
