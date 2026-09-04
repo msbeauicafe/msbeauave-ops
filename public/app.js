@@ -1597,9 +1597,9 @@ SCREENS.purchaseorders = async (page) => {
   let suppliers = [];
   page.innerHTML = `
     <div class="subtabs">
+      <button data-t="sup">Supplier information</button>
       <button data-t="form" class="on">Raise order</button>
       <button data-t="ord">Purchase order</button>
-      <button data-t="sup">Supplier information</button>
     </div>
 
     <div class="panel" id="pt_sup" hidden>
