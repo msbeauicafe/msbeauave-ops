@@ -1599,7 +1599,7 @@ SCREENS.purchaseorders = async (page) => {
     <div class="subtabs">
       <button data-t="sup" class="on">Supplier information</button>
       <button data-t="form">Raise order</button>
-      <button data-t="ord">Purchase order</button>
+      <button data-t="ord">Pending purchase order</button>
     </div>
 
     <div class="panel" id="pt_sup">
