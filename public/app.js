@@ -1675,8 +1675,10 @@ SCREENS.purchaseorders = async (page) => {
             <h3>List of orders</h3>
             <div id="pf_basket"></div>
             <div class="basket-sum">
-              <div class="sumrow grand"><span>Items on this order</span>
+              <div class="sumrow"><span>Items on this order</span>
                 <span id="pf_items">0</span></div>
+              <div class="sumrow grand"><span>Total</span>
+                <span id="pf_total">₱0.00</span></div>
             </div>
             <div class="row mt"><div style="flex:3">
               <label>Comments or special instructions</label>
@@ -2193,6 +2195,9 @@ SCREENS.purchaseorders = async (page) => {
     }));
     const items = $('#pf_items', page);
     if (items) items.textContent = count(rows.reduce((s, l) => s + l.qty, 0));
+    const total = $('#pf_total', page);
+    if (total) total.textContent = peso(rows.reduce((s, l) =>
+      s + (Number(l.price) || 0) * l.qty, 0));
   };
 
   // Two letters off the name, so a supplier without a picture is still a card
