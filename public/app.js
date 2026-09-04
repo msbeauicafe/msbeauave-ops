@@ -826,7 +826,7 @@ SCREENS.products = async (page) => {
     <div id="pt_prodlist">
       <div class="tools">
         <input type="search" id="find" placeholder="Search by code, name or brand…">
-        <button class="btn" id="add">＋ New product</button>
+        <button class="btn" id="add">＋ New brand</button>
         ${user.role === 'admin' ? `
         <button class="btn line" id="sheet">📋 Load a price list</button>
         <button class="btn line" id="pics">🖼️ Pictures, all at once</button>` : ''}
