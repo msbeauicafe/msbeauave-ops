@@ -880,7 +880,8 @@ SCREENS.products = async (page) => {
     () => { load().catch(whoops); drawBrands().catch(whoops); }));
 
   $('#find', page).addEventListener('input', (e) => { term = e.target.value; load().catch(whoops); });
-  $('#add', page).addEventListener('click', () => editProduct(null, load));
+  $('#add', page).addEventListener('click',
+    () => editProduct(null, load, { newTitle: 'New brand' }));
   $('#sheet', page)?.addEventListener('click',
     () => priceListDialog(GET('/api/products').catch(() => []), load));
   $('#pics', page)?.addEventListener('click',
@@ -1149,11 +1150,11 @@ async function priceListDialog(currentPromise, reload) {
   review();
 }
 
-function editProduct(p, reload) {
+function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   const isNew = !p;
   const num = (v, d = 0) => (v == null ? d : v);
   dialog(`
-    <h3>${isNew ? 'New product' : esc(p.name)}</h3>
+    <h3>${isNew ? esc(newTitle) : esc(p.name)}</h3>
     <div class="row">
       <div><label>Product code</label>
         <input id="f_sku" type="text" value="${esc(p?.sku || '')}" ${isNew ? '' : 'disabled'}></div>
