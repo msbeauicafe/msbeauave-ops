@@ -820,11 +820,11 @@ SCREENS.products = async (page) => {
 
   page.innerHTML = `
     <div class="subtabs">
-      <button data-pt="list" class="on">Product list</button>
-      <button data-pt="brand">Brand</button>
+      <button data-pt="brand" class="on">Brand list</button>
+      <button data-pt="list">Product list</button>
     </div>
 
-    <div id="pt_prodlist">
+    <div id="pt_prodlist" hidden>
       <div class="tools">
         <input type="search" id="find" placeholder="Search by code, name or brand…">
         <button class="btn" id="add">＋ New product</button>
@@ -844,7 +844,7 @@ SCREENS.products = async (page) => {
         </div>` : ''}
     </div>
 
-    <div id="pt_brand" hidden>
+    <div id="pt_brand">
       <div class="tools">
         <input type="search" id="brand_find" placeholder="Search by code, name or brand…">
       </div>
@@ -893,6 +893,7 @@ SCREENS.products = async (page) => {
     () => GET('/api/products').then((all) => productPhotosDialog(all, load)).catch(whoops));
   $('#erase', page)?.addEventListener('click', () => erasePracticeData(load));
   await load();
+  drawBrands().catch(whoops);
   repeat(load, 15000);
 };
 
