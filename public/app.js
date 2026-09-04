@@ -1885,15 +1885,16 @@ SCREENS.purchaseorders = async (page) => {
               </div>` : ''}
             <h3>Products on this order</h3>
             <div class="dim">${canEdit
-              ? 'Every box can be typed in. Change the product, how many, or the unit;'
-                + ' empty a quantity to take that product off. No prices — what it'
-                + ' costs lands when the goods are received.'
+              ? 'Every box can be typed in. Change the product, how many, the unit'
+                + ' or the price; empty a quantity to take that product off. The'
+                + ' price is the expected cost — the sheet the supplier reads still'
+                + ' carries none.'
               : 'This order has deliveries against it, so its lines are fixed. Receive'
                 + ' what is still short.'}</div>
             <div class="scroll"><table>
               <thead><tr>
-                <th>Product</th><th class="n">Ordered</th><th>Unit</th>
-                <th class="n">In</th><th class="n">Short</th><th></th>
+                <th>Product</th><th class="n">Quantity</th><th>Unit</th>
+                <th class="n">Price</th><th class="n">In</th><th class="n">Short</th><th></th>
               </tr></thead>
               <tbody>
                 ${po.lines.map((l) => `<tr data-row="${l.id}">
@@ -1907,6 +1908,10 @@ SCREENS.purchaseorders = async (page) => {
                   <td>${canEdit
                     ? `<input class="cellbox open" data-unit value="${esc(l.unit)}" style="width:70px">`
                     : esc(l.unit)}</td>
+                  <td class="n">${canEdit
+                    ? `<input class="cellbox open n" data-price inputmode="decimal"
+                         value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
+                    : (l.price != null ? peso(l.price) : '—')}</td>
                   <td class="n">${count(l.received)}</td>
                   <td class="n">${l.qty - l.received > 0
                     ? count(l.qty - l.received) : tag('all in', 'green')}</td>
@@ -1920,6 +1925,8 @@ SCREENS.purchaseorders = async (page) => {
                         autocomplete="off" placeholder="Add a product"></td>
                   <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
+                  <td class="n"><input class="cellbox open n" data-addprice inputmode="decimal"
+                        placeholder="—" style="width:80px"></td>
                   <td class="n"></td><td class="n"></td><td></td>
                 </tr>`).join('')}
               </tbody>
@@ -1967,13 +1974,15 @@ SCREENS.purchaseorders = async (page) => {
           const nameEl = $('[data-name]', tr) || $('[data-addname]', tr);
           const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
           const unitEl = $('[data-unit]', tr) || $('[data-addunit]', tr);
+          const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
           if (!nameEl) return;
           const name = (nameEl.value || '').trim();
           const qty = Number(qtyEl?.value || 0);
           if (!name || !(qty > 0)) return;
           const sku = nameToSku.get(name.toLowerCase());
           if (!sku) { unknown = unknown || name; return; }
-          lines.push({ sku, qty, unit: (unitEl?.value || 'PCS').trim() || 'PCS' });
+          lines.push({ sku, qty, unit: (unitEl?.value || 'PCS').trim() || 'PCS',
+            price: (priceEl?.value || '').trim() });
         });
         if (unknown) return notice(`“${unknown}” is not a product on the price list.`, 'bad');
         if (!lines.length) return notice('A purchase order needs at least one line.', 'bad');
@@ -2137,33 +2146,53 @@ SCREENS.purchaseorders = async (page) => {
     $$('[data-add]', $('#pf_goods', page)).forEach((b) => b.addEventListener('click', () => {
       const prod = catalogue.find((x) => x.sku === b.dataset.add);
       const at = basket.get(prod.sku)
-        ?? { sku: prod.sku, name: prod.name, unit: prod.unit_type || 'PCS', qty: 0 };
+        ?? { sku: prod.sku, name: prod.name, unit: prod.unit_type || 'PCS',
+             qty: 0, price: prod.wholesale_price != null ? Number(prod.wholesale_price) : '' };
       at.qty += 1;
       basket.set(prod.sku, at);
       drawBasket();
     }));
   };
 
+  // The list of orders as a table — product, quantity, unit and price, each box
+  // typed in. Price is the expected cost; it rides with the order and is not on
+  // the sheet the supplier reads.
   const drawBasket = () => {
-    $('#pf_basket', page).innerHTML = basket.size ? [...basket.values()].map((l) => `
-      <div class="pick">
-        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${esc(l.sku)}</span></span>
-        <input type="number" min="1" value="${l.qty}" data-q="${esc(l.sku)}">
-        <input type="text" value="${esc(l.unit)}" data-u="${esc(l.sku)}" style="width:74px">
-        <button class="btn sm stop" data-x="${esc(l.sku)}">✕</button>
-      </div>`).join('') : '<div class="none">Nothing added yet.</div>';
+    const rows = [...basket.values()];
+    $('#pf_basket', page).innerHTML = rows.length ? `
+      <div class="scroll"><table>
+        <thead><tr><th>Product</th><th class="n">Quantity</th><th>Unit</th>
+          <th class="n">Price</th><th></th></tr></thead>
+        <tbody>
+          ${rows.map((l) => `<tr>
+            <td><b>${esc(l.name)}</b><div class="dim">${esc(l.sku)}</div></td>
+            <td class="n"><input class="cellbox n" type="number" min="1"
+                 value="${l.qty}" data-q="${esc(l.sku)}"></td>
+            <td><input class="cellbox" type="text" value="${esc(l.unit)}"
+                 data-u="${esc(l.sku)}" style="width:66px"></td>
+            <td class="n"><input class="cellbox n" type="number" step="0.01" min="0"
+                 value="${l.price === '' || l.price == null ? '' : l.price}"
+                 data-pr="${esc(l.sku)}" placeholder="—"></td>
+            <td class="n"><button class="btn sm stop" data-x="${esc(l.sku)}">✕</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>` : '<div class="none">Nothing added yet.</div>';
     $$('[data-q]', $('#pf_basket', page)).forEach((i) => i.addEventListener('change', () => {
       basket.get(i.dataset.q).qty = Math.max(1, +i.value || 1);
+      drawBasket();
     }));
     $$('[data-u]', $('#pf_basket', page)).forEach((i) => i.addEventListener('change', () => {
       basket.get(i.dataset.u).unit = i.value.trim() || 'PCS';
+    }));
+    $$('[data-pr]', $('#pf_basket', page)).forEach((i) => i.addEventListener('change', () => {
+      basket.get(i.dataset.pr).price = i.value.trim();
     }));
     $$('[data-x]', $('#pf_basket', page)).forEach((b) => b.addEventListener('click', () => {
       basket.delete(b.dataset.x);
       drawBasket();
     }));
     const items = $('#pf_items', page);
-    if (items) items.textContent = count([...basket.values()].reduce((s, l) => s + l.qty, 0));
+    if (items) items.textContent = count(rows.reduce((s, l) => s + l.qty, 0));
   };
 
   // Two letters off the name, so a supplier without a picture is still a card
