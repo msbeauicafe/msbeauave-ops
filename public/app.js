@@ -831,23 +831,71 @@ SCREENS.products = async (page) => {
   page.innerHTML = `
     <div class="head"><h2>Products</h2>
       <span class="hint">Counts are units free to sell, by pool</span></div>
-    <div class="tools">
-      <input type="search" id="find" placeholder="Search by code, name or brand…">
-      <button class="btn" id="add">＋ New product</button>
-      ${user.role === 'admin' ? `
-      <button class="btn line" id="sheet">📋 Load a price list</button>
-      <button class="btn line" id="pics">🖼️ Pictures, all at once</button>` : ''}
+    <div class="subtabs">
+      <button data-pt="list" class="on">Product list</button>
+      <button data-pt="brand">Brand</button>
     </div>
-    <div class="panel" id="list"></div>
-    ${user.role === 'admin' ? `
-      <div class="danger">
-        <h3>Going live</h3>
-        <div class="dim">The shop was set up with invented deliveries, sales and
-          reseller orders so there was something to test against. Erasing them
-          leaves the sign-ins, the staff, the customers and your price list
-          alone. It cannot be undone.</div>
-        <div class="mt"><button class="btn warn sm" id="erase">Erase the practice data</button></div>
-      </div>` : ''}`;
+
+    <div id="pt_prodlist">
+      <div class="tools">
+        <input type="search" id="find" placeholder="Search by code, name or brand…">
+        <button class="btn" id="add">＋ New product</button>
+        ${user.role === 'admin' ? `
+        <button class="btn line" id="sheet">📋 Load a price list</button>
+        <button class="btn line" id="pics">🖼️ Pictures, all at once</button>` : ''}
+      </div>
+      <div class="panel" id="list"></div>
+      ${user.role === 'admin' ? `
+        <div class="danger">
+          <h3>Going live</h3>
+          <div class="dim">The shop was set up with invented deliveries, sales and
+            reseller orders so there was something to test against. Erasing them
+            leaves the sign-ins, the staff, the customers and your price list
+            alone. It cannot be undone.</div>
+          <div class="mt"><button class="btn warn sm" id="erase">Erase the practice data</button></div>
+        </div>` : ''}
+    </div>
+
+    <div id="pt_brand" hidden>
+      <div class="tools">
+        <input type="search" id="brand_find" placeholder="Search brand…">
+      </div>
+      <div class="dim">Every brand on the price list, with how many products carry
+        it and how many units are free to sell across them.</div>
+      <div class="panel mt" id="brand_list"></div>
+    </div>`;
+
+  // Two tabs: the products themselves, or the brands they come under.
+  const drawBrands = async () => {
+    const box = $('#brand_list', page);
+    if (!box) return;
+    const term2 = ($('#brand_find', page)?.value || '').trim().toLowerCase();
+    const rows = await GET('/api/products?q=').catch(() => []);
+    const map = new Map();
+    rows.forEach((p) => {
+      const b = (p.brand || '').trim() || '—';
+      const e = map.get(b) || { brand: b, count: 0, free: 0 };
+      e.count += 1;
+      e.free += (p.free_b2b || 0) + (p.free_shop || 0) + (p.free_reserve || 0);
+      map.set(b, e);
+    });
+    const list = [...map.values()]
+      .filter((r) => !term2 || r.brand.toLowerCase().includes(term2))
+      .sort((a, b) => a.brand.localeCompare(b.brand));
+    box.innerHTML = table(list, [
+      { head: 'Brand', cell: (r) => `<b>${esc(r.brand)}</b>` },
+      { head: 'Products', n: true, cell: (r) => count(r.count) },
+      { head: 'Free to sell', n: true, cell: (r) => count(r.free) },
+    ], term2 ? 'No brand matches that.' : 'No brands yet.');
+  };
+
+  $$('[data-pt]', page).forEach((b) => b.addEventListener('click', () => {
+    $$('[data-pt]', page).forEach((x) => x.classList.toggle('on', x === b));
+    $('#pt_prodlist', page).hidden = b.dataset.pt !== 'list';
+    $('#pt_brand', page).hidden = b.dataset.pt !== 'brand';
+    if (b.dataset.pt === 'brand') drawBrands().catch(whoops);
+  }));
+  $('#brand_find', page).addEventListener('input', () => drawBrands().catch(whoops));
 
   $('#find', page).addEventListener('input', (e) => { term = e.target.value; load().catch(whoops); });
   $('#add', page).addEventListener('click', () => editProduct(null, load));
