@@ -1610,14 +1610,30 @@ SCREENS.purchaseorders = async (page) => {
     </div>
 
     <div class="panel" id="pt_ord" hidden>
-      <div class="head" style="margin:0"><h3 class="sr">Purchase orders</h3>
-        <button class="btn" id="po_new">＋ Raise a purchase order</button></div>
-      <div class="dim mt">A purchase order carries no prices: it says what is
-        wanted and how much of it, and what it costs lands when the goods are
-        received. Receiving against a line records the batch and the cost
-        exactly as receiving anything does — it also notes how much of the
-        order that delivery covered.</div>
-      <div id="po_list" class="mt"></div>
+      <div class="subtabs">
+        <button data-p="ord" class="on">Purchase order</button>
+        <button data-p="prod">Product list</button>
+      </div>
+
+      <div id="pp_ord">
+        <div class="head" style="margin:0"><h3 class="sr">Purchase orders</h3>
+          <button class="btn" id="po_new">＋ Raise a purchase order</button></div>
+        <div class="dim mt">A purchase order carries no prices: it says what is
+          wanted and how much of it, and what it costs lands when the goods are
+          received. Receiving against a line records the batch and the cost
+          exactly as receiving anything does — it also notes how much of the
+          order that delivery covered.</div>
+        <div id="po_list" class="mt"></div>
+      </div>
+
+      <div id="pp_prod" hidden>
+        <div class="tools">
+          <input type="search" id="pl_find" placeholder="Search product by code, name or brand…">
+        </div>
+        <div class="dim">Everything on the price list, with its stock and prices —
+          so it is plain what needs ordering.</div>
+        <div id="pl_list" class="mt"></div>
+      </div>
     </div>`;
 
   // Two tabs, one panel at a time: the supplier and its details, or the orders.
@@ -1625,6 +1641,14 @@ SCREENS.purchaseorders = async (page) => {
     $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x === b));
     $('#pt_sup', page).hidden = b.dataset.t !== 'sup';
     $('#pt_ord', page).hidden = b.dataset.t !== 'ord';
+  }));
+
+  // Inside the orders tab, two side-by-side tabs: the purchase orders themselves,
+  // or the product list to order from.
+  $$('[data-p]', page).forEach((b) => b.addEventListener('click', () => {
+    $$('[data-p]', page).forEach((x) => x.classList.toggle('on', x === b));
+    $('#pp_ord', page).hidden = b.dataset.p !== 'ord';
+    $('#pp_prod', page).hidden = b.dataset.p !== 'prod';
   }));
 
   let selectedSup = null;
@@ -1689,6 +1713,29 @@ SCREENS.purchaseorders = async (page) => {
     ], 'No purchase orders yet.');
     $$('[data-po]', page).forEach((b) => b.addEventListener('click',
       () => openPO(+b.dataset.po).catch(whoops)));
+  };
+
+  // The price list, right under the orders: what there is to order, with its
+  // free stock and prices. A reference here, edited over on the Products screen.
+  const drawProducts = async () => {
+    const box = $('#pl_list', page);
+    if (!box) return;
+    const term = ($('#pl_find', page)?.value || '').trim();
+    const rows = await GET(`/api/products?q=${encodeURIComponent(term)}`).catch(() => []);
+    box.innerHTML = table(rows, [
+      { head: '', cell: (p) => thumb(p) },
+      { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
+      { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>`
+          + (p.active ? '' : ' ' + tag('hidden', 'grey'))
+          + (p.abc_class ? ' ' + tag(p.abc_class, 'pink') : '') },
+      { head: 'Brand', cell: (p) => esc(p.brand || '') },
+      { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
+      { head: 'Shop', n: true, cell: (p) => count(p.free_shop) },
+      { head: 'Reserve', n: true, cell: (p) => count(p.free_reserve) },
+      { head: 'To resellers', n: true, cell: (p) => peso(p.wholesale_price) },
+      { head: 'They sell at', n: true, cell: (p) => peso(p.srp) },
+      { head: 'We sell at', n: true, cell: (p) => peso(p.retail_price) },
+    ], term ? 'No products match that search.' : 'No products yet.');
   };
 
   // Opened rather than printed straight away: the sheet is one of the things
@@ -1949,9 +1996,11 @@ SCREENS.purchaseorders = async (page) => {
   });
 
   $('#po_find', page).addEventListener('input', drawSupList);
+  $('#pl_find', page).addEventListener('input', () => drawProducts().catch(whoops));
 
   await drawSuppliers();
   await drawPOs();
+  await drawProducts();
 };
 
 // ===========================================================================
