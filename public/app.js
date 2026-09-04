@@ -806,6 +806,7 @@ SCREENS.products = async (page) => {
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>`
           + (p.active ? '' : ' ' + tag('hidden', 'grey'))
           + (p.abc_class ? ' ' + tag(p.abc_class, 'pink') : '') },
+      { head: 'Brand', cell: (p) => esc(p.brand || '') },
       { head: '', cell: (p) => `
           <button class="btn sm quiet" data-edit="${esc(p.sku)}">Edit</button>
           <button class="btn sm line" data-batches="${esc(p.sku)}">Batches</button>` },
@@ -864,7 +865,6 @@ SCREENS.products = async (page) => {
       { head: '', cell: (p) => thumb(p) },
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>` },
-      { head: 'Brand', cell: (p) => esc(p.brand || '') },
       { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
       { head: 'Shop', n: true, cell: (p) => count(p.free_shop) },
       { head: 'Reserve', n: true, cell: (p) => count(p.free_reserve) },
