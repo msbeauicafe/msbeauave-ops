@@ -1599,6 +1599,7 @@ SCREENS.purchaseorders = async (page) => {
     <div class="subtabs">
       <button data-t="sup" class="on">Supplier information</button>
       <button data-t="ord">Purchase order</button>
+      <button data-t="form">Purchase form</button>
     </div>
 
     <div class="panel" id="pt_sup">
@@ -1634,13 +1635,32 @@ SCREENS.purchaseorders = async (page) => {
           so it is plain what needs ordering.</div>
         <div id="pl_list" class="mt"></div>
       </div>
+    </div>
+
+    <div class="panel" id="pt_form" hidden>
+      <div class="head" style="margin:0"><h3 class="sr">Raise a purchase order</h3></div>
+      <div class="dim mt">No prices: a purchase order says what is wanted and how
+        much of it, and what it costs lands when the goods are received.</div>
+      <div class="row mt"><div style="flex:2"><label>Supplier</label>
+        <select id="pf_sup"></select></div></div>
+      <input type="search" id="pf_find" class="mt" placeholder="Search products…">
+      <div class="dim" id="pf_count" style="font-size:.72rem;margin:4px 0 2px"></div>
+      <div id="pf_goods" class="scroll" style="max-height:280px;overflow-y:auto"></div>
+      <h4 class="mt">On this order</h4>
+      <div id="pf_basket"></div>
+      <div class="row mt"><div style="flex:3">
+        <label>Comments or special instructions</label>
+        <input id="pf_note" type="text"></div></div>
+      <div class="mt right"><button class="btn" id="pf_go">Raise it</button></div>
     </div>`;
 
-  // Two tabs, one panel at a time: the supplier and its details, or the orders.
+  // Three tabs, one panel at a time: the suppliers, the orders, or the form that
+  // raises a new one.
   $$('[data-t]', page).forEach((b) => b.addEventListener('click', () => {
     $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x === b));
     $('#pt_sup', page).hidden = b.dataset.t !== 'sup';
     $('#pt_ord', page).hidden = b.dataset.t !== 'ord';
+    $('#pt_form', page).hidden = b.dataset.t !== 'form';
   }));
 
   // Inside the orders tab, two side-by-side tabs: the purchase orders themselves,
@@ -1911,88 +1931,98 @@ SCREENS.purchaseorders = async (page) => {
   $('#po_newsup', page).addEventListener('click', () => supplierForm(null));
 
 
-  $('#po_new', page).addEventListener('click', async () => {
-    if (!selectedSup) return notice('Pick a supplier first.', 'bad');
-    const supplier = selectedSup.id;
-    const catalogue = await GET('/api/products?q=').catch(() => []);
-    const basket = new Map();
+  // The Purchase form tab: the raise-an-order form, no longer a popup. Pick the
+  // supplier, add products and how many of each, and raise it — the same POST as
+  // before, the same money-follows-receiving rule.
+  let catalogue = [];
+  const basket = new Map();
 
-    dialog(`
-      <h3>Raise a purchase order</h3>
-      <div class="dim">To <b>${esc(selectedSup.name)}${selectedSup.brand_name
-        ? ` — ${esc(selectedSup.brand_name)}` : ''}</b>.
-        No prices: a purchase order says what is wanted and how much of it, and
-        what it costs lands when the goods are received.</div>
-      <input type="search" id="pn_find" class="mt" placeholder="Search products…">
-      <div class="dim" id="pn_count" style="font-size:.72rem;margin:4px 0 2px"></div>
-      <div id="pn_goods" class="scroll" style="max-height:280px;overflow-y:auto"></div>
-      <h4 class="mt">On this order</h4>
-      <div id="pn_basket"></div>
-      <div class="row mt"><div style="flex:3"><label>Comments or special instructions</label>
-        <input id="pn_note" type="text"></div></div>
-      <div class="mt right"><button class="btn" id="pn_go">Raise it</button></div>`, 'wide');
+  const drawGoods = () => {
+    const term = ($('#pf_find', page).value || '').trim().toLowerCase();
+    const rows = catalogue.filter((p) => !term
+      || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term));
+    $('#pf_count', page).textContent = term
+      ? `${rows.length} of ${catalogue.length} products match “${term}”`
+      : `All ${rows.length} products — type to narrow it down`;
+    $('#pf_goods', page).innerHTML = table(rows, [
+      { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>
+          <span class="dim">${esc(p.sku)}</span>` },
+      { head: '', cell: (p) => `<button class="btn sm quiet"
+          data-add="${esc(p.sku)}">Add</button>` },
+    ], 'Nothing matches.');
+    $$('[data-add]', $('#pf_goods', page)).forEach((b) => b.addEventListener('click', () => {
+      const prod = catalogue.find((x) => x.sku === b.dataset.add);
+      const at = basket.get(prod.sku)
+        ?? { sku: prod.sku, name: prod.name, unit: prod.unit_type || 'PCS', qty: 0 };
+      at.qty += 1;
+      basket.set(prod.sku, at);
+      drawBasket();
+    }));
+  };
 
-    const drawGoods = () => {
-      const term = ($('#pn_find').value || '').trim().toLowerCase();
-      const rows = catalogue.filter((p) => !term
-        || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term));
-      $('#pn_count').textContent = term
-        ? `${rows.length} of ${catalogue.length} products match “${term}”`
-        : `All ${rows.length} products — type to narrow it down`;
-      $('#pn_goods').innerHTML = table(rows, [
-        { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>
-            <span class="dim">${esc(p.sku)}</span>` },
-        { head: '', cell: (p) => `<button class="btn sm quiet"
-            data-add="${esc(p.sku)}">Add</button>` },
-      ], 'Nothing matches.');
-      $$('[data-add]', $('#pn_goods')).forEach((b) => b.addEventListener('click', () => {
-        const prod = catalogue.find((x) => x.sku === b.dataset.add);
-        const at = basket.get(prod.sku)
-          ?? { sku: prod.sku, name: prod.name, unit: prod.unit_type || 'PCS', qty: 0 };
-        at.qty += 1;
-        basket.set(prod.sku, at);
-        drawBasket();
-      }));
-    };
+  const drawBasket = () => {
+    $('#pf_basket', page).innerHTML = basket.size ? [...basket.values()].map((l) => `
+      <div class="pick">
+        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${esc(l.sku)}</span></span>
+        <input type="number" min="1" value="${l.qty}" data-q="${esc(l.sku)}">
+        <input type="text" value="${esc(l.unit)}" data-u="${esc(l.sku)}" style="width:74px">
+        <button class="btn sm stop" data-x="${esc(l.sku)}">✕</button>
+      </div>`).join('') : '<div class="none">Nothing added yet.</div>';
+    $$('[data-q]', $('#pf_basket', page)).forEach((i) => i.addEventListener('change', () => {
+      basket.get(i.dataset.q).qty = Math.max(1, +i.value || 1);
+    }));
+    $$('[data-u]', $('#pf_basket', page)).forEach((i) => i.addEventListener('change', () => {
+      basket.get(i.dataset.u).unit = i.value.trim() || 'PCS';
+    }));
+    $$('[data-x]', $('#pf_basket', page)).forEach((b) => b.addEventListener('click', () => {
+      basket.delete(b.dataset.x);
+      drawBasket();
+    }));
+  };
 
-    const drawBasket = () => {
-      $('#pn_basket').innerHTML = basket.size ? [...basket.values()].map((l) => `
-        <div class="pick">
-          <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${esc(l.sku)}</span></span>
-          <input type="number" min="1" value="${l.qty}" data-q="${esc(l.sku)}">
-          <input type="text" value="${esc(l.unit)}" data-u="${esc(l.sku)}" style="width:74px">
-          <button class="btn sm stop" data-x="${esc(l.sku)}">✕</button>
-        </div>`).join('') : '<div class="none">Nothing added yet.</div>';
-      $$('[data-q]', $('#pn_basket')).forEach((i) => i.addEventListener('change', () => {
-        basket.get(i.dataset.q).qty = Math.max(1, +i.value || 1);
-      }));
-      $$('[data-u]', $('#pn_basket')).forEach((i) => i.addEventListener('change', () => {
-        basket.get(i.dataset.u).unit = i.value.trim() || 'PCS';
-      }));
-      $$('[data-x]', $('#pn_basket')).forEach((b) => b.addEventListener('click', () => {
-        basket.delete(b.dataset.x);
-        drawBasket();
-      }));
-    };
+  const drawSupplierOptions = () => {
+    const sel = $('#pf_sup', page);
+    if (!sel) return;
+    const keep = sel.value || (selectedSup && String(selectedSup.id)) || '';
+    sel.innerHTML = suppliers.map((s) => `<option value="${s.id}">${esc(s.name)}${
+      s.brand_name ? ` — ${esc(s.brand_name)}` : ''}</option>`).join('');
+    if (keep && suppliers.some((s) => String(s.id) === String(keep))) sel.value = keep;
+  };
 
-    $('#pn_find').addEventListener('input', drawGoods);
-    drawGoods();
-    drawBasket();
+  $('#pf_find', page).addEventListener('input', drawGoods);
 
-    $('#pn_go').addEventListener('click', async () => {
-      if (!basket.size) return notice('Add what is being ordered first.', 'bad');
-      $('#pn_go').disabled = true;
-      try {
-        const out = await POST('/api/purchase-orders', {
-          supplier_id: supplier, note: $('#pn_note').value,
-          lines: [...basket.values()],
-        });
-        notice(`${out.po_no} raised 🌸`, 'good');
-        closeDialog();
-        await drawPOs();
-        openPO(Number(out.id)).catch(whoops);
-      } catch (e) { whoops(e); $('#pn_go').disabled = false; }
-    });
+  $('#pf_go', page).addEventListener('click', async () => {
+    const supplier = $('#pf_sup', page).value;
+    if (!supplier) return notice('Pick a supplier first.', 'bad');
+    if (!basket.size) return notice('Add what is being ordered first.', 'bad');
+    $('#pf_go', page).disabled = true;
+    try {
+      const out = await POST('/api/purchase-orders', {
+        supplier_id: Number(supplier), note: $('#pf_note', page).value,
+        lines: [...basket.values()],
+      });
+      notice(`${out.po_no} raised 🌸`, 'good');
+      basket.clear();
+      drawBasket();
+      $('#pf_note', page).value = '';
+      await drawPOs();
+      // Back to the orders tab and open the one just raised.
+      $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'ord'));
+      $('#pt_sup', page).hidden = true;
+      $('#pt_ord', page).hidden = false;
+      $('#pt_form', page).hidden = true;
+      openPO(Number(out.id)).catch(whoops);
+    } catch (e) { whoops(e); }
+    $('#pf_go', page).disabled = false;
+  });
+
+  // The button on the orders list jumps to the form tab, its old job.
+  $('#po_new', page).addEventListener('click', () => {
+    drawSupplierOptions();
+    $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'form'));
+    $('#pt_sup', page).hidden = true;
+    $('#pt_ord', page).hidden = true;
+    $('#pt_form', page).hidden = false;
   });
 
   $('#po_find', page).addEventListener('input', drawSupList);
@@ -2001,6 +2031,10 @@ SCREENS.purchaseorders = async (page) => {
   await drawSuppliers();
   await drawPOs();
   await drawProducts();
+  catalogue = await GET('/api/products?q=').catch(() => []);
+  drawSupplierOptions();
+  drawGoods();
+  drawBasket();
 };
 
 // ===========================================================================
