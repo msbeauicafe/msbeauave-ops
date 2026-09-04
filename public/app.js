@@ -1639,30 +1639,44 @@ SCREENS.purchaseorders = async (page) => {
 
     <div id="pt_form" hidden>
       <div class="head" style="margin:0"><h3 class="sr">Raise a purchase order</h3></div>
-      <div class="dim mt">No prices: a purchase order says what is wanted and how
-        much of it, and what it costs lands when the goods are received.</div>
-      <div class="row mt"><div style="flex:2"><label>Supplier</label>
-        <select id="pf_sup"></select></div></div>
-      <div class="split mt">
-        <div class="panel">
-          <h3>Product list</h3>
-          <input type="search" id="pf_find" placeholder="Search products…">
-          <div class="dim" id="pf_count" style="font-size:.72rem;margin:4px 0 2px"></div>
-          <div id="pf_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
+      <div class="dim mt">Pick the supplier, then say what is wanted and how much
+        of it — no prices; what it costs lands when the goods are received.</div>
+
+      <div id="pf_pickwrap">
+        <div class="tools mt">
+          <span class="tools-gap" aria-hidden="true"></span>
+          <input type="search" id="pf_supfind" placeholder="Filter supplier by name or brand…">
         </div>
-        <div class="panel">
-          <h3>List of orders</h3>
-          <div id="pf_basket"></div>
-          <div class="basket-sum">
-            <div class="sumrow grand"><span>Items on this order</span>
-              <span id="pf_items">0</span></div>
+        <div id="pf_pick"></div>
+      </div>
+
+      <div id="pf_work" hidden>
+        <div class="picked-bar">
+          <span class="tools-gap" aria-hidden="true"></span>
+          <b id="pf_who"></b>
+          <button class="btn sm quiet" id="pf_change" style="margin-left:auto">Change supplier</button>
+        </div>
+        <div class="split mt">
+          <div class="panel">
+            <h3>Product list</h3>
+            <input type="search" id="pf_find" placeholder="Search products…">
+            <div class="dim" id="pf_count" style="font-size:.72rem;margin:4px 0 2px"></div>
+            <div id="pf_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
           </div>
-          <div class="row mt"><div style="flex:3">
-            <label>Comments or special instructions</label>
-            <input id="pf_note" type="text"></div></div>
-          <div class="mt right">
-            <button class="btn quiet" id="pf_clear">Clear</button>
-            <button class="btn" id="pf_go">Place order</button>
+          <div class="panel">
+            <h3>List of orders</h3>
+            <div id="pf_basket"></div>
+            <div class="basket-sum">
+              <div class="sumrow grand"><span>Items on this order</span>
+                <span id="pf_items">0</span></div>
+            </div>
+            <div class="row mt"><div style="flex:3">
+              <label>Comments or special instructions</label>
+              <input id="pf_note" type="text"></div></div>
+            <div class="mt right">
+              <button class="btn quiet" id="pf_clear">Clear</button>
+              <button class="btn" id="pf_go">Place order</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1999,15 +2013,57 @@ SCREENS.purchaseorders = async (page) => {
     if (items) items.textContent = count([...basket.values()].reduce((s, l) => s + l.qty, 0));
   };
 
-  const drawSupplierOptions = () => {
-    const sel = $('#pf_sup', page);
-    if (!sel) return;
-    const keep = sel.value || (selectedSup && String(selectedSup.id)) || '';
-    sel.innerHTML = suppliers.map((s) => `<option value="${s.id}">${esc(s.name)}${
-      s.brand_name ? ` — ${esc(s.brand_name)}` : ''}</option>`).join('');
-    if (keep && suppliers.some((s) => String(s.id) === String(keep))) sel.value = keep;
+  // Two letters off the name, so a supplier without a picture is still a card
+  // recognised at a glance rather than a row of identical squares.
+  const supInitials = (name) => (name || '?')
+    .split(/\s+/).filter(Boolean).slice(0, 2)
+    .map((w) => w[0]).join('').toUpperCase();
+
+  // The form opens on the suppliers, laid out as faces the way the chat orders
+  // open on the customers: pick one, and the order form for it appears.
+  let pfSup = null;
+  const drawSupPick = () => {
+    const box = $('#pf_pick', page);
+    if (!box) return;
+    const term = ($('#pf_supfind', page)?.value || '').trim().toLowerCase();
+    const shown = suppliers.filter((s) => !term
+      || s.name.toLowerCase().includes(term)
+      || (s.brand_name || '').toLowerCase().includes(term));
+    box.innerHTML = shown.length ? `<div class="face-grid">${shown.map((s) => `
+      <button class="face-card" data-picksup="${s.id}" title="${esc(s.name)}">
+        <span class="face">${esc(supInitials(s.name))}</span>
+        <span class="strip"><b>${esc(s.name)}</b>
+          <span class="under ${s.active_standing === false ? 'dim' : ''}">${
+            s.active_standing === false ? 'inactive' : 'active'}</span></span>
+      </button>`).join('')}</div>`
+      : '<div class="dim">No supplier matches that.</div>';
+    $$('[data-picksup]', box).forEach((b) => b.addEventListener('click',
+      () => pickSupplier(suppliers.find((s) => String(s.id) === b.dataset.picksup))));
   };
 
+  const pickSupplier = (s) => {
+    if (!s) return;
+    pfSup = s;
+    basket.clear();
+    $('#pf_note', page).value = '';
+    $('#pf_who', page).innerHTML = `${esc(s.name)}${
+      s.brand_name ? ` <span class="dim">· ${esc(s.brand_name)}</span>` : ''}`;
+    $('#pf_pickwrap', page).hidden = true;
+    $('#pf_work', page).hidden = false;
+    if ($('#pf_find', page)) $('#pf_find', page).value = '';
+    drawGoods();
+    drawBasket();
+  };
+
+  const showSupPicker = () => {
+    pfSup = null;
+    $('#pf_work', page).hidden = true;
+    $('#pf_pickwrap', page).hidden = false;
+    drawSupPick();
+  };
+
+  $('#pf_change', page).addEventListener('click', showSupPicker);
+  $('#pf_supfind', page).addEventListener('input', drawSupPick);
   $('#pf_find', page).addEventListener('input', drawGoods);
 
   $('#pf_clear', page).addEventListener('click', () => {
@@ -2018,19 +2074,19 @@ SCREENS.purchaseorders = async (page) => {
   });
 
   $('#pf_go', page).addEventListener('click', async () => {
-    const supplier = $('#pf_sup', page).value;
-    if (!supplier) return notice('Pick a supplier first.', 'bad');
+    if (!pfSup) return notice('Pick a supplier first.', 'bad');
     if (!basket.size) return notice('Add what is being ordered first.', 'bad');
     $('#pf_go', page).disabled = true;
     try {
       const out = await POST('/api/purchase-orders', {
-        supplier_id: Number(supplier), note: $('#pf_note', page).value,
+        supplier_id: Number(pfSup.id), note: $('#pf_note', page).value,
         lines: [...basket.values()],
       });
       notice(`${out.po_no} raised 🌸`, 'good');
       basket.clear();
       drawBasket();
       $('#pf_note', page).value = '';
+      showSupPicker();
       await drawPOs();
       // Back to the orders tab and open the one just raised.
       $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'ord'));
@@ -2042,9 +2098,10 @@ SCREENS.purchaseorders = async (page) => {
     $('#pf_go', page).disabled = false;
   });
 
-  // The button on the orders list jumps to the form tab, its old job.
+  // The button on the orders list jumps to the form tab, its old job — starting
+  // at the supplier faces.
   $('#po_new', page).addEventListener('click', () => {
-    drawSupplierOptions();
+    showSupPicker();
     $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'form'));
     $('#pt_sup', page).hidden = true;
     $('#pt_ord', page).hidden = true;
@@ -2058,9 +2115,7 @@ SCREENS.purchaseorders = async (page) => {
   await drawPOs();
   await drawProducts();
   catalogue = await GET('/api/products?q=').catch(() => []);
-  drawSupplierOptions();
-  drawGoods();
-  drawBasket();
+  showSupPicker();
 };
 
 // ===========================================================================
