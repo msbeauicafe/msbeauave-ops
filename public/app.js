@@ -862,7 +862,6 @@ SCREENS.products = async (page) => {
     const rows = await GET(`/api/products?q=${encodeURIComponent(term2)}`).catch(() => []);
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
-      { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>` },
       { head: 'Brand', cell: (p) => esc(p.brand || '') },
       { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
