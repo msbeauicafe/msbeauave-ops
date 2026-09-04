@@ -1637,21 +1637,35 @@ SCREENS.purchaseorders = async (page) => {
       </div>
     </div>
 
-    <div class="panel" id="pt_form" hidden>
+    <div id="pt_form" hidden>
       <div class="head" style="margin:0"><h3 class="sr">Raise a purchase order</h3></div>
       <div class="dim mt">No prices: a purchase order says what is wanted and how
         much of it, and what it costs lands when the goods are received.</div>
       <div class="row mt"><div style="flex:2"><label>Supplier</label>
         <select id="pf_sup"></select></div></div>
-      <input type="search" id="pf_find" class="mt" placeholder="Search products…">
-      <div class="dim" id="pf_count" style="font-size:.72rem;margin:4px 0 2px"></div>
-      <div id="pf_goods" class="scroll" style="max-height:280px;overflow-y:auto"></div>
-      <h4 class="mt">On this order</h4>
-      <div id="pf_basket"></div>
-      <div class="row mt"><div style="flex:3">
-        <label>Comments or special instructions</label>
-        <input id="pf_note" type="text"></div></div>
-      <div class="mt right"><button class="btn" id="pf_go">Raise it</button></div>
+      <div class="split mt">
+        <div class="panel">
+          <h3>Product list</h3>
+          <input type="search" id="pf_find" placeholder="Search products…">
+          <div class="dim" id="pf_count" style="font-size:.72rem;margin:4px 0 2px"></div>
+          <div id="pf_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
+        </div>
+        <div class="panel">
+          <h3>List of orders</h3>
+          <div id="pf_basket"></div>
+          <div class="basket-sum">
+            <div class="sumrow grand"><span>Items on this order</span>
+              <span id="pf_items">0</span></div>
+          </div>
+          <div class="row mt"><div style="flex:3">
+            <label>Comments or special instructions</label>
+            <input id="pf_note" type="text"></div></div>
+          <div class="mt right">
+            <button class="btn quiet" id="pf_clear">Clear</button>
+            <button class="btn" id="pf_go">Place order</button>
+          </div>
+        </div>
+      </div>
     </div>`;
 
   // Three tabs, one panel at a time: the suppliers, the orders, or the form that
@@ -1946,7 +1960,10 @@ SCREENS.purchaseorders = async (page) => {
       : `All ${rows.length} products — type to narrow it down`;
     $('#pf_goods', page).innerHTML = table(rows, [
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>
-          <span class="dim">${esc(p.sku)}</span>` },
+          <span class="dim">${esc(p.brand || p.sku)}</span>` },
+      { head: 'Price', n: true, cell: (p) => peso(p.wholesale_price) },
+      { head: 'Have', n: true, cell: (p) => count(
+          (p.free_b2b || 0) + (p.free_shop || 0) + (p.free_reserve || 0)) },
       { head: '', cell: (p) => `<button class="btn sm quiet"
           data-add="${esc(p.sku)}">Add</button>` },
     ], 'Nothing matches.');
@@ -1978,6 +1995,8 @@ SCREENS.purchaseorders = async (page) => {
       basket.delete(b.dataset.x);
       drawBasket();
     }));
+    const items = $('#pf_items', page);
+    if (items) items.textContent = count([...basket.values()].reduce((s, l) => s + l.qty, 0));
   };
 
   const drawSupplierOptions = () => {
@@ -1990,6 +2009,13 @@ SCREENS.purchaseorders = async (page) => {
   };
 
   $('#pf_find', page).addEventListener('input', drawGoods);
+
+  $('#pf_clear', page).addEventListener('click', () => {
+    if (basket.size && !confirm('Clear this order?')) return;
+    basket.clear();
+    $('#pf_note', page).value = '';
+    drawBasket();
+  });
 
   $('#pf_go', page).addEventListener('click', async () => {
     const supplier = $('#pf_sup', page).value;
