@@ -1161,7 +1161,10 @@ function editProduct(p, reload) {
         <input id="f_name" type="text" value="${esc(p?.name || '')}"></div>
     </div>
     <div class="row">
-      <div><label>Brand</label><input id="f_brand" type="text" value="${esc(p?.brand || '')}"></div>
+      <div><label>Brand name</label>
+        <input id="f_brand" type="text" list="f_brandopts" autocomplete="off"
+          value="${esc(p?.brand || '')}" placeholder="Pick a brand…">
+        <datalist id="f_brandopts"></datalist></div>
       <div><label>Category</label><input id="f_cat" type="text" value="${esc(p?.category || '')}"></div>
     </div>
     <div class="row">
@@ -1202,6 +1205,15 @@ function editProduct(p, reload) {
       <button class="btn" id="f_save">Save</button>
     </div>`);
 
+  // The brand box offers the brands already on the price list, drawn once the
+  // dialog is up; a brand not yet used can still be typed straight in.
+  GET('/api/products').then((rows) => {
+    const opts = $('#f_brandopts');
+    if (!opts) return;
+    const brands = [...new Set(rows.map((r) => (r.brand || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    opts.innerHTML = brands.map((b) => `<option value="${esc(b)}"></option>`).join('');
+  }).catch(() => {});
 
   // The photograph saves on its own, the moment one is chosen — it is not part
   // of the form below, and making someone press Save afterwards is how you end
