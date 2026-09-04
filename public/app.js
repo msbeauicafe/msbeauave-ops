@@ -1626,7 +1626,7 @@ SCREENS.purchaseorders = async (page) => {
 
       <div id="pp_ord">
         <div class="head" style="margin:0"><h3 class="sr">Purchase orders</h3>
-          <button class="btn" id="po_new">＋ Raise a purchase order</button></div>
+          <button class="btn" id="po_new">＋ New order</button></div>
         <div class="dim mt">A purchase order carries no prices: it says what is
           wanted and how much of it, and what it costs lands when the goods are
           received. Receiving against a line records the batch and the cost
@@ -1646,7 +1646,7 @@ SCREENS.purchaseorders = async (page) => {
     </div>
 
     <div id="pt_form" hidden>
-      <div class="head" style="margin:0"><h3 class="sr">Raise a purchase order</h3></div>
+      <div class="head" style="margin:0"><h3 class="sr">New order</h3></div>
       <div class="dim mt">Pick the supplier, then say what is wanted and how much
         of it — no prices; what it costs lands when the goods are received.</div>
 
