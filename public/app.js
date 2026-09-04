@@ -1598,7 +1598,8 @@ SCREENS.purchaseorders = async (page) => {
   page.innerHTML = `
     <div class="subtabs">
       <button data-t="sup" class="on">Supplier information</button>
-      <button data-t="form">Raise order</button>
+      <button data-t="form">Order</button>
+      <button data-t="pend">Pending purchase order</button>
       <button data-t="ord">Purchase order</button>
     </div>
 
@@ -1608,6 +1609,13 @@ SCREENS.purchaseorders = async (page) => {
         <button class="btn line" id="po_newsup">＋ New supplier</button>
       </div>
       <div id="po_suplist"></div>
+    </div>
+
+    <div class="panel" id="pt_pend" hidden>
+      <div class="head" style="margin:0"><h3 class="sr">Pending purchase orders</h3></div>
+      <div class="dim mt">Purchase orders still awaiting delivery. Open one to edit
+        it while it is open, or to receive what has arrived.</div>
+      <div id="po_pend_list" class="mt"></div>
     </div>
 
     <div class="panel" id="pt_ord" hidden>
@@ -1682,13 +1690,15 @@ SCREENS.purchaseorders = async (page) => {
       </div>
     </div>`;
 
-  // Three tabs, one panel at a time: the suppliers, the orders, or the form that
-  // raises a new one.
+  // Four tabs, one panel at a time: the suppliers, the order form, the orders
+  // still awaiting delivery, and every purchase order.
   $$('[data-t]', page).forEach((b) => b.addEventListener('click', () => {
     $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x === b));
     $('#pt_sup', page).hidden = b.dataset.t !== 'sup';
-    $('#pt_ord', page).hidden = b.dataset.t !== 'ord';
     $('#pt_form', page).hidden = b.dataset.t !== 'form';
+    $('#pt_pend', page).hidden = b.dataset.t !== 'pend';
+    $('#pt_ord', page).hidden = b.dataset.t !== 'ord';
+    if (b.dataset.t === 'pend') drawPendingPOs();
   }));
 
   // Inside the orders tab, two side-by-side tabs: the purchase orders themselves,
@@ -1760,6 +1770,29 @@ SCREENS.purchaseorders = async (page) => {
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'No purchase orders yet.');
     $$('[data-po]', page).forEach((b) => b.addEventListener('click',
+      () => openPO(+b.dataset.po).catch(whoops)));
+  };
+
+  // The pending tab: the same list, kept to the orders still awaiting a
+  // delivery — open and part-delivered — so what is outstanding stands alone.
+  const drawPendingPOs = async () => {
+    const box = $('#po_pend_list', page);
+    if (!box) return;
+    const rows = (await GET('/api/purchase-orders').catch(() => []))
+      .filter((o) => o.status === 'open' || o.status === 'part');
+    box.innerHTML = table(rows, [
+      { head: 'No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
+      { head: 'Raised', cell: (o) => onDay(o.ordered_on) },
+      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${
+          o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
+      { head: 'Lines', n: true, cell: (o) => count(o.lines) },
+      { head: 'Still short', n: true, cell: (o) => o.still_short > 0
+          ? `<b>${count(o.still_short)}</b>` : '—' },
+      { head: 'State', cell: (o) => o.status === 'part'
+          ? tag('part delivered', 'amber') : tag('open', 'pink') },
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
+    ], 'Nothing is awaiting delivery.');
+    $$('[data-po]', box).forEach((b) => b.addEventListener('click',
       () => openPO(+b.dataset.po).catch(whoops)));
   };
 
