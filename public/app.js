@@ -799,24 +799,27 @@ SCREENS.dashboard = async (page) => {
 // ===========================================================================
 SCREENS.products = async (page) => {
   let term = '';
-  // The Brand list: the brands kept in their own right — name, supplier, TIN
-  // and address — opened to edit by their row.
+  // The Brand list carries the same suppliers as the Purchase order's supplier
+  // information — company and brand, tier, standing and the ways to reach them —
+  // each row opening the supplier to edit.
   const load = async () => {
-    const rows = await GET('/api/brands').catch(() => []);
+    const rows = await GET('/api/suppliers').catch(() => []);
     const t = term.trim().toLowerCase();
-    const dash = '<span class="dim">—</span>';
-    const list = rows.filter((b) => !t
-      || (b.brand_name || '').toLowerCase().includes(t)
-      || (b.supplier_name || '').toLowerCase().includes(t));
+    const list = rows.filter((s) => !t
+      || s.name.toLowerCase().includes(t)
+      || (s.brand_name || '').toLowerCase().includes(t));
     $('#list', page).innerHTML = table(list, [
-      { head: 'Brand name', cell: (b) => `<b>${esc(b.brand_name)}</b>` },
-      { head: 'Supplier name', cell: (b) => b.supplier_name ? esc(b.supplier_name) : dash },
-      { head: 'TIN', cell: (b) => b.tin ? esc(b.tin) : dash },
-      { head: 'Address', cell: (b) => b.address ? esc(b.address) : dash },
-      { head: '', cell: (b) => `<button class="btn sm quiet" data-editbrand="${b.id}">Edit</button>` },
-    ], t ? 'No brand matches that.' : 'No brands yet.');
-    $$('[data-editbrand]', page).forEach((el) => el.addEventListener('click',
-      () => brandForm(list.find((b) => String(b.id) === el.dataset.editbrand), load)));
+      { head: 'Supplier', cell: (s) => `<button class="nameopen" data-sup="${s.id}"><b>${
+          esc(s.name)}</b></button>${s.brand_name ? `<div class="dim">${esc(s.brand_name)}</div>` : ''}` },
+      { head: 'Tier', cell: (s) => s.tier === 'distributor'
+          ? tag('Distributor', 'pink') : tag('Main', 'grey') },
+      { head: 'Standing', cell: (s) => s.active_standing === false
+          ? tag('inactive', 'grey') : tag('active', 'green') },
+      { head: 'FB', cell: (s) => socialLink(s.fb_link, 'fb') },
+      { head: 'Chat', cell: (s) => chatBadge(s.chat_link) },
+    ], t ? 'No suppliers match that.' : 'No suppliers yet.');
+    $$('[data-sup]', page).forEach((b) => b.addEventListener('click',
+      () => supplierForm(list.find((s) => String(s.id) === b.dataset.sup), load)));
   };
 
   page.innerHTML = `
@@ -828,7 +831,7 @@ SCREENS.products = async (page) => {
     <div id="pt_prodlist">
       <div class="tools">
         <input type="search" id="find" placeholder="Search by code, name or brand…">
-        <button class="btn" id="add">＋ New brand</button>
+        <button class="btn" id="add">＋ New supplier</button>
         ${user.role === 'admin' ? `
         <button class="btn line" id="sheet">📋 Load a price list</button>
         <button class="btn line" id="pics">🖼️ Pictures, all at once</button>` : ''}
@@ -889,7 +892,7 @@ SCREENS.products = async (page) => {
     () => { load().catch(whoops); drawBrands().catch(whoops); }));
 
   $('#find', page).addEventListener('input', (e) => { term = e.target.value; load().catch(whoops); });
-  $('#add', page).addEventListener('click', () => brandForm(null, load));
+  $('#add', page).addEventListener('click', () => supplierForm(null, load));
   $('#sheet', page)?.addEventListener('click',
     () => priceListDialog(GET('/api/products').catch(() => []), load));
   $('#pics', page)?.addEventListener('click',
@@ -1158,34 +1161,63 @@ async function priceListDialog(currentPromise, reload) {
   review();
 }
 
-// A brand on its own: four boxes — brand name, supplier name, TIN and address —
-// saved to the brands table and edited from the Brand list.
-function brandForm(existing, reload) {
+// A bare link needs its scheme before it will open; a group-chat badge is a
+// blue bubble when there is one and a greyed one when there is not.
+const chatLinkNorm = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
+const chatBadge = (url) => url
+  ? `<a class="silink" style="background:#0084FF" target="_blank" rel="noopener noreferrer"
+      href="${esc(chatLinkNorm(url))}" title="Group chat">💬</a>`
+  : '<span class="silink off" title="no group-chat link">💬</span>';
+
+// One supplier form, wherever a supplier is added or edited — the Purchase order
+// supplier list and the Brand list both open it. reload() is whatever redraws
+// the list it was opened from.
+function supplierForm(existing, reload) {
   const e = existing || {};
   dialog(`
-    <h3>${existing ? 'Edit brand' : 'New brand'}</h3>
+    <h3>${existing ? 'Edit supplier' : 'New supplier'}</h3>
     <div class="row">
-      <div style="flex:2"><label>Brand name</label>
-        <input id="b_name" type="text" value="${esc(e.brand_name || '')}" autofocus></div>
-      <div style="flex:2"><label>Supplier name</label>
-        <input id="b_sup" type="text" value="${esc(e.supplier_name || '')}"></div>
+      <div style="flex:2"><label>Company name</label><input id="s_name" type="text" value="${esc(e.name || '')}" autofocus></div>
+      <div style="flex:2"><label>Supplier name</label><input id="s_person" type="text" value="${esc(e.supplier_name || '')}"></div>
+      <div style="flex:2"><label>Brand name</label><input id="s_brand" type="text" value="${esc(e.brand_name || '')}"></div>
     </div>
     <div class="row">
-      <div><label>TIN no.</label><input id="b_tin" type="text" value="${esc(e.tin || '')}"></div>
-      <div style="flex:2"><label>Address</label>
-        <input id="b_addr" type="text" value="${esc(e.address || '')}"></div>
+      <div><label>TIN no.</label><input id="s_tin" type="text" value="${esc(e.tin || '')}"></div>
+      <div style="flex:2"><label>Address</label><input id="s_addr" type="text" value="${esc(e.address || '')}"></div>
+      <div><label>Contact #</label><input id="s_contact" type="text" value="${esc(e.contact || '')}"></div>
     </div>
-    <div class="mt right"><button class="btn" id="b_save">Save</button></div>`);
-  $('#b_save').addEventListener('click', async () => {
+    <div class="row">
+      <div style="flex:2"><label>Group-chat link</label>
+        <input id="s_chat" type="text" value="${esc(e.chat_link || '')}" placeholder="https://m.me/… or the group chat link"></div>
+      <div style="flex:2"><label>Facebook account</label>
+        <input id="s_fb" type="text" value="${esc(e.fb_link || '')}" placeholder="https://facebook.com/…"></div>
+    </div>
+    <div class="row">
+      <div><label>Tier</label>
+        <select id="s_tier">
+          <option value="main"${e.tier !== 'distributor' ? ' selected' : ''}>Main</option>
+          <option value="distributor"${e.tier === 'distributor' ? ' selected' : ''}>Distributor</option>
+        </select></div>
+      <div><label>Standing</label>
+        <div class="dim" style="padding-top:8px">Worked out from supply — a
+          supplier reads inactive once three months pass with no order.</div></div>
+    </div>
+    <div class="dim mt">The company, brand, TIN and address print on the purchase
+      order; the rest is for reaching them. Leave blank what they have not given you.</div>
+    <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
+  $('#s_save').addEventListener('click', async () => {
     try {
-      await POST('/api/brands', {
-        id: e.id || null, brand_name: $('#b_name').value,
-        supplier_name: $('#b_sup').value, tin: $('#b_tin').value,
-        address: $('#b_addr').value,
+      await POST('/api/suppliers', {
+        id: e.id || null,
+        name: $('#s_name').value, brand_name: $('#s_brand').value,
+        tin: $('#s_tin').value, address: $('#s_addr').value,
+        contact: $('#s_contact').value, supplier_name: $('#s_person').value,
+        chat_link: $('#s_chat').value, fb_link: $('#s_fb').value,
+        tier: $('#s_tier').value,
       });
-      notice('Brand saved 🌸', 'good');
+      notice('Supplier saved 🌸', 'good');
       closeDialog();
-      reload();
+      if (reload) reload();
     } catch (err) { whoops(err); }
   });
 }
@@ -1807,12 +1839,6 @@ SCREENS.purchaseorders = async (page) => {
     drawSupList();
   };
 
-  const norm = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
-  const chatBadge = (url) => url
-    ? `<a class="silink" style="background:#0084FF" target="_blank" rel="noopener noreferrer"
-        href="${esc(norm(url))}" title="Group chat">💬</a>`
-    : '<span class="silink off" title="no group-chat link">💬</span>';
-
   // Suppliers laid out like the customer lists: a searchable table, each row
   // opening that supplier to edit. Clicking a name also makes it the one a
   // purchase order is raised to.
@@ -1835,7 +1861,7 @@ SCREENS.purchaseorders = async (page) => {
     ], term ? 'No suppliers match that.' : 'No suppliers yet.');
     $$('[data-sup]', box).forEach((b) => b.addEventListener('click', () => {
       selectedSup = suppliers.find((v) => String(v.id) === b.dataset.sup);
-      supplierForm(selectedSup);
+      supplierForm(selectedSup, drawSuppliers);
     }));
   };
 
@@ -2153,58 +2179,7 @@ SCREENS.purchaseorders = async (page) => {
 
   // One form for both a new supplier and an edit of an existing one — the same
   // fields, pre-filled when there is an id to keep.
-  const supplierForm = (existing) => {
-    const e = existing || {};
-    dialog(`
-      <h3>${existing ? 'Edit supplier' : 'New supplier'}</h3>
-      <div class="row">
-        <div style="flex:2"><label>Company name</label><input id="s_name" type="text" value="${esc(e.name || '')}" autofocus></div>
-        <div style="flex:2"><label>Supplier name</label><input id="s_person" type="text" value="${esc(e.supplier_name || '')}"></div>
-        <div style="flex:2"><label>Brand name</label><input id="s_brand" type="text" value="${esc(e.brand_name || '')}"></div>
-      </div>
-      <div class="row">
-        <div><label>TIN no.</label><input id="s_tin" type="text" value="${esc(e.tin || '')}"></div>
-        <div style="flex:2"><label>Address</label><input id="s_addr" type="text" value="${esc(e.address || '')}"></div>
-        <div><label>Contact #</label><input id="s_contact" type="text" value="${esc(e.contact || '')}"></div>
-      </div>
-      <div class="row">
-        <div style="flex:2"><label>Group-chat link</label>
-          <input id="s_chat" type="text" value="${esc(e.chat_link || '')}" placeholder="https://m.me/… or the group chat link"></div>
-        <div style="flex:2"><label>Facebook account</label>
-          <input id="s_fb" type="text" value="${esc(e.fb_link || '')}" placeholder="https://facebook.com/…"></div>
-      </div>
-      <div class="row">
-        <div><label>Tier</label>
-          <select id="s_tier">
-            <option value="main"${e.tier !== 'distributor' ? ' selected' : ''}>Main</option>
-            <option value="distributor"${e.tier === 'distributor' ? ' selected' : ''}>Distributor</option>
-          </select></div>
-        <div><label>Standing</label>
-          <div class="dim" style="padding-top:8px">Worked out from supply — a
-            supplier reads inactive once three months pass with no order.</div></div>
-      </div>
-      <div class="dim mt">The company, brand, TIN and address print on the purchase
-        order; the rest is for reaching them. Leave blank what they have not given you.</div>
-      <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
-    $('#s_save').addEventListener('click', async () => {
-      try {
-        const saved = await POST('/api/suppliers', {
-          id: e.id || null,
-          name: $('#s_name').value, brand_name: $('#s_brand').value,
-          tin: $('#s_tin').value, address: $('#s_addr').value,
-          contact: $('#s_contact').value, supplier_name: $('#s_person').value,
-          chat_link: $('#s_chat').value, fb_link: $('#s_fb').value,
-          tier: $('#s_tier').value,
-        });
-        notice('Supplier saved 🌸', 'good');
-        closeDialog();
-        if (saved && saved.id) selectedSup = { id: saved.id };
-        drawSuppliers();
-      } catch (err) { whoops(err); }
-    });
-  };
-
-  $('#po_newsup', page).addEventListener('click', () => supplierForm(null));
+  $('#po_newsup', page).addEventListener('click', () => supplierForm(null, drawSuppliers));
 
 
   // The Purchase form tab: the raise-an-order form, no longer a popup. Pick the
