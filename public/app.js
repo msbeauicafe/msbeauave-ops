@@ -820,11 +820,11 @@ SCREENS.products = async (page) => {
 
   page.innerHTML = `
     <div class="subtabs">
-      <button data-pt="brand" class="on">Brand list</button>
-      <button data-pt="list">Product list</button>
+      <button data-pt="list" class="on">Brand list</button>
+      <button data-pt="brand">Product list</button>
     </div>
 
-    <div id="pt_prodlist" hidden>
+    <div id="pt_prodlist">
       <div class="tools">
         <input type="search" id="find" placeholder="Search by code, name or brand…">
         <button class="btn" id="add">＋ New product</button>
@@ -844,7 +844,7 @@ SCREENS.products = async (page) => {
         </div>` : ''}
     </div>
 
-    <div id="pt_brand">
+    <div id="pt_brand" hidden>
       <div class="tools">
         <input type="search" id="brand_find" placeholder="Search by code, name or brand…">
       </div>
