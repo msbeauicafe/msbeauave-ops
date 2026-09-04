@@ -846,6 +846,7 @@ SCREENS.products = async (page) => {
     <div id="pt_brand" hidden>
       <div class="tools">
         <input type="search" id="brand_find" placeholder="Search by code, name or brand…">
+        <button class="btn" id="add2">＋ New product</button>
       </div>
       <div class="dim">The brand, stock and prices for every product — counts are
         units free to sell, by pool.</div>
@@ -883,6 +884,8 @@ SCREENS.products = async (page) => {
     if (b.dataset.pt === 'brand') drawBrands().catch(whoops);
   }));
   $('#brand_find', page).addEventListener('input', () => drawBrands().catch(whoops));
+  $('#add2', page)?.addEventListener('click', () => editProduct(null,
+    () => { load().catch(whoops); drawBrands().catch(whoops); }));
 
   $('#find', page).addEventListener('input', (e) => { term = e.target.value; load().catch(whoops); });
   $('#add', page).addEventListener('click', () => editProduct(null, load));
