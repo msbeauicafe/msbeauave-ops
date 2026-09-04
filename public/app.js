@@ -799,15 +799,24 @@ SCREENS.dashboard = async (page) => {
 // ===========================================================================
 SCREENS.products = async (page) => {
   let term = '';
-  // The Brand list: just the brands, one apiece, drawn from what the products
-  // carry — no product rows, so what is left is the brand.
+  // The Brand list: the brands kept in their own right — name, supplier, TIN
+  // and address — opened to edit by their row.
   const load = async () => {
-    const rows = await GET(`/api/products?q=${encodeURIComponent(term)}`);
-    const brands = [...new Set(rows.map((p) => (p.brand || '').trim()).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b));
-    $('#list', page).innerHTML = table(brands.map((b) => ({ brand: b })), [
-      { head: 'Brand', cell: (r) => `<b>${esc(r.brand)}</b>` },
-    ], term ? 'No brand matches that.' : 'No brands yet.');
+    const rows = await GET('/api/brands').catch(() => []);
+    const t = term.trim().toLowerCase();
+    const dash = '<span class="dim">—</span>';
+    const list = rows.filter((b) => !t
+      || (b.brand_name || '').toLowerCase().includes(t)
+      || (b.supplier_name || '').toLowerCase().includes(t));
+    $('#list', page).innerHTML = table(list, [
+      { head: 'Brand name', cell: (b) => `<b>${esc(b.brand_name)}</b>` },
+      { head: 'Supplier name', cell: (b) => b.supplier_name ? esc(b.supplier_name) : dash },
+      { head: 'TIN', cell: (b) => b.tin ? esc(b.tin) : dash },
+      { head: 'Address', cell: (b) => b.address ? esc(b.address) : dash },
+      { head: '', cell: (b) => `<button class="btn sm quiet" data-editbrand="${b.id}">Edit</button>` },
+    ], t ? 'No brand matches that.' : 'No brands yet.');
+    $$('[data-editbrand]', page).forEach((el) => el.addEventListener('click',
+      () => brandForm(list.find((b) => String(b.id) === el.dataset.editbrand), load)));
   };
 
   page.innerHTML = `
@@ -880,8 +889,7 @@ SCREENS.products = async (page) => {
     () => { load().catch(whoops); drawBrands().catch(whoops); }));
 
   $('#find', page).addEventListener('input', (e) => { term = e.target.value; load().catch(whoops); });
-  $('#add', page).addEventListener('click',
-    () => editProduct(null, load, { newTitle: 'New brand' }));
+  $('#add', page).addEventListener('click', () => brandForm(null, load));
   $('#sheet', page)?.addEventListener('click',
     () => priceListDialog(GET('/api/products').catch(() => []), load));
   $('#pics', page)?.addEventListener('click',
@@ -1148,6 +1156,38 @@ async function priceListDialog(currentPromise, reload) {
 
   $('#c_text').value = current.length ? current.map(asLine).join('\n') : BRILLIANT_SKIN;
   review();
+}
+
+// A brand on its own: four boxes — brand name, supplier name, TIN and address —
+// saved to the brands table and edited from the Brand list.
+function brandForm(existing, reload) {
+  const e = existing || {};
+  dialog(`
+    <h3>${existing ? 'Edit brand' : 'New brand'}</h3>
+    <div class="row">
+      <div style="flex:2"><label>Brand name</label>
+        <input id="b_name" type="text" value="${esc(e.brand_name || '')}" autofocus></div>
+      <div style="flex:2"><label>Supplier name</label>
+        <input id="b_sup" type="text" value="${esc(e.supplier_name || '')}"></div>
+    </div>
+    <div class="row">
+      <div><label>TIN no.</label><input id="b_tin" type="text" value="${esc(e.tin || '')}"></div>
+      <div style="flex:2"><label>Address</label>
+        <input id="b_addr" type="text" value="${esc(e.address || '')}"></div>
+    </div>
+    <div class="mt right"><button class="btn" id="b_save">Save</button></div>`);
+  $('#b_save').addEventListener('click', async () => {
+    try {
+      await POST('/api/brands', {
+        id: e.id || null, brand_name: $('#b_name').value,
+        supplier_name: $('#b_sup').value, tin: $('#b_tin').value,
+        address: $('#b_addr').value,
+      });
+      notice('Brand saved 🌸', 'good');
+      closeDialog();
+      reload();
+    } catch (err) { whoops(err); }
+  });
 }
 
 function editProduct(p, reload, { newTitle = 'New product' } = {}) {
