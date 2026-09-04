@@ -829,8 +829,6 @@ SCREENS.products = async (page) => {
   };
 
   page.innerHTML = `
-    <div class="head"><h2>Products</h2>
-      <span class="hint">Counts are units free to sell, by pool</span></div>
     <div class="subtabs">
       <button data-pt="list" class="on">Product list</button>
       <button data-pt="brand">Brand</button>
