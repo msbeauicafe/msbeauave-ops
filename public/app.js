@@ -443,7 +443,7 @@ const TABS = {
     ['customers', '💗', 'Customers'],
     ['finance', '💰', 'Finance'],
     ['pricelists', '💵', 'Pricelists'],
-    ['products', '🧴', 'Product list'],
+    ['products', '🧴', 'Product list/Brand list'],
     // The buying half, in the order the work happens: ask a supplier, receive
     // what turns up, then look at what came in. Each was a panel on Receive
     // and each is a different person's job.
@@ -526,7 +526,7 @@ const TABS = {
   // works here has. No pricelist, no till, no customer order: adding a product
   // is theirs, pricing it is the owner's.
   datacoord: [
-    ['products', '🧴', 'Product list'],
+    ['products', '🧴', 'Product list/Brand list'],
     ['purchaseorders', '🧾', 'Purchase order'],
     ['receive', '📦', 'Receive'],
     ['inventory', '📥', 'Inventory'],
@@ -569,7 +569,7 @@ const TABS = {
     ['clock', '⏱️', 'Time clock'],
     ['branches', '🏬', 'Branches'],
     ['customers', '💗', 'Customers'],
-    ['products', '🧴', 'Product list'],
+    ['products', '🧴', 'Product list/Brand list'],
     ['orders', '🚚', 'Wholesale'],
     ['returns', '↩️', 'Returns'],
     ['reorder', '📈', 'Reordering'],
