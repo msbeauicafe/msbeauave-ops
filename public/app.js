@@ -799,23 +799,15 @@ SCREENS.dashboard = async (page) => {
 // ===========================================================================
 SCREENS.products = async (page) => {
   let term = '';
+  // The Brand list: just the brands, one apiece, drawn from what the products
+  // carry — no product rows, so what is left is the brand.
   const load = async () => {
     const rows = await GET(`/api/products?q=${encodeURIComponent(term)}`);
-    $('#list', page).innerHTML = table(rows, [
-      { head: '', cell: (p) => thumb(p) },
-      { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>`
-          + (p.active ? '' : ' ' + tag('hidden', 'grey'))
-          + (p.abc_class ? ' ' + tag(p.abc_class, 'pink') : '') },
-      { head: 'Brand', cell: (p) => esc(p.brand || '') },
-      { head: '', cell: (p) => `
-          <button class="btn sm quiet" data-edit="${esc(p.sku)}">Edit</button>
-          <button class="btn sm line" data-batches="${esc(p.sku)}">Batches</button>` },
-    ], 'No products match that search.');
-
-    $$('[data-edit]', page).forEach((b) => b.addEventListener('click',
-      () => editProduct(rows.find((p) => p.sku === b.dataset.edit), load)));
-    $$('[data-batches]', page).forEach((b) => b.addEventListener('click',
-      () => showBatches(b.dataset.batches).catch(whoops)));
+    const brands = [...new Set(rows.map((p) => (p.brand || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    $('#list', page).innerHTML = table(brands.map((b) => ({ brand: b })), [
+      { head: 'Brand', cell: (r) => `<b>${esc(r.brand)}</b>` },
+    ], term ? 'No brand matches that.' : 'No brands yet.');
   };
 
   page.innerHTML = `
