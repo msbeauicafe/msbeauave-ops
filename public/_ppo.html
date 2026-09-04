@@ -1,0 +1,119 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="./styles.css">
+<style>
+  body { background: #fff7fa; margin: 0; padding: 22px; }
+  .frame { background: #fff; border: 1px solid #f0d8e2; border-radius: 16px;
+    padding: 22px 26px; max-width: 1400px; margin: 0 auto; }
+</style></head>
+<body>
+  <div class="frame">
+    <div class="subtabs">
+      <button>Supplier information</button>
+      <button>Raise order</button>
+      <button class="on">Purchase order</button>
+    </div>
+    <div id="po_root">
+      <h3>PVE26-08-002 <span class="dim">· BRILLIANT SKIN ESSENTIALS</span></h3>
+      <div class="tags"><span class="tag pink">open</span>
+        <span class="dim">Raised Aug 30, 2026 by jhazmine.licuan</span></div>
+      <div class="order-split">
+        <div class="co-side">
+          <div class="co-scale">
+            <div class="doc po">
+              <div class="rule"></div>
+              <div class="po-head">
+                <img src="./logo.png" alt="MS Beau Ave">
+                <div class="po-title">
+                  <h2>PURCHASE ORDER</h2>
+                  <div class="po-nums">
+                    <div class="fld"><span>DATE</span><b>Aug 30, 2026</b></div>
+                    <div class="fld"><span>PURCHASE ORDER</span><b>PVE26-08-002</b></div>
+                  </div>
+                </div>
+              </div>
+              <div class="po-parties">
+                <div>
+                  <div class="barhd">SUPPLIER INFORMATION</div>
+                  <div class="fld"><span>COMPANY NAME:</span><b>BRILLIANT SKIN ESSENTIALS</b></div>
+                  <div class="fld"><span>BRAND NAME</span><b>BRILLIANT SKIN</b></div>
+                  <div class="fld"><span>TIN NO.:</span><b></b></div>
+                  <div class="fld"><span>ADDRESS</span><b>MORONG RIZAL</b></div>
+                </div>
+                <div>
+                  <div class="barhd">SHIP TO</div>
+                  <div class="fld"><span>COMPANY NAME:</span><b>MS BEAU AVE</b></div>
+                  <div class="fld"><span>TIN NO.:</span><b>010-794-089-00000</b></div>
+                  <div class="fld"><span>ADDRESS</span><b>MARIKINA CITY</b></div>
+                  <div class="fld"><span>CONTACT #</span><b>9274054805</b></div>
+                </div>
+              </div>
+              <table class="lines">
+                <thead><tr><th style="width:52px">No.</th><th>PRODUCT DESCRIPTION</th>
+                  <th style="width:110px">QUANTITY</th><th style="width:90px">UNIT</th></tr></thead>
+                <tbody>
+                  <tr><td class="c">1</td><td>Brilliant Skin Minis Kojic Acid Soap 70g. NEW</td>
+                    <td class="c">10,000</td><td class="c">PCS</td></tr>
+                  <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
+                  <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
+                  <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
+                </tbody>
+              </table>
+              <div class="po-foot"><div class="notes">
+                <div class="barhd">Comments or Special Instructions</div>
+                <div class="wrote"></div>
+                <div class="ticks"><span><i></i>COMPLETED</span><span><i></i>LACKINGS</span><span><i></i>RECORDED</span></div>
+              </div></div>
+              <div class="sign3">
+                <div><div class="nm">jhazmine.licuan</div><div class="role">Signature Over Printed Name</div><div class="cap">PREPARED BY:</div></div>
+                <div><div class="nm"></div><div class="role">Signature Over Printed Name</div><div class="cap">RECORDED BY:</div></div>
+                <div><div class="nm"></div><div class="role">Signature Over Printed Name</div><div class="cap">ACKNOWLEDGED BY:</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="co-actions"><button class="btn quiet">🧾 Print / download</button></div>
+        </div>
+        <div class="edit-side">
+          <div class="panel">
+            <h3>The purchase order number</h3>
+            <div class="dim">The number this order goes out under. Change it only to line up
+              with one already used, or a gap left by a cancelled order.</div>
+            <div class="row">
+              <div><label>Purchase order no.</label><input type="text" value="PVE26-08-002"></div>
+              <div style="flex:0 0 auto;align-self:flex-end"><button class="btn sm">Save the number</button></div>
+            </div>
+          </div>
+          <h3>Products on this order</h3>
+          <div class="dim">Every box can be typed in. Change the product, how many, or the unit;
+            empty a quantity to take that product off. No prices — what it costs lands when the
+            goods are received.</div>
+          <div class="scroll"><table>
+            <thead><tr><th>Product</th><th class="n">Ordered</th><th>Unit</th>
+              <th class="n">In</th><th class="n">Short</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><input class="cellbox open" value="Brilliant Skin Minis Kojic Acid Soap 70g. NEW"></td>
+                <td class="n"><input class="cellbox open n" value="10000"></td>
+                <td><input class="cellbox open" value="PCS" style="width:70px"></td>
+                <td class="n">0</td><td class="n">10,000</td>
+                <td class="n"><button class="btn sm">Receive</button> <button class="btn sm stop">✕</button></td></tr>
+              <tr><td><input class="cellbox open" placeholder="Add a product"></td>
+                <td class="n"><input class="cellbox open n"></td>
+                <td><input class="cellbox open" placeholder="PCS" style="width:70px"></td>
+                <td class="n"></td><td class="n"></td><td></td></tr>
+              <tr><td><input class="cellbox open" placeholder="Add a product"></td>
+                <td class="n"><input class="cellbox open n"></td>
+                <td><input class="cellbox open" placeholder="PCS" style="width:70px"></td>
+                <td class="n"></td><td class="n"></td><td></td></tr>
+            </tbody>
+          </table></div>
+          <div class="mt"><label>Comments or special instructions</label><input type="text"></div>
+          <div class="right mt"><button class="btn">Save the changes</button></div>
+          <div class="mt right">
+            <button class="btn line">📗 Receive the whole delivery</button>
+            <button class="btn stop">Cancel this order</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="./styles.css">
+<style>
+  body { background: #fff7fa; margin: 0; padding: 22px; }
+  .frame { background: #fff; border: 1px solid #f0d8e2; border-radius: 16px;
+    padding: 22px 26px; max-width: 1400px; margin: 0 auto; }
+  .callout { position: relative; }
+  .ring { outline: 3px solid #e0245e; outline-offset: 3px; border-radius: 8px; }
+  .note { display:inline-block; background:#e0245e; color:#fff; font-weight:700;
+    font-size:.8rem; padding:4px 10px; border-radius:20px; margin-left:10px; }
+  .step { background:#fdeaf1; border-left:4px solid #e0245e; padding:10px 14px;
+    border-radius:8px; margin:0 0 16px; font-size:.95rem; }
+</style></head>
+<body>
+  <div class="frame">
+    <div class="step"><b>To open a pending PO:</b> Purchase order (left menu) →
+      <b>Purchase order</b> tab → click <b>Open</b> on a row whose State is
+      <span class="tag pink">open</span>.</div>
+
+    <div class="subtabs">
+      <button>Supplier information</button>
+      <button>Raise order</button>
+      <button class="on">Purchase order <span class="note">← this tab</span></button>
+    </div>
+
+    <div class="panel">
+      <div class="subtabs" style="margin-top:4px">
+        <button class="on">Purchase order</button>
+        <button>Product list</button>
+      </div>
+
+      <div class="head" style="margin:0"><h3 class="sr">Purchase orders</h3>
+        <button class="btn">＋ Raise a purchase order</button></div>
+      <div class="scroll mt"><table>
+        <thead><tr><th>No.</th><th>Raised</th><th>Supplier</th>
+          <th class="n">Lines</th><th class="n">Still short</th><th>State</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><b>PVE26-09-003</b></td><td>Sep 4, 2026</td>
+            <td>BIOEARTH INTERNATIONALE</td><td class="n">1</td><td class="n">1</td>
+            <td><span class="tag pink">open</span> <span class="note">← pending</span></td>
+            <td class="n"><button class="btn sm quiet ring">Open</button></td></tr>
+          <tr><td><b>PVE26-08-003</b></td><td>Aug 31, 2026</td>
+            <td>FJFHJFH</td><td class="n">1</td><td class="n">100</td>
+            <td><span class="tag pink">open</span></td>
+            <td class="n"><button class="btn sm quiet">Open</button></td></tr>
+          <tr><td><b>PVE26-08-002</b></td><td>Aug 30, 2026</td>
+            <td>BRILLIANT SKIN ESSENTIALS</td><td class="n">1</td><td class="n">10,000</td>
+            <td><span class="tag pink">open</span></td>
+            <td class="n"><button class="btn sm quiet">Open</button></td></tr>
+          <tr><td><b>PVE26-08-001</b></td><td>Aug 27, 2026</td>
+            <td>BRILLIANT SKIN ESSENTIALS</td><td class="n">1</td><td class="n">50,000</td>
+            <td><span class="tag pink">open</span></td>
+            <td class="n"><button class="btn sm quiet">Open</button></td></tr>
+          <tr><td><b>PVE26-05-901</b></td><td>May 26, 2026</td>
+            <td>ARIAN MOSCOSO</td><td class="n">0</td><td class="n">—</td>
+            <td><span class="tag green">all in</span></td>
+            <td class="n"><button class="btn sm quiet">Open</button></td></tr>
+          <tr><td><b>PVE26-09-002</b></td><td>Sep 3, 2026</td>
+            <td>ARIAN MOSCOSO</td><td class="n">1</td><td class="n">20</td>
+            <td><span class="tag grey">cancelled</span></td>
+            <td class="n"><button class="btn sm quiet">Open</button></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</body></html>
