@@ -807,16 +807,6 @@ SCREENS.products = async (page) => {
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>`
           + (p.active ? '' : ' ' + tag('hidden', 'grey'))
           + (p.abc_class ? ' ' + tag(p.abc_class, 'pink') : '') },
-      { head: 'Brand', cell: (p) => esc(p.brand || '') },
-      { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
-      { head: 'Shop', n: true, cell: (p) => count(p.free_shop) },
-      { head: 'Reserve', n: true, cell: (p) => count(p.free_reserve) },
-      { head: 'Held', n: true, cell: (p) => count(p.committed_b2b) },
-      { head: 'To resellers', n: true, cell: (p) => peso(p.wholesale_price) },
-      { head: 'They sell at', n: true, cell: (p) => peso(p.srp) },
-      { head: 'We sell at', n: true, cell: (p) => peso(p.retail_price) },
-      { head: 'Split', cell: (p) => `<span class="dim">${Math.round(p.alloc_b2b * 100)}/${
-          Math.round(p.alloc_shop * 100)}/${Math.round(p.alloc_reserve * 100)}</span>` },
       { head: '', cell: (p) => `
           <button class="btn sm quiet" data-edit="${esc(p.sku)}">Edit</button>
           <button class="btn sm line" data-batches="${esc(p.sku)}">Batches</button>` },
@@ -856,35 +846,35 @@ SCREENS.products = async (page) => {
 
     <div id="pt_brand" hidden>
       <div class="tools">
-        <input type="search" id="brand_find" placeholder="Search brand…">
+        <input type="search" id="brand_find" placeholder="Search by code, name or brand…">
       </div>
-      <div class="dim">Every brand on the price list, with how many products carry
-        it and how many units are free to sell across them.</div>
+      <div class="dim">The brand, stock and prices for every product — counts are
+        units free to sell, by pool.</div>
       <div class="panel mt" id="brand_list"></div>
     </div>`;
 
-  // Two tabs: the products themselves, or the brands they come under.
+  // The brand tab carries the detail the product list used to: brand, the stock
+  // pools and the prices, one row per product.
   const drawBrands = async () => {
     const box = $('#brand_list', page);
     if (!box) return;
-    const term2 = ($('#brand_find', page)?.value || '').trim().toLowerCase();
-    const rows = await GET('/api/products?q=').catch(() => []);
-    const map = new Map();
-    rows.forEach((p) => {
-      const b = (p.brand || '').trim() || '—';
-      const e = map.get(b) || { brand: b, count: 0, free: 0 };
-      e.count += 1;
-      e.free += (p.free_b2b || 0) + (p.free_shop || 0) + (p.free_reserve || 0);
-      map.set(b, e);
-    });
-    const list = [...map.values()]
-      .filter((r) => !term2 || r.brand.toLowerCase().includes(term2))
-      .sort((a, b) => a.brand.localeCompare(b.brand));
-    box.innerHTML = table(list, [
-      { head: 'Brand', cell: (r) => `<b>${esc(r.brand)}</b>` },
-      { head: 'Products', n: true, cell: (r) => count(r.count) },
-      { head: 'Free to sell', n: true, cell: (r) => count(r.free) },
-    ], term2 ? 'No brand matches that.' : 'No brands yet.');
+    const term2 = ($('#brand_find', page)?.value || '').trim();
+    const rows = await GET(`/api/products?q=${encodeURIComponent(term2)}`).catch(() => []);
+    box.innerHTML = table(rows, [
+      { head: '', cell: (p) => thumb(p) },
+      { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
+      { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>` },
+      { head: 'Brand', cell: (p) => esc(p.brand || '') },
+      { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
+      { head: 'Shop', n: true, cell: (p) => count(p.free_shop) },
+      { head: 'Reserve', n: true, cell: (p) => count(p.free_reserve) },
+      { head: 'Held', n: true, cell: (p) => count(p.committed_b2b) },
+      { head: 'To resellers', n: true, cell: (p) => peso(p.wholesale_price) },
+      { head: 'They sell at', n: true, cell: (p) => peso(p.srp) },
+      { head: 'We sell at', n: true, cell: (p) => peso(p.retail_price) },
+      { head: 'Split', cell: (p) => `<span class="dim">${Math.round(p.alloc_b2b * 100)}/${
+          Math.round(p.alloc_shop * 100)}/${Math.round(p.alloc_reserve * 100)}</span>` },
+    ], term2 ? 'No products match that search.' : 'No products yet.');
   };
 
   $$('[data-pt]', page).forEach((b) => b.addEventListener('click', () => {
