@@ -2443,8 +2443,12 @@ SCREENS.purchaseorders = async (page) => {
 
   const drawGoods = () => {
     const term = ($('#pf_find', page).value || '').trim().toLowerCase();
+    // Typing a brand should bring back that brand: the search reads the name,
+    // the code and the brand, so "brilliant" finds everything of theirs and
+    // nothing else.
     const rows = catalogue.filter((p) => !term
-      || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term));
+      || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term)
+      || (p.brand || '').toLowerCase().includes(term));
     $('#pf_count', page).textContent = term
       ? `${rows.length} of ${catalogue.length} products match “${term}”`
       : `All ${rows.length} products — type to narrow it down`;
