@@ -2163,11 +2163,15 @@ SCREENS.purchaseorders = async (page) => {
 
   // The price list, right under the orders: what there is to order, with its
   // free stock and prices. A reference here, edited over on the Products screen.
-  const drawProducts = async () => {
+  // Given rows, it draws them; given none, it fetches its own. The screen hands
+  // it the catalogue it has already fetched rather than asking for the same
+  // thousand products a second time.
+  const drawProducts = async (given) => {
     const box = $('#pl_list', page);
     if (!box) return;
     const term = ($('#pl_find', page)?.value || '').trim();
-    const rows = await GET(`/api/products?q=${encodeURIComponent(term)}`).catch(() => []);
+    const rows = given
+      ?? await GET(`/api/products?q=${encodeURIComponent(term)}`).catch(() => []);
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
@@ -2641,11 +2645,20 @@ SCREENS.purchaseorders = async (page) => {
   wireCatChips(page, 'cat_po', (c) => { poCat = c; drawSupList(); });
   $('#pl_find', page).addEventListener('input', () => drawProducts().catch(whoops));
 
-  await drawSuppliers();
-  await drawPOs();
-  await drawProducts();
-  catalogue = await GET('/api/products?q=').catch(() => []);
-  showSupPicker();
+  // Everything at once rather than one after another. These four used to be a
+  // queue: the suppliers, then the orders, then a thousand products, then the
+  // same thousand products again — and only after all of it did the supplier
+  // cards appear, which is why pressing Order sat on an empty screen. The
+  // suppliers land first and draw the picker straight away; the products are
+  // fetched once and used twice, and the order form is redrawn if they arrive
+  // after a supplier has already been picked.
+  const supplierPick = drawSuppliers().then(() => showSupPicker());
+  const goods = GET('/api/products?q=').catch(() => []);
+  drawPOs().catch(whoops);
+  catalogue = await goods;
+  drawProducts(catalogue).catch(whoops);
+  if (pfSup) drawGoods();
+  await supplierPick;
 };
 
 // ===========================================================================
