@@ -1431,11 +1431,12 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         <select id="f_cat"><option value="">Pick a category…</option></select></div>
     </div>
     <div class="row">
-      <div><label>Costs us</label><input id="f_cost" type="number" step="0.01" value="${num(p?.unit_cost)}"></div>
       ${user.role === 'datacoord' ? '' : `
-      <div><label>To resellers</label><input id="f_ws" type="number" step="0.01" value="${num(p?.wholesale_price)}"></div>
-      <div><label>They sell at</label><input id="f_srp" type="number" step="0.01" value="${num(p?.srp)}"></div>
-      <div><label>We sell at</label><input id="f_rp" type="number" step="0.01" value="${num(p?.retail_price)}"></div>`}
+      <div><label>Wholesale</label><input id="f_ws" type="number" step="0.01" value="${num(p?.wholesale_price)}"></div>
+      <div><label>Selling price</label><input id="f_rp" type="number" step="0.01" value="${num(p?.retail_price)}"></div>`}
+      <div><label>Cost price</label><input id="f_cost" type="number" step="0.01" value="${num(p?.unit_cost)}"></div>
+      ${user.role === 'datacoord' ? '' : `
+      <div><label>They sell at</label><input id="f_srp" type="number" step="0.01" value="${num(p?.srp)}"></div>`}
     </div>
     <div class="dim">${user.role === 'datacoord'
       ? 'Selling prices are set by the owner on Pricelists — a new product is added here and priced there.'
@@ -1485,20 +1486,19 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
           b === mine ? ' selected' : ''}>${esc(b)}</option>`).join('');
   }).catch(() => {});
 
-  // Category is picked the same way, off the categories the shop already uses,
-  // with the product's own kept as an option so an edit never loses it.
-  GET('/api/products').then((rows) => {
+  // The shop's three categories, the same three the Brand list ticks. A product
+  // still carrying something older keeps it as an option of its own so an edit
+  // does not wipe it, but it is not offered to anything else.
+  (() => {
     const box = $('#f_cat');
     if (!box) return;
     const mine = (p?.category || '').trim();
-    const cats = [...new Set([
-      ...rows.map((r) => (r.category || '').trim()).filter(Boolean),
-      ...(mine ? [mine] : []),
-    ])].sort((a, b) => a.localeCompare(b));
+    const cats = ['PROMO', 'FREEBIES', 'PRODUCT'];
+    if (mine && !cats.includes(mine.toUpperCase())) cats.push(mine);
     box.innerHTML = '<option value="">Pick a category…</option>'
       + cats.map((c) => `<option value="${esc(c)}"${
-          c === mine ? ' selected' : ''}>${esc(c)}</option>`).join('');
-  }).catch(() => {});
+          c.toUpperCase() === mine.toUpperCase() ? ' selected' : ''}>${esc(c)}</option>`).join('');
+  })();
 
   // The photograph saves on its own, the moment one is chosen — it is not part
   // of the form below, and making someone press Save afterwards is how you end
