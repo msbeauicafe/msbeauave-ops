@@ -857,8 +857,8 @@ SCREENS.products = async (page) => {
         <button class="btn" id="add2">＋ New product</button>
         ${catChips('cat_prod')}
       </div>
-      <div class="dim">The brand, the category and the three prices for every
-        product: what resellers pay, what the shop sells at, what it cost us.</div>
+      <div class="dim">The brand, the category, how many are free to sell
+        wholesale, and what the shop sells at against what it cost us.</div>
       <div class="panel mt" id="brand_list"></div>
     </div>`;
 
@@ -879,7 +879,7 @@ SCREENS.products = async (page) => {
           esc(p.sku)}"><b>${esc(p.name)}</b></button>` },
       { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
       { head: 'Category', cell: (p) => prodCatTag(p.category) },
-      { head: 'Wholesale', n: true, cell: (p) => peso(p.wholesale_price) },
+      { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
       { head: 'Selling price', n: true, cell: (p) => peso(p.retail_price) },
       { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
@@ -1470,7 +1470,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     </div>
     <div class="row">
       ${user.role === 'datacoord' ? '' : `
-      <div><label>Wholesale</label><input id="f_ws" type="number" step="0.01" value="${num(p?.wholesale_price)}"></div>
+      <div><label>Wholesale price</label><input id="f_ws" type="number" step="0.01" value="${num(p?.wholesale_price)}"></div>
       <div><label>Selling price</label><input id="f_rp" type="number" step="0.01" value="${num(p?.retail_price)}"></div>`}
       <div><label>Cost price</label><input id="f_cost" type="number" step="0.01" value="${num(p?.unit_cost)}"></div>
     </div>
