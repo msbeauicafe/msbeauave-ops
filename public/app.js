@@ -2543,6 +2543,12 @@ SCREENS.purchaseorders = async (page) => {
     .split(/\s+/).filter(Boolean).slice(0, 2)
     .map((w) => w[0]).join('').toUpperCase();
 
+  // Which kind of supplier this is, in one word. It decides what an order from
+  // her may contain — her own brand, or anything — so it is worth seeing before
+  // the picking rather than after.
+  const tierTag = (s) => s?.tier === 'distributor'
+    ? tag('Distributor', 'pink') : tag('Main', 'grey');
+
   // The form opens on the suppliers, laid out as faces the way the chat orders
   // open on the customers: pick one, and the order form for it appears.
   let pfSup = null;
@@ -2557,8 +2563,7 @@ SCREENS.purchaseorders = async (page) => {
       <button class="face-card" data-picksup="${s.id}" title="${esc(s.name)}">
         <span class="face">${esc(supInitials(s.name))}</span>
         <span class="strip"><b>${esc(s.name)}</b>
-          <span class="under ${s.active_standing === false ? 'dim' : ''}">${
-            s.active_standing === false ? 'inactive' : 'active'}</span></span>
+          <span class="under">${tierTag(s)}</span></span>
       </button>`).join('')}</div>`
       : '<div class="dim">No supplier matches that.</div>';
     $$('[data-picksup]', box).forEach((b) => b.addEventListener('click',
@@ -2570,7 +2575,7 @@ SCREENS.purchaseorders = async (page) => {
     pfSup = s;
     basket.clear();
     $('#pf_note', page).value = '';
-    $('#pf_who', page).innerHTML = `${esc(s.name)}${
+    $('#pf_who', page).innerHTML = `${esc(s.name)} ${tierTag(s)}${
       s.brand_name ? ` <span class="dim">· ${esc(s.brand_name)}</span>` : ''}`;
     $('#pf_pickwrap', page).hidden = true;
     $('#pf_work', page).hidden = false;
