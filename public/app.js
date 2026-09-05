@@ -838,9 +838,6 @@ SCREENS.products = async (page) => {
         <input type="search" id="find" placeholder="Search by code, name or brand…">
         ${catChips('cat_sup')}
         <button class="btn" id="add">＋ New supplier</button>
-        ${user.role === 'admin' ? `
-        <button class="btn line" id="sheet">📋 Load a price list</button>
-        <button class="btn line" id="pics">🖼️ Pictures, all at once</button>` : ''}
       </div>
       <div class="panel" id="list"></div>
       ${user.role === 'admin' ? `
@@ -900,10 +897,6 @@ SCREENS.products = async (page) => {
   $('#find', page).addEventListener('input', (e) => { term = e.target.value; load().catch(whoops); });
   wireCatChips(page, 'cat_sup', (c) => { cat = c; load().catch(whoops); });
   $('#add', page).addEventListener('click', () => supplierForm(null, load));
-  $('#sheet', page)?.addEventListener('click',
-    () => priceListDialog(GET('/api/products').catch(() => []), load));
-  $('#pics', page)?.addEventListener('click',
-    () => GET('/api/products').then((all) => productPhotosDialog(all, load)).catch(whoops));
   $('#erase', page)?.addEventListener('click', () => erasePracticeData(load));
   await load();
   drawBrands().catch(whoops);
