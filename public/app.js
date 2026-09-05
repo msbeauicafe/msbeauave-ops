@@ -817,6 +817,8 @@ SCREENS.products = async (page) => {
           ? tag('inactive', 'grey') : tag('active', 'green') },
       { head: 'FB', cell: (s) => socialLink(s.fb_link, 'fb') },
       { head: 'Chat', cell: (s) => chatBadge(s.chat_link) },
+      { head: '', n: true, cell: (s) => `<button class="rowx" data-sup="${s.id}"
+          title="Open ${esc(s.name)} to remove">✕</button>` },
     ], t ? 'No suppliers match that.' : 'No suppliers yet.');
     $$('[data-sup]', page).forEach((b) => b.addEventListener('click',
       () => supplierForm(list.find((s) => String(s.id) === b.dataset.sup), load)));
@@ -1204,6 +1206,11 @@ function supplierForm(existing, reload) {
     </div>
     <div class="dim mt">The company, brand, TIN and address print on the purchase
       order; the rest is for reaching them. Leave blank what they have not given you.</div>
+    ${existing ? `
+    <h3 class="mt">Remove this supplier</h3>
+    <div class="dim">Only a supplier with no purchase orders or deliveries can be
+      removed — what was bought and what arrived is kept. This cannot be undone.</div>
+    <div class="mt"><button class="btn warn sm" id="s_remove">Remove ${esc(e.name)}</button></div>` : ''}
     <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
   $('#s_save').addEventListener('click', async () => {
     try {
@@ -1219,6 +1226,20 @@ function supplierForm(existing, reload) {
       closeDialog();
       if (reload) reload();
     } catch (err) { whoops(err); }
+  });
+
+  $('#s_remove')?.addEventListener('click', async () => {
+    if (!confirm(`Remove ${e.name}? This cannot be undone.`)) return;
+    try {
+      await DELETE(`/api/suppliers/${e.id}`);
+      notice('Supplier removed', 'good');
+      closeDialog();
+      if (reload) reload();
+    } catch (err) {
+      // The server refuses one with orders or deliveries, and says so by name;
+      // that is not a crash, it is the answer, so it is shown plainly.
+      notice(err.message, 'bad');
+    }
   });
 }
 
@@ -1858,6 +1879,8 @@ SCREENS.purchaseorders = async (page) => {
           ? tag('inactive', 'grey') : tag('active', 'green') },
       { head: 'FB', cell: (s) => socialLink(s.fb_link, 'fb') },
       { head: 'Chat', cell: (s) => chatBadge(s.chat_link) },
+      { head: '', n: true, cell: (s) => `<button class="rowx" data-sup="${s.id}"
+          title="Open ${esc(s.name)} to remove">✕</button>` },
     ], term ? 'No suppliers match that.' : 'No suppliers yet.');
     $$('[data-sup]', box).forEach((b) => b.addEventListener('click', () => {
       selectedSup = suppliers.find((v) => String(v.id) === b.dataset.sup);
