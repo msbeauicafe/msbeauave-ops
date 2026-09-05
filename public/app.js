@@ -2443,8 +2443,12 @@ SCREENS.purchaseorders = async (page) => {
 
   const drawGoods = () => {
     const term = ($('#pf_find', page).value || '').trim().toLowerCase();
+    // Typing a brand should bring back that brand: the search reads the name,
+    // the code and the brand, so "brilliant" finds everything of theirs and
+    // nothing else.
     const rows = catalogue.filter((p) => !term
-      || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term));
+      || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term)
+      || (p.brand || '').toLowerCase().includes(term));
     $('#pf_count', page).textContent = term
       ? `${rows.length} of ${catalogue.length} products match “${term}”`
       : `All ${rows.length} products — type to narrow it down`;
@@ -2491,25 +2495,37 @@ SCREENS.purchaseorders = async (page) => {
           </tr>`).join('')}
         </tbody>
       </table></div>` : '<div class="none">Nothing added yet.</div>';
-    $$('[data-q]', $('#pf_basket', page)).forEach((i) => i.addEventListener('change', () => {
+    // The count and the total, read straight off the basket. Kept apart from
+    // the drawing because a quantity or a price being typed must move them
+    // while it is typed: redrawing the table instead would take the box out
+    // from under the cursor mid-number.
+    const retotal = () => {
+      const now = [...basket.values()];
+      const items = $('#pf_items', page);
+      if (items) items.textContent = count(now.reduce((s, l) => s + l.qty, 0));
+      const total = $('#pf_total', page);
+      if (total) total.textContent = peso(now.reduce((s, l) =>
+        s + (Number(l.price) || 0) * l.qty, 0));
+    };
+    // On input rather than change: a figure half typed is already worth having
+    // in the basket, so an order placed without leaving the box still carries
+    // what was typed into it.
+    $$('[data-q]', $('#pf_basket', page)).forEach((i) => i.addEventListener('input', () => {
       basket.get(i.dataset.q).qty = Math.max(1, +i.value || 1);
-      drawBasket();
+      retotal();
     }));
-    $$('[data-u]', $('#pf_basket', page)).forEach((i) => i.addEventListener('change', () => {
+    $$('[data-u]', $('#pf_basket', page)).forEach((i) => i.addEventListener('input', () => {
       basket.get(i.dataset.u).unit = i.value.trim() || 'PCS';
     }));
-    $$('[data-pr]', $('#pf_basket', page)).forEach((i) => i.addEventListener('change', () => {
+    $$('[data-pr]', $('#pf_basket', page)).forEach((i) => i.addEventListener('input', () => {
       basket.get(i.dataset.pr).price = i.value.trim();
+      retotal();
     }));
     $$('[data-x]', $('#pf_basket', page)).forEach((b) => b.addEventListener('click', () => {
       basket.delete(b.dataset.x);
       drawBasket();
     }));
-    const items = $('#pf_items', page);
-    if (items) items.textContent = count(rows.reduce((s, l) => s + l.qty, 0));
-    const total = $('#pf_total', page);
-    if (total) total.textContent = peso(rows.reduce((s, l) =>
-      s + (Number(l.price) || 0) * l.qty, 0));
+    retotal();
   };
 
   // Two letters off the name, so a supplier without a picture is still a card
