@@ -884,21 +884,14 @@ SCREENS.products = async (page) => {
       { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
         `<button class="rowx" data-rmprod="${esc(p.sku)}"
-          title="Remove ${esc(p.name)}">✕</button>` }] : []),
+          title="Open ${esc(p.name)} to remove">✕</button>` }] : []),
     ], term2 ? 'No products match that search.' : 'No products yet.');
     // The name opens the product, the way a supplier's name opens the supplier.
     $$('[data-prod]', box).forEach((b) => b.addEventListener('click',
       () => editProduct(rows.find((r) => r.sku === b.dataset.prod), drawBrands)));
-    // The ✕ asks first, and the back end refuses anything the books rest on.
-    $$('[data-rmprod]', box).forEach((b) => b.addEventListener('click', async () => {
-      const it = rows.find((r) => r.sku === b.dataset.rmprod);
-      if (!confirm(`Remove ${it.name}? This cannot be undone.`)) return;
-      try {
-        await DELETE(`/api/products/${encodeURIComponent(it.sku)}`);
-        notice('Product removed', 'good');
-        drawBrands().catch(whoops);
-      } catch (err) { whoops(err); }
-    }));
+    // The ✕ opens the product at its Remove section, the way a supplier's does.
+    $$('[data-rmprod]', box).forEach((b) => b.addEventListener('click',
+      () => editProduct(rows.find((r) => r.sku === b.dataset.rmprod), drawBrands)));
   };
 
   $$('[data-pt]', page).forEach((b) => b.addEventListener('click', () => {
@@ -1211,6 +1204,29 @@ const wireCatChips = (root, id, pick) => {
 const inCat = (s, cat) => !cat
   || (Array.isArray(s.categories) && s.categories.includes(cat));
 
+// The browser's own confirm box is grey, says "127.0.0.1:9500 says", and looks
+// like nothing else in here. This asks the same question in the shop's dialog:
+// it resolves true only on the red button, and false on anything else — the
+// close cross, Keep it, the Escape key.
+const askFirst = (question, note, yes = 'Remove') => new Promise((settle) => {
+  let answered = false;
+  const done = (v) => { if (!answered) { answered = true; settle(v); } };
+  dialog(`
+    <h3>${esc(question)}</h3>
+    ${note ? `<div class="dim">${esc(note)}</div>` : ''}
+    <div class="mt right">
+      <button class="btn quiet" id="ask_no">Keep it</button>
+      <button class="btn warn" id="ask_yes">${esc(yes)}</button>
+    </div>`, '', true);
+  const veil = $('#dialog');
+  $('#ask_yes').addEventListener('click', () => { done(true); closeDialog(); });
+  $('#ask_no').addEventListener('click', () => { done(false); closeDialog(); });
+  // Closed by the cross or by Escape: the same as saying no.
+  new MutationObserver((_, watch) => {
+    if (!veil.isConnected) { watch.disconnect(); done(false); }
+  }).observe(document.body, { childList: true });
+});
+
 // A product's category as a coloured tag. The ones the shop already uses get a
 // colour that means something — freebies pink, ads amber, unset grey — and
 // anything typed later is given a colour of its own from the same handful, the
@@ -1389,7 +1405,7 @@ function supplierForm(existing, reload) {
       if (!g) return;
       g.innerHTML = fileCards(fresh.files, 'document', '/api/supplier-files');
       $$('.del-file', g).forEach((btn) => btn.addEventListener('click', async () => {
-        if (!confirm('Remove this file from the record?')) return;
+        if (!await askFirst('Remove this file from the record?')) return;
         try {
           await DELETE(`/api/supplier-files/${btn.dataset.file}`);
           notice('Removed', 'good');
@@ -1421,7 +1437,7 @@ function supplierForm(existing, reload) {
   }
 
   $('#s_remove')?.addEventListener('click', async () => {
-    if (!confirm(`Remove ${e.name}? This cannot be undone.`)) return;
+    if (!await askFirst(`Remove ${e.name}?`, 'This cannot be undone.')) return;
     try {
       await DELETE(`/api/suppliers/${e.id}`);
       notice('Supplier removed', 'good');
@@ -1472,6 +1488,12 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
           <button class="btn quiet sm" id="f_photo_clear"
             ${p.has_photo ? '' : 'disabled'}>Remove</button></div>
       </div>`}
+    ${isNew || user.role !== 'admin' ? '' : `
+    <h3 class="mt">Remove this product</h3>
+    <div class="dim">Only a product with no stock, no delivery and no purchase
+      order behind it can be removed — what was bought and sold is kept. Hide it
+      instead if it simply should not be on the list. This cannot be undone.</div>
+    <div class="mt"><button class="btn warn sm" id="f_remove">Remove ${esc(p.name)}</button></div>`}
     <div class="mt right">
       ${isNew ? '' : `<button class="btn quiet" id="f_toggle">${p.active ? 'Hide' : 'Show again'}</button>`}
       <button class="btn" id="f_save">Save</button>
@@ -1561,6 +1583,16 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       closeDialog();
       reload();
     } catch (e) { whoops(e); }
+  });
+
+  $('#f_remove')?.addEventListener('click', async () => {
+    if (!await askFirst(`Remove ${p.name}?`, 'This cannot be undone.')) return;
+    try {
+      await DELETE(`/api/products/${encodeURIComponent(p.sku)}`);
+      notice('Product removed', 'good');
+      closeDialog();
+      reload();
+    } catch (err) { whoops(err); }
   });
 
   $('#f_toggle')?.addEventListener('click', async () => {
@@ -2533,8 +2565,8 @@ SCREENS.purchaseorders = async (page) => {
   $('#pf_supfind', page).addEventListener('input', drawSupPick);
   $('#pf_find', page).addEventListener('input', drawGoods);
 
-  $('#pf_clear', page).addEventListener('click', () => {
-    if (basket.size && !confirm('Clear this order?')) return;
+  $('#pf_clear', page).addEventListener('click', async () => {
+    if (basket.size && !await askFirst('Clear this order?', '', 'Clear it')) return;
     basket.clear();
     $('#pf_note', page).value = '';
     drawBasket();
@@ -5247,8 +5279,8 @@ SCREENS.chatorders = async (page) => {
     $('#ch_place', workingBox).addEventListener('click', placeOrder);
     // Draft parks the basket and says so — it does not open anything.
     $('#ch_draft', workingBox).addEventListener('click', saveDraft);
-    $('#ch_cancel', workingBox).addEventListener('click', () => {
-      if (basket.size && !confirm('Clear this order?')) return;
+    $('#ch_cancel', workingBox).addEventListener('click', async () => {
+      if (basket.size && !await askFirst('Clear this order?', '', 'Clear it')) return;
       basket.clear();
       draftId = null;
       $('#ch_order_out', workingBox).innerHTML = '';
@@ -6057,7 +6089,7 @@ async function openReseller(id, reload, part = 'account') {
   }));
 
   $('#d_remove')?.addEventListener('click', async () => {
-    if (!confirm(`Remove ${r.name}? This cannot be undone.`)) return;
+    if (!await askFirst(`Remove ${r.name}?`, 'This cannot be undone.')) return;
     try {
       await DELETE(`/api/resellers/${id}`);
       notice('Account removed', 'good');
@@ -6122,7 +6154,7 @@ async function openReseller(id, reload, part = 'account') {
   const bindDelFiles = () => {
     document.querySelectorAll('.del-file').forEach((btn) => {
       btn.onclick = async () => {
-        if (!confirm('Remove this file from the record?')) return;
+        if (!await askFirst('Remove this file from the record?')) return;
         try {
           await DELETE(`/api/reseller-files/${btn.dataset.file}`);
           notice('Removed', 'good'); await refreshFiles();
