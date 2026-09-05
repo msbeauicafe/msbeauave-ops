@@ -1200,6 +1200,50 @@ function supplierForm(existing, reload) {
         <input id="s_fb" type="text" value="${esc(e.fb_link || '')}" placeholder="https://facebook.com/…"></div>
     </div>
     ${existing ? `
+    <h3 class="mt">Profile picture</h3>
+    <div class="dim">On their card on the Order screen — a face, shopfront or logo.
+      ${e.photo_at ? 'Click it to see it full-size and download.' : ''}</div>
+    <div class="row mt" style="align-items:center">
+      <div style="flex:0 0 auto">
+        ${e.photo_at
+          ? `<img class="face filethumb" src="/api/suppliers/${e.id}/photo?v=${e.photo_at}" alt=""
+               data-zoom="/api/suppliers/${e.id}/photo?v=${e.photo_at}" data-zoom-cap="${esc(e.name || '')}">`
+          : `<span class="face">${esc((e.name || '?').split(/\s+/).filter(Boolean)
+               .slice(0, 2).map((w) => w[0]).join('').toUpperCase())}</span>`}
+      </div>
+      <div style="flex:2"><label>Choose a picture</label>
+        <input id="sp_photo" type="file" accept="image/jpeg,image/png,image/webp"></div>
+      ${e.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="sp_photo_x">Remove</button></div>' : ''}
+    </div>
+
+    <h3 class="mt">Business details</h3>
+    <div class="dim">Printed at the top of this supplier's purchase orders.</div>
+    <div class="row mt">
+      <div><label>Tax Type</label>
+        <input id="sp_taxtype" type="text" list="sp_taxtypes" value="${esc(e.tax_type || '')}">
+        <datalist id="sp_taxtypes"><option>VAT</option><option>Non-VAT</option></datalist></div>
+      <div style="flex:2"><label>Business Trade Name</label>
+        <input id="sp_trade" type="text" value="${esc(e.trade_name || '')}"></div>
+      <div style="flex:2"><label>Taxpayer Name</label>
+        <input id="sp_taxpayer" type="text" value="${esc(e.taxpayer_name || '')}"></div>
+    </div>
+    <div class="row">
+      <div><label>TIN Number</label>
+        <input id="sp_tin" type="text" value="${esc(e.tin || '')}"></div>
+      <div style="flex:3"><label>Business Address</label>
+        <input id="sp_addr" type="text" value="${esc(e.address || '')}"></div>
+      <div style="flex:0 0 auto"><button class="btn" id="sp_tax">Save</button></div>
+    </div>
+    <div class="dim mt">Their ID and papers — a valid ID, BIR 2303, business permit,
+      tax certificate. Click any to see it full-size and download.</div>
+    <div class="filegrid mt" id="sp_grid"><div class="dim">Loading…</div></div>
+    <div class="row mt">
+      <div style="flex:2"><label>What it is (e.g. valid ID, BIR 2303)</label><input id="sp_doclabel" type="text"></div>
+      <div style="flex:2"><label>Choose an image</label>
+        <input id="sp_docfile" type="file" accept="image/jpeg,image/png,image/webp"></div>
+    </div>
+` : ''}
+    ${existing ? `
     <h3 class="mt">Remove this supplier</h3>
     <div class="dim">Only a supplier with no purchase orders or deliveries can be
       removed — what was bought and what arrived is kept. This cannot be undone.</div>
@@ -1222,6 +1266,73 @@ function supplierForm(existing, reload) {
       if (reload) reload();
     } catch (err) { whoops(err); }
   });
+
+  if (existing) {
+    // Redraw this supplier from fresh data so a new picture or saved details
+    // are here at once — the list behind it is refreshed too.
+    const reopen = async () => {
+      const fresh = await GET(`/api/suppliers/${e.id}`);
+      if (reload) reload();
+      supplierForm(fresh, reload);
+    };
+    // Just the papers grid, in place, without losing the scroll.
+    const paintFiles = async () => {
+      const fresh = await GET(`/api/suppliers/${e.id}`);
+      const g = $('#sp_grid');
+      if (!g) return;
+      g.innerHTML = fileCards(fresh.files, 'document', '/api/supplier-files');
+      $$('.del-file', g).forEach((btn) => btn.addEventListener('click', async () => {
+        if (!confirm('Remove this file from the record?')) return;
+        try {
+          await DELETE(`/api/supplier-files/${btn.dataset.file}`);
+          notice('Removed', 'good');
+          await paintFiles();
+        } catch (err) { whoops(err); }
+      }));
+    };
+    paintFiles().catch(whoops);
+
+    $('#sp_photo')?.addEventListener('change', async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      try {
+        await POST(`/api/suppliers/${e.id}/photo`, { dataUrl: await shrink(file, 900) });
+        notice('Picture saved 🌸 — click it to zoom', 'good');
+        await reopen();
+      } catch (err) { whoops(err); }
+      ev.target.value = '';
+    });
+    $('#sp_photo_x')?.addEventListener('click', async () => {
+      try {
+        await DELETE(`/api/suppliers/${e.id}/photo`);
+        notice('Picture removed', 'good');
+        await reopen();
+      } catch (err) { whoops(err); }
+    });
+    $('#sp_tax')?.addEventListener('click', async () => {
+      try {
+        await POST(`/api/suppliers/${e.id}/tax`, {
+          tax_type: $('#sp_taxtype').value, trade_name: $('#sp_trade').value,
+          taxpayer_name: $('#sp_taxpayer').value, tin: $('#sp_tin').value,
+          address: $('#sp_addr').value,
+        });
+        notice('Saved 🌸', 'good');
+        await reopen();
+      } catch (err) { whoops(err); }
+    });
+    $('#sp_docfile')?.addEventListener('change', async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      try {
+        await POST(`/api/suppliers/${e.id}/files`, {
+          dataUrl: await shrink(file, 1600), label: $('#sp_doclabel')?.value.trim() || null });
+        notice('Paper saved 🌸', 'good');
+        if ($('#sp_doclabel')) $('#sp_doclabel').value = '';
+        await paintFiles();
+      } catch (err) { whoops(err); }
+      ev.target.value = '';
+    });
+  }
 
   $('#s_remove')?.addEventListener('click', async () => {
     if (!confirm(`Remove ${e.name}? This cannot be undone.`)) return;
@@ -5555,14 +5666,14 @@ SCREENS.retaileraccounts = resellerList('account', 3);
 
 // Papers (BIR, permits) and bank-transfer proofs on an account: thumbnails that
 // open the full image, each captioned with who put it there and when.
-function fileCards(files, category) {
+function fileCards(files, category, base = '/api/reseller-files') {
   const list = (files || []).filter((f) => f.category === category)
     // Latest first — the most recent transfer is the one being looked for.
     .sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
   if (!list.length) return '<div class="dim">None yet.</div>';
   return list.map((f) => `<figure class="filecard">
-    <img class="filethumb" src="/api/reseller-files/${f.id}" alt="${esc(f.label || 'file')}"
-      loading="lazy" data-zoom="/api/reseller-files/${f.id}"
+    <img class="filethumb" src="${base}/${f.id}" alt="${esc(f.label || 'file')}"
+      loading="lazy" data-zoom="${base}/${f.id}"
       data-zoom-cap="${esc(f.label || '')}">
     <figcaption><b>${esc(f.label || '—')}</b><br>
       <span class="dim">${esc(f.uploaded_by || '')} · ${onDay(f.uploaded_at)}</span>
