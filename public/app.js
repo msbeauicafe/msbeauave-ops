@@ -1180,6 +1180,9 @@ function supplierForm(existing, reload) {
   const cats = Array.isArray(e.categories) ? e.categories : [];
   const tick = (c, label) => `<label class="check"><input type="checkbox" data-cat="${c}"${
     cats.includes(c) ? ' checked' : ''}> ${label}</label>`;
+  // A picture can be chosen before the supplier exists; it is held here and
+  // uploaded the moment saving gives us an id to hang it on.
+  let pendingPhoto = null;
   dialog(`
     <h3>${existing ? 'Edit supplier' : 'New supplier'}</h3>
     <div class="row">
@@ -1199,23 +1202,21 @@ function supplierForm(existing, reload) {
       <div style="flex:2"><label>Facebook account</label>
         <input id="s_fb" type="text" value="${esc(e.fb_link || '')}" placeholder="https://facebook.com/…"></div>
     </div>
-    ${existing ? `
     <h3 class="mt">Profile picture</h3>
     <div class="dim">On their card on the Order screen — a face, shopfront or logo.
       ${e.photo_at ? 'Click it to see it full-size and download.' : ''}</div>
     <div class="row mt" style="align-items:center">
-      <div style="flex:0 0 auto">
+      <div style="flex:0 0 auto" id="sp_pic">
         ${e.photo_at
           ? `<img class="face filethumb" src="/api/suppliers/${e.id}/photo?v=${e.photo_at}" alt=""
                data-zoom="/api/suppliers/${e.id}/photo?v=${e.photo_at}" data-zoom-cap="${esc(e.name || '')}">`
           : `<span class="face">${esc((e.name || '?').split(/\s+/).filter(Boolean)
-               .slice(0, 2).map((w) => w[0]).join('').toUpperCase())}</span>`}
+               .slice(0, 2).map((w) => w[0]).join('').toUpperCase()) || '?'}</span>`}
       </div>
       <div style="flex:2"><label>Choose a picture</label>
         <input id="sp_photo" type="file" accept="image/jpeg,image/png,image/webp"></div>
       ${e.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="sp_photo_x">Remove</button></div>' : ''}
     </div>
-` : ''}
     <h3 class="mt">Business details</h3>
     <div class="dim">Printed at the top of this supplier's purchase orders.
       Saved with the button below.</div>
@@ -1270,9 +1271,13 @@ function supplierForm(existing, reload) {
           address: $('#sp_addr').value,
         });
       }
+      if (pendingPhoto && supId) {
+        await POST(`/api/suppliers/${supId}/photo`, { dataUrl: pendingPhoto });
+        pendingPhoto = null;
+      }
       notice('Supplier saved 🌸', 'good');
       if (reload) reload();
-      // A new supplier reopens, so its picture and papers can go on at once.
+      // A new supplier reopens, so its papers can go on at once.
       if (!e.id && supId) {
         supplierForm(await GET(`/api/suppliers/${supId}`), reload);
         return;
@@ -1281,14 +1286,37 @@ function supplierForm(existing, reload) {
     } catch (err) { whoops(err); }
   });
 
+  // Redraw a supplier from fresh data so a new picture or saved details are
+  // here at once — the list behind it is refreshed too.
+  const reopenSup = async (id) => {
+    const fresh = await GET(`/api/suppliers/${id}`);
+    if (reload) reload();
+    supplierForm(fresh, reload);
+  };
+
+  // Choosing a picture. On a supplier that exists it saves at once; on a new
+  // one it is held, shown, and saved as soon as there is an id.
+  $('#sp_photo')?.addEventListener('change', async (ev) => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await shrink(file, 900);
+      if (e.id) {
+        await POST(`/api/suppliers/${e.id}/photo`, { dataUrl });
+        notice('Picture saved 🌸 — click it to zoom', 'good');
+        await reopenSup(e.id);
+        return;
+      }
+      pendingPhoto = dataUrl;
+      const box = $('#sp_pic');
+      if (box) box.innerHTML = `<img class="face" src="${dataUrl}" alt="">`;
+      notice('Picture ready — it saves with the supplier', 'good');
+    } catch (err) { whoops(err); }
+    ev.target.value = '';
+  });
+
   if (existing) {
-    // Redraw this supplier from fresh data so a new picture or saved details
-    // are here at once — the list behind it is refreshed too.
-    const reopen = async () => {
-      const fresh = await GET(`/api/suppliers/${e.id}`);
-      if (reload) reload();
-      supplierForm(fresh, reload);
-    };
+    const reopen = () => reopenSup(e.id);
     // Just the papers grid, in place, without losing the scroll.
     const paintFiles = async () => {
       const fresh = await GET(`/api/suppliers/${e.id}`);
@@ -1306,16 +1334,6 @@ function supplierForm(existing, reload) {
     };
     paintFiles().catch(whoops);
 
-    $('#sp_photo')?.addEventListener('change', async (ev) => {
-      const file = ev.target.files[0];
-      if (!file) return;
-      try {
-        await POST(`/api/suppliers/${e.id}/photo`, { dataUrl: await shrink(file, 900) });
-        notice('Picture saved 🌸 — click it to zoom', 'good');
-        await reopen();
-      } catch (err) { whoops(err); }
-      ev.target.value = '';
-    });
     $('#sp_photo_x')?.addEventListener('click', async () => {
       try {
         await DELETE(`/api/suppliers/${e.id}/photo`);
