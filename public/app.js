@@ -856,8 +856,8 @@ SCREENS.products = async (page) => {
         <input type="search" id="brand_find" placeholder="Search by code, name or brand…">
         <button class="btn" id="add2">＋ New product</button>
       </div>
-      <div class="dim">The brand, stock and prices for every product — counts are
-        units free to sell, by pool.</div>
+      <div class="dim">The brand, the category and the three prices for every
+        product: what resellers pay, what the shop sells at, what it cost us.</div>
       <div class="panel mt" id="brand_list"></div>
     </div>`;
 
@@ -872,15 +872,12 @@ SCREENS.products = async (page) => {
       { head: '', cell: (p) => thumb(p) },
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>` },
-      { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
-      { head: 'Shop', n: true, cell: (p) => count(p.free_shop) },
-      { head: 'Reserve', n: true, cell: (p) => count(p.free_reserve) },
-      { head: 'Held', n: true, cell: (p) => count(p.committed_b2b) },
-      { head: 'To resellers', n: true, cell: (p) => peso(p.wholesale_price) },
-      { head: 'They sell at', n: true, cell: (p) => peso(p.srp) },
-      { head: 'We sell at', n: true, cell: (p) => peso(p.retail_price) },
-      { head: 'Split', cell: (p) => `<span class="dim">${Math.round(p.alloc_b2b * 100)}/${
-          Math.round(p.alloc_shop * 100)}/${Math.round(p.alloc_reserve * 100)}</span>` },
+      { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
+      { head: 'Category', cell: (p) => p.category
+          ? esc(p.category) : '<span class="dim">—</span>' },
+      { head: 'Wholesale', n: true, cell: (p) => peso(p.wholesale_price) },
+      { head: 'Selling price', n: true, cell: (p) => peso(p.retail_price) },
+      { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
     ], term2 ? 'No products match that search.' : 'No products yet.');
   };
 
