@@ -1171,8 +1171,9 @@ async function priceListDialog(currentPromise, reload) {
 const catTags = (cats) => {
   const list = Array.isArray(cats) ? cats : [];
   const LABELS = { promo: 'Promo', freebies: 'Freebies', product: 'Product' };
+  const COLOURS = { promo: 'amber', freebies: 'green', product: 'pink' };
   return list.length
-    ? list.map((c) => tag(LABELS[c] || c, 'pink')).join(' ')
+    ? list.map((c) => tag(LABELS[c] || c, COLOURS[c] || 'grey')).join(' ')
     : '<span class="dim">—</span>';
 };
 
