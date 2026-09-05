@@ -1500,3 +1500,5 @@ input.n { text-align: right; }
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 8px 10px; border: 1px solid var(--rose-soft); border-radius: 10px;
 }
+
+.chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
