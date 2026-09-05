@@ -855,6 +855,7 @@ SCREENS.products = async (page) => {
       <div class="tools">
         <input type="search" id="brand_find" placeholder="Search by code, name or brand…">
         <button class="btn" id="add2">＋ New product</button>
+        ${catChips('cat_prod')}
       </div>
       <div class="dim">The brand, the category and the three prices for every
         product: what resellers pay, what the shop sells at, what it cost us.</div>
@@ -863,11 +864,14 @@ SCREENS.products = async (page) => {
 
   // The brand tab carries the detail the product list used to: brand, the stock
   // pools and the prices, one row per product.
+  let pcat = '';
   const drawBrands = async () => {
     const box = $('#brand_list', page);
     if (!box) return;
     const term2 = ($('#brand_find', page)?.value || '').trim();
-    const rows = await GET(`/api/products?q=${encodeURIComponent(term2)}`).catch(() => []);
+    const all = await GET(`/api/products?q=${encodeURIComponent(term2)}`).catch(() => []);
+    const rows = all.filter((r) => !pcat
+      || (r.category || '').trim().toLowerCase() === pcat);
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
@@ -891,6 +895,7 @@ SCREENS.products = async (page) => {
     if (b.dataset.pt === 'brand') drawBrands().catch(whoops);
   }));
   $('#brand_find', page).addEventListener('input', () => drawBrands().catch(whoops));
+  wireCatChips(page, 'cat_prod', (c) => { pcat = c; drawBrands().catch(whoops); });
   $('#add2', page)?.addEventListener('click', () => editProduct(null,
     () => { load().catch(whoops); drawBrands().catch(whoops); }));
 
