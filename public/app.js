@@ -799,15 +799,16 @@ SCREENS.dashboard = async (page) => {
 // ===========================================================================
 SCREENS.products = async (page) => {
   let term = '';
+  let cat = '';
   // The Brand list carries the same suppliers as the Purchase order's supplier
   // information — company and brand, tier, standing and the ways to reach them —
   // each row opening the supplier to edit.
   const load = async () => {
     const rows = await GET('/api/suppliers').catch(() => []);
     const t = term.trim().toLowerCase();
-    const list = rows.filter((s) => !t
+    const list = rows.filter((s) => inCat(s, cat) && (!t
       || s.name.toLowerCase().includes(t)
-      || (s.brand_name || '').toLowerCase().includes(t));
+      || (s.brand_name || '').toLowerCase().includes(t)));
     $('#list', page).innerHTML = table(list, [
       { head: 'Supplier', cell: (s) => `<button class="nameopen" data-sup="${s.id}"><b>${
           esc(s.name)}</b></button>` },
@@ -835,6 +836,7 @@ SCREENS.products = async (page) => {
     <div id="pt_prodlist">
       <div class="tools">
         <input type="search" id="find" placeholder="Search by code, name or brand…">
+        ${catChips('cat_sup')}
         <button class="btn" id="add">＋ New supplier</button>
         ${user.role === 'admin' ? `
         <button class="btn line" id="sheet">📋 Load a price list</button>
@@ -896,6 +898,7 @@ SCREENS.products = async (page) => {
     () => { load().catch(whoops); drawBrands().catch(whoops); }));
 
   $('#find', page).addEventListener('input', (e) => { term = e.target.value; load().catch(whoops); });
+  wireCatChips(page, 'cat_sup', (c) => { cat = c; load().catch(whoops); });
   $('#add', page).addEventListener('click', () => supplierForm(null, load));
   $('#sheet', page)?.addEventListener('click',
     () => priceListDialog(GET('/api/products').catch(() => []), load));
@@ -1176,6 +1179,26 @@ const catTags = (cats) => {
     ? list.map((c) => tag(LABELS[c] || c, COLOURS[c] || 'grey')).join(' ')
     : '<span class="dim">—</span>';
 };
+
+// The same three categories as buttons: tap one and the list narrows to the
+// suppliers who bring it. "All" is where every list starts.
+const catChips = (id) => `<span class="chips" id="${id}">
+  <button class="btn sm" data-cat="">All</button>
+  <button class="btn line sm" data-cat="promo">Promo</button>
+  <button class="btn line sm" data-cat="freebies">Freebies</button>
+  <button class="btn line sm" data-cat="product">Product</button>
+</span>`;
+
+const wireCatChips = (root, id, pick) => {
+  const buttons = $$(`#${id} [data-cat]`, root);
+  buttons.forEach((b) => b.addEventListener('click', () => {
+    buttons.forEach((x) => { x.className = x === b ? 'btn sm' : 'btn line sm'; });
+    pick(b.dataset.cat);
+  }));
+};
+
+const inCat = (s, cat) => !cat
+  || (Array.isArray(s.categories) && s.categories.includes(cat));
 
 const chatLinkNorm = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
 const chatBadge = (url) => url
@@ -1881,6 +1904,7 @@ SCREENS.purchaseorders = async (page) => {
     <div class="panel" id="pt_sup">
       <div class="tools">
         <input type="search" id="po_find" placeholder="Search supplier or brand…">
+        ${catChips('cat_po')}
         <button class="btn line" id="po_newsup">＋ New supplier</button>
       </div>
       <div id="po_suplist"></div>
@@ -1987,6 +2011,7 @@ SCREENS.purchaseorders = async (page) => {
   }));
 
   let selectedSup = null;
+  let poCat = '';
 
   const drawSuppliers = async () => {
     suppliers = await GET('/api/suppliers').catch(() => []);
@@ -2005,9 +2030,9 @@ SCREENS.purchaseorders = async (page) => {
     const box = $('#po_suplist', page);
     if (!box) return;
     const term = ($('#po_find', page)?.value || '').trim().toLowerCase();
-    const list = suppliers.filter((v) => !term
+    const list = suppliers.filter((v) => inCat(v, poCat) && (!term
       || v.name.toLowerCase().includes(term)
-      || (v.brand_name || '').toLowerCase().includes(term));
+      || (v.brand_name || '').toLowerCase().includes(term)));
     box.innerHTML = table(list, [
       { head: 'Supplier', cell: (s) => `<button class="nameopen" data-sup="${s.id}"><b>${
           esc(s.name)}</b></button>` },
@@ -2518,6 +2543,7 @@ SCREENS.purchaseorders = async (page) => {
   });
 
   $('#po_find', page).addEventListener('input', drawSupList);
+  wireCatChips(page, 'cat_po', (c) => { poCat = c; drawSupList(); });
   $('#pl_find', page).addEventListener('input', () => drawProducts().catch(whoops));
 
   await drawSuppliers();
