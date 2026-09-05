@@ -871,13 +871,17 @@ SCREENS.products = async (page) => {
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
-      { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>` },
+      { head: 'Product', cell: (p) => `<button class="nameopen" data-prod="${
+          esc(p.sku)}"><b>${esc(p.name)}</b></button>` },
       { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
       { head: 'Category', cell: (p) => prodCatTag(p.category) },
       { head: 'Wholesale', n: true, cell: (p) => peso(p.wholesale_price) },
       { head: 'Selling price', n: true, cell: (p) => peso(p.retail_price) },
       { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
     ], term2 ? 'No products match that search.' : 'No products yet.');
+    // The name opens the product, the way a supplier's name opens the supplier.
+    $$('[data-prod]', box).forEach((b) => b.addEventListener('click',
+      () => editProduct(rows.find((r) => r.sku === b.dataset.prod), drawBrands)));
   };
 
   $$('[data-pt]', page).forEach((b) => b.addEventListener('click', () => {
