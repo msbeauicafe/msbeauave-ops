@@ -2443,15 +2443,24 @@ SCREENS.purchaseorders = async (page) => {
 
   const drawGoods = () => {
     const term = ($('#pf_find', page).value || '').trim().toLowerCase();
+    // A main supplier brings one brand, so ordering from her offers that brand
+    // and nothing else — the shop cannot order Dear Face from Brilliant. A
+    // distributor carries whatever she can get, so hers is the whole list.
+    const brand = (pfSup?.brand_name || '').trim().toLowerCase();
+    const mine = pfSup && pfSup.tier !== 'distributor' && brand
+      ? catalogue.filter((p) => (p.brand || '').trim().toLowerCase() === brand)
+      : catalogue;
     // Typing a brand should bring back that brand: the search reads the name,
     // the code and the brand, so "brilliant" finds everything of theirs and
     // nothing else.
-    const rows = catalogue.filter((p) => !term
+    const rows = mine.filter((p) => !term
       || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term)
       || (p.brand || '').toLowerCase().includes(term));
     $('#pf_count', page).textContent = term
-      ? `${rows.length} of ${catalogue.length} products match “${term}”`
-      : `All ${rows.length} products — type to narrow it down`;
+      ? `${rows.length} of ${mine.length} products match “${term}”`
+      : mine === catalogue
+        ? `All ${rows.length} products — type to narrow it down`
+        : `${rows.length} ${esc(pfSup.brand_name)} products — type to narrow it down`;
     $('#pf_goods', page).innerHTML = table(rows, [
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>
           <span class="dim">${esc(p.brand || p.sku)}</span>` },
