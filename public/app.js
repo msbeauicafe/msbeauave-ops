@@ -812,6 +812,7 @@ SCREENS.products = async (page) => {
       { head: 'Supplier', cell: (s) => `<button class="nameopen" data-sup="${s.id}"><b>${
           esc(s.name)}</b></button>` },
       { head: 'Brand', cell: (s) => s.brand_name ? esc(s.brand_name) : '<span class="dim">—</span>' },
+      { head: 'Category', cell: (s) => catTags(s.categories) },
       { head: 'Tier', cell: (s) => s.tier === 'distributor'
           ? tag('Distributor', 'pink') : tag('Main', 'grey') },
       { head: 'Standing', cell: (s) => s.active_standing === false
@@ -1166,6 +1167,15 @@ async function priceListDialog(currentPromise, reload) {
 
 // A bare link needs its scheme before it will open; a group-chat badge is a
 // blue bubble when there is one and a greyed one when there is not.
+// What a supplier supplies, as tags — blank until any is ticked.
+const catTags = (cats) => {
+  const list = Array.isArray(cats) ? cats : [];
+  const LABELS = { promo: 'Promo', freebies: 'Freebies', product: 'Product' };
+  return list.length
+    ? list.map((c) => tag(LABELS[c] || c, 'pink')).join(' ')
+    : '<span class="dim">—</span>';
+};
+
 const chatLinkNorm = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
 const chatBadge = (url) => url
   ? `<a class="silink" style="background:#0084FF" target="_blank" rel="noopener noreferrer"
@@ -2001,6 +2011,7 @@ SCREENS.purchaseorders = async (page) => {
       { head: 'Supplier', cell: (s) => `<button class="nameopen" data-sup="${s.id}"><b>${
           esc(s.name)}</b></button>` },
       { head: 'Brand', cell: (s) => s.brand_name ? esc(s.brand_name) : '<span class="dim">—</span>' },
+      { head: 'Category', cell: (s) => catTags(s.categories) },
       { head: 'Tier', cell: (s) => s.tier === 'distributor'
           ? tag('Distributor', 'pink') : tag('Main', 'grey') },
       { head: 'Standing', cell: (s) => s.active_standing === false
