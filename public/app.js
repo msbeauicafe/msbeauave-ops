@@ -1177,36 +1177,28 @@ const chatBadge = (url) => url
 // the list it was opened from.
 function supplierForm(existing, reload) {
   const e = existing || {};
+  const cats = Array.isArray(e.categories) ? e.categories : [];
+  const tick = (c, label) => `<label class="check"><input type="checkbox" data-cat="${c}"${
+    cats.includes(c) ? ' checked' : ''}> ${label}</label>`;
   dialog(`
     <h3>${existing ? 'Edit supplier' : 'New supplier'}</h3>
     <div class="row">
-      <div style="flex:2"><label>Company name</label><input id="s_name" type="text" value="${esc(e.name || '')}" autofocus></div>
-      <div style="flex:2"><label>Supplier name</label><input id="s_person" type="text" value="${esc(e.supplier_name || '')}"></div>
+      <div style="flex:2"><label>Supplier name</label><input id="s_name" type="text" value="${esc(e.name || '')}" autofocus></div>
       <div style="flex:2"><label>Brand name</label><input id="s_brand" type="text" value="${esc(e.brand_name || '')}"></div>
     </div>
     <div class="row">
-      <div><label>TIN no.</label><input id="s_tin" type="text" value="${esc(e.tin || '')}"></div>
-      <div style="flex:2"><label>Address</label><input id="s_addr" type="text" value="${esc(e.address || '')}"></div>
-      <div><label>Contact #</label><input id="s_contact" type="text" value="${esc(e.contact || '')}"></div>
+      <div><label>Category</label>
+        <div class="row" style="gap:16px;align-items:center">
+          ${tick('promo', 'Promo')}${tick('freebies', 'Freebies')}${tick('product', 'Product')}
+        </div></div>
     </div>
     <div class="row">
+      <div><label>Contact #</label><input id="s_contact" type="text" value="${esc(e.contact || '')}"></div>
       <div style="flex:2"><label>Group-chat link</label>
         <input id="s_chat" type="text" value="${esc(e.chat_link || '')}" placeholder="https://m.me/… or the group chat link"></div>
       <div style="flex:2"><label>Facebook account</label>
         <input id="s_fb" type="text" value="${esc(e.fb_link || '')}" placeholder="https://facebook.com/…"></div>
     </div>
-    <div class="row">
-      <div><label>Tier</label>
-        <select id="s_tier">
-          <option value="main"${e.tier !== 'distributor' ? ' selected' : ''}>Main</option>
-          <option value="distributor"${e.tier === 'distributor' ? ' selected' : ''}>Distributor</option>
-        </select></div>
-      <div><label>Standing</label>
-        <div class="dim" style="padding-top:8px">Worked out from supply — a
-          supplier reads inactive once three months pass with no order.</div></div>
-    </div>
-    <div class="dim mt">The company, brand, TIN and address print on the purchase
-      order; the rest is for reaching them. Leave blank what they have not given you.</div>
     ${existing ? `
     <h3 class="mt">Remove this supplier</h3>
     <div class="dim">Only a supplier with no purchase orders or deliveries can be
@@ -1218,10 +1210,12 @@ function supplierForm(existing, reload) {
       await POST('/api/suppliers', {
         id: e.id || null,
         name: $('#s_name').value, brand_name: $('#s_brand').value,
-        tin: $('#s_tin').value, address: $('#s_addr').value,
-        contact: $('#s_contact').value, supplier_name: $('#s_person').value,
+        contact: $('#s_contact').value,
         chat_link: $('#s_chat').value, fb_link: $('#s_fb').value,
-        tier: $('#s_tier').value,
+        categories: $$('[data-cat]:checked').map((c) => c.dataset.cat),
+        // Not on the form any more; carried through so an edit keeps them.
+        tin: e.tin || '', address: e.address || '',
+        supplier_name: e.supplier_name || '', tier: e.tier || 'main',
       });
       notice('Supplier saved 🌸', 'good');
       closeDialog();
