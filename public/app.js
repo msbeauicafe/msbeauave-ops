@@ -1435,24 +1435,10 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       <div><label>Wholesale</label><input id="f_ws" type="number" step="0.01" value="${num(p?.wholesale_price)}"></div>
       <div><label>Selling price</label><input id="f_rp" type="number" step="0.01" value="${num(p?.retail_price)}"></div>`}
       <div><label>Cost price</label><input id="f_cost" type="number" step="0.01" value="${num(p?.unit_cost)}"></div>
-      ${user.role === 'datacoord' ? '' : `
-      <div><label>They sell at</label><input id="f_srp" type="number" step="0.01" value="${num(p?.srp)}"></div>`}
     </div>
     <div class="dim">${user.role === 'datacoord'
       ? 'Selling prices are set by the owner on Pricelists — a new product is added here and priced there.'
       : 'Our shop price may not go below what resellers sell at.'}</div>
-    <div class="row">
-      <div><label>Shelf life (months)</label><input id="f_life" type="number" value="${num(p?.shelf_life_months, 24)}"></div>
-      <div><label>Resellers need (months)</label><input id="f_floor" type="number" value="${num(p?.reseller_floor_months, 12)}"></div>
-      <div><label>Keep at least (shop)</label><input id="f_min" type="number" value="${num(p?.shelf_min)}"></div>
-    </div>
-    <h3 class="mt">How a delivery is split</h3>
-    <div class="dim">Must add up to 100. The house default is 70 / 20 / 10.</div>
-    <div class="row">
-      <div><label>Wholesale %</label><input id="f_ab" type="number" value="${Math.round(num(p?.alloc_b2b, 0.7) * 100)}"></div>
-      <div><label>Shop %</label><input id="f_as" type="number" value="${Math.round(num(p?.alloc_shop, 0.2) * 100)}"></div>
-      <div><label>Reserve %</label><input id="f_ar" type="number" value="${Math.round(num(p?.alloc_reserve, 0.1) * 100)}"></div>
-    </div>
     ${isNew ? '' : `
       <h3 class="mt">Photograph</h3>
       <div class="dim">What the till and the customer app show for this product.</div>
@@ -1535,21 +1521,16 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     });
   }
 
+  // The form asks for the seven things the Product list shows and nothing else.
+  // Shelf life, what resellers will accept, the shop's minimum and the delivery
+  // split all keep whatever the product already has; a new product takes the
+  // house defaults — 24 months, 12, none, and 70 / 20 / 10.
   $('#f_save').addEventListener('click', async () => {
-    const b2b = Number($('#f_ab').value) / 100;
-    const shop = Number($('#f_as').value) / 100;
-    const reserve = Number($('#f_ar').value) / 100;
-    if (Math.abs(b2b + shop + reserve - 1) > 0.001) {
-      return notice('The three shares have to add up to 100.', 'bad');
-    }
     const body = {
       name: $('#f_name').value, brand: $('#f_brand').value, category: $('#f_cat').value,
       unit_cost: +$('#f_cost').value,
       ...(user.role === 'datacoord' ? {} : {
-        wholesale_price: +$('#f_ws').value,
-        srp: +$('#f_srp').value, retail_price: +$('#f_rp').value }),
-      shelf_life_months: +$('#f_life').value, reseller_floor_months: +$('#f_floor').value,
-      shelf_min: +$('#f_min').value, alloc_b2b: b2b, alloc_shop: shop, alloc_reserve: reserve,
+        wholesale_price: +$('#f_ws').value, retail_price: +$('#f_rp').value }),
     };
     try {
       if (isNew) await POST('/api/products', { ...body, sku: $('#f_sku').value.trim() });
