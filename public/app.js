@@ -873,8 +873,7 @@ SCREENS.products = async (page) => {
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>` },
       { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
-      { head: 'Category', cell: (p) => p.category
-          ? esc(p.category) : '<span class="dim">—</span>' },
+      { head: 'Category', cell: (p) => prodCatTag(p.category) },
       { head: 'Wholesale', n: true, cell: (p) => peso(p.wholesale_price) },
       { head: 'Selling price', n: true, cell: (p) => peso(p.retail_price) },
       { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
@@ -1189,6 +1188,26 @@ const wireCatChips = (root, id, pick) => {
 
 const inCat = (s, cat) => !cat
   || (Array.isArray(s.categories) && s.categories.includes(cat));
+
+// A product's category as a coloured tag. The ones the shop already uses get a
+// colour that means something — freebies pink, ads amber, unset grey — and
+// anything typed later is given a colour of its own from the same handful, the
+// same one every time so a category always looks like itself.
+const prodCatTag = (text) => {
+  const name = (text || '').trim();
+  if (!name) return '<span class="dim">—</span>';
+  const KNOWN = {
+    'FREEBIES': 'pink', 'ADS MATERIAL': 'amber',
+    'TO BE SET': 'grey', 'PRODUCT': 'green', 'PROMO': 'amber',
+  };
+  const kind = KNOWN[name.toUpperCase()] ?? (() => {
+    const spare = ['green', 'pink', 'amber', 'red'];
+    let n = 0;
+    for (const ch of name.toUpperCase()) n = (n * 31 + ch.charCodeAt(0)) % 997;
+    return spare[n % spare.length];
+  })();
+  return tag(name, kind);
+};
 
 const chatLinkNorm = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
 const chatBadge = (url) => url
