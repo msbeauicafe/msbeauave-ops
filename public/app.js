@@ -1268,7 +1268,10 @@ function supplierForm(existing, reload) {
     <h3>${existing ? 'Edit supplier' : 'New supplier'}</h3>
     <div class="row">
       <div style="flex:2"><label>Supplier name</label><input id="s_name" type="text" value="${esc(e.name || '')}" autofocus></div>
-      <div style="flex:2"><label>Brand name</label><input id="s_brand" type="text" value="${esc(e.brand_name || '')}"></div>
+      <div style="flex:2"><label>Brand name</label>
+        <input id="s_brand" type="text" list="s_brandopts" autocomplete="off"
+          value="${esc(e.brand_name || '')}" placeholder="Pick a brand or type a new one…">
+        <datalist id="s_brandopts"></datalist></div>
     </div>
     <div class="row">
       <div><label>Category</label>
@@ -1332,6 +1335,18 @@ function supplierForm(existing, reload) {
       removed — what was bought and what arrived is kept. This cannot be undone.</div>
     <div class="mt"><button class="btn warn sm" id="s_remove">Remove ${esc(e.name)}</button></div>` : ''}
     <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
+
+  // The brands already on the Brand list, offered as you type. Unlike the
+  // product form this one is not a closed list: a supplier arriving with a
+  // brand nobody has bought from yet is exactly how a brand gets onto it.
+  GET('/api/suppliers').then((rows) => {
+    const opts = $('#s_brandopts');
+    if (!opts) return;
+    const brands = [...new Set(rows.map((r) => (r.brand_name || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    opts.innerHTML = brands.map((b) => `<option value="${esc(b)}"></option>`).join('');
+  }).catch(() => {});
+
   $('#s_save').addEventListener('click', async () => {
     try {
       const saved = await POST('/api/suppliers', {
@@ -1470,7 +1485,6 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     </div>
     <div class="row">
       ${user.role === 'datacoord' ? '' : `
-      <div><label>Wholesale price</label><input id="f_ws" type="number" step="0.01" value="${num(p?.wholesale_price)}"></div>
       <div><label>Selling price</label><input id="f_rp" type="number" step="0.01" value="${num(p?.retail_price)}"></div>`}
       <div><label>Cost price</label><input id="f_cost" type="number" step="0.01" value="${num(p?.unit_cost)}"></div>
     </div>
@@ -1573,8 +1587,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     const body = {
       name: $('#f_name').value, brand: $('#f_brand').value, category: $('#f_cat').value,
       unit_cost: +$('#f_cost').value,
-      ...(user.role === 'datacoord' ? {} : {
-        wholesale_price: +$('#f_ws').value, retail_price: +$('#f_rp').value }),
+      ...(user.role === 'datacoord' ? {} : { retail_price: +$('#f_rp').value }),
     };
     try {
       if (isNew) await POST('/api/products', { ...body, sku: $('#f_sku').value.trim() });
