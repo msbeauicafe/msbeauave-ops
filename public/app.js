@@ -810,7 +810,8 @@ SCREENS.products = async (page) => {
       || (s.brand_name || '').toLowerCase().includes(t));
     $('#list', page).innerHTML = table(list, [
       { head: 'Supplier', cell: (s) => `<button class="nameopen" data-sup="${s.id}"><b>${
-          esc(s.name)}</b></button>${s.brand_name ? `<div class="dim">${esc(s.brand_name)}</div>` : ''}` },
+          esc(s.name)}</b></button>` },
+      { head: 'Brand', cell: (s) => s.brand_name ? esc(s.brand_name) : '<span class="dim">—</span>' },
       { head: 'Tier', cell: (s) => s.tier === 'distributor'
           ? tag('Distributor', 'pink') : tag('Main', 'grey') },
       { head: 'Standing', cell: (s) => s.active_standing === false
