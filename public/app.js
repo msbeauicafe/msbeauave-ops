@@ -1426,10 +1426,9 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     </div>
     <div class="row">
       <div><label>Brand name</label>
-        <input id="f_brand" type="text" list="f_brandopts" autocomplete="off"
-          value="${esc(p?.brand || '')}" placeholder="Pick a brand…">
-        <datalist id="f_brandopts"></datalist></div>
-      <div><label>Category</label><input id="f_cat" type="text" value="${esc(p?.category || '')}"></div>
+        <select id="f_brand"><option value="">Pick a brand…</option></select></div>
+      <div><label>Category</label>
+        <select id="f_cat"><option value="">Pick a category…</option></select></div>
     </div>
     <div class="row">
       <div><label>Costs us</label><input id="f_cost" type="number" step="0.01" value="${num(p?.unit_cost)}"></div>
@@ -1469,14 +1468,36 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       <button class="btn" id="f_save">Save</button>
     </div>`);
 
-  // The brand box offers the brands already on the price list, drawn once the
-  // dialog is up; a brand not yet used can still be typed straight in.
+  // A brand is chosen here, never typed: the brands are the ones on the Brand
+  // list, and that is where a new one is added. A product already carrying a
+  // brand that has since left the list keeps it as an option of its own, so
+  // editing anything else about the product does not quietly wipe it.
+  GET('/api/suppliers').then((rows) => {
+    const box = $('#f_brand');
+    if (!box) return;
+    const mine = (p?.brand || '').trim();
+    const brands = [...new Set([
+      ...rows.map((r) => (r.brand_name || '').trim()).filter(Boolean),
+      ...(mine ? [mine] : []),
+    ])].sort((a, b) => a.localeCompare(b));
+    box.innerHTML = '<option value="">Pick a brand…</option>'
+      + brands.map((b) => `<option value="${esc(b)}"${
+          b === mine ? ' selected' : ''}>${esc(b)}</option>`).join('');
+  }).catch(() => {});
+
+  // Category is picked the same way, off the categories the shop already uses,
+  // with the product's own kept as an option so an edit never loses it.
   GET('/api/products').then((rows) => {
-    const opts = $('#f_brandopts');
-    if (!opts) return;
-    const brands = [...new Set(rows.map((r) => (r.brand || '').trim()).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b));
-    opts.innerHTML = brands.map((b) => `<option value="${esc(b)}"></option>`).join('');
+    const box = $('#f_cat');
+    if (!box) return;
+    const mine = (p?.category || '').trim();
+    const cats = [...new Set([
+      ...rows.map((r) => (r.category || '').trim()).filter(Boolean),
+      ...(mine ? [mine] : []),
+    ])].sort((a, b) => a.localeCompare(b));
+    box.innerHTML = '<option value="">Pick a category…</option>'
+      + cats.map((c) => `<option value="${esc(c)}"${
+          c === mine ? ' selected' : ''}>${esc(c)}</option>`).join('');
   }).catch(() => {});
 
   // The photograph saves on its own, the moment one is chosen — it is not part
