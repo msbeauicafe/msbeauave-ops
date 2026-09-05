@@ -1215,9 +1215,10 @@ function supplierForm(existing, reload) {
         <input id="sp_photo" type="file" accept="image/jpeg,image/png,image/webp"></div>
       ${e.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="sp_photo_x">Remove</button></div>' : ''}
     </div>
-
+` : ''}
     <h3 class="mt">Business details</h3>
-    <div class="dim">Printed at the top of this supplier's purchase orders.</div>
+    <div class="dim">Printed at the top of this supplier's purchase orders.
+      Saved with the button below.</div>
     <div class="row mt">
       <div><label>Tax Type</label>
         <input id="sp_taxtype" type="text" list="sp_taxtypes" value="${esc(e.tax_type || '')}">
@@ -1232,8 +1233,8 @@ function supplierForm(existing, reload) {
         <input id="sp_tin" type="text" value="${esc(e.tin || '')}"></div>
       <div style="flex:3"><label>Business Address</label>
         <input id="sp_addr" type="text" value="${esc(e.address || '')}"></div>
-      <div style="flex:0 0 auto"><button class="btn" id="sp_tax">Save</button></div>
     </div>
+    ${existing ? `
     <div class="dim mt">Their ID and papers — a valid ID, BIR 2303, business permit,
       tax certificate. Click any to see it full-size and download.</div>
     <div class="filegrid mt" id="sp_grid"><div class="dim">Loading…</div></div>
@@ -1251,19 +1252,32 @@ function supplierForm(existing, reload) {
     <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
   $('#s_save').addEventListener('click', async () => {
     try {
-      await POST('/api/suppliers', {
+      const saved = await POST('/api/suppliers', {
         id: e.id || null,
         name: $('#s_name').value, brand_name: $('#s_brand').value,
         contact: $('#s_contact').value,
         chat_link: $('#s_chat').value, fb_link: $('#s_fb').value,
         categories: $$('[data-cat]:checked').map((c) => c.dataset.cat),
-        // Not on the form any more; carried through so an edit keeps them.
-        tin: e.tin || '', address: e.address || '',
+        tin: $('#sp_tin').value, address: $('#sp_addr').value,
+        // Not on the form; carried through so an edit keeps it.
         supplier_name: e.supplier_name || '', tier: e.tier || 'main',
       });
+      const supId = e.id || (saved && saved.id);
+      if (supId) {
+        await POST(`/api/suppliers/${supId}/tax`, {
+          tax_type: $('#sp_taxtype').value, trade_name: $('#sp_trade').value,
+          taxpayer_name: $('#sp_taxpayer').value, tin: $('#sp_tin').value,
+          address: $('#sp_addr').value,
+        });
+      }
       notice('Supplier saved 🌸', 'good');
-      closeDialog();
       if (reload) reload();
+      // A new supplier reopens, so its picture and papers can go on at once.
+      if (!e.id && supId) {
+        supplierForm(await GET(`/api/suppliers/${supId}`), reload);
+        return;
+      }
+      closeDialog();
     } catch (err) { whoops(err); }
   });
 
@@ -1306,17 +1320,6 @@ function supplierForm(existing, reload) {
       try {
         await DELETE(`/api/suppliers/${e.id}/photo`);
         notice('Picture removed', 'good');
-        await reopen();
-      } catch (err) { whoops(err); }
-    });
-    $('#sp_tax')?.addEventListener('click', async () => {
-      try {
-        await POST(`/api/suppliers/${e.id}/tax`, {
-          tax_type: $('#sp_taxtype').value, trade_name: $('#sp_trade').value,
-          taxpayer_name: $('#sp_taxpayer').value, tin: $('#sp_tin').value,
-          address: $('#sp_addr').value,
-        });
-        notice('Saved 🌸', 'good');
         await reopen();
       } catch (err) { whoops(err); }
     });
