@@ -882,10 +882,23 @@ SCREENS.products = async (page) => {
       { head: 'Wholesale', n: true, cell: (p) => peso(p.wholesale_price) },
       { head: 'Selling price', n: true, cell: (p) => peso(p.retail_price) },
       { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
+      ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
+        `<button class="rowx" data-rmprod="${esc(p.sku)}"
+          title="Remove ${esc(p.name)}">✕</button>` }] : []),
     ], term2 ? 'No products match that search.' : 'No products yet.');
     // The name opens the product, the way a supplier's name opens the supplier.
     $$('[data-prod]', box).forEach((b) => b.addEventListener('click',
       () => editProduct(rows.find((r) => r.sku === b.dataset.prod), drawBrands)));
+    // The ✕ asks first, and the back end refuses anything the books rest on.
+    $$('[data-rmprod]', box).forEach((b) => b.addEventListener('click', async () => {
+      const it = rows.find((r) => r.sku === b.dataset.rmprod);
+      if (!confirm(`Remove ${it.name}? This cannot be undone.`)) return;
+      try {
+        await DELETE(`/api/products/${encodeURIComponent(it.sku)}`);
+        notice('Product removed', 'good');
+        drawBrands().catch(whoops);
+      } catch (err) { whoops(err); }
+    }));
   };
 
   $$('[data-pt]', page).forEach((b) => b.addEventListener('click', () => {
