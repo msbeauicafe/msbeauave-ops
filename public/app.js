@@ -1634,16 +1634,19 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   let priceNames = [];       // the base codes on the price list
   let priceRows = [];        // { name, amount } — five of them
 
+  // A name that already ends in PRICE should not be read out as "price price".
+  const priceLabel = (code) => (/\bprice$/i.test(code) ? code : `${code} price`);
+
   const priceOptions = (chosen) => {
     const opt = (value, label) => `<option value="${value}"${
       value === chosen ? ' selected' : ''}>${esc(label)}</option>`;
     const rest = priceNames.filter((c) => !PRICE_LIST.includes(c));
     return `<option value="">Pick a price name…</option>`
       + opt('COST', 'Cost price')
-      + PRICE_LIST.map((c) => opt(`CODE:${c}`, `${c} price`)).join('')
+      + PRICE_LIST.map((c) => opt(`CODE:${c}`, priceLabel(c))).join('')
       + opt('SRP', 'SRP price')
       // Anything the shop has added itself since, kept after the seven.
-      + rest.map((c) => opt(`CODE:${c}`, `${c} price`)).join('')
+      + rest.map((c) => opt(`CODE:${c}`, priceLabel(c))).join('')
       + `<option value="__new" class="newname">＋ New price name…</option>`;
   };
 
@@ -1664,34 +1667,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         sel.value = priceRows[n].name || '';
         // Over the product form rather than instead of it: a half-typed product
         // must still be there when the new name has been added.
-        dialog(`
-          <h3>New price name</h3>
-          <div class="dim">What this price is called on the list — RD, PD, VIP,
-            STOCKIST. It joins the dropdown for every product, not just this one.</div>
-          <div class="row mt">
-            <div><label>Name</label>
-              <input id="np_code" type="text" maxlength="24" autofocus
-                placeholder="e.g. VIP" style="text-transform:uppercase"></div>
-          </div>
-          <div class="mt right"><button class="btn" id="np_save">Save price name</button></div>`,
-          '', true);
-
-        const add = async () => {
-          const typed = ($('#np_code')?.value || '').trim();
-          if (!typed) return notice('A price needs a name.', 'bad');
-          try {
-            const out = await POST('/api/price-codes', { code: typed });
-            if (!priceNames.includes(out.code)) priceNames.push(out.code);
-            priceRows[n].name = `CODE:${out.code}`;
-            notice(`${out.code} added 🌸`, 'good');
-            closeDialog();
-            drawPrices();
-          } catch (err) { whoops(err); }
-        };
-        $('#np_save').addEventListener('click', add);
-        $('#np_code').addEventListener('keydown', (ev) => {
-          if (ev.key === 'Enter') { ev.preventDefault(); add(); }
-        });
+        openPriceNames(n);
         return;
       }
       priceRows[n].name = sel.value;
@@ -1699,6 +1675,89 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     }));
     $$('[data-pamt]', box).forEach((i) => i.addEventListener('input', () => {
       priceRows[+i.dataset.pamt].amount = i.value;
+    }));
+  };
+
+  // Adding a name, and putting right one already added. Opened over the product
+  // form rather than instead of it, so a half-typed product is still there
+  // afterwards. The seven the shop names are not listed to be edited — those
+  // are the price list itself; what is listed is what the shop added since.
+  const openPriceNames = (n) => {
+    const own = priceNames.filter((c) => !PRICE_LIST.includes(c));
+    dialog(`
+      <h3>Price names</h3>
+      <div class="dim">A name joins the dropdown for every product, not just
+        this one. Renaming one carries its prices with it; a name anything has
+        been sold at can be renamed but not removed.</div>
+
+      <div class="row mt">
+        <div><label>New name</label>
+          <input id="np_code" type="text" maxlength="24" autofocus
+            placeholder="e.g. VIP" style="text-transform:uppercase"></div>
+        <div style="flex:0 0 auto; align-self:flex-end">
+          <button class="btn" id="np_save">Save price name</button></div>
+      </div>
+
+      ${own.length ? `
+      <h3 class="mt">Names you added</h3>
+      <div class="pricerows mt">
+        ${own.map((c) => `
+          <div class="pricerow">
+            <input type="text" maxlength="24" value="${esc(c)}"
+              data-rename="${esc(c)}" style="text-transform:uppercase">
+            <div style="display:flex; gap:6px">
+              <button class="btn sm quiet" data-saveName="${esc(c)}">Save</button>
+              <button class="rowx" data-dropName="${esc(c)}" title="Remove ${esc(c)}">✕</button>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}`, '', true);
+
+    const add = async () => {
+      const typed = ($('#np_code')?.value || '').trim();
+      if (!typed) return notice('A price needs a name.', 'bad');
+      try {
+        const out = await POST('/api/price-codes', { code: typed });
+        if (!priceNames.includes(out.code)) priceNames.push(out.code);
+        if (n != null) priceRows[n].name = `CODE:${out.code}`;
+        notice(`${out.code} added 🌸`, 'good');
+        closeDialog();
+        drawPrices();
+      } catch (err) { whoops(err); }
+    };
+    $('#np_save').addEventListener('click', add);
+    $('#np_code').addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); add(); }
+    });
+
+    $$('[data-saveName]').forEach((b) => b.addEventListener('click', async () => {
+      const from = b.dataset.savename;
+      const to = ($(`[data-rename="${from}"]`)?.value || '').trim();
+      if (!to || to.toUpperCase() === from) return closeDialog();
+      try {
+        const out = await PUT(`/api/price-codes/${encodeURIComponent(from)}`, { code: to });
+        priceNames = priceNames.map((c) => (c === from ? out.code : c));
+        // A row already naming the old one follows it rather than emptying.
+        priceRows = priceRows.map((r) => (r.name === `CODE:${from}`
+          ? { ...r, name: `CODE:${out.code}` } : r));
+        notice(`Renamed to ${out.code} 🌸`, 'good');
+        closeDialog();
+        drawPrices();
+      } catch (err) { whoops(err); }
+    }));
+
+    $$('[data-dropName]').forEach((b) => b.addEventListener('click', async () => {
+      const code = b.dataset.dropname;
+      if (!await askFirst(`Remove the price name ${code}?`,
+        'Any figures filed under it go with it. This cannot be undone.')) return;
+      try {
+        await DELETE(`/api/price-codes/${encodeURIComponent(code)}`);
+        priceNames = priceNames.filter((c) => c !== code);
+        priceRows = priceRows.map((r) => (r.name === `CODE:${code}`
+          ? { name: '', amount: '' } : r));
+        notice('Removed', 'good');
+        closeDialog();
+        drawPrices();
+      } catch (err) { whoops(err); }
     }));
   };
 
