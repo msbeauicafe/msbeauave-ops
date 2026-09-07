@@ -11436,86 +11436,114 @@ SCREENS.payroll = async (page) => {
 
 // The payslip
 //
-// The one piece of paper a person keeps, so it is the one that should look like
-// it came from a company rather than out of a spreadsheet. Letterhead with the
-// company's own mark — MS Beau Ave or Beauty Obsession Ave, whichever pays this
-// cutoff — the two halves of the reckoning side by side, and the figure that
-// matters set on a band of its own.
+// The shape the shop's own bookkeeper already issues: a title band, the word
+// CONFIDENTIAL under it, who is being paid and for which cutoff, then earnings
+// with the hours or days beside each figure, the deductions in full, and the
+// net at the foot. Every line is printed whether or not it is worth anything —
+// somebody reading their pay wants to see that the overtime line exists and
+// says nothing, rather than wonder whether it was left off.
 const PAYER = {
-  'MS BEAU': { name: 'MS BEAU AVE', sub: 'Enterprises OPC', logo: '/logo.jpg' },
-  'BOA':     { name: 'BEAUTY OBSESSION AVE', sub: 'Corporation', logo: '/boa-mark.png' },
+  'MS BEAU': { name: 'MS BEAU AVE ENTERPRISES OPC', short: 'MS', logo: '/logo.jpg' },
+  'BOA':     { name: 'BEAUTY OBSESSION AVE CORPORATION', short: 'BOA', logo: '/boa-mark.png' },
 };
 
 function payslip(period, r) {
   const money = (v) => peso(Number(v || 0));
   const co = PAYER[period.company] || PAYER['MS BEAU'];
-  // Every line, zeroes included. Hiding the empty ones made a tidier slip and a
-  // worse one: somebody reading their pay wants to see that the overtime line
-  // exists and says nothing, not to wonder whether it was left off.
-  const earned = [
-    [`Basic — ${count(r.days_present)} day${Number(r.days_present) === 1 ? '' : 's'}`
-      + ` @ ${money(r.daily_rate)}`, r.basic, true],
-    [`Night differential — ${count(r.nsd_hours)} hrs`, r.nsd],
-    [`Overtime — ${count(r.ot_hours)} hrs`, r.overtime],
-    ['Holiday', r.holiday],
-    ['Special holiday', r.spe_holiday],
-    ['Leave with pay', r.leave_pay],
-    ['Allowance', r.allowance],
-    ['Adjustment', r.adjustment],
-  ];
-  const taken = [
-    [`Late / undertime — ${count(r.late_minutes)} min`, r.late_charge],
-    ['SSS', r.sss],
-    ['PhilHealth', r.philhealth],
-    ['Pag-IBIG', r.pagibig],
-    ['Loan / cash advance', r.loans],
-  ];
+  const days = (v) => `${count(v)} day${Number(v) === 1 ? '' : 's'}`;
+  const hrs = (v) => `${count(v)} hour${Number(v) === 1 ? '' : 's'}`;
+  // The number the shop writes on a slip: the company it is paid by, then the
+  // person's own number on the team list, which does not move.
+  const empNo = `${co.short}-${String(r.employee_id).padStart(3, '0')}`;
 
-  const half = (title, rows, total, label) => `
-    <div class="slipcol">
-      <div class="slipcap">${title}</div>
-      <table><tbody>
-        ${rows.length ? rows.map(([k, v]) => `<tr><td>${k}</td>
-          <td class="n">${money(v)}</td></tr>`).join('')
-          : '<tr><td class="dim">Nothing</td><td class="n">—</td></tr>'}
-      </tbody>
-      <tfoot><tr><td>${label}</td><td class="n">${money(total)}</td></tr></tfoot>
-      </table>
-    </div>`;
+  // The office types one figure for Loan/CA; the ledgers know which loan it came
+  // off. What they account for is named, and whatever is left over — a charge
+  // typed straight onto the line — is shown as its own row rather than folded
+  // into one of theirs.
+  const fromLedgers = Number(r.ca_taken || 0) + Number(r.pagibig_loan || 0)
+    + Number(r.sss_loan || 0);
+  const otherLoan = Math.max(Number(r.loans || 0) - fromLedgers, 0);
+
+  const line = (label, count_, amount) => `<tr>
+    <td>${label}</td><td class="c">${count_ ?? '—'}</td>
+    <td class="n">${money(amount)}</td></tr>`;
 
   return `
     <div class="slip">
-      <div class="sliphead">
-        <img class="sliplogo" src="${co.logo}" alt=""
-          onerror="this.onerror=null;this.src='/logo.jpg'">
-        <div class="slipco"><b>${esc(co.name)}</b><span>${esc(co.sub)}</span></div>
-        <div class="sliptitle">PAYSLIP<span>${onDay(period.starts_on)} — ${
-          onDay(period.ends_on)}</span></div>
+      <div class="slipband">PAYSLIP</div>
+      <div class="slipconf">CONFIDENTIAL</div>
+
+      <div class="sliptop">
+        <div class="slipfirm">
+          <img class="sliplogo" src="${co.logo}" alt=""
+            onerror="this.onerror=null;this.src='/logo.jpg'">
+          <span>${esc(co.name)}</span>
+        </div>
+        <table class="slipdates"><tbody>
+          <tr><td>Pay Period:</td><td class="n">${onDay(period.paid_on)}</td></tr>
+          <tr><td>Cutoff Period:</td>
+              <td class="n">${onDay(period.starts_on)} – ${onDay(period.ends_on)}</td></tr>
+        </tbody></table>
       </div>
 
-      <div class="slipwho">
-        <div><span>Employee</span><b>${esc(r.name)}</b></div>
-        <div><span>Position</span>${esc(r.position || '—')}</div>
-        <div><span>Rate per day</span>${money(r.daily_rate)}</div>
-        <div><span>Payout date</span>${onDay(period.paid_on)}</div>
-      </div>
+      <table class="slipwho"><tbody>
+        <tr><td>Employee No.:</td><td>${esc(empNo)}</td>
+            <td>Position:</td><td class="n">${esc(r.position || '—')}</td></tr>
+        <tr><td>Employee Name:</td><td><b>${esc(r.name)}</b></td>
+            <td>Department:</td><td class="n">${esc(period.company)}</td></tr>
+      </tbody></table>
 
-      <div class="slipcols">
-        ${half('Earnings', earned, r.total_earnings, 'Total earnings')}
-        ${half('Deductions', taken, r.total_deductions, 'Total deductions')}
-      </div>
+      <table class="sliptable"><thead>
+        <tr><th>Earnings</th><th class="c">Hours/Days</th><th class="n">Amount</th></tr>
+      </thead><tbody>
+        ${line('Basic Pay', days(r.days_present), r.basic)}
+        ${line('Leave with Pay', days(r.leave_days), r.leave_pay)}
+        ${line('Overtime', hrs(r.ot_hours), r.overtime)}
+        ${line('Night Differential', hrs(r.nsd_hours), r.nsd)}
+        ${line('Regular Holiday', days(r.holidays), r.holiday)}
+        ${line('Special Holiday', days(r.spe_holidays), r.spe_holiday)}
+        ${line('Allowance', null, r.allowance)}
+        ${line('Adjustment', null, r.adjustment)}
+      </tbody><tfoot>
+        <tr><td>Gross Pay</td><td></td><td class="n">${money(r.total_earnings)}</td></tr>
+      </tfoot></table>
+      <div class="sliprate">Rate per day ${money(r.daily_rate)} · hourly ${
+        money(Number(r.daily_rate || 0) / 8)} · overtime ${
+        money(Number(r.daily_rate || 0) / 8 * 1.25)}/hr · night ${
+        money(Number(r.daily_rate || 0) / 8 * 0.10)}/hr · special holiday ${
+        money(Number(r.daily_rate || 0) * 0.30)}/day</div>
 
-      <div class="slipnet"><span>NET PAY</span><b>${money(r.net_pay)}</b></div>
+      <table class="sliptable"><thead>
+        <tr><th>Deductions</th><th class="c">Hours/Days</th><th class="n">Amount</th></tr>
+      </thead><tbody>
+        ${line('Absences', days(0), 0)}
+        ${line('Lates / Undertime', `${count(r.late_minutes)} min`, r.late_charge)}
+        ${line('SSS Contribution', null, r.sss)}
+        ${line('PhilHealth Contribution', null, r.philhealth)}
+        ${line('HDMF / Pag-IBIG Contribution', null, r.pagibig)}
+        ${line('Withholding Tax', null, 0)}
+        ${line('SSS Loan', null, r.sss_loan)}
+        ${line('Pag-IBIG Loan', null, r.pagibig_loan)}
+        ${line('Cash Advance', null, r.ca_taken)}
+        ${line('Other Loan / Charges', null, otherLoan)}
+      </tbody><tfoot>
+        <tr><td>Total Deductions</td><td></td>
+            <td class="n">${money(r.total_deductions)}</td></tr>
+      </tfoot></table>
+
+      <table class="slipnet"><tbody>
+        <tr><td>Net Pay:</td><td class="n">${money(r.net_pay)}</td></tr>
+      </tbody></table>
 
       <div class="slipfoot">
         <div class="sigline"><span class="rule"></span>Received by</div>
         <div class="sigline"><span class="rule"></span>Date</div>
       </div>
+      <div class="slipnote">Computed from ${days(r.days_present)} at
+        ${money(r.daily_rate)}. Overtime at 125% of the hourly rate, night
+        differential at 10%, special holiday at 30%, late at
+        ${peso(Number(r.daily_rate || 0) / 480)} a minute.</div>
       <div class="slipsave"><button class="btn sm quiet"
         data-slip="${esc(r.name)}">⤓ Save this one</button></div>
-      <div class="slipnote">Computed from ${count(r.days_present)} day${
-        Number(r.days_present) === 1 ? '' : 's'} at ${money(r.daily_rate)}.
-        Overtime at 125% of the hourly rate, night differential at 10%,
-        late at ${peso(Number(r.daily_rate || 0) / 480)} a minute.</div>
     </div>`;
 }
