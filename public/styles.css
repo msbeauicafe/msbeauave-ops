@@ -1503,24 +1503,76 @@ input.n { text-align: right; }
 
 .chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 
-/* Payslips — a stack of small forms, each meant to be cut out and handed over.
-   On paper they lose the dialog around them and print two to a page. */
-.slips { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
-.slip { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; break-inside: avoid; }
-.slip h3 { margin: 0 0 8px; font-size: .95rem; letter-spacing: .04em; }
-.slip table { width: 100%; border-collapse: collapse; font-size: .78rem; }
-.slipmeta td { padding: 1px 4px 1px 0; vertical-align: top; }
-.slipmeta td:nth-child(odd) { color: var(--dim); white-space: nowrap; }
-.sliprows { margin-top: 8px; }
-.sliprows td { padding: 2px 0; }
-.sliprows .n { text-align: right; }
-.sliprows tr.h td { font-weight: 700; border-bottom: 1px solid var(--line); padding-top: 8px; }
-.sliprows tr.t td { font-weight: 700; border-top: 1px solid var(--line); }
-.sliprows tr.net td { font-weight: 800; border-top: 2px solid var(--line); padding-top: 5px; }
-.slipsign { margin-top: 12px; font-size: .78rem; color: var(--dim); display: flex;
-  align-items: flex-end; gap: 8px; }
-.slipsign .rule { flex: 1; border-bottom: 1px solid var(--line); height: 14px; }
+/* Payslips
+   The one piece of paper a person keeps, so it is laid out like a document
+   rather than a table: letterhead with the paying company's mark, the two
+   halves of the reckoning side by side, and the net on a band of its own.
+   On paper two fit a page and the ink stays light. */
+.slips { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); }
+.slip {
+  border: 1px solid var(--line); border-radius: 14px; padding: 0 0 14px;
+  background: var(--card, #fff); overflow: hidden; break-inside: avoid;
+}
+.sliphead {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  border-bottom: 2px solid var(--brand, #d98da6);
+  background: linear-gradient(180deg, rgba(217,141,166,.10), rgba(217,141,166,0));
+}
+.sliplogo { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
+.slipco { display: flex; flex-direction: column; line-height: 1.2; }
+.slipco b { font-size: .95rem; letter-spacing: .04em; }
+.slipco span { font-size: .7rem; color: var(--dim); letter-spacing: .08em;
+  text-transform: uppercase; }
+.sliptitle { margin-left: auto; text-align: right; font-weight: 800;
+  letter-spacing: .18em; font-size: .82rem; display: flex; flex-direction: column; }
+.sliptitle span { font-weight: 500; letter-spacing: .02em; font-size: .7rem;
+  color: var(--dim); }
+
+.slipwho { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;
+  padding: 12px 16px; border-bottom: 1px dashed var(--line); font-size: .8rem; }
+.slipwho span { display: block; font-size: .66rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--dim); }
+
+.slipcols { display: grid; grid-template-columns: 1fr 1fr; }
+.slipcol { padding: 10px 16px; }
+.slipcol + .slipcol { border-left: 1px dashed var(--line); }
+.slipcap { font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 4px; }
+.slipcol table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.slipcol td { padding: 2px 0; vertical-align: top; }
+.slipcol .n { text-align: right; white-space: nowrap; padding-left: 8px; }
+.slipcol tfoot td { font-weight: 700; border-top: 1px solid var(--line);
+  padding-top: 4px; }
+
+.slipnet {
+  margin: 4px 16px 0; padding: 9px 14px; border-radius: 10px;
+  background: var(--brand, #d98da6); color: #fff;
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.slipnet span { font-size: .72rem; letter-spacing: .14em; }
+.slipnet b { font-size: 1.15rem; }
+
+.slipfoot { display: flex; gap: 20px; padding: 20px 16px 0; }
+.sigline { flex: 1; font-size: .68rem; color: var(--dim); text-align: center; }
+.sigline .rule { display: block; border-bottom: 1px solid var(--ink, #333);
+  height: 18px; margin-bottom: 3px; }
+.slipnote { padding: 10px 16px 0; font-size: .66rem; color: var(--dim);
+  line-height: 1.45; }
+
+.slipsave { padding: 10px 16px 0; text-align: right; }
+
+/* On paper: US Letter, one person to a page, so a slip can be handed over or
+   scanned on its own without another person's pay on the back of it. */
+@page { size: letter; margin: 0.5in; }
 @media print {
-  .slips { grid-template-columns: 1fr 1fr; }
-  .slip { border-color: #000; }
+  .slips { display: block; }
+  .slip {
+    border: 1px solid #999; box-shadow: none; border-radius: 0;
+    break-after: page; page-break-after: always;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .slip:last-child { break-after: auto; page-break-after: auto; }
+  .sliphead { background: none; border-bottom: 2px solid #000; }
+  .slipnet { background: none; color: #000; border: 1.5px solid #000; }
+  .slipsave { display: none !important; }
 }
