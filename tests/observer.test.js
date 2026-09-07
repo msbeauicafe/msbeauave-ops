@@ -138,7 +138,7 @@ test('an observer can read the company without being an owner', async () => {
   const watcher = await signIn('observer');
   for (const path of ['/api/dashboard', '/api/products', '/api/orders', '/api/team',
     '/api/branches', '/api/workspace', '/api/promos', '/api/customers', '/api/resellers',
-    '/api/reorder', '/api/restock', '/api/hr', '/api/hr/attendance', '/api/team/hours',
+    '/api/reorder', '/api/restock', '/api/hr/attendance', '/api/team/hours',
     '/api/reports/valuation']) {
     const r = await GET(watcher, path);
     assert.equal(r.status, 200, `${path} answered ${r.status}`);
@@ -193,6 +193,11 @@ test('the database refuses an observer, not only the router', async () => {
   }
 });
 
+// HR belongs to two people now — the HR officer and the operations manager —
+// and a view-only manager is neither. It used to be readable with the salary
+// column struck out of the reply; the screen is off their menu entirely, so
+// the route is off it too. Nothing is safer than a column somebody remembered
+// to remove.
 test('an observer never sees anybody\'s pay', async () => {
   const boss = await signIn('admin');
   const watcher = await signIn('observer');
@@ -202,13 +207,8 @@ test('an observer never sees anybody\'s pay', async () => {
   assert.equal((await POST(boss, `/api/hr/people/${made.data.id}/employment`,
     { department: 'Retail', salary: 42000 })).status, 200);
 
-  const seen = (await GET(watcher, '/api/hr')).data;
-  const row = seen.people.find((p) => Number(p.id) === made.data.id);
-  assert.ok(row, 'they can see the person');
-  assert.equal(row.department, 'Retail', 'and the department');
-  assert.ok(!('salary' in row), 'and no salary field at all — not null, absent');
-  assert.ok(!('pay_period' in row));
-  assert.equal(seen.figures.payroll_monthly, null, 'nor the monthly total');
+  assert.equal((await GET(watcher, '/api/hr')).status, 403, 'HR is not theirs to open');
+  assert.equal((await GET(watcher, `/api/hr/people/${made.data.id}`)).status, 403);
 
   // Not merely absent from the reply: unreadable underneath it.
   const direct = await asRole('observer', watcher.username, 'select * from employment_details');
@@ -342,7 +342,6 @@ test('their own pay is theirs; the payroll is still not', async () => {
   const mine = (await GET(watcher, '/api/my')).data.profile;
   assert.equal(Number(mine.salary), 31000, 'their own payslip figure');
 
-  const company = (await GET(watcher, '/api/hr')).data;
-  assert.equal(company.figures.payroll_monthly, null, 'the monthly total, still not');
-  assert.ok(company.people.every((p) => !('salary' in p)), 'nobody else\'s, still not');
+  assert.equal((await GET(watcher, '/api/hr')).status, 403,
+    'and nobody else\'s, because HR is not theirs to open');
 });
