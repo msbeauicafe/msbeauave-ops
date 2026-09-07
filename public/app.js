@@ -802,51 +802,33 @@ SCREENS.dashboard = async (page) => {
 SCREENS.products = async (page) => {
   let term = '';
   let cat = '';
-  // The Brand list is a list of brands. A brand is a name on the products; a
-  // supplier is a person, and the two are not the same row — two suppliers can
-  // carry one brand and a brand can arrive before anybody is entered as
-  // bringing it. So the rows are brands, what each brings is read off its
-  // products, and the people behind it are counted rather than named.
-  let suppliers = [];
+  // The supplier list, as it was: who brings what, how to reach them, and the
+  // ✕ that opens one to be removed. What they bring is read off their brand's
+  // products rather than ticked, which is the only thing that changed — a
+  // product moved to Promo now shows here without anybody going and ticking a
+  // second box.
   const load = async () => {
-    const [rows, sups] = await Promise.all([
-      GET('/api/brand-list').catch(() => []),
-      GET('/api/suppliers').catch(() => []),
-    ]);
-    suppliers = sups;
+    const rows = await GET('/api/suppliers').catch(() => []);
     const t = term.trim().toLowerCase();
-    const list = rows
-      .filter((b) => !cat || (b.categories || []).includes(cat))
-      .filter((b) => !t || b.brand.toLowerCase().includes(t));
-
+    const list = rows.filter((s) => inCat(s, cat) && (!t
+      || s.name.toLowerCase().includes(t)
+      || (s.brand_name || '').toLowerCase().includes(t)));
     $('#list', page).innerHTML = table(list, [
-      { head: 'Brand', cell: (b) => `<b>${esc(b.brand)}</b>` },
-      { head: 'Category', cell: (b) => catTags(b.categories) },
-      { head: 'Products', n: true, cell: (b) => b.products
-          ? count(b.products) : '<span class="dim">—</span>' },
-      { head: 'Brought by', cell: (b) => b.suppliers
-          ? `${count(b.suppliers)} supplier${b.suppliers === 1 ? '' : 's'}`
-          : '<span class="dim">nobody yet</span>' },
-      { head: '', n: true, cell: (b) => b.suppliers
-          ? `<button class="btn sm quiet" data-brand="${esc(b.brand)}">Open</button>` : '' },
-    ], t ? 'No brand matches that.' : 'No brands yet.');
-
-    // A brand with one supplier opens her; a brand two people bring asks which.
-    $$('[data-brand]', page).forEach((btn) => btn.addEventListener('click', () => {
-      const row = list.find((b) => b.brand === btn.dataset.brand);
-      const mine = suppliers.filter((s) => (s.brand_name || '').trim().toLowerCase()
-        === row.brand.toLowerCase());
-      if (mine.length === 1) return supplierForm(mine[0], load);
-      dialog(`
-        <h3>${esc(row.brand)}</h3>
-        <div class="dim">Brought by ${mine.length} suppliers. Which one?</div>
-        <div class="mt">${mine.map((m) => `<div class="mt">
-          <button class="btn line" data-pick="${m.id}">${esc(m.name)}</button></div>`).join('')}</div>`);
-      $$('[data-pick]').forEach((b) => b.addEventListener('click', () => {
-        closeDialog();
-        supplierForm(mine.find((m) => String(m.id) === b.dataset.pick), load);
-      }));
-    }));
+      { head: 'Supplier', cell: (s) => `<button class="nameopen" data-sup="${s.id}"><b>${
+          esc(s.name)}</b></button>` },
+      { head: 'Brand', cell: (s) => s.brand_name ? esc(s.brand_name) : '<span class="dim">—</span>' },
+      { head: 'Category', cell: (s) => catTags(s.categories) },
+      { head: 'Tier', cell: (s) => s.tier === 'distributor'
+          ? tag('Distributor', 'pink') : tag('Main', 'grey') },
+      { head: 'Standing', cell: (s) => s.active_standing === false
+          ? tag('inactive', 'grey') : tag('active', 'green') },
+      { head: 'FB', cell: (s) => socialLink(s.fb_link, 'fb') },
+      { head: 'Chat', cell: (s) => chatBadge(s.chat_link) },
+      { head: '', n: true, cell: (s) => `<button class="rowx" data-sup="${s.id}"
+          title="Open ${esc(s.name)} to remove">✕</button>` },
+    ], t ? 'No suppliers match that.' : 'No suppliers yet.');
+    $$('[data-sup]', page).forEach((b) => b.addEventListener('click',
+      () => supplierForm(list.find((s) => String(s.id) === b.dataset.sup), load)));
   };
 
   page.innerHTML = `
@@ -857,7 +839,7 @@ SCREENS.products = async (page) => {
 
     <div id="pt_prodlist">
       <div class="tools">
-        <input type="search" id="find" placeholder="Search by brand…">
+        <input type="search" id="find" placeholder="Search by code, name or brand…">
         ${catChips('cat_sup')}
         <button class="btn" id="add">＋ New supplier</button>
       </div>
