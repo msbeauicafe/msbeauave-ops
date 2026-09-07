@@ -1212,14 +1212,14 @@ const inCat = (s, cat) => !cat
 // like nothing else in here. This asks the same question in the shop's dialog:
 // it resolves true only on the red button, and false on anything else — the
 // close cross, Keep it, the Escape key.
-const askFirst = (question, note, yes = 'Remove') => new Promise((settle) => {
+const askFirst = (question, note, yes = 'Remove', no = 'Keep it') => new Promise((settle) => {
   let answered = false;
   const done = (v) => { if (!answered) { answered = true; settle(v); } };
   dialog(`
     <h3>${esc(question)}</h3>
     ${note ? `<div class="dim">${esc(note)}</div>` : ''}
     <div class="mt right">
-      <button class="btn quiet" id="ask_no">Keep it</button>
+      <button class="btn quiet" id="ask_no">${esc(no)}</button>
       <button class="btn warn" id="ask_yes">${esc(yes)}</button>
     </div>`, '', true);
   const veil = $('#dialog');
@@ -3867,6 +3867,19 @@ const asDataUri = async (url) => {
 };
 
 async function saveDocument(node, filename, scale = 2) {
+  const blob = await documentPicture(node, scale);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+// The drawing itself, without deciding what becomes of it. Saved to the
+// machine by the button above; sent as an attachment by Payroll. One drawing
+// either way, so what lands in somebody's inbox is the sheet on the screen.
+async function documentPicture(node, scale = 2, quality = 0.92) {
   if (!node) throw new Error('There is no document open to save.');
   sheetCss ??= await (await fetch('/styles.css')).text();
   logoData ??= await asDataUri('/logo.png');
@@ -3939,14 +3952,22 @@ async function saveDocument(node, filename, scale = 2) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-  const blob = await new Promise((done) => canvas.toBlob(done, 'image/jpeg', 0.92));
-  if (!blob) throw new Error('The document could not be saved.');
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  const blob = await new Promise((done) => canvas.toBlob(done, 'image/jpeg', quality));
+  if (!blob) throw new Error('The document could not be drawn.');
+  return blob;
+}
+
+// What goes over the wire: the picture as a data URI, small enough that a
+// whole cutoff can be sent one request at a time without a body limit turning
+// somebody's payslip into a 413.
+async function pictureData(node, scale = 1.6, quality = 0.82) {
+  const blob = await documentPicture(node, scale, quality);
+  return new Promise((done, failed) => {
+    const r = new FileReader();
+    r.onload = () => done(r.result);
+    r.onerror = () => failed(new Error('The payslip could not be drawn.'));
+    r.readAsDataURL(blob);
+  });
 }
 
 // The button that does it, with the wait shown on the button itself — a big
@@ -10942,8 +10963,10 @@ SCREENS.payroll = async (page) => {
         <span id="pr_slipwho" class="dim"></span>
         <span class="tools-gap"></span>
         <button class="btn line" id="pr_saveall">⤓ Save each as a picture</button>
-        <button class="btn" id="pr_print">🖨️ Print — one per page</button>
+        <button class="btn line" id="pr_print">🖨️ Print — one per page</button>
+        <button class="btn" id="pr_mailall">✉️ Email everyone</button>
       </div>
+      <div class="dim mt" id="pr_mailbox"></div>
       <div class="payslips" id="pr_slipbox"></div>
     </div>
 
@@ -11250,9 +11273,93 @@ SCREENS.payroll = async (page) => {
       } catch (err) { whoops(err); }
       b.textContent = was; b.disabled = false;
     }));
+
+    // Who it would go out as, said before there is a button to press rather
+    // than after twenty of them have failed.
+    const box = data.mailbox || {};
+    $('#pr_mailbox', page).innerHTML = box.ready
+      ? `Sent from <b>${esc(box.from)}</b>, signed by whoever is on this screen —
+         ${esc(user.name || 'you')}.`
+      : `No mailbox is connected yet, so nothing can be emailed. Whoever looks
+         after payslips adds <b>MAIL_USER</b> (their own address) and
+         <b>MAIL_PASS</b> (an app password for it) in the hosting settings, and
+         these buttons start working.`;
+    $('#pr_mailall', page).disabled = !box.ready;
+
+    $$('[data-mail]', page).forEach((b) => {
+      b.disabled = !box.ready;
+      b.addEventListener('click', async () => {
+        const line = data.lines.find((l) => String(l.employee_id) === b.dataset.mail);
+        const slip = b.closest('.payslip');
+        if (!line || !slip) return;
+        const was = b.textContent;
+        b.disabled = true; b.textContent = 'Sending…';
+        try {
+          const out = await mailSlip(slip, line);
+          line.emailed_at = new Date().toISOString();
+          notice(`Payslip sent to ${out.to} 🌸`, 'good');
+          drawSlips();
+        } catch (err) {
+          whoops(err);
+          b.textContent = was; b.disabled = false;
+        }
+      });
+    });
   };
 
+  // One person per request. Twenty payslip pictures in one body is a request
+  // no host will accept, and one at a time means a refusal names the person it
+  // happened to rather than failing the whole cutoff.
+  const mailSlip = (slipNode, line) => pictureData(slipNode)
+    .then((image) => POST(`/api/payroll/${picked.id}/email`,
+      { employee_id: line.employee_id, image }));
+
   $('#pr_print', page).addEventListener('click', () => window.print());
+
+  // The whole cutoff, sent. Anybody without an address on record is named and
+  // skipped rather than quietly dropped — a payslip nobody received is not
+  // something to find out about in November.
+  $('#pr_mailall', page).addEventListener('click', async () => {
+    const slips = $$('#pr_slipbox .payslip', page);
+    const going = data.lines
+      .map((line, n) => ({ line, node: slips[n] }))
+      .filter((x) => x.node && x.line.email);
+    const without = data.lines.filter((l) => !l.email);
+    if (!going.length) {
+      return notice('Nobody on this cutoff has an email address yet.', 'bad');
+    }
+    const yes = await askFirst(
+      `Email ${going.length} payslip${going.length === 1 ? '' : 's'}?`,
+      without.length
+        ? `${without.map((l) => l.name).join(', ')} ${
+            without.length === 1 ? 'has' : 'have'} no email address and will be skipped.`
+        : 'Each person gets their own slip, and nobody sees anybody else’s.',
+      'Send them', 'Not now');
+    if (!yes) return;
+
+    const b = $('#pr_mailall', page);
+    const was = b.textContent;
+    b.disabled = true;
+    let done = 0;
+    const failed = [];
+    for (const { line, node } of going) {
+      b.textContent = `Sending ${done + 1} of ${going.length}…`;
+      try {
+        await mailSlip(node, line);
+        done += 1;
+      } catch (err) {
+        failed.push(`${line.name} — ${err.message}`);
+      }
+    }
+    b.textContent = was;
+    b.disabled = false;
+    if (failed.length) {
+      whoops(new Error(`${done} sent. These did not go: ${failed.join('; ')}`));
+    } else {
+      notice(`${done} payslip${done === 1 ? '' : 's'} sent 🌸`, 'good');
+    }
+    await load(picked.id);
+  });
 
   // One picture per person, named for them, so they can be attached to an email
   // one at a time without anybody screenshotting a browser. Saved one after
@@ -11647,7 +11754,12 @@ function payslip(period, r) {
         ${money(r.daily_rate)}. Overtime at 125% of the hourly rate, night
         differential at 10%, special holiday at 30%, late at
         ${peso(Number(r.daily_rate || 0) / 480)} a minute.</div>
-      <div class="keep"><button class="btn sm quiet"
-        data-slip="${esc(r.name)}">⤓ Save this one</button></div>
+      <div class="keep">
+        <button class="btn sm quiet" data-slip="${esc(r.name)}">⤓ Save this one</button>
+        ${r.email
+          ? `<button class="btn sm" data-mail="${r.employee_id}">✉️ Email ${esc(r.email)}</button>`
+          : '<span class="dim">No email on record — add one on the team list.</span>'}
+        ${r.emailed_at ? `<span class="sent">✓ sent ${onDay(r.emailed_at)}</span>` : ''}
+      </div>
     </div>`;
 }
