@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "MS BEAU AVE — skincare distribution, point of sale and reseller operations",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "bash scripts/run-local.sh",
     "serve": "node scripts/dev.js",
@@ -12,6 +14,7 @@
     "test": "bash scripts/test.sh"
   },
   "dependencies": {
+    "nodemailer": "^10.0.0",
     "pg": "^8.13.1",
     "sharp": "^0.35.3"
   }

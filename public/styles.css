@@ -1588,7 +1588,13 @@ input.n { text-align: right; }
   height: 18px; margin-bottom: 3px; }
 .payslip .note { padding: 10px 16px 0; font-size: 9.5px; color: var(--dim);
   line-height: 1.5; }
-.payslip .keep { padding: 10px 16px 14px; text-align: right; }
+.payslip .keep { padding: 10px 16px 14px; display: flex; flex-wrap: wrap;
+  gap: 8px; align-items: center; justify-content: flex-end; }
+/* Already gone out, and when. Quiet — it is a fact about the slip, not a
+   thing to press. */
+.payslip .sent { font-size: 10px; font-weight: 700; color: var(--good, #1b7a4b);
+  background: color-mix(in srgb, var(--good, #1b7a4b) 12%, transparent);
+  border-radius: 999px; padding: 3px 9px; }
 
 /* On paper: US Letter, one person to a page, set at 11 — a payslip is a form,
    not a letter, and at the screen's own size it ran to a second sheet. */
@@ -1597,6 +1603,7 @@ input.n { text-align: right; }
      heading, the four tabs, the hint under them. */
   body:has(.payslips) .head,
   body:has(.payslips) .subtabs,
+  body:has(.payslips) #pr_mailbox,
   body:has(.payslips) .hint { display: none !important; }
   .payslips { display: block; }
   .payslip {
