@@ -1504,128 +1504,121 @@ input.n { text-align: right; }
 .chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 
 /* Payslips
+   Their own classes, because the Team's PIN slips already own .slip and .slips
+   and their print rules were quietly setting a payslip three to a row.
+
    The shape the shop's own bookkeeper issues: a title band, CONFIDENTIAL under
    it, who is paid and for which cutoff, then earnings and deductions ruled line
-   by line with the hours or days beside each figure, and the net at the foot.
-   On paper it is US Letter, one person to a page. */
-.slips { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); }
-.slip {
-  border: 1px solid var(--line); background: var(--card, #fff);
-  overflow: hidden; break-inside: avoid; font-size: .78rem;
+   by line with the hours or days beside each figure, and the net at the foot. */
+.payslips { display: grid; gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); }
+.payslip {
+  border: 1px solid var(--line); border-radius: 3px; background: var(--card, #fff);
+  overflow: hidden; break-inside: avoid; font-size: 12px; line-height: 1.4;
+  box-shadow: 0 1px 3px rgba(70, 83, 107, .07);
 }
-.slipband {
+.payslip .band {
   background: #46536b; color: #fff; text-align: center; font-weight: 700;
-  letter-spacing: .22em; padding: 9px; font-size: .82rem;
+  letter-spacing: .24em; padding: 8px; font-size: 12px;
 }
-.slipconf {
+.payslip .conf {
   background: #eef0f4; color: #46536b; text-align: center; font-weight: 600;
-  letter-spacing: .16em; padding: 4px; font-size: .64rem;
+  letter-spacing: .2em; padding: 3px; font-size: 9px;
 }
-
-.sliptop { display: flex; gap: 12px; align-items: flex-start;
+.payslip .top { display: flex; gap: 12px; align-items: flex-start;
   padding: 12px 16px 8px; }
-.slipfirm { display: flex; align-items: center; gap: 8px; flex: 1;
+.payslip .firm { display: flex; align-items: center; gap: 8px; flex: 1;
   font-weight: 700; font-style: italic; color: #46536b; line-height: 1.25; }
-.sliplogo { width: 34px; height: 34px; object-fit: contain; flex: 0 0 auto; }
-.slipdates { border-collapse: collapse; font-size: .72rem; }
-.slipdates td { padding: 2px 0 2px 10px; white-space: nowrap; }
-.slipdates td:first-child { color: var(--dim); }
-.slipdates td.n { text-align: right; border-bottom: 1px solid var(--line);
+.payslip .mark { width: 34px; height: 34px; object-fit: contain; flex: 0 0 auto; }
+.payslip .firm span { font-size: 9px; color: var(--dim); letter-spacing: .1em;
+  text-transform: uppercase; font-style: normal; font-weight: 500; }
+.payslip .dates { border-collapse: collapse; font-size: 11px; }
+.payslip .dates td { padding: 2px 0 2px 10px; white-space: nowrap; }
+.payslip .dates td:first-child { color: var(--dim); }
+.payslip .dates td.n { text-align: right; border-bottom: 1px solid var(--line);
   font-weight: 600; }
+.payslip .title { margin-left: auto; text-align: right; font-weight: 800;
+  letter-spacing: .2em; font-size: 12px; display: flex; flex-direction: column; }
+.payslip .title span { font-weight: 500; letter-spacing: .02em; font-size: 10px;
+  color: var(--dim); }
 
-.slipwho { width: calc(100% - 32px); margin: 4px 16px 10px;
-  border-collapse: collapse; font-size: .74rem; }
-.slipwho td { padding: 3px 0; }
-.slipwho td:nth-child(odd) { color: var(--dim); white-space: nowrap;
+.payslip .who { width: calc(100% - 32px); margin: 4px 16px 12px;
+  border-collapse: collapse; font-size: 11px; }
+.payslip .who td { padding: 3px 0; }
+.payslip .who td:nth-child(odd) { color: var(--dim); white-space: nowrap;
   padding-right: 8px; width: 1%; }
-.slipwho td:nth-child(even) { border-bottom: 1px solid var(--line); }
-.slipwho td.n { text-align: right; }
+.payslip .who td:nth-child(even) { border-bottom: 1px solid var(--line); }
+.payslip .who td.n { text-align: right; }
 
-.sliptable { width: calc(100% - 32px); margin: 0 16px 10px;
+.payslip .rows { width: calc(100% - 32px); margin: 0 16px 10px;
   border-collapse: collapse; }
-.sliptable th {
-  text-align: left; font-size: 10px; letter-spacing: .04em; padding: 5px 0;
-  border-top: 1.5px solid #46536b; border-bottom: 1.5px solid #46536b;
-}
-/* The two number columns are given a fixed width and the figures set in
-   tabular numerals, so the decimal points line up down the page instead of
-   wandering with the length of each amount — which is what made a column of
-   pesos hard to read at a glance. */
-.sliptable th.c, .sliptable td.c { width: 22%; text-align: right;
+.payslip .rows th { text-align: left; font-size: 10px; letter-spacing: .04em;
+  padding: 5px 0; border-top: 1.5px solid #46536b;
+  border-bottom: 1.5px solid #46536b; }
+/* The two number columns are fixed and set hard right in tabular numerals, so
+   the decimal points line up down the page instead of wandering with the
+   length of each amount. */
+.payslip .rows th.c, .payslip .rows td.c { width: 22%; text-align: right;
   padding-right: 14px; color: var(--dim); white-space: nowrap; }
-.sliptable th.n, .sliptable td.n { width: 26%; text-align: right;
+.payslip .rows th.n, .payslip .rows td.n { width: 26%; text-align: right;
   white-space: nowrap; }
-.sliptable td.n, .sliptable td.c, .slipnet td.n {
+.payslip .rows td.n, .payslip .rows td.c, .payslip .net td.n {
   font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
-.sliptable td { padding: 2.5px 0; border-bottom: 1px solid rgba(70, 83, 107, .07); }
-.sliptable tbody tr:last-child td { border-bottom: none; }
-.sliptable tfoot td { font-weight: 700; border-bottom: none;
+.payslip .rows td { padding: 2.5px 0;
+  border-bottom: 1px solid rgba(70, 83, 107, .07); }
+.payslip .rows tbody tr:last-child td { border-bottom: none; }
+.payslip .rows tfoot td { font-weight: 700; border-bottom: none;
   border-top: 1.5px solid #46536b; padding-top: 5px; }
 
-.sliprate { margin: -4px 16px 14px; font-size: 9.5px; color: var(--dim); }
+.payslip .rate { margin: -4px 16px 14px; font-size: 9.5px; color: var(--dim); }
 
-.slipnet { width: calc(100% - 32px); margin: 0 16px 4px;
+.payslip .net { width: calc(100% - 32px); margin: 0 16px 4px;
   border-collapse: collapse; }
-.slipnet td { padding: 8px 0; font-weight: 800; font-size: 15px;
+.payslip .net td { padding: 8px 0; font-weight: 800; font-size: 15px;
   border-top: 2px solid #46536b; }
-.slipnet td.n { text-align: right; }
+.payslip .net td.n { text-align: right; }
 
-.slipfoot { display: flex; gap: 20px; padding: 22px 16px 0; }
-.sigline { flex: 1; font-size: 9.5px; color: var(--dim); text-align: center; }
-.sigline .rule { display: block; border-bottom: 1px solid var(--ink, #333);
+.payslip .sign { display: flex; gap: 20px; padding: 22px 16px 0; }
+.payslip .sign > div { flex: 1; font-size: 9.5px; color: var(--dim);
+  text-align: center; }
+.payslip .sign .rule { display: block; border-bottom: 1px solid var(--ink, #333);
   height: 18px; margin-bottom: 3px; }
-.slipnote { padding: 10px 16px 0; font-size: 9.5px; color: var(--dim);
+.payslip .note { padding: 10px 16px 0; font-size: 9.5px; color: var(--dim);
   line-height: 1.5; }
-.slipsave { padding: 10px 16px 14px; text-align: right; }
+.payslip .keep { padding: 10px 16px 14px; text-align: right; }
 
-/* On paper: US Letter, one person to a page, so a slip can be handed over or
-   scanned on its own without another person's pay on the back of it.
-   Set in 11px, which is about 8pt — a payslip is a form, not a letter, and at
-   the screen's own size it ran onto a second page and looked shouted. */
-@page { size: letter; margin: 0.5in; }
+/* On paper: US Letter, one person to a page, set at 11 — a payslip is a form,
+   not a letter, and at the screen's own size it ran to a second sheet. */
 @media print {
-  html, body { font-size: 11px; }
-  .slips { display: block; }
-  .slip {
-    font-size: 11px; line-height: 1.32;
-    border: 1px solid #999; box-shadow: none; border-radius: 0;
+  /* The screen's own furniture does not belong on somebody's payslip: the page
+     heading, the four tabs, the hint under them. */
+  body:has(.payslips) .head,
+  body:has(.payslips) .subtabs,
+  body:has(.payslips) .hint { display: none !important; }
+  .payslips { display: block; }
+  .payslip {
+    font-size: 11px; line-height: 1.3; border: 1px solid #999;
+    box-shadow: none; border-radius: 0; padding-bottom: 6px;
     break-after: page; page-break-after: always;
     break-inside: avoid; page-break-inside: avoid;
   }
-  .slip:last-child { break-after: auto; page-break-after: auto; }
-
-  /* Everything a shade tighter, so the whole reckoning lands on one page with
-     room left for the signature. */
-  .slipband { font-size: 11px; padding: 6px; letter-spacing: .18em;
+  .payslip:last-child { break-after: auto; page-break-after: auto; }
+  .payslip .band { font-size: 11px; padding: 6px;
     background: #46536b !important; -webkit-print-color-adjust: exact;
     print-color-adjust: exact; }
-  .slipconf { font-size: 9px; padding: 3px;
+  .payslip .conf { font-size: 9px; padding: 3px;
     background: #eef0f4 !important; -webkit-print-color-adjust: exact;
     print-color-adjust: exact; }
-  .sliptop { padding: 8px 12px 5px; }
-  .sliplogo { width: 30px; height: 30px; }
-  .slipco b { font-size: 12px; }
-  .slipco span, .slipdates td, .slipwho td { font-size: 10px; }
-  .sliptitle { font-size: 11px; }
-  .sliptitle span { font-size: 9px; }
-  .slipwho { margin: 2px 12px 7px; width: calc(100% - 24px); }
-  .sliptable { margin: 0 12px 7px; width: calc(100% - 24px); font-size: 11px; }
-  .sliptable th { font-size: 10px; padding: 3px 0; }
-  .sliptable td { padding: 1.5px 0; }
-  .sliprate { margin: -3px 12px 8px; font-size: 9px; }
-  .slipnet { margin: 0 12px 2px; width: calc(100% - 24px); }
-  .slipnet td { padding: 5px 0; font-size: 13px; }
-  .slipfoot { padding: 16px 12px 0; }
-  .sigline { font-size: 9px; }
-  .slipnote { padding: 7px 12px 0; font-size: 9px; }
-  .slipsave { display: none !important; }
+  .payslip .top { padding: 8px 12px 5px; }
+  .payslip .mark { width: 30px; height: 30px; }
+  .payslip .who { margin: 2px 12px 7px; width: calc(100% - 24px); font-size: 10px; }
+  .payslip .rows { margin: 0 12px 7px; width: calc(100% - 24px); font-size: 11px; }
+  .payslip .rows th { font-size: 10px; padding: 3px 0; }
+  .payslip .rows td { padding: 1.5px 0; }
+  .payslip .rate { margin: -3px 12px 8px; font-size: 9px; }
+  .payslip .net { margin: 0 12px 2px; width: calc(100% - 24px); }
+  .payslip .net td { padding: 5px 0; font-size: 13px; }
+  .payslip .sign { padding: 16px 12px 0; }
+  .payslip .note { padding: 7px 12px 0; font-size: 9px; }
+  .payslip .keep { display: none !important; }
 }
-
-/* Five prices, each under the name it is sold at. The name and the figure stay
-   beside each other however narrow the dialog gets: stacked, a price name sat
-   above a number it did not obviously belong to. */
-.pricerows { display: grid; gap: 8px; }
-.pricerow { display: grid; grid-template-columns: 1fr 38%; gap: 10px; align-items: center; }
-.pricerow select, .pricerow input { min-width: 0; }
-.pricerow input { text-align: right; }
-.pricerow select option.newname { font-weight: 700; color: #a9761b; }
