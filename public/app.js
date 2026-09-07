@@ -11449,8 +11449,9 @@ const PAYER = {
 function payslip(period, r) {
   const money = (v) => peso(Number(v || 0));
   const co = PAYER[period.company] || PAYER['MS BEAU'];
-  // A line worth nothing is a line worth leaving out: a slip with six zeroes on
-  // it hides the two figures that are not zero.
+  // Every line, zeroes included. Hiding the empty ones made a tidier slip and a
+  // worse one: somebody reading their pay wants to see that the overtime line
+  // exists and says nothing, not to wonder whether it was left off.
   const earned = [
     [`Basic — ${count(r.days_present)} day${Number(r.days_present) === 1 ? '' : 's'}`
       + ` @ ${money(r.daily_rate)}`, r.basic, true],
@@ -11461,14 +11462,14 @@ function payslip(period, r) {
     ['Leave with pay', r.leave_pay],
     ['Allowance', r.allowance],
     ['Adjustment', r.adjustment],
-  ].filter(([, v, always]) => always || Number(v || 0) !== 0);
+  ];
   const taken = [
     [`Late / undertime — ${count(r.late_minutes)} min`, r.late_charge],
     ['SSS', r.sss],
     ['PhilHealth', r.philhealth],
     ['Pag-IBIG', r.pagibig],
     ['Loan / cash advance', r.loans],
-  ].filter(([, v]) => Number(v || 0) !== 0);
+  ];
 
   const half = (title, rows, total, label) => `
     <div class="slipcol">
