@@ -5228,7 +5228,7 @@ SCREENS.pricelists = async (page) => {
       // What it cost us, read-only, at the head of the money: every column to
       // the right of it is a price, and a price is only worth reading against
       // the cost beside it.
-      { head: 'Cost', n: true, cell: (p) => Number(p.unit_cost)
+      { head: 'Cost price', n: true, cell: (p) => Number(p.unit_cost)
           ? `<span class="dim">${peso(p.unit_cost)}</span>`
           : '<span class="over">—</span>' },
       ...codes.map((c) => ({
