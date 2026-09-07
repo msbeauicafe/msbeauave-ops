@@ -1572,14 +1572,10 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       <div><label>Category</label>
         <select id="f_cat"><option value="">Pick a category…</option></select></div>
     </div>
-    <div class="row">
-      ${user.role === 'datacoord' ? '' : `
-      <div><label>Selling price</label><input id="f_rp" type="number" step="0.01" value="${num(p?.retail_price)}"></div>`}
-      <div><label>Cost price</label><input id="f_cost" type="number" step="0.01" value="${num(p?.unit_cost)}"></div>
-    </div>
-    <div class="dim">${user.role === 'datacoord'
-      ? 'Selling prices are set by the owner on Pricelists — a new product is added here and priced there.'
-      : 'Our shop price may not go below what resellers sell at.'}</div>
+    <h3 class="mt">Prices</h3>
+    <div class="dim">Five at a time, each under the name it is sold at. A name
+      not on the list yet is added from the bottom of the dropdown.</div>
+    <div class="pricerows mt" id="f_prices"></div>
     ${isNew ? '' : `
       <h3 class="mt">Photograph</h3>
       <div class="dim">What the till and the customer app show for this product.</div>
@@ -1618,6 +1614,116 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       + brands.map((b) => `<option value="${esc(b)}"${
           b === mine ? ' selected' : ''}>${esc(b)}</option>`).join('');
   }).catch(() => {});
+
+  // Five prices at a time, each under the name it is sold at. Two of the names
+  // are columns on the product itself — what it cost us and what the shop sells
+  // at — and the rest are the price list's own codes, so one block of five
+  // boxes writes to whichever of the two places that name belongs in.
+  //
+  // The last option in every dropdown adds a name that is not there yet. A
+  // shop that agrees a new tier on a Tuesday should not have to keep it in a
+  // notebook until somebody writes a migration.
+  const OWN_PRICE = {
+    COST: { label: 'Cost price', field: 'unit_cost' },
+    SELLING: { label: 'Selling price', field: 'retail_price' },
+    SRP: { label: 'SRP price', field: 'srp' },
+  };
+  let priceNames = [];       // the base codes on the price list
+  let priceRows = [];        // { name, amount } — five of them
+
+  const priceOptions = (chosen) => {
+    const own = Object.entries(OWN_PRICE)
+      .map(([k, v]) => `<option value="${k}"${k === chosen ? ' selected' : ''}>${
+        esc(v.label)}</option>`).join('');
+    const codes = priceNames
+      .map((c) => `<option value="CODE:${esc(c)}"${
+        `CODE:${c}` === chosen ? ' selected' : ''}>${esc(c)} price</option>`).join('');
+    return `<option value="">Pick a price name…</option>${own}${codes}
+      <option value="__new" class="newname">＋ New price name…</option>`;
+  };
+
+  const drawPrices = () => {
+    const box = $('#f_prices');
+    if (!box) return;
+    box.innerHTML = priceRows.map((r, n) => `
+      <div class="pricerow">
+        <select data-pname="${n}">${priceOptions(r.name)}</select>
+        <input type="number" step="0.01" min="0" data-pamt="${n}"
+          value="${r.amount === '' || r.amount == null ? '' : r.amount}"
+          placeholder="0.00" ${r.name ? '' : 'disabled'}>
+      </div>`).join('');
+
+    $$('[data-pname]', box).forEach((sel) => sel.addEventListener('change', async () => {
+      const n = +sel.dataset.pname;
+      if (sel.value === '__new') {
+        sel.value = priceRows[n].name || '';
+        // Over the product form rather than instead of it: a half-typed product
+        // must still be there when the new name has been added.
+        dialog(`
+          <h3>New price name</h3>
+          <div class="dim">What this price is called on the list — RD, PD, VIP,
+            STOCKIST. It joins the dropdown for every product, not just this one.</div>
+          <div class="row mt">
+            <div><label>Name</label>
+              <input id="np_code" type="text" maxlength="24" autofocus
+                placeholder="e.g. VIP" style="text-transform:uppercase"></div>
+          </div>
+          <div class="mt right"><button class="btn" id="np_save">Save price name</button></div>`,
+          '', true);
+
+        const add = async () => {
+          const typed = ($('#np_code')?.value || '').trim();
+          if (!typed) return notice('A price needs a name.', 'bad');
+          try {
+            const out = await POST('/api/price-codes', { code: typed });
+            if (!priceNames.includes(out.code)) priceNames.push(out.code);
+            priceRows[n].name = `CODE:${out.code}`;
+            notice(`${out.code} added 🌸`, 'good');
+            closeDialog();
+            drawPrices();
+          } catch (err) { whoops(err); }
+        };
+        $('#np_save').addEventListener('click', add);
+        $('#np_code').addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); add(); }
+        });
+        return;
+      }
+      priceRows[n].name = sel.value;
+      drawPrices();
+    }));
+    $$('[data-pamt]', box).forEach((i) => i.addEventListener('input', () => {
+      priceRows[+i.dataset.pamt].amount = i.value;
+    }));
+  };
+
+  // What this product is already priced at, laid into the five rows: its own
+  // two columns first, then whatever the price list holds for it, and empty
+  // rows after. Five is a working number, not a limit — a sixth price is set
+  // by saving and opening it again.
+  (async () => {
+    try {
+      const codes = await GET('/api/price-codes').catch(() => []);
+      priceNames = (Array.isArray(codes) ? codes : [])
+        .filter((c) => c.is_base ?? (c.base_code == null))
+        .map((c) => c.code);
+    } catch { priceNames = []; }
+
+    const filled = [];
+    if (!isNew) {
+      if (Number(p.unit_cost) > 0) filled.push({ name: 'COST', amount: Number(p.unit_cost) });
+      if (Number(p.retail_price) > 0) filled.push({ name: 'SELLING', amount: Number(p.retail_price) });
+      if (Number(p.srp) > 0) filled.push({ name: 'SRP', amount: Number(p.srp) });
+      const listed = await GET(`/api/products/${encodeURIComponent(p.sku)}/prices`)
+        .catch(() => []);
+      for (const row of listed) {
+        if (row.price != null) filled.push({ name: `CODE:${row.code}`, amount: Number(row.price) });
+      }
+    }
+    priceRows = filled.slice(0, 5);
+    while (priceRows.length < 5) priceRows.push({ name: '', amount: '' });
+    drawPrices();
+  })();
 
   // The shop's three categories, the same three the Brand list ticks. A product
   // still carrying something older keeps it as an option of its own so an edit
@@ -1675,12 +1781,26 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   $('#f_save').addEventListener('click', async () => {
     const body = {
       name: $('#f_name').value, brand: $('#f_brand').value, category: $('#f_cat').value,
-      unit_cost: +$('#f_cost').value,
-      ...(user.role === 'datacoord' ? {} : { retail_price: +$('#f_rp').value }),
+      // The rows that name one of the product's own columns are written with
+      // the product; the rest go to the price list once it has a code to hang
+      // them on.
+      ...Object.fromEntries(priceRows
+        .filter((r) => OWN_PRICE[r.name] && r.amount !== '')
+        .map((r) => [OWN_PRICE[r.name].field, Number(r.amount) || 0])),
     };
     try {
-      if (isNew) await POST('/api/products', { ...body, sku: $('#f_sku').value.trim() });
+      const sku = isNew ? $('#f_sku').value.trim() : p.sku;
+      if (isNew) await POST('/api/products', { ...body, sku });
       else await PUT(`/api/products/${encodeURIComponent(p.sku)}`, body);
+
+      // The rows naming a price-list code, written once the product exists to
+      // hang them on. A new product is saved first for exactly this reason.
+      const listed = priceRows
+        .filter((r) => String(r.name).startsWith('CODE:') && r.amount !== '')
+        .map((r) => ({ code: String(r.name).slice(5), price: Number(r.amount) || 0 }));
+      if (listed.length) {
+        await PUT(`/api/products/${encodeURIComponent(sku)}/prices`, { prices: listed });
+      }
       notice('Saved 🌸', 'good');
       closeDialog();
       reload();
