@@ -10931,7 +10931,7 @@ SCREENS.payroll = async (page) => {
         <button class="btn line" id="pr_saveall">⤓ Save each as a picture</button>
         <button class="btn" id="pr_print">🖨️ Print — one per page</button>
       </div>
-      <div class="slips" id="pr_slipbox"></div>
+      <div class="payslips" id="pr_slipbox"></div>
     </div>
 
     <div id="pr_ca" hidden>
@@ -11227,7 +11227,7 @@ SCREENS.payroll = async (page) => {
       ${data.lines.length} slip${data.lines.length === 1 ? '' : 's'}`;
     $('#pr_slipbox', page).innerHTML = data.lines.map((r) => payslip(picked, r)).join('');
     $$('[data-slip]', page).forEach((b) => b.addEventListener('click', async () => {
-      const slip = b.closest('.slip');
+      const slip = b.closest('.payslip');
       const who = b.dataset.slip.replace(/[^A-Za-z0-9 ]/g, '').trim().replace(/\s+/g, '-');
       const was = b.textContent;
       b.disabled = true; b.textContent = 'Saving…';
@@ -11246,7 +11246,7 @@ SCREENS.payroll = async (page) => {
   // another rather than all at once: a browser given thirty downloads in the
   // same tick quietly drops most of them.
   $('#pr_saveall', page).addEventListener('click', async () => {
-    const slips = $$('#pr_slipbox .slip', page);
+    const slips = $$('#pr_slipbox .payslip', page);
     if (!slips.length) return notice('Nothing to save yet.', 'bad');
     const b = $('#pr_saveall', page);
     const was = b.textContent;
@@ -11560,31 +11560,31 @@ function payslip(period, r) {
     <td class="n">${money(amount)}</td></tr>`;
 
   return `
-    <div class="slip">
-      <div class="slipband">PAYSLIP</div>
-      <div class="slipconf">CONFIDENTIAL</div>
+    <div class="payslip">
+      <div class="band">PAYSLIP</div>
+      <div class="conf">CONFIDENTIAL</div>
 
-      <div class="sliptop">
-        <div class="slipfirm">
-          <img class="sliplogo" src="${co.logo}" alt=""
+      <div class="top">
+        <div class="firm">
+          <img class="mark" src="${co.logo}" alt=""
             onerror="this.onerror=null;this.src='/logo.jpg'">
           <span>${esc(co.name)}</span>
         </div>
-        <table class="slipdates"><tbody>
+        <table class="dates"><tbody>
           <tr><td>Pay Period:</td><td class="n">${onDay(period.paid_on)}</td></tr>
           <tr><td>Cutoff Period:</td>
               <td class="n">${onDay(period.starts_on)} – ${onDay(period.ends_on)}</td></tr>
         </tbody></table>
       </div>
 
-      <table class="slipwho"><tbody>
+      <table class="who"><tbody>
         <tr><td>Employee No.:</td><td>${esc(empNo)}</td>
             <td>Position:</td><td class="n">${esc(r.position || '—')}</td></tr>
         <tr><td>Employee Name:</td><td><b>${esc(r.name)}</b></td>
             <td>Department:</td><td class="n">${esc(period.company)}</td></tr>
       </tbody></table>
 
-      <table class="sliptable"><thead>
+      <table class="rows"><thead>
         <tr><th>Earnings</th><th class="c">Hours/Days</th><th class="n">Amount</th></tr>
       </thead><tbody>
         ${line('Basic Pay', days(r.days_present), r.basic)}
@@ -11598,13 +11598,13 @@ function payslip(period, r) {
       </tbody><tfoot>
         <tr><td>Gross Pay</td><td></td><td class="n">${money(r.total_earnings)}</td></tr>
       </tfoot></table>
-      <div class="sliprate">Rate per day ${money(r.daily_rate)} · hourly ${
+      <div class="rate">Rate per day ${money(r.daily_rate)} · hourly ${
         money(Number(r.daily_rate || 0) / 8)} · overtime ${
         money(Number(r.daily_rate || 0) / 8 * 1.25)}/hr · night ${
         money(Number(r.daily_rate || 0) / 8 * 0.10)}/hr · special holiday ${
         money(Number(r.daily_rate || 0) * 0.30)}/day</div>
 
-      <table class="sliptable"><thead>
+      <table class="rows"><thead>
         <tr><th>Deductions</th><th class="c">Hours/Days</th><th class="n">Amount</th></tr>
       </thead><tbody>
         ${line('Absences', days(0), 0)}
@@ -11622,19 +11622,19 @@ function payslip(period, r) {
             <td class="n">${money(r.total_deductions)}</td></tr>
       </tfoot></table>
 
-      <table class="slipnet"><tbody>
+      <table class="net"><tbody>
         <tr><td>Net Pay:</td><td class="n">${money(r.net_pay)}</td></tr>
       </tbody></table>
 
-      <div class="slipfoot">
-        <div class="sigline"><span class="rule"></span>Received by</div>
-        <div class="sigline"><span class="rule"></span>Date</div>
+      <div class="sign">
+        <div><span class="rule"></span>Received by</div>
+        <div><span class="rule"></span>Date</div>
       </div>
-      <div class="slipnote">Computed from ${days(r.days_present)} at
+      <div class="note">Computed from ${days(r.days_present)} at
         ${money(r.daily_rate)}. Overtime at 125% of the hourly rate, night
         differential at 10%, special holiday at 30%, late at
         ${peso(Number(r.daily_rate || 0) / 480)} a minute.</div>
-      <div class="slipsave"><button class="btn sm quiet"
+      <div class="keep"><button class="btn sm quiet"
         data-slip="${esc(r.name)}">⤓ Save this one</button></div>
     </div>`;
 }
