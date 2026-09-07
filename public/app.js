@@ -8861,6 +8861,33 @@ SCREENS.team = async (page) => {
         </div>`}
 
       ${isNew ? '' : `
+        <h3 class="mt">Pay</h3>
+        <div class="dim">Everything on a payslip is worked out from the daily
+          rate — overtime, night differential, a minute late, a holiday. Type it
+          once here. Pag-IBIG is 200 for everybody; SSS and PhilHealth are the
+          figures the books are using, changed when a circular changes them.</div>
+        <div class="row">
+          <div><label>Paid by</label>
+            <select id="t_company">
+              <option value="MS BEAU" ${p.company === 'BOA' ? '' : 'selected'}>MS Beau</option>
+              <option value="BOA" ${p.company === 'BOA' ? 'selected' : ''}>BOA</option>
+            </select></div>
+          <div><label>Rate per day</label>
+            <input id="t_daily" type="number" step="0.01" min="0"
+              value="${Number(p.daily_rate || 0)}"></div>
+        </div>
+        <div class="row">
+          <div><label>SSS</label><input id="t_sss" type="number" step="0.01" min="0"
+            value="${Number(p.sss || 0)}"></div>
+          <div><label>PhilHealth</label><input id="t_phic" type="number" step="0.01" min="0"
+            value="${Number(p.philhealth || 0)}"></div>
+          <div><label>Pag-IBIG</label><input id="t_hdmf" type="number" step="0.01" min="0"
+            value="${Number(p.pagibig ?? 200)}"></div>
+          <div style="flex:0 0 auto; align-self:flex-end">
+            <button class="btn quiet sm" id="t_pay_save">Save pay</button></div>
+        </div>
+        <div class="dim" id="t_rates"></div>
+
         <h3 class="mt">Clock PIN</h3>
         <div class="dim">Four to eight digits, typed on the shared device by the
           door. It stops one person clocking in another; it is not a password
@@ -8957,6 +8984,35 @@ SCREENS.team = async (page) => {
             { branch_id: $('#t_branch_pick').value });
           notice(`${p.name} moved`, 'good');
           closeDialog();
+          load();
+        } catch (err) { whoops(err); }
+      });
+
+      // The rates the daily figure implies, shown under the boxes as it is
+      // typed, so a wrong rate is caught here rather than on a payslip.
+      const showRates = () => {
+        const d = Number($('#t_daily')?.value || 0);
+        const box = $('#t_rates');
+        if (!box) return;
+        box.innerHTML = d > 0
+          ? `From ${peso(d)} a day: overtime ${peso(d / 8 * 1.25)}/hour · night
+             differential ${peso(d / 8 * 0.10)}/hour · late ${peso(d / 480)}/minute ·
+             holiday ${peso(d)} · special holiday ${peso(d * 0.30)}`
+          : 'No rate yet — a payslip cannot be worked out until there is one.';
+      };
+      showRates();
+      $('#t_daily')?.addEventListener('input', showRates);
+
+      $('#t_pay_save').addEventListener('click', async () => {
+        try {
+          await POST(`/api/team/${p.id}/pay`, {
+            company: $('#t_company').value,
+            daily_rate: +$('#t_daily').value,
+            sss: +$('#t_sss').value,
+            philhealth: +$('#t_phic').value,
+            pagibig: +$('#t_hdmf').value,
+          });
+          notice('Pay saved 🌸', 'good');
           load();
         } catch (err) { whoops(err); }
       });
