@@ -1586,3 +1586,12 @@ input.n { text-align: right; }
     print-color-adjust: exact; }
   .slipsave { display: none !important; }
 }
+
+/* Five prices, each under the name it is sold at. The name and the figure stay
+   beside each other however narrow the dialog gets: stacked, a price name sat
+   above a number it did not obviously belong to. */
+.pricerows { display: grid; gap: 8px; }
+.pricerow { display: grid; grid-template-columns: 1fr 38%; gap: 10px; align-items: center; }
+.pricerow select, .pricerow input { min-width: 0; }
+.pricerow input { text-align: right; }
+.pricerow select option.newname { font-weight: 700; color: #a9761b; }
