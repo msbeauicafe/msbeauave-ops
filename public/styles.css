@@ -1502,3 +1502,25 @@ input.n { text-align: right; }
 }
 
 .chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+/* Payslips — a stack of small forms, each meant to be cut out and handed over.
+   On paper they lose the dialog around them and print two to a page. */
+.slips { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.slip { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; break-inside: avoid; }
+.slip h3 { margin: 0 0 8px; font-size: .95rem; letter-spacing: .04em; }
+.slip table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.slipmeta td { padding: 1px 4px 1px 0; vertical-align: top; }
+.slipmeta td:nth-child(odd) { color: var(--dim); white-space: nowrap; }
+.sliprows { margin-top: 8px; }
+.sliprows td { padding: 2px 0; }
+.sliprows .n { text-align: right; }
+.sliprows tr.h td { font-weight: 700; border-bottom: 1px solid var(--line); padding-top: 8px; }
+.sliprows tr.t td { font-weight: 700; border-top: 1px solid var(--line); }
+.sliprows tr.net td { font-weight: 800; border-top: 2px solid var(--line); padding-top: 5px; }
+.slipsign { margin-top: 12px; font-size: .78rem; color: var(--dim); display: flex;
+  align-items: flex-end; gap: 8px; }
+.slipsign .rule { flex: 1; border-bottom: 1px solid var(--line); height: 14px; }
+@media print {
+  .slips { grid-template-columns: 1fr 1fr; }
+  .slip { border-color: #000; }
+}

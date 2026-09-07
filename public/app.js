@@ -437,6 +437,7 @@ const TABS = {
     ['promos', '🏷️', 'Promos'],
     ['team', '🧑‍💼', 'Team'],
     ['hr', '💼', 'HR'],
+    ['payroll', '🧮', 'Payroll'],
     ['attendance', '🕒', 'Attendance'],
     ['clock', '⏱️', 'Time clock'],
     ['branches', '🏬', 'Branches'],
@@ -565,6 +566,7 @@ const TABS = {
     ['promos', '🏷️', 'Promos'],
     ['team', '🧑‍💼', 'Team'],
     ['hr', '💼', 'HR'],
+    ['payroll', '🧮', 'Payroll'],
     ['attendance', '🕒', 'Attendance'],
     ['clock', '⏱️', 'Time clock'],
     ['branches', '🏬', 'Branches'],
@@ -10475,3 +10477,284 @@ SCREENS.attendance = async (page) => {
 };
 
 start();
+
+// ===========================================================================
+// Payroll
+//
+// A cutoff at a time. The days come from the clock; the office corrects what
+// the clock got wrong and types what it cannot know — overtime agreed, a
+// holiday worked, an allowance, a loan repayment. Every peso figure is worked
+// out from the daily rate frozen on the line, so no total here can disagree
+// with the numbers it came from.
+// ===========================================================================
+SCREENS.payroll = async (page) => {
+  const owner = user.role === 'admin';
+  let data = { periods: [], period_id: null, lines: [] };
+  let picked = null;
+
+  page.innerHTML = `
+    <div class="head"><h2>Payroll</h2>
+      <span class="hint">One cutoff at a time — the days from the clock, the
+        rest from the daily rate</span></div>
+    <div class="tools">
+      <select id="pr_period"></select>
+      <button class="btn" id="pr_new">＋ New cutoff</button>
+      <span id="pr_state"></span>
+      <span class="tools-gap"></span>
+      <button class="btn line" id="pr_slips">🧾 Payslips</button>
+      ${owner ? `<button class="btn line" id="pr_close">Close this cutoff</button>` : ''}
+    </div>
+    <div class="tiles" id="pr_tiles"></div>
+    <div class="panel" id="pr_list"></div>`;
+
+  const money = (v) => peso(Number(v || 0));
+  const numOr = (v) => (v == null || v === '' ? 0 : Number(v));
+
+  const load = async (id) => {
+    data = await GET(`/api/payroll${id ? `?id=${id}` : ''}`);
+    picked = data.periods.find((p) => String(p.id) === String(data.period_id)) || null;
+
+    $('#pr_period', page).innerHTML = data.periods.length
+      ? data.periods.map((p) => `<option value="${p.id}"
+          ${String(p.id) === String(data.period_id) ? 'selected' : ''}>${
+          esc(p.company)} · ${onDay(p.starts_on)} to ${onDay(p.ends_on)}</option>`).join('')
+      : '<option value="">No cutoff yet</option>';
+
+    $('#pr_state', page).innerHTML = picked
+      ? (picked.status === 'closed'
+          ? `${tag('closed', 'grey')} <span class="dim">paid ${onDay(picked.paid_on)}</span>`
+          : `${tag('open', 'green')} <span class="dim">to be paid ${onDay(picked.paid_on)}</span>`)
+      : '';
+    const closeBtn = $('#pr_close', page);
+    if (closeBtn) {
+      closeBtn.textContent = picked?.status === 'closed' ? 'Reopen this cutoff' : 'Close this cutoff';
+      closeBtn.disabled = !picked;
+    }
+    draw();
+  };
+
+  const draw = () => {
+    const rows = data.lines;
+    const sum = (f) => rows.reduce((s, r) => s + Number(r[f] || 0), 0);
+    $('#pr_tiles', page).innerHTML = `
+      <div class="tile"><div class="big">${rows.length}</div>
+        <div class="label">On this cutoff</div></div>
+      <div class="tile"><div class="big">${money(sum('total_earnings'))}</div>
+        <div class="label">Total earnings</div></div>
+      <div class="tile"><div class="big">${money(sum('total_deductions'))}</div>
+        <div class="label">Total deductions</div></div>
+      <div class="tile good"><div class="big">${money(sum('net_pay'))}</div>
+        <div class="label">Net pay</div></div>`;
+
+    const open = picked?.status !== 'closed';
+    // A box on an open cutoff, the plain figure once it is closed: a closed
+    // period is the record of what was paid, not a form.
+    const box = (r, field, step = '1') => open
+      ? `<input class="cellbox n" type="number" step="${step}" min="0"
+           value="${Number(r[field] || 0)}" data-line="${r.id}" data-f="${field}">`
+      : count(Number(r[field] || 0));
+
+    $('#pr_list', page).innerHTML = table(rows, [
+      { head: 'Name', cell: (r) => `<b>${esc(r.name)}</b>
+          <div class="dim">${esc(r.position || '')}</div>` },
+      { head: 'Rate/day', n: true, cell: (r) => money(r.daily_rate) },
+      { head: 'Days', n: true, cell: (r) => box(r, 'days_present', '0.5') },
+      { head: 'Basic', n: true, cell: (r) => money(r.basic) },
+      { head: 'NSD hrs', n: true, cell: (r) => box(r, 'nsd_hours', '0.25') },
+      { head: 'OT hrs', n: true, cell: (r) => box(r, 'ot_hours', '0.25') },
+      { head: 'OT pay', n: true, cell: (r) => money(r.overtime) },
+      { head: 'Hol', n: true, cell: (r) => box(r, 'holidays', '0.5') },
+      { head: 'Spe hol', n: true, cell: (r) => box(r, 'spe_holidays', '0.5') },
+      { head: 'Leave', n: true, cell: (r) => box(r, 'leave_days', '0.5') },
+      { head: 'Allow.', n: true, cell: (r) => box(r, 'allowance', '0.01') },
+      { head: 'Adj.', n: true, cell: (r) => box(r, 'adjustment', '0.01') },
+      { head: 'Earnings', n: true, cell: (r) => `<b>${money(r.total_earnings)}</b>` },
+      { head: 'Late min', n: true, cell: (r) => box(r, 'late_minutes', '1') },
+      { head: 'Late', n: true, cell: (r) => money(r.late_charge) },
+      { head: 'SSS', n: true, cell: (r) => box(r, 'sss', '0.01') },
+      { head: 'PhilHealth', n: true, cell: (r) => box(r, 'philhealth', '0.01') },
+      { head: 'Pag-IBIG', n: true, cell: (r) => box(r, 'pagibig', '0.01') },
+      { head: 'Loan/CA', n: true, cell: (r) => box(r, 'loans', '0.01') },
+      { head: 'Deductions', n: true, cell: (r) => money(r.total_deductions) },
+      { head: 'Net pay', n: true, cell: (r) => `<b>${money(r.net_pay)}</b>` },
+    ], picked ? 'Nobody is on this cutoff.' : 'Open a cutoff to start.');
+
+    // Typed straight into the line. The figures around it move on the keystroke
+    // rather than after a save, so a wrong number is seen where it is typed;
+    // the save follows once the box is left.
+    $$('[data-line]', page).forEach((i) => {
+      i.addEventListener('input', () => {
+        const row = data.lines.find((r) => String(r.id) === i.dataset.line);
+        if (!row) return;
+        row[i.dataset.f] = numOr(i.value);
+        recompute(row);
+        retotal();
+      });
+      i.addEventListener('change', async () => {
+        try {
+          await PUT(`/api/payroll-lines/${i.dataset.line}`,
+            { [i.dataset.f]: numOr(i.value) });
+        } catch (err) { whoops(err); }
+      });
+    });
+  };
+
+  // The same arithmetic the database does, run here so the screen can answer
+  // before the round trip. The database stays the authority: what it returns on
+  // the next load replaces this.
+  const recompute = (r) => {
+    const d = Number(r.daily_rate || 0);
+    r.basic = d * Number(r.days_present || 0);
+    r.nsd = d / 8 * 0.10 * Number(r.nsd_hours || 0);
+    r.overtime = d / 8 * 1.25 * Number(r.ot_hours || 0);
+    r.holiday = d * Number(r.holidays || 0);
+    r.spe_holiday = d * 0.30 * Number(r.spe_holidays || 0);
+    r.leave_pay = d * Number(r.leave_days || 0);
+    r.late_charge = d / 480 * Number(r.late_minutes || 0);
+    r.total_earnings = r.basic + r.nsd + r.overtime + r.holiday + r.spe_holiday
+      + r.leave_pay + Number(r.allowance || 0) + Number(r.adjustment || 0);
+    r.total_deductions = r.late_charge + Number(r.sss || 0)
+      + Number(r.philhealth || 0) + Number(r.pagibig || 0) + Number(r.loans || 0);
+    r.net_pay = r.total_earnings - r.total_deductions;
+  };
+
+  // Only the figures, redrawn — the table itself is left alone so the box being
+  // typed into keeps the cursor.
+  const retotal = () => {
+    const rows = data.lines;
+    const sum = (f) => rows.reduce((s, r) => s + Number(r[f] || 0), 0);
+    const tiles = $$('#pr_tiles .big', page);
+    if (tiles[1]) tiles[1].textContent = money(sum('total_earnings'));
+    if (tiles[2]) tiles[2].textContent = money(sum('total_deductions'));
+    if (tiles[3]) tiles[3].textContent = money(sum('net_pay'));
+    $$('#pr_list tbody tr', page).forEach((tr, n) => {
+      const r = rows[n];
+      if (!r) return;
+      const cells = $$('td', tr);
+      const set = (i, v) => { if (cells[i]) cells[i].innerHTML = v; };
+      set(3, money(r.basic));
+      set(6, money(r.overtime));
+      set(12, `<b>${money(r.total_earnings)}</b>`);
+      set(14, money(r.late_charge));
+      set(19, money(r.total_deductions));
+      set(20, `<b>${money(r.net_pay)}</b>`);
+    });
+  };
+
+  $('#pr_period', page).addEventListener('change',
+    (e) => load(e.target.value).catch(whoops));
+
+  // A cutoff runs 26th to 10th or 11th to 25th; the dates are offered filled in
+  // rather than typed, because typing them is where a payroll goes wrong.
+  $('#pr_new', page).addEventListener('click', () => {
+    const today = new Date();
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const y = today.getFullYear(), m = today.getMonth();
+    const firstHalf = today.getDate() <= 25;
+    const from = firstHalf ? new Date(y, m - 1, 26) : new Date(y, m, 11);
+    const to = firstHalf ? new Date(y, m, 10) : new Date(y, m, 25);
+    const paid = firstHalf ? new Date(y, m, 15) : new Date(y, m + 1, 0);
+
+    dialog(`
+      <h3>New cutoff</h3>
+      <div class="dim">The days each person worked are counted from the clock as
+        the cutoff opens. Everything the clock cannot know is typed on the line
+        afterwards.</div>
+      <div class="row mt">
+        <div><label>Company</label>
+          <select id="pn_co">
+            <option value="MS BEAU">MS Beau</option>
+            <option value="BOA">BOA</option>
+          </select></div>
+        <div><label>From</label><input id="pn_from" type="date" value="${iso(from)}"></div>
+        <div><label>To</label><input id="pn_to" type="date" value="${iso(to)}"></div>
+        <div><label>Paid on</label><input id="pn_paid" type="date" value="${iso(paid)}"></div>
+      </div>
+      <div class="mt right"><button class="btn" id="pn_go">Open the cutoff</button></div>`);
+
+    $('#pn_go').addEventListener('click', async () => {
+      try {
+        const out = await POST('/api/payroll', {
+          company: $('#pn_co').value,
+          starts_on: $('#pn_from').value,
+          ends_on: $('#pn_to').value,
+          paid_on: $('#pn_paid').value,
+        });
+        notice('Cutoff opened 🌸', 'good');
+        closeDialog();
+        await load(out.id);
+      } catch (err) { whoops(err); }
+    });
+  });
+
+  $('#pr_close', page)?.addEventListener('click', async () => {
+    if (!picked) return;
+    const closing = picked.status !== 'closed';
+    if (closing && !await askFirst('Close this cutoff?',
+      'The figures become the record of what was paid and stop moving.',
+      'Close it')) return;
+    try {
+      await POST(`/api/payroll/${picked.id}/${closing ? 'close' : 'reopen'}`, {});
+      notice(closing ? 'Cutoff closed' : 'Cutoff open again', 'good');
+      await load(picked.id);
+    } catch (err) { whoops(err); }
+  });
+
+  $('#pr_slips', page).addEventListener('click', () => {
+    if (!picked || !data.lines.length) return notice('Nothing to print yet.', 'bad');
+    showPayslips(picked, data.lines);
+  });
+
+  await load();
+};
+
+// The payslip, one per person, in the shape the shop already hands out: what
+// was earned above, what was taken below, and what is actually received at the
+// bottom with a line to sign.
+function showPayslips(period, lines) {
+  const money = (v) => peso(Number(v || 0));
+  const slip = (r) => `
+    <div class="slip">
+      <h3>EMPLOYEE PAYSLIP</h3>
+      <table class="slipmeta"><tbody>
+        <tr><td>Employee Name:</td><td><b>${esc(r.name)}</b></td>
+            <td>Cutoff Date:</td><td>${onDay(period.starts_on)} — ${onDay(period.ends_on)}</td></tr>
+        <tr><td>Position:</td><td>${esc(r.position || '')}</td>
+            <td>Payout Date:</td><td>${onDay(period.paid_on)}</td></tr>
+        <tr><td>Department:</td><td>${esc(period.company)}</td>
+            <td>Rate per day:</td><td>${money(r.daily_rate)}</td></tr>
+      </tbody></table>
+      <table class="sliprows"><tbody>
+        <tr class="h"><td>Earnings</td><td class="n">Amount</td></tr>
+        <tr><td>Basic — ${count(r.days_present)} day${Number(r.days_present) === 1 ? '' : 's'}</td>
+            <td class="n">${money(r.basic)}</td></tr>
+        <tr><td>Night differential — ${count(r.nsd_hours)} hrs</td>
+            <td class="n">${money(r.nsd)}</td></tr>
+        <tr><td>Overtime — ${count(r.ot_hours)} hrs</td>
+            <td class="n">${money(r.overtime)}</td></tr>
+        <tr><td>Holiday</td><td class="n">${money(r.holiday)}</td></tr>
+        <tr><td>Special holiday</td><td class="n">${money(r.spe_holiday)}</td></tr>
+        <tr><td>Leave with pay</td><td class="n">${money(r.leave_pay)}</td></tr>
+        <tr><td>Allowance / adjustment</td>
+            <td class="n">${money(Number(r.allowance || 0) + Number(r.adjustment || 0))}</td></tr>
+        <tr class="t"><td>Total earnings</td><td class="n">${money(r.total_earnings)}</td></tr>
+        <tr class="h"><td>Deductions</td><td class="n">Amount</td></tr>
+        <tr><td>Late — ${count(r.late_minutes)} min</td><td class="n">${money(r.late_charge)}</td></tr>
+        <tr><td>SSS</td><td class="n">${money(r.sss)}</td></tr>
+        <tr><td>PhilHealth</td><td class="n">${money(r.philhealth)}</td></tr>
+        <tr><td>Pag-IBIG</td><td class="n">${money(r.pagibig)}</td></tr>
+        <tr><td>Loan / CA / others</td><td class="n">${money(r.loans)}</td></tr>
+        <tr class="t"><td>Total deductions</td><td class="n">${money(r.total_deductions)}</td></tr>
+        <tr class="net"><td>NET PAY</td><td class="n">${money(r.net_pay)}</td></tr>
+      </tbody></table>
+      <div class="slipsign">Received by: <span class="rule"></span></div>
+    </div>`;
+
+  dialog(`
+    <h3>Payslips — ${esc(period.company)}, ${onDay(period.starts_on)} to ${
+      onDay(period.ends_on)}</h3>
+    <div class="dim">One per person. Print this page and cut them apart.</div>
+    <div class="mt right"><button class="btn quiet" id="ps_print">🖨️ Print</button></div>
+    <div class="slips mt">${lines.map(slip).join('')}</div>`, 'wide');
+  $('#ps_print').addEventListener('click', () => window.print());
+}
