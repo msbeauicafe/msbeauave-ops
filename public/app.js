@@ -11277,17 +11277,23 @@ SCREENS.payroll = async (page) => {
     // Who it would go out as, said before there is a button to press rather
     // than after twenty of them have failed.
     const box = data.mailbox || {};
-    $('#pr_mailbox', page).innerHTML = box.ready
+    const why = 'No mailbox is connected yet — nothing can be sent until one is.';
+    const note = $('#pr_mailbox', page);
+    note.className = box.ready ? 'dim mt' : 'banner warn mt';
+    note.innerHTML = box.ready
       ? `Sent from <b>${esc(box.from)}</b>, signed by whoever is on this screen —
          ${esc(user.name || 'you')}.`
-      : `No mailbox is connected yet, so nothing can be emailed. Whoever looks
-         after payslips adds <b>MAIL_USER</b> (their own address) and
-         <b>MAIL_PASS</b> (an app password for it) in the hosting settings, and
-         these buttons start working.`;
+      : `<b>No mailbox is connected yet</b>, so every Email button is switched off.
+         Whoever looks after payslips adds <b>MAIL_USER</b> — their own address —
+         and <b>MAIL_PASS</b> — an app password for it, not the ordinary one — to
+         the hosting settings. The buttons come on by themselves after that.`;
     $('#pr_mailall', page).disabled = !box.ready;
+    $('#pr_mailall', page).title = box.ready ? '' : why;
 
     $$('[data-mail]', page).forEach((b) => {
       b.disabled = !box.ready;
+      // A grey button with no reason on it is the thing somebody stares at.
+      b.title = box.ready ? `Send this payslip to ${b.dataset.to || ''}` : why;
       b.addEventListener('click', async () => {
         const line = data.lines.find((l) => String(l.employee_id) === b.dataset.mail);
         const slip = b.closest('.payslip');
@@ -11757,7 +11763,8 @@ function payslip(period, r) {
       <div class="keep">
         <button class="btn sm quiet" data-slip="${esc(r.name)}">⤓ Save this one</button>
         ${r.email
-          ? `<button class="btn sm" data-mail="${r.employee_id}">✉️ Email ${esc(r.email)}</button>`
+          ? `<button class="btn sm" data-mail="${r.employee_id}"
+              data-to="${esc(r.email)}">✉️ Email ${esc(r.email)}</button>`
           : '<span class="dim">No email on record — add one on the team list.</span>'}
         ${r.emailed_at ? `<span class="sent">✓ sent ${onDay(r.emailed_at)}</span>` : ''}
       </div>
