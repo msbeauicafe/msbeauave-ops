@@ -1576,3 +1576,21 @@ input.n { text-align: right; }
   .slipnet { background: none; color: #000; border: 1.5px solid #000; }
   .slipsave { display: none !important; }
 }
+
+/* Categories, picked rather than ticked. Three grey checkboxes said nothing
+   about what a supplier brings; these carry the same colour the lists give
+   them, so the answer reads the same wherever it is looked at. Off is the
+   colour, outlined; on is the colour, filled. */
+.pickcat {
+  font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer;
+  padding: 6px 14px; border-radius: 999px; margin: 0 8px 0 0;
+  border: 1.5px solid currentColor; background: transparent;
+  transition: background .12s, color .12s;
+}
+.pickcat.amber  { color: #a9761b; }
+.pickcat.pink   { color: #c05b83; }
+.pickcat.green  { color: #2f7d51; }
+.pickcat.on.amber { background: #f6e2b8; color: #6f4c0d; border-color: #e0bf7f; }
+.pickcat.on.pink  { background: #f7d9e5; color: #8a3358; border-color: #eab3ca; }
+.pickcat.on.green { background: #cfe9da; color: #1d5636; border-color: #a4d3ba; }
+.pickcat:focus-visible { outline: 2px solid var(--brand, #d98da6); outline-offset: 2px; }

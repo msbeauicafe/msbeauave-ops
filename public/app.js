@@ -1261,8 +1261,13 @@ const chatBadge = (url) => url
 function supplierForm(existing, reload) {
   const e = existing || {};
   const cats = Array.isArray(e.categories) ? e.categories : [];
-  const tick = (c, label) => `<label class="check"><input type="checkbox" data-cat="${c}"${
-    cats.includes(c) ? ' checked' : ''}> ${label}</label>`;
+  // The same three the lists colour, as buttons that carry their colour rather
+  // than as three grey ticks: what a supplier brings should read the same way
+  // wherever it is looked at.
+  const CAT_TINT = { promo: 'amber', freebies: 'pink', product: 'green' };
+  const tick = (c, label) => `<button type="button" class="pickcat ${CAT_TINT[c]}${
+    cats.includes(c) ? ' on' : ''}" data-cat="${c}"
+    aria-pressed="${cats.includes(c)}">${label}</button>`;
   // A picture can be chosen before the supplier exists; it is held here and
   // uploaded the moment saving gives us an id to hang it on.
   let pendingPhoto = null;
@@ -1303,6 +1308,19 @@ function supplierForm(existing, reload) {
         <input id="sp_photo" type="file" accept="image/jpeg,image/png,image/webp"></div>
       ${e.photo_at ? '<div style="flex:0 0 auto"><button class="btn line stop" id="sp_photo_x">Remove</button></div>' : ''}
     </div>
+
+    <h3 class="mt">FDA registration</h3>
+    <div class="dim">The one paper that says their goods may be sold at all.
+      Scan it and put it here${existing ? ' — click any to see it full-size and download'
+        : '; savable once the supplier is saved'}.</div>
+    ${existing ? `
+    <div class="filegrid mt" id="sp_fdagrid"><div class="dim">Loading…</div></div>
+    <div class="row mt">
+      <div style="flex:2"><label>Registration number or what it covers</label>
+        <input id="sp_fdalabel" type="text" placeholder="e.g. CPR 12345 — Brilliant Skin"></div>
+      <div style="flex:2"><label>Choose a scan</label>
+        <input id="sp_fdafile" type="file" accept="image/jpeg,image/png,image/webp"></div>
+    </div>` : ''}
     <h3 class="mt">Business details</h3>
     <div class="dim">Printed at the top of this supplier's purchase orders.
       Saved with the button below.</div>
@@ -1338,6 +1356,12 @@ function supplierForm(existing, reload) {
     <div class="mt"><button class="btn warn sm" id="s_remove">Remove ${esc(e.name)}</button></div>` : ''}
     <div class="mt right"><button class="btn" id="s_save">Save supplier</button></div>`);
 
+  $$('.pickcat').forEach((b) => b.addEventListener('click', () => {
+    const on = !b.classList.contains('on');
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  }));
+
   // The brands already on the Brand list, offered as you type. Unlike the
   // product form this one is not a closed list: a supplier arriving with a
   // brand nobody has bought from yet is exactly how a brand gets onto it.
@@ -1356,7 +1380,7 @@ function supplierForm(existing, reload) {
         name: $('#s_name').value, brand_name: $('#s_brand').value,
         contact: $('#s_contact').value,
         chat_link: $('#s_chat').value, fb_link: $('#s_fb').value,
-        categories: $$('[data-cat]:checked').map((c) => c.dataset.cat),
+        categories: $$('.pickcat.on').map((c) => c.dataset.cat),
         tin: $('#sp_tin').value, address: $('#sp_addr').value,
         // Not on the form; carried through so an edit keeps it.
         supplier_name: e.supplier_name || '', tier: e.tier || 'main',
@@ -1420,15 +1444,22 @@ function supplierForm(existing, reload) {
       const fresh = await GET(`/api/suppliers/${e.id}`);
       const g = $('#sp_grid');
       if (!g) return;
+      const fda = $('#sp_fdagrid');
+      const wire = (into) => $$('.del-file', into).forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          if (!await askFirst('Remove this file from the record?')) return;
+          try {
+            await DELETE(`/api/supplier-files/${btn.dataset.file}`);
+            notice('Removed', 'good');
+            await paintFiles();
+          } catch (err) { whoops(err); }
+        }));
       g.innerHTML = fileCards(fresh.files, 'document', '/api/supplier-files');
-      $$('.del-file', g).forEach((btn) => btn.addEventListener('click', async () => {
-        if (!await askFirst('Remove this file from the record?')) return;
-        try {
-          await DELETE(`/api/supplier-files/${btn.dataset.file}`);
-          notice('Removed', 'good');
-          await paintFiles();
-        } catch (err) { whoops(err); }
-      }));
+      wire(g);
+      if (fda) {
+        fda.innerHTML = fileCards(fresh.files, 'fda', '/api/supplier-files');
+        wire(fda);
+      }
     };
     paintFiles().catch(whoops);
 
@@ -1439,6 +1470,20 @@ function supplierForm(existing, reload) {
         await reopen();
       } catch (err) { whoops(err); }
     });
+    $('#sp_fdafile')?.addEventListener('change', async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      try {
+        await POST(`/api/suppliers/${e.id}/files`, {
+          dataUrl: await shrink(file, 1600), category: 'fda',
+          label: $('#sp_fdalabel')?.value.trim() || null });
+        notice('FDA registration saved 🌸', 'good');
+        if ($('#sp_fdalabel')) $('#sp_fdalabel').value = '';
+        await paintFiles();
+      } catch (err) { whoops(err); }
+      ev.target.value = '';
+    });
+
     $('#sp_docfile')?.addEventListener('change', async (ev) => {
       const file = ev.target.files[0];
       if (!file) return;
