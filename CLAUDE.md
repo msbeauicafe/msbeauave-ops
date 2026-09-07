@@ -32,4 +32,17 @@ a question box.
 - `lib/routes.js` is the whole back end: `on(method, pattern, roles, handler)`.
 - `db/NNN_*.sql` are migrations, applied in order. A `security definer`
   function **must** pin `search_path` — `tests/search-path.test.js` enforces it.
-- `npm test` runs everything. It should be 126 green before anything merges.
+- `npm test` runs everything — 560 assertions across 42 files, and every one
+  of them green before anything merges. It builds a throwaway Postgres and
+  applies `db/[0-8]*.sql` in order, so a new migration is covered the moment it
+  is written.
+
+## Roles
+
+Five people are not on a shop floor: three admins (the owner, Jhazmine, Sonny)
+and two on `hr` — the HR officer and the operations manager, who get Team, HR,
+Payroll, Attendance and their own record and nothing else. Both of them were
+admin until there was a role for the job. When a screen needs opening up to
+somebody, add the role to `require_role` and to a row policy, not only to the
+route: `tests/hr-role.test.js` and `tests/observer.test.js` check the refusals
+past the router, which is where they have to hold.
