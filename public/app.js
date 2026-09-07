@@ -880,7 +880,7 @@ SCREENS.products = async (page) => {
         ${catChips('cat_prod')}
       </div>
       <div class="dim">The brand, the category, how many are free to sell
-        wholesale, and what the shop sells at against what it cost us.</div>
+        wholesale, and what it sells at against what it cost us.</div>
       <div class="panel mt" id="brand_list"></div>
     </div>`;
 
@@ -902,7 +902,7 @@ SCREENS.products = async (page) => {
       { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
       { head: 'Category', cell: (p) => prodCatTag(p.category) },
       { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
-      { head: 'Selling price', n: true, cell: (p) => peso(p.retail_price) },
+      { head: 'SRP', n: true, cell: (p) => peso(p.srp) },
       { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
         `<button class="rowx" data-rmprod="${esc(p.sku)}"
@@ -5225,14 +5225,23 @@ SCREENS.pricelists = async (page) => {
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>${p.active ? ''
           : ' ' + tag('hidden', 'grey')}<br><span class="dim">${esc(p.brand || '')}${
           p.unit_type ? ' · ' + esc(p.unit_type) : ''}</span>` },
+      // What it cost us, read-only, at the head of the money: every column to
+      // the right of it is a price, and a price is only worth reading against
+      // the cost beside it.
+      { head: 'Cost', n: true, cell: (p) => Number(p.unit_cost)
+          ? `<span class="dim">${peso(p.unit_cost)}</span>`
+          : '<span class="over">—</span>' },
       ...codes.map((c) => ({
         head: c, n: true,
         cell: (p) => `<input class="cellbox money ${p.prices[c] == null ? 'unset' : ''}"
           inputmode="decimal" data-sku="${esc(p.sku)}" data-code="${esc(c)}"
           value="${plain(p.prices[c])}" placeholder="—">`,
       })),
-      { head: 'Retail', n: true, cell: (p) => Number(p.retail_price)
-          ? peso(p.retail_price) : '<span class="over">—</span>' },
+      // SRP rather than the old retail figure: SRP is what the product form
+      // sets, and a column reading a field nothing writes reads as a missing
+      // price rather than as a column nobody fills.
+      { head: 'SRP', n: true, cell: (p) => Number(p.srp)
+          ? peso(p.srp) : '<span class="over">—</span>' },
     ], 'Nothing matches that.');
     wireCells();
 
