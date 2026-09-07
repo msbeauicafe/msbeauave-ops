@@ -1576,17 +1576,29 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     <div class="dim">Five at a time, each under the name it is sold at. A name
       not on the list yet is added from the bottom of the dropdown.</div>
     <div class="pricerows mt" id="f_prices"></div>
-    ${isNew ? '' : `
-      <h3 class="mt">Photograph</h3>
-      <div class="dim">What the till and the customer app show for this product.</div>
-      <div class="row" style="align-items:center">
-        <div style="flex:0 0 auto" id="f_photo_now">${thumb(p, 76)}</div>
-        <div><label for="f_photo">Choose a picture</label>
-          <input id="f_photo" type="file" accept="image/*"></div>
-        <div style="flex:0 0 auto">
-          <button class="btn quiet sm" id="f_photo_clear"
-            ${p.has_photo ? '' : 'disabled'}>Remove</button></div>
-      </div>`}
+    <h3 class="mt">Photograph</h3>
+    <div class="dim">What the till and the customer app show for this product.</div>
+    <div class="row" style="align-items:center">
+      <div style="flex:0 0 auto" id="f_photo_now">${isNew
+        ? '<span class="thumb none-photo" style="width:76px;height:76px">🧴</span>'
+        : thumb(p, 76)}</div>
+      <div><label for="f_photo">Choose a picture</label>
+        <input id="f_photo" type="file" accept="image/*"></div>
+      ${isNew ? '' : `<div style="flex:0 0 auto">
+        <button class="btn quiet sm" id="f_photo_clear"
+          ${p.has_photo ? '' : 'disabled'}>Remove</button></div>`}
+    </div>
+
+    <h3 class="mt">FDA registration</h3>
+    <div class="dim">The paper that says this product may be sold at all. Scan it
+      and put it here — click any to see it full-size and download.</div>
+    <div class="filegrid mt" id="f_fdagrid"><div class="dim">None yet.</div></div>
+    <div class="row mt">
+      <div style="flex:2"><label>Registration number or what it covers</label>
+        <input id="f_fdalabel" type="text" placeholder="e.g. CPR 12345"></div>
+      <div style="flex:2"><label>Choose a scan</label>
+        <input id="f_fdafile" type="file" accept="image/jpeg,image/png,image/webp"></div>
+    </div>
     ${isNew || user.role !== 'admin' ? '' : `
     <h3 class="mt">Remove this product</h3>
     <div class="dim">Only a product with no stock, no delivery and no purchase
@@ -1858,6 +1870,70 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     });
   }
 
+  // A picture and an FDA scan can both be chosen before the product exists; they
+  // are held here and uploaded the moment saving gives us a code to hang them
+  // on. Asking for them on a second visit is asking for them never.
+  let pendingPic = null;
+  let pendingFdaFile = null;
+
+  $('#f_photo').addEventListener('change', async (ev) => {
+    const file = ev.target.files[0];
+    if (!file || !isNew) return;
+    try {
+      pendingPic = await shrink(file);
+      $('#f_photo_now').innerHTML =
+        `<img class="thumb" style="width:76px;height:76px" src="${pendingPic}" alt="">`;
+      notice('Held — it saves with the product', 'good');
+    } catch (err) { whoops(err); }
+  });
+
+  const paintFda = async () => {
+    const grid = $('#f_fdagrid');
+    if (!grid || isNew) return;
+    const files = await GET(`/api/products/${encodeURIComponent(p.sku)}/files`)
+      .catch(() => []);
+    grid.innerHTML = fileCards(files, 'fda', '/api/product-files');
+    $$('.del-file', grid).forEach((btn) => btn.addEventListener('click', async () => {
+      if (!await askFirst('Remove this file from the record?')) return;
+      try {
+        await DELETE(`/api/product-files/${btn.dataset.file}`);
+        notice('Removed', 'good');
+        await paintFda();
+      } catch (err) { whoops(err); }
+    }));
+  };
+  paintFda().catch(() => {});
+
+  $('#f_fdafile').addEventListener('change', async (ev) => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const label = $('#f_fdalabel')?.value.trim() || null;
+    try {
+      const dataUrl = await shrink(file, 1600);
+      const grid = $('#f_fdagrid');
+      if (grid) {
+        grid.innerHTML = `<figure class="filecard">
+          <img class="filethumb" src="${dataUrl}" alt="" data-zoom="${dataUrl}"
+            data-zoom-cap="${esc(label || 'FDA registration')}">
+          <figcaption><b>${esc(label || '—')}</b><br>
+            <span class="dim">${isNew ? 'saved with the product' : 'saving…'}</span>
+          </figcaption></figure>`
+          + grid.innerHTML.replace('<div class="dim">None yet.</div>', '');
+      }
+      if (isNew) {
+        pendingFdaFile = { dataUrl, label };
+        notice('Held — it saves with the product', 'good');
+      } else {
+        await POST(`/api/products/${encodeURIComponent(p.sku)}/files`,
+          { dataUrl, label });
+        notice('FDA registration saved 🌸', 'good');
+        if ($('#f_fdalabel')) $('#f_fdalabel').value = '';
+        await paintFda();
+      }
+    } catch (err) { whoops(err); }
+    ev.target.value = '';
+  });
+
   // The form asks for the seven things the Product list shows and nothing else.
   // Shelf life, what resellers will accept, the shop's minimum and the delivery
   // split all keep whatever the product already has; a new product takes the
@@ -1884,6 +1960,15 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         .map((r) => ({ code: String(r.name).slice(5), price: Number(r.amount) || 0 }));
       if (listed.length) {
         await PUT(`/api/products/${encodeURIComponent(sku)}/prices`, { prices: listed });
+      }
+      if (pendingPic) {
+        await POST(`/api/products/${encodeURIComponent(sku)}/photo`, { dataUrl: pendingPic });
+        pendingPic = null;
+      }
+      if (pendingFdaFile) {
+        await POST(`/api/products/${encodeURIComponent(sku)}/files`, {
+          dataUrl: pendingFdaFile.dataUrl, label: pendingFdaFile.label });
+        pendingFdaFile = null;
       }
       notice('Saved 🌸', 'good');
       closeDialog();
