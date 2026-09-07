@@ -1261,13 +1261,14 @@ const chatBadge = (url) => url
 function supplierForm(existing, reload) {
   const e = existing || {};
   const cats = Array.isArray(e.categories) ? e.categories : [];
-  // The same three the lists colour, as buttons that carry their colour rather
-  // than as three grey ticks: what a supplier brings should read the same way
-  // wherever it is looked at.
-  const CAT_TINT = { promo: 'amber', freebies: 'pink', product: 'green' };
-  const tick = (c, label) => `<button type="button" class="pickcat ${CAT_TINT[c]}${
-    cats.includes(c) ? ' on' : ''}" data-cat="${c}"
-    aria-pressed="${cats.includes(c)}">${label}</button>`;
+  // What a supplier brings is no longer ticked here. It is read off her brand's
+  // products, so the Brand list and the Product list cannot disagree — which
+  // they did, silently, every time a product changed category and nobody
+  // thought to come back and tick a second box.
+  const brings = cats.length
+    ? cats.map((c) => tag({ promo: 'Promo', freebies: 'Freebies', product: 'Product' }[c] || c,
+        { promo: 'amber', freebies: 'pink', product: 'green' }[c] || 'grey')).join(' ')
+    : '<span class="dim">Nothing yet — it follows the products under this brand.</span>';
   // A picture can be chosen before the supplier exists; it is held here and
   // uploaded the moment saving gives us an id to hang it on. The FDA scan is
   // held the same way — it is asked for while the supplier is being typed in,
@@ -1284,10 +1285,10 @@ function supplierForm(existing, reload) {
         <datalist id="s_brandopts"></datalist></div>
     </div>
     <div class="row">
-      <div><label>Category</label>
-        <div class="row" style="gap:16px;align-items:center">
-          ${tick('promo', 'Promo')}${tick('freebies', 'Freebies')}${tick('product', 'Product')}
-        </div></div>
+      <div><label>Brings</label>
+        <div class="mt" style="line-height:2">${brings}</div>
+        <div class="dim">Read off the products under this brand — set a product's
+          category on the Product list and it shows here.</div></div>
     </div>
     <div class="row">
       <div><label>Contact #</label><input id="s_contact" type="text" value="${esc(e.contact || '')}"></div>
@@ -1407,12 +1408,6 @@ function supplierForm(existing, reload) {
     }));
   }
 
-  $$('.pickcat').forEach((b) => b.addEventListener('click', () => {
-    const on = !b.classList.contains('on');
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-pressed', String(on));
-  }));
-
   // The brands already on the Brand list, offered as you type. Unlike the
   // product form this one is not a closed list: a supplier arriving with a
   // brand nobody has bought from yet is exactly how a brand gets onto it.
@@ -1431,7 +1426,7 @@ function supplierForm(existing, reload) {
         name: $('#s_name').value, brand_name: $('#s_brand').value,
         contact: $('#s_contact').value,
         chat_link: $('#s_chat').value, fb_link: $('#s_fb').value,
-        categories: $$('.pickcat.on').map((c) => c.dataset.cat),
+
         tin: $('#sp_tin').value, address: $('#sp_addr').value,
         // Not on the form; carried through so an edit keeps it.
         supplier_name: e.supplier_name || '', tier: e.tier || 'main',
