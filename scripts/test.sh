@@ -34,7 +34,11 @@ $AS_PG "$PGBIN/pg_ctl" -D "$WORK/pgdata" -w \
 # are counting sales.
 for name in msbeauave_test msbeauave_golive; do
   "$PGBIN/psql" -q -h "$WORK" -p "$PGPORT" -d postgres -c "CREATE DATABASE $name" >/dev/null
-  for f in "$ROOT"/db/0*.sql; do
+  # Everything numbered, in order — 001 through 899. The glob used to stop at
+  # 099, so a year of migrations (payroll, the ledgers, price names) was never
+  # once applied to a test database. 900_demo_data.sql is still left out: it is
+  # a shop's worth of invented rows, not a rule.
+  for f in "$ROOT"/db/[0-8]*.sql; do
     "$PGBIN/psql" -q -v ON_ERROR_STOP=1 -h "$WORK" -p "$PGPORT" -d "$name" -f "$f" >/dev/null
   done
 done
@@ -126,6 +130,9 @@ node --test tests/order-desk.test.js
 
 echo "==> the data coordinator: products and stock, never a price"
 node --test tests/data-coordinator.test.js
+
+echo "==> HR and the operations manager: people and pay, and nothing else"
+node --test tests/hr-role.test.js
 
 echo "==> the books: double-entry, and the owner\'s alone"
 node --test tests/books.test.js

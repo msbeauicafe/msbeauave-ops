@@ -477,7 +477,6 @@ const TABS = {
   cashier: [
     ['till', '🛍️', 'Till'],
     ['pickups', '📦', 'Pickups'],
-    ['team', '🧑‍💼', 'Team'],
     ['clock', '⏱️', 'Time clock'],
     ['crm', '💗', 'Customers'],
     ['finance', '💰', 'Finance'],
@@ -499,7 +498,6 @@ const TABS = {
     ['tillreturns', '↩️', 'Returns'],
     ['closeday', '🌙', 'Close of day'],
     ['shopday', '📊', "Shop's day"],
-    ['team', '🧑‍💼', 'Team'],
     ['clock', '⏱️', 'Time clock'],
     ['workspace', '🗂️', 'Workspace'],
   ],
@@ -517,7 +515,6 @@ const TABS = {
     ['reorder', '📈', 'Reordering'],
     ['tillreturns', '↩️', 'Returns'],
     ['closeday', '🌙', 'Close of day'],
-    ['team', '🧑‍💼', 'Team'],
     ['clock', '⏱️', 'Time clock'],
     ['workspace', '🗂️', 'Workspace'],
   ],
@@ -548,6 +545,20 @@ const TABS = {
     ['myleave', '🌴', 'My leave'],
     ['notices', '📢', 'Noticeboard'],
   ],
+  // HR and the operations manager. Four screens: who works here, HR, the
+  // cutoff, and their own record. Both of them were admin until this existed,
+  // which is how two people came to hold the pricelist and the company's money
+  // as the price of being able to approve somebody's leave.
+  //
+  // Nothing else is on this menu and nothing else answers them — the database
+  // refuses an 'hr' outside the functions these four screens call.
+  hr: [
+    ['team', '🧑‍💼', 'Team'],
+    ['hr', '💼', 'HR'],
+    ['payroll', '🧮', 'Payroll'],
+    ['attendance', '🕒', 'Attendance'],
+    ['me', '🪪', 'My record'],
+  ],
   // Somebody who works here and nothing else. Three screens, all of them
   // about themselves, and no way to reach a fourth.
   employee: [
@@ -564,9 +575,6 @@ const TABS = {
     ['workspace', '🗂️', 'Workspace'],
     ['pickups', '📦', 'Pickups'],
     ['promos', '🏷️', 'Promos'],
-    ['team', '🧑‍💼', 'Team'],
-    ['hr', '💼', 'HR'],
-    ['payroll', '🧮', 'Payroll'],
     ['attendance', '🕒', 'Attendance'],
     ['clock', '⏱️', 'Time clock'],
     ['branches', '🏬', 'Branches'],
@@ -603,6 +611,7 @@ const ROLES = [
   ['orderdesk', 'Order desk (Customer order, and their own record)'],
   ['datacoord', 'Data coordinator (products, stock and inventory)'],
   ['timekeeper', 'Timekeeper (a door tablet — the clock only)'],
+  ['hr', 'HR / Operations manager (people and pay)'],
   ['employee', 'Staff (their own record and nothing else)'],
   ['observer', 'View only'],
 ];
@@ -611,7 +620,7 @@ const roleName = (r) => ({
   admin: 'Admin', warehouse: 'Warehouse', cashier: 'Cashier',
   supervisor: 'Supervisor', office: 'Office', timekeeper: 'Timekeeper',
   reseller: 'Reseller', employee: 'Staff', observer: 'View only',
-  orderdesk: 'Order desk', datacoord: 'Data coordinator',
+  orderdesk: 'Order desk', datacoord: 'Data coordinator', hr: 'HR / Operations',
 }[r] ?? r);
 
 function drawFrame() {
@@ -9106,7 +9115,7 @@ const hoursOf = (interval) => {
 };
 
 SCREENS.team = async (page) => {
-  const owner = user.role === 'admin';
+  const owner = user.role === 'admin' || user.role === 'hr';
   page.innerHTML = `
     <div class="head"><h2>Team</h2>
       <span class="hint">${owner ? 'Who works here, and the hours they actually worked'
@@ -10923,7 +10932,7 @@ start();
 const PR_KINDS = { ca: 'Cash advance', pagibig: 'Pag-IBIG loan', sss: 'SSS loan' };
 
 SCREENS.payroll = async (page) => {
-  const owner = user.role === 'admin';
+  const owner = user.role === 'admin' || user.role === 'hr';
   let data = { periods: [], period_id: null, lines: [] };
   let led = { ledgers: [], payments: [], people: [] };
   let picked = null;

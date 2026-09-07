@@ -128,21 +128,30 @@ test('a person who does not exist is a plain no', async () => {
 // ---------------------------------------------------------------------------
 // What a view-only manager gets, and does not
 // ---------------------------------------------------------------------------
-test('a view-only manager can open somebody, without their pay', async () => {
+// One person's record belongs to the two people whose job it is: the HR
+// officer and the operations manager. A view-only manager reads the company,
+// not the staff file — it used to open with the salary struck out of the
+// reply, and a screen nobody may open is a simpler promise than a column
+// somebody remembered to remove.
+test('a view-only manager cannot open somebody at all', async () => {
   const boss = await signIn('admin');
   const watcher = await signIn('observer');
   const p = await person(boss);
 
-  const r = await GET(watcher, `/api/hr/people/${p.id}`);
+  assert.equal((await GET(watcher, `/api/hr/people/${p.id}`)).status, 403);
+});
+
+test('HR can open somebody, pay and all — it is their job', async () => {
+  const boss = await signIn('admin');
+  const officer = await signIn('hr');
+  const p = await person(boss);
+
+  const r = await GET(officer, `/api/hr/people/${p.id}`);
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.equal(r.data.person.name, p.name);
-  assert.equal(r.data.person.department, 'Retail', 'the department is not pay');
+  assert.equal(r.data.person.department, 'Retail');
   assert.equal(r.data.shifts.length, 1, 'and the hours are the job');
-
-  assert.ok(!('salary' in r.data.person), 'no salary field at all — not null, absent');
-  assert.ok(!('pay_period' in r.data.person));
-  // Not merely absent from the reply: the whole body must not carry it.
-  assert.doesNotMatch(JSON.stringify(r.data), /27000/, 'the figure is nowhere in the reply');
+  assert.equal(Number(r.data.person.salary), 27000, 'what they are on, which is the point');
 });
 
 test('nobody else can open anybody', async () => {
