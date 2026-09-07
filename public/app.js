@@ -9238,6 +9238,9 @@ SCREENS.team = async (page) => {
       <div class="row">
         <div><label>Phone</label>
           <input id="t_phone" type="text" value="${esc(p?.phone || '')}"></div>
+        ${isNew ? '' : `<div style="flex:2"><label>Email</label>
+          <input id="t_email" type="email" value="${esc(p.email || '')}"
+            placeholder="Where their payslip is sent"></div>`}
         <div><label>Signs in as</label>
           <select id="t_user">
             ${options.map((o) => `<option value="${esc(String(o.id))}"
@@ -9404,8 +9407,18 @@ SCREENS.team = async (page) => {
       showRates();
       $('#t_daily')?.addEventListener('input', showRates);
 
+      // Saved with the pay, because that is what it is for.
+      const saveEmail = async () => {
+        const typed = ($('#t_email')?.value || '').trim();
+        if (typed === (p.email || '')) return;
+        await POST(`/api/team/${p.id}/email`, { email: typed });
+        p.email = typed;
+      };
+      $('#t_email')?.addEventListener('change', () => saveEmail().catch(whoops));
+
       $('#t_pay_save').addEventListener('click', async () => {
         try {
+          await saveEmail();
           await POST(`/api/team/${p.id}/pay`, {
             company: $('#t_company').value,
             daily_rate: +$('#t_daily').value,
