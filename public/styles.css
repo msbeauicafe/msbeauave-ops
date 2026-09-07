@@ -1504,62 +1504,70 @@ input.n { text-align: right; }
 .chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 
 /* Payslips
-   The one piece of paper a person keeps, so it is laid out like a document
-   rather than a table: letterhead with the paying company's mark, the two
-   halves of the reckoning side by side, and the net on a band of its own.
-   On paper two fit a page and the ink stays light. */
-.slips { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); }
+   The shape the shop's own bookkeeper issues: a title band, CONFIDENTIAL under
+   it, who is paid and for which cutoff, then earnings and deductions ruled line
+   by line with the hours or days beside each figure, and the net at the foot.
+   On paper it is US Letter, one person to a page. */
+.slips { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); }
 .slip {
-  border: 1px solid var(--line); border-radius: 14px; padding: 0 0 14px;
-  background: var(--card, #fff); overflow: hidden; break-inside: avoid;
+  border: 1px solid var(--line); background: var(--card, #fff);
+  overflow: hidden; break-inside: avoid; font-size: .78rem;
 }
-.sliphead {
-  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
-  border-bottom: 2px solid var(--brand, #d98da6);
-  background: linear-gradient(180deg, rgba(217,141,166,.10), rgba(217,141,166,0));
+.slipband {
+  background: #46536b; color: #fff; text-align: center; font-weight: 700;
+  letter-spacing: .22em; padding: 9px; font-size: .82rem;
 }
-.sliplogo { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
-.slipco { display: flex; flex-direction: column; line-height: 1.2; }
-.slipco b { font-size: .95rem; letter-spacing: .04em; }
-.slipco span { font-size: .7rem; color: var(--dim); letter-spacing: .08em;
-  text-transform: uppercase; }
-.sliptitle { margin-left: auto; text-align: right; font-weight: 800;
-  letter-spacing: .18em; font-size: .82rem; display: flex; flex-direction: column; }
-.sliptitle span { font-weight: 500; letter-spacing: .02em; font-size: .7rem;
-  color: var(--dim); }
-
-.slipwho { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;
-  padding: 12px 16px; border-bottom: 1px dashed var(--line); font-size: .8rem; }
-.slipwho span { display: block; font-size: .66rem; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--dim); }
-
-.slipcols { display: grid; grid-template-columns: 1fr 1fr; }
-.slipcol { padding: 10px 16px; }
-.slipcol + .slipcol { border-left: 1px dashed var(--line); }
-.slipcap { font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--dim); margin-bottom: 4px; }
-.slipcol table { width: 100%; border-collapse: collapse; font-size: .78rem; }
-.slipcol td { padding: 2px 0; vertical-align: top; }
-.slipcol .n { text-align: right; white-space: nowrap; padding-left: 8px; }
-.slipcol tfoot td { font-weight: 700; border-top: 1px solid var(--line);
-  padding-top: 4px; }
-
-.slipnet {
-  margin: 4px 16px 0; padding: 9px 14px; border-radius: 10px;
-  background: var(--brand, #d98da6); color: #fff;
-  display: flex; align-items: baseline; justify-content: space-between;
+.slipconf {
+  background: #eef0f4; color: #46536b; text-align: center; font-weight: 600;
+  letter-spacing: .16em; padding: 4px; font-size: .64rem;
 }
-.slipnet span { font-size: .72rem; letter-spacing: .14em; }
-.slipnet b { font-size: 1.15rem; }
 
-.slipfoot { display: flex; gap: 20px; padding: 20px 16px 0; }
-.sigline { flex: 1; font-size: .68rem; color: var(--dim); text-align: center; }
+.sliptop { display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 16px 8px; }
+.slipfirm { display: flex; align-items: center; gap: 8px; flex: 1;
+  font-weight: 700; font-style: italic; color: #46536b; line-height: 1.25; }
+.sliplogo { width: 34px; height: 34px; object-fit: contain; flex: 0 0 auto; }
+.slipdates { border-collapse: collapse; font-size: .72rem; }
+.slipdates td { padding: 2px 0 2px 10px; white-space: nowrap; }
+.slipdates td:first-child { color: var(--dim); }
+.slipdates td.n { text-align: right; border-bottom: 1px solid var(--line);
+  font-weight: 600; }
+
+.slipwho { width: calc(100% - 32px); margin: 4px 16px 10px;
+  border-collapse: collapse; font-size: .74rem; }
+.slipwho td { padding: 3px 0; }
+.slipwho td:nth-child(odd) { color: var(--dim); white-space: nowrap;
+  padding-right: 8px; width: 1%; }
+.slipwho td:nth-child(even) { border-bottom: 1px solid var(--line); }
+.slipwho td.n { text-align: right; }
+
+.sliptable { width: calc(100% - 32px); margin: 0 16px 10px;
+  border-collapse: collapse; }
+.sliptable th {
+  text-align: left; font-size: .72rem; padding: 5px 0;
+  border-top: 1.5px solid #46536b; border-bottom: 1.5px solid #46536b;
+}
+.sliptable th.n, .sliptable td.n { text-align: right; }
+.sliptable th.c, .sliptable td.c { text-align: center; color: var(--dim); }
+.sliptable td { padding: 3px 0; border-bottom: 1px dotted var(--line); }
+.sliptable tfoot td { font-weight: 700; border-bottom: none;
+  border-top: 1.5px solid #46536b; padding-top: 5px; }
+
+.sliprate { margin: -4px 16px 12px; font-size: .66rem; color: var(--dim); }
+
+.slipnet { width: calc(100% - 32px); margin: 0 16px 4px;
+  border-collapse: collapse; }
+.slipnet td { padding: 7px 0; font-weight: 800; font-size: .92rem;
+  border-top: 2px solid #46536b; }
+.slipnet td.n { text-align: right; }
+
+.slipfoot { display: flex; gap: 20px; padding: 22px 16px 0; }
+.sigline { flex: 1; font-size: .66rem; color: var(--dim); text-align: center; }
 .sigline .rule { display: block; border-bottom: 1px solid var(--ink, #333);
   height: 18px; margin-bottom: 3px; }
-.slipnote { padding: 10px 16px 0; font-size: .66rem; color: var(--dim);
+.slipnote { padding: 10px 16px 0; font-size: .64rem; color: var(--dim);
   line-height: 1.45; }
-
-.slipsave { padding: 10px 16px 0; text-align: right; }
+.slipsave { padding: 10px 16px 14px; text-align: right; }
 
 /* On paper: US Letter, one person to a page, so a slip can be handed over or
    scanned on its own without another person's pay on the back of it. */
@@ -1567,40 +1575,14 @@ input.n { text-align: right; }
 @media print {
   .slips { display: block; }
   .slip {
-    border: 1px solid #999; box-shadow: none; border-radius: 0;
+    border: 1px solid #999; box-shadow: none;
     break-after: page; page-break-after: always;
     break-inside: avoid; page-break-inside: avoid;
   }
   .slip:last-child { break-after: auto; page-break-after: auto; }
-  .sliphead { background: none; border-bottom: 2px solid #000; }
-  .slipnet { background: none; color: #000; border: 1.5px solid #000; }
+  .slipband { background: #46536b !important; -webkit-print-color-adjust: exact;
+    print-color-adjust: exact; }
+  .slipconf { background: #eef0f4 !important; -webkit-print-color-adjust: exact;
+    print-color-adjust: exact; }
   .slipsave { display: none !important; }
 }
-
-/* Categories, picked rather than ticked. Three grey checkboxes said nothing
-   about what a supplier brings; these carry the same colour the lists give
-   them, so the answer reads the same wherever it is looked at. Off is the
-   colour, outlined; on is the colour, filled. */
-.pickcat {
-  font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer;
-  padding: 6px 14px; border-radius: 999px; margin: 0 8px 0 0;
-  border: 1.5px solid currentColor; background: transparent;
-  transition: background .12s, color .12s;
-}
-.pickcat.amber  { color: #a9761b; }
-.pickcat.pink   { color: #c05b83; }
-.pickcat.green  { color: #2f7d51; }
-.pickcat.on.amber { background: #f6e2b8; color: #6f4c0d; border-color: #e0bf7f; }
-.pickcat.on.pink  { background: #f7d9e5; color: #8a3358; border-color: #eab3ca; }
-.pickcat.on.green { background: #cfe9da; color: #1d5636; border-color: #a4d3ba; }
-.pickcat:focus-visible { outline: 2px solid var(--brand, #d98da6); outline-offset: 2px; }
-
-/* Five prices, each under the name it is sold at. A grid rather than a row of
-   pairs, so the names line up down the left and the figures down the right —
-   which is how a price list is read. */
-.pricerows { display: grid; gap: 8px; }
-.pricerow { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(110px, 180px);
-  gap: 10px; align-items: center; }
-.pricerow input { text-align: right; }
-.pricerow select option.newname { font-weight: 700; color: #a9761b; }
-@media (max-width: 560px) { .pricerow { grid-template-columns: 1fr; } }
