@@ -1572,7 +1572,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       <div><label>Category</label>
         <select id="f_cat"><option value="">Pick a category…</option></select></div>
     </div>
-    <h3 class="mt">Prices</h3>
+    <h3 class="mt">Price name</h3>
     <div class="dim">Five at a time, each under the name it is sold at. A name
       not on the list yet is added from the bottom of the dropdown.</div>
     <div class="pricerows mt" id="f_prices"></div>
@@ -1625,21 +1625,26 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   // notebook until somebody writes a migration.
   const OWN_PRICE = {
     COST: { label: 'Cost price', field: 'unit_cost' },
-    SELLING: { label: 'Selling price', field: 'retail_price' },
     SRP: { label: 'SRP price', field: 'srp' },
   };
+  // The seven the shop actually sells at, in the order it says them. The price
+  // list holds other codes — the adjusted ones, and names nobody here uses —
+  // and offering those was offering a wrong answer next to the right one.
+  const PRICE_LIST = ['RD', 'PD', 'CD', 'DD', 'RS'];
   let priceNames = [];       // the base codes on the price list
   let priceRows = [];        // { name, amount } — five of them
 
   const priceOptions = (chosen) => {
-    const own = Object.entries(OWN_PRICE)
-      .map(([k, v]) => `<option value="${k}"${k === chosen ? ' selected' : ''}>${
-        esc(v.label)}</option>`).join('');
-    const codes = priceNames
-      .map((c) => `<option value="CODE:${esc(c)}"${
-        `CODE:${c}` === chosen ? ' selected' : ''}>${esc(c)} price</option>`).join('');
-    return `<option value="">Pick a price name…</option>${own}${codes}
-      <option value="__new" class="newname">＋ New price name…</option>`;
+    const opt = (value, label) => `<option value="${value}"${
+      value === chosen ? ' selected' : ''}>${esc(label)}</option>`;
+    const rest = priceNames.filter((c) => !PRICE_LIST.includes(c));
+    return `<option value="">Pick a price name…</option>`
+      + opt('COST', 'Cost price')
+      + PRICE_LIST.map((c) => opt(`CODE:${c}`, `${c} price`)).join('')
+      + opt('SRP', 'SRP price')
+      // Anything the shop has added itself since, kept after the seven.
+      + rest.map((c) => opt(`CODE:${c}`, `${c} price`)).join('')
+      + `<option value="__new" class="newname">＋ New price name…</option>`;
   };
 
   const drawPrices = () => {
@@ -1704,15 +1709,16 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   (async () => {
     try {
       const codes = await GET('/api/price-codes').catch(() => []);
+      const shipped = ['SUB RD', 'VIP', 'STOCKIST', 'EXEC'];
       priceNames = (Array.isArray(codes) ? codes : [])
         .filter((c) => c.is_base ?? (c.base_code == null))
-        .map((c) => c.code);
+        .map((c) => c.code)
+        .filter((c) => !shipped.includes(c));
     } catch { priceNames = []; }
 
     const filled = [];
     if (!isNew) {
       if (Number(p.unit_cost) > 0) filled.push({ name: 'COST', amount: Number(p.unit_cost) });
-      if (Number(p.retail_price) > 0) filled.push({ name: 'SELLING', amount: Number(p.retail_price) });
       if (Number(p.srp) > 0) filled.push({ name: 'SRP', amount: Number(p.srp) });
       const listed = await GET(`/api/products/${encodeURIComponent(p.sku)}/prices`)
         .catch(() => []);
