@@ -1544,46 +1544,80 @@ input.n { text-align: right; }
 .sliptable { width: calc(100% - 32px); margin: 0 16px 10px;
   border-collapse: collapse; }
 .sliptable th {
-  text-align: left; font-size: .72rem; padding: 5px 0;
+  text-align: left; font-size: 10px; letter-spacing: .04em; padding: 5px 0;
   border-top: 1.5px solid #46536b; border-bottom: 1.5px solid #46536b;
 }
-.sliptable th.n, .sliptable td.n { text-align: right; }
-.sliptable th.c, .sliptable td.c { text-align: center; color: var(--dim); }
-.sliptable td { padding: 3px 0; border-bottom: 1px dotted var(--line); }
+/* The two number columns are given a fixed width and the figures set in
+   tabular numerals, so the decimal points line up down the page instead of
+   wandering with the length of each amount — which is what made a column of
+   pesos hard to read at a glance. */
+.sliptable th.c, .sliptable td.c { width: 22%; text-align: right;
+  padding-right: 14px; color: var(--dim); white-space: nowrap; }
+.sliptable th.n, .sliptable td.n { width: 26%; text-align: right;
+  white-space: nowrap; }
+.sliptable td.n, .sliptable td.c, .slipnet td.n {
+  font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
+.sliptable td { padding: 2.5px 0; border-bottom: 1px solid rgba(70, 83, 107, .07); }
+.sliptable tbody tr:last-child td { border-bottom: none; }
 .sliptable tfoot td { font-weight: 700; border-bottom: none;
   border-top: 1.5px solid #46536b; padding-top: 5px; }
 
-.sliprate { margin: -4px 16px 12px; font-size: .66rem; color: var(--dim); }
+.sliprate { margin: -4px 16px 14px; font-size: 9.5px; color: var(--dim); }
 
 .slipnet { width: calc(100% - 32px); margin: 0 16px 4px;
   border-collapse: collapse; }
-.slipnet td { padding: 7px 0; font-weight: 800; font-size: .92rem;
+.slipnet td { padding: 8px 0; font-weight: 800; font-size: 15px;
   border-top: 2px solid #46536b; }
 .slipnet td.n { text-align: right; }
 
 .slipfoot { display: flex; gap: 20px; padding: 22px 16px 0; }
-.sigline { flex: 1; font-size: .66rem; color: var(--dim); text-align: center; }
+.sigline { flex: 1; font-size: 9.5px; color: var(--dim); text-align: center; }
 .sigline .rule { display: block; border-bottom: 1px solid var(--ink, #333);
   height: 18px; margin-bottom: 3px; }
-.slipnote { padding: 10px 16px 0; font-size: .64rem; color: var(--dim);
-  line-height: 1.45; }
+.slipnote { padding: 10px 16px 0; font-size: 9.5px; color: var(--dim);
+  line-height: 1.5; }
 .slipsave { padding: 10px 16px 14px; text-align: right; }
 
 /* On paper: US Letter, one person to a page, so a slip can be handed over or
-   scanned on its own without another person's pay on the back of it. */
+   scanned on its own without another person's pay on the back of it.
+   Set in 11px, which is about 8pt — a payslip is a form, not a letter, and at
+   the screen's own size it ran onto a second page and looked shouted. */
 @page { size: letter; margin: 0.5in; }
 @media print {
+  html, body { font-size: 11px; }
   .slips { display: block; }
   .slip {
-    border: 1px solid #999; box-shadow: none;
+    font-size: 11px; line-height: 1.32;
+    border: 1px solid #999; box-shadow: none; border-radius: 0;
     break-after: page; page-break-after: always;
     break-inside: avoid; page-break-inside: avoid;
   }
   .slip:last-child { break-after: auto; page-break-after: auto; }
-  .slipband { background: #46536b !important; -webkit-print-color-adjust: exact;
+
+  /* Everything a shade tighter, so the whole reckoning lands on one page with
+     room left for the signature. */
+  .slipband { font-size: 11px; padding: 6px; letter-spacing: .18em;
+    background: #46536b !important; -webkit-print-color-adjust: exact;
     print-color-adjust: exact; }
-  .slipconf { background: #eef0f4 !important; -webkit-print-color-adjust: exact;
+  .slipconf { font-size: 9px; padding: 3px;
+    background: #eef0f4 !important; -webkit-print-color-adjust: exact;
     print-color-adjust: exact; }
+  .sliptop { padding: 8px 12px 5px; }
+  .sliplogo { width: 30px; height: 30px; }
+  .slipco b { font-size: 12px; }
+  .slipco span, .slipdates td, .slipwho td { font-size: 10px; }
+  .sliptitle { font-size: 11px; }
+  .sliptitle span { font-size: 9px; }
+  .slipwho { margin: 2px 12px 7px; width: calc(100% - 24px); }
+  .sliptable { margin: 0 12px 7px; width: calc(100% - 24px); font-size: 11px; }
+  .sliptable th { font-size: 10px; padding: 3px 0; }
+  .sliptable td { padding: 1.5px 0; }
+  .sliprate { margin: -3px 12px 8px; font-size: 9px; }
+  .slipnet { margin: 0 12px 2px; width: calc(100% - 24px); }
+  .slipnet td { padding: 5px 0; font-size: 13px; }
+  .slipfoot { padding: 16px 12px 0; }
+  .sigline { font-size: 9px; }
+  .slipnote { padding: 7px 12px 0; font-size: 9px; }
   .slipsave { display: none !important; }
 }
 
