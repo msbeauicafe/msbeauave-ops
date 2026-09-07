@@ -1634,8 +1634,11 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   let priceNames = [];       // the base codes on the price list
   let priceRows = [];        // { name, amount } — five of them
 
-  // A name that already ends in PRICE should not be read out as "price price".
-  const priceLabel = (code) => (/\bprice$/i.test(code) ? code : `${code} price`);
+  // Every name read the same way. "PRICE" is what the column is, not part of
+  // what a price is called, so a name that carries it has it trimmed and the
+  // word is added back for all of them alike — STOCKIST price beside RD price,
+  // rather than STOCKIST PRICE beside LEADERS price.
+  const priceLabel = (code) => `${String(code).replace(/\s*price$/i, '')} price`;
 
   const priceOptions = (chosen) => {
     const opt = (value, label) => `<option value="${value}"${
@@ -1647,7 +1650,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       + opt('SRP', 'SRP price')
       // Anything the shop has added itself since, kept after the seven.
       + rest.map((c) => opt(`CODE:${c}`, priceLabel(c))).join('')
-      + `<option value="__new" class="newname">＋ New price name…</option>`;
+      + `<option value="__new" class="newname">＋ Add or edit price names…</option>`;
   };
 
   const drawPrices = () => {
@@ -1685,7 +1688,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   const openPriceNames = (n) => {
     const own = priceNames.filter((c) => !PRICE_LIST.includes(c));
     dialog(`
-      <h3>Price names</h3>
+      <h3>Add or edit price names</h3>
       <div class="dim">A name joins the dropdown for every product, not just
         this one. Renaming one carries its prices with it; a name anything has
         been sold at can be renamed but not removed.</div>
@@ -1699,7 +1702,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       </div>
 
       ${own.length ? `
-      <h3 class="mt">Names you added</h3>
+      <h3 class="mt">Names you added — change the spelling and press Save</h3>
       <div class="pricerows mt">
         ${own.map((c) => `
           <div class="pricerow">
@@ -1765,10 +1768,19 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   // two columns first, then whatever the price list holds for it, and empty
   // rows after. Five is a working number, not a limit — a sixth price is set
   // by saving and opening it again.
+  // The five rows are drawn before anything is fetched. They only need the seven
+  // names the shop always has, and waiting on two round trips to show a row of
+  // empty boxes is how pressing New product came to feel like it had hung.
+  priceRows = [{ name: '', amount: '' }, { name: '', amount: '' }, { name: '', amount: '' },
+               { name: '', amount: '' }, { name: '', amount: '' }];
+  setTimeout(drawPrices, 0);
+
   (async () => {
     try {
       const codes = await GET('/api/price-codes').catch(() => []);
-      const shipped = ['SUB RD', 'VIP', 'STOCKIST', 'EXEC'];
+      // Names nobody here uses. STOCKIST came off this list the day the shop
+      // typed it in itself.
+      const shipped = ['VIP', 'EXEC'];
       priceNames = (Array.isArray(codes) ? codes : [])
         .filter((c) => c.is_base ?? (c.base_code == null))
         .map((c) => c.code)
@@ -1785,7 +1797,14 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         if (row.price != null) filled.push({ name: `CODE:${row.code}`, amount: Number(row.price) });
       }
     }
-    priceRows = filled.slice(0, 5);
+    // Whatever the fetch found, laid in around anything already typed while it
+    // was in flight.
+    const typed = priceRows.filter((r) => r.name || r.amount !== '');
+    const merged = [...filled];
+    for (const r of typed) {
+      if (!merged.some((m) => m.name === r.name)) merged.push(r);
+    }
+    priceRows = merged.slice(0, 5);
     while (priceRows.length < 5) priceRows.push({ name: '', amount: '' });
     drawPrices();
   })();
