@@ -52,7 +52,8 @@ create or replace function set_pay_details(
 ) returns void
 language plpgsql security definer as $$
 begin
-  perform require_role('admin');
+  -- The operations manager runs payroll, so setting a rate is hers as well.
+  perform require_role('admin', 'office');
   if coalesce(p_company, '') not in ('MS BEAU', 'BOA') then
     raise exception 'A person is paid by MS Beau or by BOA.';
   end if;

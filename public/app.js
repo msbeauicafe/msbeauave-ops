@@ -10481,35 +10481,91 @@ start();
 // ===========================================================================
 // Payroll
 //
-// A cutoff at a time. The days come from the clock; the office corrects what
-// the clock got wrong and types what it cannot know — overtime agreed, a
-// holiday worked, an allowance, a loan repayment. Every peso figure is worked
-// out from the daily rate frozen on the line, so no total here can disagree
-// with the numbers it came from.
+// The operations manager's whole fortnight, on one screen. Four tabs: the
+// cutoff she is working, the slips it prints, and the two ledgers that feed its
+// Loan/CA column. Nothing here sends her to another menu — a rate that is wrong
+// is fixed by clicking the name, and an advance taken off is written to the
+// ledger and to the line in the same press.
 // ===========================================================================
+const PR_KINDS = { ca: 'Cash advance', pagibig: 'Pag-IBIG loan', sss: 'SSS loan' };
+
 SCREENS.payroll = async (page) => {
   const owner = user.role === 'admin';
   let data = { periods: [], period_id: null, lines: [] };
+  let led = { ledgers: [], payments: [], people: [] };
   let picked = null;
-
-  page.innerHTML = `
-    <div class="head"><h2>Payroll</h2>
-      <span class="hint">One cutoff at a time — the days from the clock, the
-        rest from the daily rate</span></div>
-    <div class="tools">
-      <select id="pr_period"></select>
-      <button class="btn" id="pr_new">＋ New cutoff</button>
-      <span id="pr_state"></span>
-      <span class="tools-gap"></span>
-      <button class="btn line" id="pr_slips">🧾 Payslips</button>
-      ${owner ? `<button class="btn line" id="pr_close">Close this cutoff</button>` : ''}
-    </div>
-    <div class="tiles" id="pr_tiles"></div>
-    <div class="panel" id="pr_list"></div>`;
+  let tab = 'run';
 
   const money = (v) => peso(Number(v || 0));
   const numOr = (v) => (v == null || v === '' ? 0 : Number(v));
 
+  page.innerHTML = `
+    <div class="head"><h2>Payroll</h2>
+      <span class="hint">A cutoff at a time — the days from the clock, every
+        peso from the daily rate</span></div>
+
+    <div class="subtabs">
+      <button data-pr="run" class="on">Payroll</button>
+      <button data-pr="slips">Payslips</button>
+      <button data-pr="ca">Cash advance</button>
+      <button data-pr="loan">Loans</button>
+    </div>
+
+    <div id="pr_run">
+      <div class="tools">
+        <select id="pr_period"></select>
+        <span id="pr_state"></span>
+        <span class="tools-gap"></span>
+        <button class="btn" id="pr_new">＋ New cutoff</button>
+        ${owner ? '<button class="btn line" id="pr_close">Close this cutoff</button>' : ''}
+      </div>
+      <div class="tiles" id="pr_tiles"></div>
+      <div class="panel" id="pr_list"></div>
+      <div class="dim mt">Click a name to set what they are paid on, or to take an
+        advance off this cutoff.</div>
+    </div>
+
+    <div id="pr_slips" hidden>
+      <div class="tools">
+        <span id="pr_slipwho" class="dim"></span>
+        <span class="tools-gap"></span>
+        <button class="btn" id="pr_print">🖨️ Print them</button>
+      </div>
+      <div class="slips" id="pr_slipbox"></div>
+    </div>
+
+    <div id="pr_ca" hidden>
+      <div class="tools">
+        <input type="search" id="ca_find" placeholder="Search by name…">
+        <button class="btn" id="ca_new">＋ New cash advance</button>
+      </div>
+      <div class="tiles" id="ca_tiles"></div>
+      <div class="panel" id="ca_list"></div>
+    </div>
+
+    <div id="pr_loan" hidden>
+      <div class="tools">
+        <input type="search" id="ln_find" placeholder="Search by name…">
+        <button class="btn" id="ln_new">＋ New loan</button>
+      </div>
+      <div class="tiles" id="ln_tiles"></div>
+      <div class="panel" id="ln_list"></div>
+    </div>`;
+
+  $$('[data-pr]', page).forEach((b) => b.addEventListener('click', () => {
+    tab = b.dataset.pr;
+    $$('[data-pr]', page).forEach((x) => x.classList.toggle('on', x === b));
+    $('#pr_run', page).hidden = tab !== 'run';
+    $('#pr_slips', page).hidden = tab !== 'slips';
+    $('#pr_ca', page).hidden = tab !== 'ca';
+    $('#pr_loan', page).hidden = tab !== 'loan';
+    if (tab === 'slips') drawSlips();
+    if (tab === 'ca' || tab === 'loan') loadLedgers().catch(whoops);
+  }));
+
+  // -------------------------------------------------------------------------
+  // The cutoff
+  // -------------------------------------------------------------------------
   const load = async (id) => {
     data = await GET(`/api/payroll${id ? `?id=${id}` : ''}`);
     picked = data.periods.find((p) => String(p.id) === String(data.period_id)) || null;
@@ -10527,10 +10583,12 @@ SCREENS.payroll = async (page) => {
       : '';
     const closeBtn = $('#pr_close', page);
     if (closeBtn) {
-      closeBtn.textContent = picked?.status === 'closed' ? 'Reopen this cutoff' : 'Close this cutoff';
+      closeBtn.textContent = picked?.status === 'closed'
+        ? 'Reopen this cutoff' : 'Close this cutoff';
       closeBtn.disabled = !picked;
     }
     draw();
+    if (tab === 'slips') drawSlips();
   };
 
   const draw = () => {
@@ -10547,16 +10605,16 @@ SCREENS.payroll = async (page) => {
         <div class="label">Net pay</div></div>`;
 
     const open = picked?.status !== 'closed';
-    // A box on an open cutoff, the plain figure once it is closed: a closed
-    // period is the record of what was paid, not a form.
+    // A box while the cutoff is open, the plain figure once it is closed: a
+    // closed period is the record of what was paid, not a form.
     const box = (r, field, step = '1') => open
       ? `<input class="cellbox n" type="number" step="${step}" min="0"
            value="${Number(r[field] || 0)}" data-line="${r.id}" data-f="${field}">`
       : count(Number(r[field] || 0));
 
     $('#pr_list', page).innerHTML = table(rows, [
-      { head: 'Name', cell: (r) => `<b>${esc(r.name)}</b>
-          <div class="dim">${esc(r.position || '')}</div>` },
+      { head: 'Name', cell: (r) => `<button class="nameopen" data-person="${r.employee_id}"
+          ><b>${esc(r.name)}</b></button><div class="dim">${esc(r.position || '')}</div>` },
       { head: 'Rate/day', n: true, cell: (r) => money(r.daily_rate) },
       { head: 'Days', n: true, cell: (r) => box(r, 'days_present', '0.5') },
       { head: 'Basic', n: true, cell: (r) => money(r.basic) },
@@ -10597,6 +10655,10 @@ SCREENS.payroll = async (page) => {
         } catch (err) { whoops(err); }
       });
     });
+
+    $$('[data-person]', page).forEach((b) => b.addEventListener('click',
+      () => openPayPerson(data.lines.find(
+        (r) => String(r.employee_id) === b.dataset.person))));
   };
 
   // The same arithmetic the database does, run here so the screen can answer
@@ -10641,6 +10703,330 @@ SCREENS.payroll = async (page) => {
     });
   };
 
+  // -------------------------------------------------------------------------
+  // One person, opened from their name — the rate they are paid on, and the
+  // money they still owe, without going to Team for one and a ledger for the
+  // other.
+  // -------------------------------------------------------------------------
+  const openPayPerson = async (line) => {
+    if (!line) return;
+    if (!led.ledgers.length && !led.people.length) await loadLedgers(true);
+    const mine = led.ledgers.filter((l) => String(l.employee_id) === String(line.employee_id));
+    const owing = mine.filter((l) => Number(l.balance) > 0);
+
+    dialog(`
+      <h3>${esc(line.name)}</h3>
+      <div class="dim">${esc(line.position || '')}</div>
+
+      <h3 class="mt">Paid on</h3>
+      <div class="row">
+        <div><label>Rate per day</label>
+          <input id="pp_daily" type="number" step="0.01" min="0"
+            value="${Number(line.daily_rate || 0)}"></div>
+        <div><label>SSS</label><input id="pp_sss" type="number" step="0.01" min="0"
+          value="${Number(line.sss || 0)}"></div>
+        <div><label>PhilHealth</label><input id="pp_phic" type="number" step="0.01" min="0"
+          value="${Number(line.philhealth || 0)}"></div>
+        <div><label>Pag-IBIG</label><input id="pp_hdmf" type="number" step="0.01" min="0"
+          value="${Number(line.pagibig || 0)}"></div>
+        <div style="flex:0 0 auto; align-self:flex-end">
+          <button class="btn quiet sm" id="pp_save">Save</button></div>
+      </div>
+      <div class="dim" id="pp_rates"></div>
+
+      <h3 class="mt">What they still owe</h3>
+      ${owing.length ? `
+        <div class="scroll"><table>
+          <thead><tr><th>Ledger</th><th class="n">Lent</th><th class="n">Paid</th>
+            <th class="n">Balance</th><th class="n">Take off this cutoff</th><th></th></tr></thead>
+          <tbody>${owing.map((l) => `<tr>
+            <td>${tag(PR_KINDS[l.kind] || l.kind, l.kind === 'ca' ? 'amber' : 'pink')}
+              <div class="dim">since ${onDay(l.started_on)}</div></td>
+            <td class="n">${money(l.principal)}</td>
+            <td class="n">${money(l.paid)}</td>
+            <td class="n"><b>${money(l.balance)}</b></td>
+            <td class="n"><input class="cellbox n" type="number" step="0.01" min="0"
+              id="pp_take_${l.id}" value="${Number(l.per_cutoff || 0)}"></td>
+            <td class="n"><button class="btn sm quiet" data-take="${l.id}">Take it</button></td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        <div class="dim mt">Taking an amount writes it to the ledger and adds it to
+          this person's Loan/CA on the cutoff, so the two can never disagree.</div>`
+        : '<div class="dim">Nothing owed — no cash advance and no loan running.</div>'}`);
+
+    const showRates = () => {
+      const d = Number($('#pp_daily')?.value || 0);
+      const box = $('#pp_rates');
+      if (!box) return;
+      box.innerHTML = d > 0
+        ? `overtime ${peso(d / 8 * 1.25)}/hour · night ${peso(d / 8 * 0.10)}/hour ·
+           late ${peso(d / 480)}/minute · holiday ${peso(d)} ·
+           special holiday ${peso(d * 0.30)}`
+        : 'No rate yet — this payslip cannot be worked out.';
+    };
+    showRates();
+    $('#pp_daily').addEventListener('input', showRates);
+
+    $('#pp_save').addEventListener('click', async () => {
+      try {
+        await POST(`/api/team/${line.employee_id}/pay`, {
+          company: picked?.company || 'MS BEAU',
+          daily_rate: +$('#pp_daily').value,
+          sss: +$('#pp_sss').value,
+          philhealth: +$('#pp_phic').value,
+          pagibig: +$('#pp_hdmf').value,
+        });
+        // The rate on an open line follows, so this cutoff uses what was just
+        // typed rather than what it was opened with.
+        if (picked?.status !== 'closed') {
+          await PUT(`/api/payroll-lines/${line.id}`, {
+            daily_rate: +$('#pp_daily').value,
+            sss: +$('#pp_sss').value,
+            philhealth: +$('#pp_phic').value,
+            pagibig: +$('#pp_hdmf').value,
+          });
+        }
+        notice('Saved 🌸', 'good');
+        closeDialog();
+        await load(picked?.id);
+      } catch (err) { whoops(err); }
+    });
+
+    $$('[data-take]').forEach((b) => b.addEventListener('click', async () => {
+      const amount = Number($(`#pp_take_${b.dataset.take}`)?.value || 0);
+      if (!(amount > 0)) return notice('How much is coming off?', 'bad');
+      try {
+        await POST(`/api/advances/${b.dataset.take}/take`, {
+          amount, period_id: picked?.id || null,
+          paid_on: picked?.paid_on || null,
+        });
+        if (picked?.status !== 'closed') {
+          await PUT(`/api/payroll-lines/${line.id}`,
+            { loans: Number(line.loans || 0) + amount });
+        }
+        notice('Taken off 🌸', 'good');
+        closeDialog();
+        await Promise.all([load(picked?.id), loadLedgers(true)]);
+      } catch (err) { whoops(err); }
+    }));
+  };
+
+  // -------------------------------------------------------------------------
+  // Payslips, as a tab rather than a pop-up: she prints them from the same
+  // screen she just corrected.
+  // -------------------------------------------------------------------------
+  const drawSlips = () => {
+    const who = $('#pr_slipwho', page);
+    if (!picked) {
+      who.textContent = 'No cutoff chosen.';
+      $('#pr_slipbox', page).innerHTML = '';
+      return;
+    }
+    who.innerHTML = `${esc(picked.company)} · ${onDay(picked.starts_on)} to ${
+      onDay(picked.ends_on)} · paid ${onDay(picked.paid_on)} ·
+      ${data.lines.length} slip${data.lines.length === 1 ? '' : 's'}`;
+    $('#pr_slipbox', page).innerHTML = data.lines.map((r) => payslip(picked, r)).join('');
+  };
+
+  $('#pr_print', page).addEventListener('click', () => window.print());
+
+  // -------------------------------------------------------------------------
+  // The two ledgers
+  // -------------------------------------------------------------------------
+  const loadLedgers = async (quiet) => {
+    led = await GET('/api/advances');
+    if (!quiet) drawLedgers();
+    else drawLedgers();
+  };
+
+  const drawLedgers = () => {
+    for (const [kinds, box, tiles, find, label] of [
+      [['ca'], '#ca_list', '#ca_tiles', '#ca_find', 'cash advance'],
+      [['pagibig', 'sss'], '#ln_list', '#ln_tiles', '#ln_find', 'loan'],
+    ]) {
+      const term = ($(find, page)?.value || '').trim().toLowerCase();
+      const rows = led.ledgers
+        .filter((l) => kinds.includes(l.kind))
+        .filter((l) => !term || l.name.toLowerCase().includes(term));
+      const owed = rows.reduce((s, l) => s + Number(l.balance), 0);
+      const running = rows.filter((l) => Number(l.balance) > 0).length;
+
+      $(tiles, page).innerHTML = `
+        <div class="tile"><div class="big">${running}</div>
+          <div class="label">Still running</div></div>
+        <div class="tile"><div class="big">${money(owed)}</div>
+          <div class="label">Still owed</div></div>
+        <div class="tile"><div class="big">${rows.length}</div>
+          <div class="label">Ledgers in all</div></div>`;
+
+      $(box, page).innerHTML = table(rows, [
+        { head: 'Name', cell: (l) => `<b>${esc(l.name)}</b>
+            <div class="dim">${esc(l.position || '')}</div>` },
+        { head: 'Company', cell: (l) => tag(l.company === 'BOA' ? 'BOA' : 'MS Beau',
+            l.company === 'BOA' ? 'pink' : 'grey') },
+        ...(kinds.length > 1 ? [{ head: 'Kind', cell: (l) =>
+          tag(PR_KINDS[l.kind] || l.kind, 'pink') }] : []),
+        { head: 'Since', cell: (l) => onDay(l.started_on) },
+        { head: 'Lent', n: true, cell: (l) => money(l.principal) },
+        { head: 'Paid', n: true, cell: (l) => money(l.paid) },
+        { head: 'Balance', n: true, cell: (l) => Number(l.balance) > 0
+            ? `<b>${money(l.balance)}</b>` : tag('cleared', 'green') },
+        { head: 'Per cutoff', n: true, cell: (l) => money(l.per_cutoff) },
+        { head: 'Last taken', cell: (l) => l.last_paid
+            ? onDay(l.last_paid) : '<span class="dim">—</span>' },
+        { head: '', cell: (l) => `<button class="btn sm quiet"
+            data-ledger="${l.id}">Open</button>` },
+      ], term ? `No ${label} matches that.` : `No ${label} on record.`);
+
+      $$('[data-ledger]', $(box, page)).forEach((b) => b.addEventListener('click',
+        () => openLedger(led.ledgers.find((l) => String(l.id) === b.dataset.ledger))));
+    }
+  };
+
+  // One ledger, the way the shop's own CA Record reads: what was lent at the
+  // top, then a row per cutoff for what came off, and the balance falling.
+  const openLedger = (l) => {
+    if (!l) return;
+    const mine = led.payments
+      .filter((p) => String(p.advance_id) === String(l.id))
+      .sort((a, b) => String(a.paid_on).localeCompare(String(b.paid_on)));
+    let running = Number(l.principal);
+    const rows = mine.map((p) => {
+      running -= Number(p.amount);
+      return { ...p, after: running };
+    }).reverse();
+
+    dialog(`
+      <h3>${esc(l.name)} — ${esc(PR_KINDS[l.kind] || l.kind)}</h3>
+      <div class="dim">${money(l.principal)} since ${onDay(l.started_on)}${
+        l.note ? ` · ${esc(l.note)}` : ''}</div>
+      <div class="tiles mt">
+        <div class="tile"><div class="big">${money(l.paid)}</div>
+          <div class="label">Taken so far</div></div>
+        <div class="tile ${Number(l.balance) > 0 ? '' : 'good'}">
+          <div class="big">${money(l.balance)}</div>
+          <div class="label">Still owed</div></div>
+      </div>
+
+      ${Number(l.balance) > 0 ? `
+      <div class="row mt">
+        <div><label>Take off</label>
+          <input id="lg_amt" type="number" step="0.01" min="0"
+            value="${Number(l.per_cutoff || 0)}"></div>
+        <div><label>Dated</label><input id="lg_on" type="date"
+          value="${(picked?.paid_on || '').slice(0, 10)}"></div>
+        <div><label>Note</label><input id="lg_note" type="text"
+          placeholder="Optional"></div>
+        <div style="flex:0 0 auto; align-self:flex-end">
+          <button class="btn" id="lg_take">Take it off</button></div>
+      </div>` : '<div class="mt">' + tag('cleared', 'green') + '</div>'}
+
+      <h3 class="mt">The ledger</h3>
+      ${table(rows, [
+        { head: 'Date', cell: (p) => onDay(p.paid_on) },
+        { head: 'Less', n: true, cell: (p) => money(p.amount) },
+        { head: 'Balance after', n: true, cell: (p) => money(p.after) },
+        { head: 'Note', cell: (p) => `<span class="dim">${esc(p.note || '')}</span>` },
+        { head: '', n: true, cell: (p) => `<button class="rowx"
+            data-undo="${p.id}" title="Undo this">✕</button>` },
+      ], 'Nothing has come off yet.')}
+
+      ${owner ? `
+      <h3 class="mt">Remove this ledger</h3>
+      <div class="dim">Only one with nothing taken off it can go — the payments
+        are the record of what was collected.</div>
+      <div class="mt"><button class="btn warn sm" id="lg_remove">Remove</button></div>` : ''}`);
+
+    $('#lg_take')?.addEventListener('click', async () => {
+      const amount = Number($('#lg_amt').value || 0);
+      if (!(amount > 0)) return notice('How much is coming off?', 'bad');
+      try {
+        await POST(`/api/advances/${l.id}/take`, {
+          amount, paid_on: $('#lg_on').value || null,
+          period_id: picked?.id || null, note: $('#lg_note').value,
+        });
+        notice('Taken off 🌸', 'good');
+        closeDialog();
+        await loadLedgers(true);
+      } catch (err) { whoops(err); }
+    });
+
+    $$('[data-undo]').forEach((b) => b.addEventListener('click', async () => {
+      if (!await askFirst('Undo this payment?',
+        'The balance goes back up by that amount.', 'Undo it')) return;
+      try {
+        await DELETE(`/api/advance-payments/${b.dataset.undo}`);
+        notice('Undone', 'good');
+        closeDialog();
+        await loadLedgers(true);
+      } catch (err) { whoops(err); }
+    }));
+
+    $('#lg_remove')?.addEventListener('click', async () => {
+      if (!await askFirst(`Remove ${l.name}'s ${PR_KINDS[l.kind]}?`,
+        'This cannot be undone.')) return;
+      try {
+        await DELETE(`/api/advances/${l.id}`);
+        notice('Removed', 'good');
+        closeDialog();
+        await loadLedgers(true);
+      } catch (err) { whoops(err); }
+    });
+  };
+
+  const newLedger = (kind) => {
+    const people = led.people;
+    dialog(`
+      <h3>${kind === 'ca' ? 'New cash advance' : 'New loan'}</h3>
+      <div class="dim">${kind === 'ca'
+        ? 'The shop lends it and takes it back a cutoff at a time.'
+        : 'The agency lends it; the shop only collects and passes it on.'}</div>
+      <div class="row mt">
+        <div style="flex:2"><label>Who</label>
+          <select id="nl_who">${people.map((p) => `<option value="${p.id}">${
+            esc(p.name)}</option>`).join('')}</select></div>
+        ${kind === 'ca' ? '<input type="hidden" id="nl_kind" value="ca">' : `
+        <div><label>Kind</label>
+          <select id="nl_kind">
+            <option value="pagibig">Pag-IBIG loan</option>
+            <option value="sss">SSS loan</option>
+          </select></div>`}
+      </div>
+      <div class="row">
+        <div><label>Amount</label>
+          <input id="nl_amt" type="number" step="0.01" min="0"></div>
+        <div><label>Off each cutoff</label>
+          <input id="nl_each" type="number" step="0.01" min="0" value="0"></div>
+        <div><label>Since</label><input id="nl_on" type="date"
+          value="${new Date().toISOString().slice(0, 10)}"></div>
+      </div>
+      <div><label>Note</label><input id="nl_note" type="text"
+        placeholder="What it was for"></div>
+      <div class="mt right"><button class="btn" id="nl_go">Open the ledger</button></div>`);
+
+    $('#nl_go').addEventListener('click', async () => {
+      try {
+        await POST('/api/advances', {
+          employee_id: +$('#nl_who').value,
+          kind: $('#nl_kind').value,
+          principal: +$('#nl_amt').value,
+          per_cutoff: +$('#nl_each').value,
+          started_on: $('#nl_on').value,
+          note: $('#nl_note').value,
+        });
+        notice('Ledger opened 🌸', 'good');
+        closeDialog();
+        await loadLedgers(true);
+      } catch (err) { whoops(err); }
+    });
+  };
+
+  $('#ca_new', page).addEventListener('click', () => newLedger('ca'));
+  $('#ln_new', page).addEventListener('click', () => newLedger('loan'));
+  $('#ca_find', page).addEventListener('input', drawLedgers);
+  $('#ln_find', page).addEventListener('input', drawLedgers);
+
+  // -------------------------------------------------------------------------
   $('#pr_period', page).addEventListener('change',
     (e) => load(e.target.value).catch(whoops));
 
@@ -10658,8 +11044,7 @@ SCREENS.payroll = async (page) => {
     dialog(`
       <h3>New cutoff</h3>
       <div class="dim">The days each person worked are counted from the clock as
-        the cutoff opens. Everything the clock cannot know is typed on the line
-        afterwards.</div>
+        the cutoff opens. Everything the clock cannot know is typed afterwards.</div>
       <div class="row mt">
         <div><label>Company</label>
           <select id="pn_co">
@@ -10700,20 +11085,16 @@ SCREENS.payroll = async (page) => {
     } catch (err) { whoops(err); }
   });
 
-  $('#pr_slips', page).addEventListener('click', () => {
-    if (!picked || !data.lines.length) return notice('Nothing to print yet.', 'bad');
-    showPayslips(picked, data.lines);
-  });
-
   await load();
+  loadLedgers(true).catch(() => {});
 };
 
-// The payslip, one per person, in the shape the shop already hands out: what
-// was earned above, what was taken below, and what is actually received at the
-// bottom with a line to sign.
-function showPayslips(period, lines) {
+// The payslip, in the shape the shop already hands out: what was earned above,
+// what was taken below, and what is actually received at the bottom with a line
+// to sign.
+function payslip(period, r) {
   const money = (v) => peso(Number(v || 0));
-  const slip = (r) => `
+  return `
     <div class="slip">
       <h3>EMPLOYEE PAYSLIP</h3>
       <table class="slipmeta"><tbody>
@@ -10726,7 +11107,8 @@ function showPayslips(period, lines) {
       </tbody></table>
       <table class="sliprows"><tbody>
         <tr class="h"><td>Earnings</td><td class="n">Amount</td></tr>
-        <tr><td>Basic — ${count(r.days_present)} day${Number(r.days_present) === 1 ? '' : 's'}</td>
+        <tr><td>Basic — ${count(r.days_present)} day${
+          Number(r.days_present) === 1 ? '' : 's'}</td>
             <td class="n">${money(r.basic)}</td></tr>
         <tr><td>Night differential — ${count(r.nsd_hours)} hrs</td>
             <td class="n">${money(r.nsd)}</td></tr>
@@ -10739,7 +11121,8 @@ function showPayslips(period, lines) {
             <td class="n">${money(Number(r.allowance || 0) + Number(r.adjustment || 0))}</td></tr>
         <tr class="t"><td>Total earnings</td><td class="n">${money(r.total_earnings)}</td></tr>
         <tr class="h"><td>Deductions</td><td class="n">Amount</td></tr>
-        <tr><td>Late — ${count(r.late_minutes)} min</td><td class="n">${money(r.late_charge)}</td></tr>
+        <tr><td>Late — ${count(r.late_minutes)} min</td>
+            <td class="n">${money(r.late_charge)}</td></tr>
         <tr><td>SSS</td><td class="n">${money(r.sss)}</td></tr>
         <tr><td>PhilHealth</td><td class="n">${money(r.philhealth)}</td></tr>
         <tr><td>Pag-IBIG</td><td class="n">${money(r.pagibig)}</td></tr>
@@ -10749,12 +11132,4 @@ function showPayslips(period, lines) {
       </tbody></table>
       <div class="slipsign">Received by: <span class="rule"></span></div>
     </div>`;
-
-  dialog(`
-    <h3>Payslips — ${esc(period.company)}, ${onDay(period.starts_on)} to ${
-      onDay(period.ends_on)}</h3>
-    <div class="dim">One per person. Print this page and cut them apart.</div>
-    <div class="mt right"><button class="btn quiet" id="ps_print">🖨️ Print</button></div>
-    <div class="slips mt">${lines.map(slip).join('')}</div>`, 'wide');
-  $('#ps_print').addEventListener('click', () => window.print());
 }
