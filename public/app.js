@@ -3478,6 +3478,10 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
 // ---------------------------------------------------------------------------
 let sheetCss = null;    // fetched once; it does not change while signed in
 let logoData = null;
+// Every picture a document carries, kept as a data URI once fetched. A slip for
+// Beauty Obsession Ave must go out under its own mark, so the pictures are
+// inlined as they stand rather than all replaced with the house logo.
+const inlined = new Map();
 
 const asDataUri = async (url) => {
   const blob = await (await fetch(url)).blob();
@@ -3494,6 +3498,16 @@ async function saveDocument(node, filename, scale = 2) {
   sheetCss ??= await (await fetch('/styles.css')).text();
   logoData ??= await asDataUri('/logo.png');
 
+  // Each picture inlined as itself. Anything that cannot be fetched falls back
+  // to the house logo rather than tainting the canvas, which would stop the
+  // whole document being saved.
+  for (const img of node.querySelectorAll('img')) {
+    const src = img.getAttribute('src') || '';
+    if (src.startsWith('data:') || inlined.has(src)) continue;
+    try { inlined.set(src, await asDataUri(src)); }
+    catch { inlined.set(src, logoData); }
+  }
+
   const clone = node.cloneNode(true);
   // On screen the sheet may be scaled down to fit its column; the picture is
   // drawn full size. So the clone sheds any transform before it is measured — a
@@ -3501,7 +3515,10 @@ async function saveDocument(node, filename, scale = 2) {
   // right-hand edge of the sheet off the picture.
   clone.style.transform = 'none';
   clone.style.transformOrigin = '';
-  clone.querySelectorAll('img').forEach((img) => { img.setAttribute('src', logoData); });
+  clone.querySelectorAll('img').forEach((img) => {
+    const src = img.getAttribute('src') || '';
+    img.setAttribute('src', src.startsWith('data:') ? src : (inlined.get(src) || logoData));
+  });
 
   const shot = document.createElement('div');
   shot.id = 'shot';
@@ -10529,7 +10546,8 @@ SCREENS.payroll = async (page) => {
       <div class="tools">
         <span id="pr_slipwho" class="dim"></span>
         <span class="tools-gap"></span>
-        <button class="btn" id="pr_print">🖨️ Print them</button>
+        <button class="btn line" id="pr_saveall">⤓ Save each as a picture</button>
+        <button class="btn" id="pr_print">🖨️ Print — one per page</button>
       </div>
       <div class="slips" id="pr_slipbox"></div>
     </div>
@@ -10826,9 +10844,45 @@ SCREENS.payroll = async (page) => {
       onDay(picked.ends_on)} · paid ${onDay(picked.paid_on)} ·
       ${data.lines.length} slip${data.lines.length === 1 ? '' : 's'}`;
     $('#pr_slipbox', page).innerHTML = data.lines.map((r) => payslip(picked, r)).join('');
+    $$('[data-slip]', page).forEach((b) => b.addEventListener('click', async () => {
+      const slip = b.closest('.slip');
+      const who = b.dataset.slip.replace(/[^A-Za-z0-9 ]/g, '').trim().replace(/\s+/g, '-');
+      const was = b.textContent;
+      b.disabled = true; b.textContent = 'Saving…';
+      try {
+        await saveDocument(slip,
+          `payslip-${who}-${String(picked.paid_on).slice(0, 10)}.jpg`);
+      } catch (err) { whoops(err); }
+      b.textContent = was; b.disabled = false;
+    }));
   };
 
   $('#pr_print', page).addEventListener('click', () => window.print());
+
+  // One picture per person, named for them, so they can be attached to an email
+  // one at a time without anybody screenshotting a browser. Saved one after
+  // another rather than all at once: a browser given thirty downloads in the
+  // same tick quietly drops most of them.
+  $('#pr_saveall', page).addEventListener('click', async () => {
+    const slips = $$('#pr_slipbox .slip', page);
+    if (!slips.length) return notice('Nothing to save yet.', 'bad');
+    const b = $('#pr_saveall', page);
+    const was = b.textContent;
+    b.disabled = true;
+    try {
+      for (let n = 0; n < slips.length; n += 1) {
+        b.textContent = `Saving ${n + 1} of ${slips.length}…`;
+        const who = (data.lines[n]?.name || `slip-${n + 1}`)
+          .replace(/[^A-Za-z0-9 ]/g, '').trim().replace(/\s+/g, '-');
+        await saveDocument(slips[n],
+          `payslip-${who}-${String(picked.paid_on).slice(0, 10)}.jpg`);
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      notice(`${slips.length} payslips saved 🌸`, 'good');
+    } catch (err) { whoops(err); }
+    b.textContent = was;
+    b.disabled = false;
+  });
 
   // -------------------------------------------------------------------------
   // The two ledgers
@@ -11089,47 +11143,87 @@ SCREENS.payroll = async (page) => {
   loadLedgers(true).catch(() => {});
 };
 
-// The payslip, in the shape the shop already hands out: what was earned above,
-// what was taken below, and what is actually received at the bottom with a line
-// to sign.
+// The payslip
+//
+// The one piece of paper a person keeps, so it is the one that should look like
+// it came from a company rather than out of a spreadsheet. Letterhead with the
+// company's own mark — MS Beau Ave or Beauty Obsession Ave, whichever pays this
+// cutoff — the two halves of the reckoning side by side, and the figure that
+// matters set on a band of its own.
+const PAYER = {
+  'MS BEAU': { name: 'MS BEAU AVE', sub: 'Enterprises OPC', logo: '/logo.jpg' },
+  'BOA':     { name: 'BEAUTY OBSESSION AVE', sub: 'Corporation', logo: '/boa-mark.png' },
+};
+
 function payslip(period, r) {
   const money = (v) => peso(Number(v || 0));
+  const co = PAYER[period.company] || PAYER['MS BEAU'];
+  // A line worth nothing is a line worth leaving out: a slip with six zeroes on
+  // it hides the two figures that are not zero.
+  const earned = [
+    [`Basic — ${count(r.days_present)} day${Number(r.days_present) === 1 ? '' : 's'}`
+      + ` @ ${money(r.daily_rate)}`, r.basic, true],
+    [`Night differential — ${count(r.nsd_hours)} hrs`, r.nsd],
+    [`Overtime — ${count(r.ot_hours)} hrs`, r.overtime],
+    ['Holiday', r.holiday],
+    ['Special holiday', r.spe_holiday],
+    ['Leave with pay', r.leave_pay],
+    ['Allowance', r.allowance],
+    ['Adjustment', r.adjustment],
+  ].filter(([, v, always]) => always || Number(v || 0) !== 0);
+  const taken = [
+    [`Late / undertime — ${count(r.late_minutes)} min`, r.late_charge],
+    ['SSS', r.sss],
+    ['PhilHealth', r.philhealth],
+    ['Pag-IBIG', r.pagibig],
+    ['Loan / cash advance', r.loans],
+  ].filter(([, v]) => Number(v || 0) !== 0);
+
+  const half = (title, rows, total, label) => `
+    <div class="slipcol">
+      <div class="slipcap">${title}</div>
+      <table><tbody>
+        ${rows.length ? rows.map(([k, v]) => `<tr><td>${k}</td>
+          <td class="n">${money(v)}</td></tr>`).join('')
+          : '<tr><td class="dim">Nothing</td><td class="n">—</td></tr>'}
+      </tbody>
+      <tfoot><tr><td>${label}</td><td class="n">${money(total)}</td></tr></tfoot>
+      </table>
+    </div>`;
+
   return `
     <div class="slip">
-      <h3>EMPLOYEE PAYSLIP</h3>
-      <table class="slipmeta"><tbody>
-        <tr><td>Employee Name:</td><td><b>${esc(r.name)}</b></td>
-            <td>Cutoff Date:</td><td>${onDay(period.starts_on)} — ${onDay(period.ends_on)}</td></tr>
-        <tr><td>Position:</td><td>${esc(r.position || '')}</td>
-            <td>Payout Date:</td><td>${onDay(period.paid_on)}</td></tr>
-        <tr><td>Department:</td><td>${esc(period.company)}</td>
-            <td>Rate per day:</td><td>${money(r.daily_rate)}</td></tr>
-      </tbody></table>
-      <table class="sliprows"><tbody>
-        <tr class="h"><td>Earnings</td><td class="n">Amount</td></tr>
-        <tr><td>Basic — ${count(r.days_present)} day${
-          Number(r.days_present) === 1 ? '' : 's'}</td>
-            <td class="n">${money(r.basic)}</td></tr>
-        <tr><td>Night differential — ${count(r.nsd_hours)} hrs</td>
-            <td class="n">${money(r.nsd)}</td></tr>
-        <tr><td>Overtime — ${count(r.ot_hours)} hrs</td>
-            <td class="n">${money(r.overtime)}</td></tr>
-        <tr><td>Holiday</td><td class="n">${money(r.holiday)}</td></tr>
-        <tr><td>Special holiday</td><td class="n">${money(r.spe_holiday)}</td></tr>
-        <tr><td>Leave with pay</td><td class="n">${money(r.leave_pay)}</td></tr>
-        <tr><td>Allowance / adjustment</td>
-            <td class="n">${money(Number(r.allowance || 0) + Number(r.adjustment || 0))}</td></tr>
-        <tr class="t"><td>Total earnings</td><td class="n">${money(r.total_earnings)}</td></tr>
-        <tr class="h"><td>Deductions</td><td class="n">Amount</td></tr>
-        <tr><td>Late — ${count(r.late_minutes)} min</td>
-            <td class="n">${money(r.late_charge)}</td></tr>
-        <tr><td>SSS</td><td class="n">${money(r.sss)}</td></tr>
-        <tr><td>PhilHealth</td><td class="n">${money(r.philhealth)}</td></tr>
-        <tr><td>Pag-IBIG</td><td class="n">${money(r.pagibig)}</td></tr>
-        <tr><td>Loan / CA / others</td><td class="n">${money(r.loans)}</td></tr>
-        <tr class="t"><td>Total deductions</td><td class="n">${money(r.total_deductions)}</td></tr>
-        <tr class="net"><td>NET PAY</td><td class="n">${money(r.net_pay)}</td></tr>
-      </tbody></table>
-      <div class="slipsign">Received by: <span class="rule"></span></div>
+      <div class="sliphead">
+        <img class="sliplogo" src="${co.logo}" alt=""
+          onerror="this.onerror=null;this.src='/logo.jpg'">
+        <div class="slipco"><b>${esc(co.name)}</b><span>${esc(co.sub)}</span></div>
+        <div class="sliptitle">PAYSLIP<span>${onDay(period.starts_on)} — ${
+          onDay(period.ends_on)}</span></div>
+      </div>
+
+      <div class="slipwho">
+        <div><span>Employee</span><b>${esc(r.name)}</b></div>
+        <div><span>Position</span>${esc(r.position || '—')}</div>
+        <div><span>Rate per day</span>${money(r.daily_rate)}</div>
+        <div><span>Payout date</span>${onDay(period.paid_on)}</div>
+      </div>
+
+      <div class="slipcols">
+        ${half('Earnings', earned, r.total_earnings, 'Total earnings')}
+        ${half('Deductions', taken, r.total_deductions, 'Total deductions')}
+      </div>
+
+      <div class="slipnet"><span>NET PAY</span><b>${money(r.net_pay)}</b></div>
+
+      <div class="slipfoot">
+        <div class="sigline"><span class="rule"></span>Received by</div>
+        <div class="sigline"><span class="rule"></span>Date</div>
+      </div>
+      <div class="slipsave"><button class="btn sm quiet"
+        data-slip="${esc(r.name)}">⤓ Save this one</button></div>
+      <div class="slipnote">Computed from ${count(r.days_present)} day${
+        Number(r.days_present) === 1 ? '' : 's'} at ${money(r.daily_rate)}.
+        Overtime at 125% of the hourly rate, night differential at 10%,
+        late at ${peso(Number(r.daily_rate || 0) / 480)} a minute.</div>
     </div>`;
 }
