@@ -1594,3 +1594,13 @@ input.n { text-align: right; }
 .pickcat.on.pink  { background: #f7d9e5; color: #8a3358; border-color: #eab3ca; }
 .pickcat.on.green { background: #cfe9da; color: #1d5636; border-color: #a4d3ba; }
 .pickcat:focus-visible { outline: 2px solid var(--brand, #d98da6); outline-offset: 2px; }
+
+/* Five prices, each under the name it is sold at. A grid rather than a row of
+   pairs, so the names line up down the left and the figures down the right —
+   which is how a price list is read. */
+.pricerows { display: grid; gap: 8px; }
+.pricerow { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(110px, 180px);
+  gap: 10px; align-items: center; }
+.pricerow input { text-align: right; }
+.pricerow select option.newname { font-weight: 700; color: #a9761b; }
+@media (max-width: 560px) { .pricerow { grid-template-columns: 1fr; } }
