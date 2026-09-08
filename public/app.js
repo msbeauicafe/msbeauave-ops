@@ -943,10 +943,14 @@ SCREENS.products = async (page) => {
       { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
       // A product not priced under a name is a dash rather than ₱0.00: nothing
       // set and nothing charged are not the same fact.
+      // The heading is the tier. What is filed there is said under the figure
+      // itself, so a price read halfway down a wide list says what it is
+      // without anybody scrolling back up to the heading to find out.
       ...codes.map((c, i) => ({
-        head: `Tier ${i + 1}`, sub: priceLabel(c), n: true,
-        cell: (p) => (p.prices?.[c] == null
-          ? '<span class="dim">—</span>' : peso(p.prices[c])),
+        head: `Tier ${i + 1}`, n: true,
+        cell: (p) => `${p.prices?.[c] == null
+          ? '<span class="dim">—</span>' : peso(p.prices[c])
+          }<div class="cellsub">${esc(priceLabel(c))}</div>`,
       })),
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
         `<button class="rowx" data-rmprod="${esc(p.sku)}"
