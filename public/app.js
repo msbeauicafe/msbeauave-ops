@@ -1721,11 +1721,17 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   let priceRows = [];        // { name, amount } — PRICE_BOXES of them
 
   const priceOptions = (chosen) => {
-    const opt = (value, label) => `<option value="${value}"${
-      value === chosen ? ' selected' : ''}>${esc(label)}</option>`;
+    // A name already in another box is not offered in this one. A product holds
+    // one figure per name, so DD price in two boxes is not two prices — it is
+    // one price and a figure that quietly loses, and the shop should not be
+    // able to pick it. The row's own name stays, or choosing it would look
+    // like it had been forgotten.
+    const taken = new Set(priceRows.map((r) => r.name).filter((n) => n && n !== chosen));
+    const opt = (value, label) => (taken.has(value) ? '' : `<option value="${value}"${
+      value === chosen ? ' selected' : ''}>${esc(label)}</option>`);
     const rest = priceNames.filter((c) => !PRICE_LIST.includes(c));
-    // Cost price is not offered here: it is the first pair, always, and a name
-    // that can only be in one place should not be pickable in six others.
+    // Cost price is not offered here either: it is the first pair, always, and
+    // a name that can only be in one place should not be pickable in six.
     return `<option value="">Pick a price name…</option>`
       + PRICE_LIST.map((c) => opt(`CODE:${c}`, priceLabel(c))).join('')
       + opt('SRP', 'SRP price')
@@ -1877,16 +1883,23 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     } catch { priceNames = []; }
 
     // Cost keeps the first pair whether or not it has a figure yet; the rest
-    // follow in whatever order the product is priced.
+    // follow in the order the product keeps them.
     const cost = { name: 'COST', amount: '' };
     const filled = [];
     if (!isNew) {
       if (Number(p.unit_cost) > 0) cost.amount = Number(p.unit_cost);
-      if (Number(p.srp) > 0) filled.push({ name: 'SRP', amount: Number(p.srp) });
       const listed = await GET(`/api/products/${encodeURIComponent(p.sku)}/prices`)
         .catch(() => []);
       for (const row of listed) {
         if (row.price != null) filled.push({ name: `CODE:${row.code}`, amount: Number(row.price) });
+      }
+      // SRP is the product's own column rather than a row on the price list, so
+      // it carries the box it was typed in separately. Without that it was
+      // simply put first every time, and moving it to the bottom never stuck.
+      if (Number(p.srp) > 0) {
+        const at = Number.isInteger(p.srp_position) ? p.srp_position - 1 : 0;
+        filled.splice(Math.max(0, Math.min(at, filled.length)), 0,
+          { name: 'SRP', amount: Number(p.srp) });
       }
     }
     // Whatever the fetch found, laid in around anything already typed while it
@@ -2030,6 +2043,10 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       ...Object.fromEntries(priceRows
         .filter((r) => OWN_PRICE[r.name] && r.amount !== '')
         .map((r) => [OWN_PRICE[r.name].field, Number(r.amount) || 0])),
+      // Which box SRP was typed in, so it comes back to it. Nothing else on the
+      // form needs telling: every other price keeps its own position on the
+      // price list.
+      srp_position: priceRows.findIndex((r) => r.name === 'SRP'),
     };
     try {
       const sku = isNew ? $('#f_sku').value.trim() : p.sku;
