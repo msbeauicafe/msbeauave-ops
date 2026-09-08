@@ -931,6 +931,22 @@ SCREENS.products = async (page) => {
     // list that grows sideways without anybody deciding to.
     const deepest = Math.min(TIERS,
       rows.reduce((most, p) => Math.max(most, Object.keys(p.prices || {}).length), 0));
+    // Worked out once per draw rather than once per cell: eight tiers across a
+    // thousand products is eight thousand sorts of the same little list.
+    const rungs = new Map(rows.map((p) => [p.sku, ladder(p, order)]));
+
+    // What most products call their Nth price. It goes in the heading, and a
+    // cell says its own name only when it differs from it — printing RD price
+    // under nine hundred figures that are all RD price is not telling anybody
+    // anything, and it buries the one row where the tier is something else.
+    const usual = Array.from({ length: deepest }, (_, i) => {
+      const tally = new Map();
+      for (const rung of rungs.values()) {
+        const at = rung[i];
+        if (at) tally.set(at[0], (tally.get(at[0]) || 0) + 1);
+      }
+      return [...tally].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    });
 
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
@@ -948,12 +964,12 @@ SCREENS.products = async (page) => {
       // with fewer than N prices has nothing there — a dash, and no name, since
       // there is no name to say.
       ...Array.from({ length: deepest }, (_, i) => ({
-        head: `Tier ${i + 1}`, n: true,
+        head: `Tier ${i + 1}`, sub: usual[i] ? priceLabel(usual[i]) : '', n: true,
         cell: (p) => {
-          const at = ladder(p, order)[i];
-          return at
-            ? `<div class="cellsub">${esc(priceLabel(at[0]))}</div>${peso(at[1])}`
-            : '<span class="dim">—</span>';
+          const at = rungs.get(p.sku)?.[i];
+          if (!at) return '<span class="dim">—</span>';
+          return at[0] === usual[i] ? peso(at[1])
+            : `<div class="cellsub">${esc(priceLabel(at[0]))}</div>${peso(at[1])}`;
         },
       })),
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
