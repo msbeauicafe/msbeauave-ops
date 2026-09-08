@@ -901,20 +901,9 @@ SCREENS.products = async (page) => {
   // — and the name under each figure says which price that is, because Tier 3
   // is PD for one product and CD for the next.
   //
-  // The order within a product is the price list's own, asked for once and
-  // kept: it is the same answer every draw.
-  let rank = null;
-  const priceRank = async () => {
-    if (rank) return rank;
-    const codes = await GET('/api/price-codes').catch(() => []);
-    rank = new Map(codes.filter((c) => !c.base_code).map((c, i) => [c.code, i]));
-    return rank;
-  };
-
-  // One product's prices, in the shop's order, packed from Tier 1 with no gaps.
-  const ladder = (p, order) => Object.entries(p.prices || {})
-    .sort((a, b) => (order.get(a[0]) ?? 99) - (order.get(b[0]) ?? 99))
-    .slice(0, TIERS);
+  // The order within a product is the product's own — the box each price was
+  // typed in on the form — and it arrives already in it.
+  const ladder = (p) => (Array.isArray(p.prices) ? p.prices : []).slice(0, TIERS);
 
   const drawBrands = async () => {
     const box = $('#brand_list', page);
@@ -925,15 +914,13 @@ SCREENS.products = async (page) => {
     const rows = all.filter((r) => !pcat
       || (r.category || '').trim().toLowerCase() === pcat);
 
-    const order = await priceRank();
+    // Worked out once per draw rather than once per cell.
+    const rungs = new Map(rows.map((p) => [p.sku, ladder(p)]));
     // As many tiers as the deepest product on screen needs, and no more. Eight
     // is the ceiling; a ninth price is one the list does not show rather than a
     // list that grows sideways without anybody deciding to.
     const deepest = Math.min(TIERS,
-      rows.reduce((most, p) => Math.max(most, Object.keys(p.prices || {}).length), 0));
-    // Worked out once per draw rather than once per cell: eight tiers across a
-    // thousand products is eight thousand sorts of the same little list.
-    const rungs = new Map(rows.map((p) => [p.sku, ladder(p, order)]));
+      [...rungs.values()].reduce((most, r) => Math.max(most, r.length), 0));
 
     // What most products call their Nth price. It goes in the heading, and a
     // cell says its own name only when it differs from it — printing RD price
@@ -943,7 +930,7 @@ SCREENS.products = async (page) => {
       const tally = new Map();
       for (const rung of rungs.values()) {
         const at = rung[i];
-        if (at) tally.set(at[0], (tally.get(at[0]) || 0) + 1);
+        if (at) tally.set(at.code, (tally.get(at.code) || 0) + 1);
       }
       return [...tally].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     });
@@ -968,8 +955,8 @@ SCREENS.products = async (page) => {
         cell: (p) => {
           const at = rungs.get(p.sku)?.[i];
           if (!at) return '<span class="dim">—</span>';
-          return at[0] === usual[i] ? peso(at[1])
-            : `<div class="cellsub">${esc(priceLabel(at[0]))}</div>${peso(at[1])}`;
+          return at.code === usual[i] ? peso(at.price)
+            : `<div class="cellsub">${esc(priceLabel(at.code))}</div>${peso(at.price)}`;
         },
       })),
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
@@ -1755,11 +1742,12 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     // against, and a dropdown that can only sensibly say one thing is a
     // dropdown asking to be got wrong.
     box.innerHTML = priceRows.map((r, n) => `
-      <div class="pricerow">
+      <div class="pricerow${n === 0 ? ' costrow' : ''}">
         ${n === 0
-          ? '<div class="fixedname">Cost price</div>'
+          ? '<label for="f_cost">Cost price</label>'
           : `<select data-pname="${n}">${priceOptions(r.name)}</select>`}
         <input type="number" step="0.01" min="0" data-pamt="${n}"
+          ${n === 0 ? 'id="f_cost"' : ''}
           value="${r.amount === '' || r.amount == null ? '' : r.amount}"
           placeholder="0.00" ${n === 0 || r.name ? '' : 'disabled'}>
       </div>`).join('');
@@ -2050,12 +2038,17 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
 
       // The rows naming a price-list code, written once the product exists to
       // hang them on. A new product is saved first for exactly this reason.
+      //
+      // Sent whether or not there are any, and in the order the boxes are in.
+      // Sending only what was filled meant a name changed from RD to BUSINESS
+      // LEADER left RD behind and the product came out priced at both; and the
+      // box a price is typed in is what makes it Tier 1 rather than Tier 7.
       const listed = priceRows
         .filter((r) => String(r.name).startsWith('CODE:') && r.amount !== '')
-        .map((r) => ({ code: String(r.name).slice(5), price: Number(r.amount) || 0 }));
-      if (listed.length) {
-        await PUT(`/api/products/${encodeURIComponent(sku)}/prices`, { prices: listed });
-      }
+        .map((r, i) => ({
+          code: String(r.name).slice(5), price: Number(r.amount) || 0, position: i,
+        }));
+      await PUT(`/api/products/${encodeURIComponent(sku)}/prices`, { prices: listed });
       if (pendingPic) {
         await POST(`/api/products/${encodeURIComponent(sku)}/photo`, { dataUrl: pendingPic });
         pendingPic = null;
