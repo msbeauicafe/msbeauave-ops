@@ -1737,8 +1737,9 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     const opt = (value, label) => `<option value="${value}"${
       value === chosen ? ' selected' : ''}>${esc(label)}</option>`;
     const rest = priceNames.filter((c) => !PRICE_LIST.includes(c));
+    // Cost price is not offered here: it is the first pair, always, and a name
+    // that can only be in one place should not be pickable in six others.
     return `<option value="">Pick a price name…</option>`
-      + opt('COST', 'Cost price')
       + PRICE_LIST.map((c) => opt(`CODE:${c}`, priceLabel(c))).join('')
       + opt('SRP', 'SRP price')
       // Anything the shop has added itself since, kept after the seven.
@@ -1749,12 +1750,18 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   const drawPrices = () => {
     const box = $('#f_prices');
     if (!box) return;
+    // The first pair is what the product cost us. It is not a choice — every
+    // product has one, it is the figure every price on the form is read
+    // against, and a dropdown that can only sensibly say one thing is a
+    // dropdown asking to be got wrong.
     box.innerHTML = priceRows.map((r, n) => `
       <div class="pricerow">
-        <select data-pname="${n}">${priceOptions(r.name)}</select>
+        ${n === 0
+          ? '<div class="fixedname">Cost price</div>'
+          : `<select data-pname="${n}">${priceOptions(r.name)}</select>`}
         <input type="number" step="0.01" min="0" data-pamt="${n}"
           value="${r.amount === '' || r.amount == null ? '' : r.amount}"
-          placeholder="0.00" ${r.name ? '' : 'disabled'}>
+          placeholder="0.00" ${n === 0 || r.name ? '' : 'disabled'}>
       </div>`).join('');
 
     $$('[data-pname]', box).forEach((sel) => sel.addEventListener('change', async () => {
@@ -1865,7 +1872,8 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   // The rows are drawn before anything is fetched. They only need the seven
   // names the shop always has, and waiting on two round trips to show a row of
   // empty boxes is how pressing New product came to feel like it had hung.
-  priceRows = Array.from({ length: PRICE_BOXES }, () => ({ name: '', amount: '' }));
+  priceRows = Array.from({ length: PRICE_BOXES }, (_, n) =>
+    ({ name: n === 0 ? 'COST' : '', amount: '' }));
   setTimeout(drawPrices, 0);
 
   (async () => {
@@ -1880,9 +1888,12 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         .filter((c) => !shipped.includes(c));
     } catch { priceNames = []; }
 
+    // Cost keeps the first pair whether or not it has a figure yet; the rest
+    // follow in whatever order the product is priced.
+    const cost = { name: 'COST', amount: '' };
     const filled = [];
     if (!isNew) {
-      if (Number(p.unit_cost) > 0) filled.push({ name: 'COST', amount: Number(p.unit_cost) });
+      if (Number(p.unit_cost) > 0) cost.amount = Number(p.unit_cost);
       if (Number(p.srp) > 0) filled.push({ name: 'SRP', amount: Number(p.srp) });
       const listed = await GET(`/api/products/${encodeURIComponent(p.sku)}/prices`)
         .catch(() => []);
@@ -1892,12 +1903,15 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     }
     // Whatever the fetch found, laid in around anything already typed while it
     // was in flight.
-    const typed = priceRows.filter((r) => r.name || r.amount !== '');
+    if (priceRows[0]?.amount !== '' && priceRows[0]?.amount != null) {
+      cost.amount = priceRows[0].amount;
+    }
+    const typed = priceRows.slice(1).filter((r) => r.name || r.amount !== '');
     const merged = [...filled];
     for (const r of typed) {
       if (!merged.some((m) => m.name === r.name)) merged.push(r);
     }
-    priceRows = merged.slice(0, PRICE_BOXES);
+    priceRows = [cost, ...merged].slice(0, PRICE_BOXES);
     while (priceRows.length < PRICE_BOXES) priceRows.push({ name: '', amount: '' });
     drawPrices();
   })();
