@@ -885,36 +885,36 @@ SCREENS.products = async (page) => {
   // pools and the prices, one row per product.
   let pcat = '';
 
-  // The price names, in the order the shop says them, with anything it added of
-  // its own after.
-  const SAID = ['RD', 'PD', 'CD', 'DD', 'RS'];
-  const inOrder = (codes) => [...SAID.filter((c) => codes.includes(c)),
-                              ...codes.filter((c) => !SAID.includes(c)).sort()];
   // Eight is the shop's own count of what it sells at. A ninth name gets no
   // column rather than a list that grows sideways without anybody deciding to.
   const TIERS = 8;
 
-  // The tiers are the shop's price names, not the names the rows on screen
-  // happen to carry. Read off the visible rows they moved: searching one
-  // product left it with the six names that product is priced at and no Tier 7
-  // or 8, which is not a tier — it is whatever is in front of you. Asked for
-  // once and kept, because it is the same answer every draw.
-  let tiers = null;
-  const tierCodes = async (rows) => {
-    if (tiers) return tiers;
+  // A tier is a position in one product's own ladder, not a column with a name
+  // over it.
+  //
+  // The shop does not price everything the same way: 615 products are sold at
+  // RD, SUB RD, PD, CD, DD and RS, another 367 at the same list without SUB RD,
+  // and a tail of them at combinations of their own down to a single DD. Give
+  // every name a fixed column and the second group reads with a hole punched
+  // through it, and a product priced at LEADERS is a price the list simply
+  // cannot show. So each product's prices close up leftwards into Tier 1, 2, 3
+  // — and the name under each figure says which price that is, because Tier 3
+  // is PD for one product and CD for the next.
+  //
+  // The order within a product is the price list's own, asked for once and
+  // kept: it is the same answer every draw.
+  let rank = null;
+  const priceRank = async () => {
+    if (rank) return rank;
     const codes = await GET('/api/price-codes').catch(() => []);
-    // Base names only, in the order the price list itself keeps them: an
-    // adjustment of RD is a discount off a tier, not a tier of its own, and the
-    // shop's own order is a better answer than one sorted alphabetically here.
-    const named = codes.filter((c) => !c.base_code).map((c) => c.code);
-    // A sign-in that may not read the price list still gets a list — from what
-    // is in front of it, which is the old behaviour and better than nothing.
-    tiers = (named.length
-      ? named
-      : inOrder([...new Set(rows.flatMap((p) => Object.keys(p.prices || {})))]))
-      .slice(0, TIERS);
-    return tiers;
+    rank = new Map(codes.filter((c) => !c.base_code).map((c, i) => [c.code, i]));
+    return rank;
   };
+
+  // One product's prices, in the shop's order, packed from Tier 1 with no gaps.
+  const ladder = (p, order) => Object.entries(p.prices || {})
+    .sort((a, b) => (order.get(a[0]) ?? 99) - (order.get(b[0]) ?? 99))
+    .slice(0, TIERS);
 
   const drawBrands = async () => {
     const box = $('#brand_list', page);
@@ -925,9 +925,12 @@ SCREENS.products = async (page) => {
     const rows = all.filter((r) => !pcat
       || (r.category || '').trim().toLowerCase() === pcat);
 
-    // A tier is a position, and the name under it says which price is filed
-    // there.
-    const codes = await tierCodes(all);
+    const order = await priceRank();
+    // As many tiers as the deepest product on screen needs, and no more. Eight
+    // is the ceiling; a ninth price is one the list does not show rather than a
+    // list that grows sideways without anybody deciding to.
+    const deepest = Math.min(TIERS,
+      rows.reduce((most, p) => Math.max(most, Object.keys(p.prices || {}).length), 0));
 
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
@@ -941,16 +944,17 @@ SCREENS.products = async (page) => {
       // missing. The shop counts what it has, not how the system filed it.
       { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
       { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
-      // A product not priced under a name is a dash rather than ₱0.00: nothing
-      // set and nothing charged are not the same fact.
-      // The heading is the tier. What is filed there is said under the figure
-      // itself, so a price read halfway down a wide list says what it is
-      // without anybody scrolling back up to the heading to find out.
-      ...codes.map((c, i) => ({
+      // Tier N is this product's Nth price, whatever it is called. A product
+      // with fewer than N prices has nothing there — a dash, and no name, since
+      // there is no name to say.
+      ...Array.from({ length: deepest }, (_, i) => ({
         head: `Tier ${i + 1}`, n: true,
-        cell: (p) => `${p.prices?.[c] == null
-          ? '<span class="dim">—</span>' : peso(p.prices[c])
-          }<div class="cellsub">${esc(priceLabel(c))}</div>`,
+        cell: (p) => {
+          const at = ladder(p, order)[i];
+          return at
+            ? `<div class="cellsub">${esc(priceLabel(at[0]))}</div>${peso(at[1])}`
+            : '<span class="dim">—</span>';
+        },
       })),
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
         `<button class="rowx" data-rmprod="${esc(p.sku)}"
