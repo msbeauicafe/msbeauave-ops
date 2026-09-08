@@ -1012,6 +1012,20 @@ label.inline input { width: auto; }
    does not pulse, since it is on every row. */
 /* The ✕ at the end of an account row — quiet until pointed at, then the red of
    the thing it leads to. */
+/* The price rows on a product: a name and the figure it is sold at, side by
+   side. Full width each, stacked, they read as fourteen unrelated boxes down a
+   dialog — the name belongs beside its own figure, not above it.
+
+   Seven pairs is a long column, so on a wide dialog they sit two pairs across.
+   That is a layout for this form only: the same class carries the rename list,
+   where a row is a name and its buttons. */
+.pricerow { display: grid; grid-template-columns: 1fr 36%; gap: 8px;
+  align-items: center; }
+.pricerow select, .pricerow input { margin: 0; }
+#f_prices { display: grid; gap: 8px 16px; }
+@media (min-width: 620px) {
+  #f_prices { grid-template-columns: 1fr 1fr; }
+}
 .rowx {
   border: 0; background: none; cursor: pointer; padding: 2px 6px;
   font-size: 1rem; line-height: 1; color: var(--muted); border-radius: 6px;

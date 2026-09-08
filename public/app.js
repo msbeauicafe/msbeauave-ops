@@ -1579,7 +1579,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         <select id="f_cat"><option value="">Pick a category…</option></select></div>
     </div>
     <h3 class="mt">Price name</h3>
-    <div class="dim">Five at a time, each under the name it is sold at. A name
+    <div class="dim">Seven at a time, each under the name it is sold at. A name
       not on the list yet is added from the bottom of the dropdown.</div>
     <div class="pricerows mt" id="f_prices"></div>
     <h3 class="mt">Photograph</h3>
@@ -1649,8 +1649,12 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   // list holds other codes — the adjusted ones, and names nobody here uses —
   // and offering those was offering a wrong answer next to the right one.
   const PRICE_LIST = ['RD', 'PD', 'CD', 'DD', 'RS'];
+  // How many rows the form draws. Seven, because the shop added names of its
+  // own — SUB RD among them — and five boxes meant setting the sixth by saving
+  // and opening the product a second time.
+  const PRICE_BOXES = 7;
   let priceNames = [];       // the base codes on the price list
-  let priceRows = [];        // { name, amount } — five of them
+  let priceRows = [];        // { name, amount } — PRICE_BOXES of them
 
   // Every name read the same way. "PRICE" is what the column is, not part of
   // what a price is called, so a name that carries it has it trimmed and the
@@ -1782,15 +1786,15 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     }));
   };
 
-  // What this product is already priced at, laid into the five rows: its own
-  // two columns first, then whatever the price list holds for it, and empty
-  // rows after. Five is a working number, not a limit — a sixth price is set
-  // by saving and opening it again.
-  // The five rows are drawn before anything is fetched. They only need the seven
+  // What this product is already priced at, laid into the rows: its own two
+  // columns first, then whatever the price list holds for it, and empty rows
+  // after. Seven is a working number, not a limit — an eighth price is set by
+  // saving and opening it again.
+  //
+  // The rows are drawn before anything is fetched. They only need the seven
   // names the shop always has, and waiting on two round trips to show a row of
   // empty boxes is how pressing New product came to feel like it had hung.
-  priceRows = [{ name: '', amount: '' }, { name: '', amount: '' }, { name: '', amount: '' },
-               { name: '', amount: '' }, { name: '', amount: '' }];
+  priceRows = Array.from({ length: PRICE_BOXES }, () => ({ name: '', amount: '' }));
   setTimeout(drawPrices, 0);
 
   (async () => {
@@ -1822,8 +1826,8 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     for (const r of typed) {
       if (!merged.some((m) => m.name === r.name)) merged.push(r);
     }
-    priceRows = merged.slice(0, 5);
-    while (priceRows.length < 5) priceRows.push({ name: '', amount: '' });
+    priceRows = merged.slice(0, PRICE_BOXES);
+    while (priceRows.length < PRICE_BOXES) priceRows.push({ name: '', amount: '' });
     drawPrices();
   })();
 
