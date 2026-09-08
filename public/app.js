@@ -30,6 +30,11 @@ const localDay = (offsetDays = 0) =>
 const peso = (v) => '₱' + Number(v || 0).toLocaleString('en-PH',
   { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const count = (v) => Number(v || 0).toLocaleString('en-PH');
+// Every price name read the same way, wherever it is shown. "PRICE" is what the
+// column is, not part of what a price is called, so a name carrying it has it
+// trimmed and the word is added back for all of them alike — STOCKIST price
+// beside RD price, rather than STOCKIST PRICE beside LEADERS price.
+const priceLabel = (code) => `${String(code).replace(/\s*price$/i, '')} price`;
 
 // The shop runs on Manila time wherever the browser happens to be, so receipt
 // numbers, cut-offs and due dates all agree.
@@ -882,9 +887,20 @@ SCREENS.products = async (page) => {
     const box = $('#brand_list', page);
     if (!box) return;
     const term2 = ($('#brand_find', page)?.value || '').trim();
-    const all = await GET(`/api/products?q=${encodeURIComponent(term2)}`).catch(() => []);
+    const all = await GET(`/api/products?prices=1&q=${encodeURIComponent(term2)}`)
+      .catch(() => []);
     const rows = all.filter((r) => !pcat
       || (r.category || '').trim().toLowerCase() === pcat);
+
+    // A column for every price name something is actually filed under, in the
+    // order the shop says them, with anything it added of its own after. A name
+    // nothing is priced at is not a column — an empty column down a thousand
+    // products is not information, it is width.
+    const said = ['RD', 'PD', 'CD', 'DD', 'RS'];
+    const used = [...new Set(rows.flatMap((p) => Object.keys(p.prices || {})))];
+    const codes = [...said.filter((c) => used.includes(c)),
+                   ...used.filter((c) => !said.includes(c)).sort()];
+
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
@@ -894,6 +910,13 @@ SCREENS.products = async (page) => {
       { head: 'Category', cell: (p) => prodCatTag(p.category) },
       { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
       { head: 'SRP', n: true, cell: (p) => peso(p.srp) },
+      // A product not priced under a name is a dash rather than ₱0.00: nothing
+      // set and nothing charged are not the same fact.
+      ...codes.map((c) => ({
+        head: priceLabel(c), n: true,
+        cell: (p) => (p.prices?.[c] == null
+          ? '<span class="dim">—</span>' : peso(p.prices[c])),
+      })),
       { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
         `<button class="rowx" data-rmprod="${esc(p.sku)}"
@@ -1655,12 +1678,6 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   const PRICE_BOXES = 7;
   let priceNames = [];       // the base codes on the price list
   let priceRows = [];        // { name, amount } — PRICE_BOXES of them
-
-  // Every name read the same way. "PRICE" is what the column is, not part of
-  // what a price is called, so a name that carries it has it trimmed and the
-  // word is added back for all of them alike — STOCKIST price beside RD price,
-  // rather than STOCKIST PRICE beside LEADERS price.
-  const priceLabel = (code) => `${String(code).replace(/\s*price$/i, '')} price`;
 
   const priceOptions = (chosen) => {
     const opt = (value, label) => `<option value="${value}"${
