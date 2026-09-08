@@ -1040,14 +1040,15 @@ label.inline input { width: auto; }
 .pricerow { display: grid; grid-template-columns: 1fr 36%; gap: 8px;
   align-items: center; }
 .pricerow select, .pricerow input { margin: 0; }
-/* A name that is settled, in the place a dropdown would be. Reads as a label
-   rather than as a control somebody forgot to enable. */
-.pricerow .fixedname { font-size: .87rem; font-weight: 600; color: var(--ink);
-  padding: 9px 2px; }
-#f_prices { display: grid; gap: 8px 16px; }
-@media (min-width: 620px) {
-  #f_prices { grid-template-columns: 1fr 1fr; }
-}
+/* Cost price is settled, so it is a label over its box rather than a dropdown
+   beside it — the same shape as every other named field on the form. */
+.pricerow.costrow { display: block; }
+.pricerow.costrow label { display: block; margin-bottom: 3px; }
+.pricerow.costrow input { width: 100%; }
+/* Single file: seven pairs down one column, in the order they are typed in,
+   because that order is what decides which price is Tier 1. Two across put
+   Tier 2 to the right of Tier 1 and read as though the boxes were unrelated. */
+#f_prices { display: grid; gap: 10px; }
 .rowx {
   border: 0; background: none; cursor: pointer; padding: 2px 6px;
   font-size: 1rem; line-height: 1; color: var(--muted); border-radius: 6px;
