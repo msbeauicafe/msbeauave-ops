@@ -104,6 +104,22 @@ test('the people screens answer them', async () => {
   }
 });
 
+// The fifth screen, and the one that was missed: the route had been opened up
+// and the five functions behind it had not, so My record refused the person it
+// belongs to. A role goes in require_role, not only in a route list.
+test('and so does their own record — they work here too', async () => {
+  const hr = await signIn('hr');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  await db.query(
+    `insert into employees (name, position, branch_id, user_id)
+     values ($1, 'HR Officer', $2, (select id from app_users where username = $3))`,
+    [`Person ${hr.username}`, branch?.id ?? null, hr.username]);
+
+  const r = await GET(hr, '/api/my');
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.profile.name, `Person ${hr.username}`, 'their own row, not the first one');
+});
+
 // ---------------------------------------------------------------------------
 // The job, in full — the reason for taking them off admin is that this role is
 // enough on its own. A role that has to be worked around is not a smaller one.
