@@ -296,7 +296,8 @@ function table(rows, columns, empty) {
   if (!rows.length) return `<div class="none">${esc(empty)}</div>`;
   return `<div class="scroll"><table>
     <thead><tr>${columns.map((c) =>
-      `<th${c.n ? ' class="n"' : ''}>${esc(c.head)}</th>`).join('')}</tr></thead>
+      `<th${c.n ? ' class="n"' : ''}>${esc(c.head)}${
+        c.sub ? `<div class="thsub">${esc(c.sub)}</div>` : ''}</th>`).join('')}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${columns.map((c) =>
       `<td${c.n ? ' class="n"' : ''}>${c.cell(r)}</td>`).join('')}</tr>`).join('')}</tbody>
   </table></div>`;
@@ -877,7 +878,6 @@ SCREENS.products = async (page) => {
       </div>
       <div class="dim">The brand, the category, how many there are, and what it
         sells at against what it cost us.</div>
-      <div class="pricecols mt" id="brand_cols"></div>
       <div class="panel mt" id="brand_list"></div>
     </div>`;
 
@@ -885,46 +885,14 @@ SCREENS.products = async (page) => {
   // pools and the prices, one row per product.
   let pcat = '';
 
-  // Which price names are shown as columns.
-  //
-  // Every name at once was the first try and it was unreadable: ten of them,
-  // most of a row empty, and the product's own name squeezed into three lines
-  // to make room. So they are chips instead — off to begin with, tapped on when
-  // somebody wants to read that price down the list, and remembered on this
-  // machine so it does not have to be tapped again tomorrow.
-  const COLS_KEY = 'productPriceColumns';
-  const readCols = () => {
-    try { return new Set(JSON.parse(localStorage.getItem(COLS_KEY) || '[]')); }
-    catch { return new Set(); }
-  };
-  const writeCols = (set) => {
-    try { localStorage.setItem(COLS_KEY, JSON.stringify([...set])); }
-    catch { /* a browser that will not remember is not a reason to fail */ }
-  };
-  let shownCols = readCols();
-
-  // The order the shop says them, with anything it added of its own after.
+  // The price names, in the order the shop says them, with anything it added of
+  // its own after.
   const SAID = ['RD', 'PD', 'CD', 'DD', 'RS'];
   const inOrder = (codes) => [...SAID.filter((c) => codes.includes(c)),
                               ...codes.filter((c) => !SAID.includes(c)).sort()];
-
-  const drawCols = (codes) => {
-    const bar = $('#brand_cols', page);
-    if (!bar) return;
-    if (!codes.length) { bar.innerHTML = ''; return; }
-    bar.innerHTML = '<span class="dim">Show a price:</span> '
-      + codes.map((c) => `<button class="btn ${shownCols.has(c) ? '' : 'line '}sm"
-          data-pcol="${esc(c)}">${esc(priceLabel(c))}</button>`).join('')
-      + (shownCols.size ? ' <button class="btn quiet sm" data-pcol="">Clear</button>' : '');
-    $$('[data-pcol]', bar).forEach((b) => b.addEventListener('click', () => {
-      const c = b.dataset.pcol;
-      if (!c) shownCols.clear();
-      else if (shownCols.has(c)) shownCols.delete(c);
-      else shownCols.add(c);
-      writeCols(shownCols);
-      drawBrands().catch(whoops);
-    }));
-  };
+  // Eight is the shop's own count of what it sells at. A ninth name gets no
+  // column rather than a list that grows sideways without anybody deciding to.
+  const TIERS = 8;
 
   const drawBrands = async () => {
     const box = $('#brand_list', page);
@@ -935,11 +903,11 @@ SCREENS.products = async (page) => {
     const rows = all.filter((r) => !pcat
       || (r.category || '').trim().toLowerCase() === pcat);
 
-    // Offered: every name something is actually filed under. A name nothing is
-    // priced at is not worth a chip either.
-    const offered = inOrder([...new Set(rows.flatMap((p) => Object.keys(p.prices || {})))]);
-    drawCols(offered);
-    const codes = offered.filter((c) => shownCols.has(c));
+    // A tier is a position, and the name under it says which price is filed
+    // there. Only names something is actually priced at get one — an empty
+    // column down a thousand products is not information, it is width.
+    const codes = inOrder([...new Set(rows.flatMap((p) => Object.keys(p.prices || {})))])
+      .slice(0, TIERS);
 
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
@@ -952,15 +920,14 @@ SCREENS.products = async (page) => {
       // pool, so 200 units received read as 140 and looked like sixty had gone
       // missing. The shop counts what it has, not how the system filed it.
       { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
-      { head: 'SRP', n: true, cell: (p) => peso(p.srp) },
+      { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
       // A product not priced under a name is a dash rather than ₱0.00: nothing
       // set and nothing charged are not the same fact.
-      ...codes.map((c) => ({
-        head: priceLabel(c), n: true,
+      ...codes.map((c, i) => ({
+        head: `Tier ${i + 1}`, sub: priceLabel(c), n: true,
         cell: (p) => (p.prices?.[c] == null
           ? '<span class="dim">—</span>' : peso(p.prices[c])),
       })),
-      { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
         `<button class="rowx" data-rmprod="${esc(p.sku)}"
           title="Open ${esc(p.name)} to remove">✕</button>` }] : []),
