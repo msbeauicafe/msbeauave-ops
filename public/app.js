@@ -877,12 +877,55 @@ SCREENS.products = async (page) => {
       </div>
       <div class="dim">The brand, the category, how many are free to sell
         wholesale, and what it sells at against what it cost us.</div>
+      <div class="pricecols mt" id="brand_cols"></div>
       <div class="panel mt" id="brand_list"></div>
     </div>`;
 
   // The brand tab carries the detail the product list used to: brand, the stock
   // pools and the prices, one row per product.
   let pcat = '';
+
+  // Which price names are shown as columns.
+  //
+  // Every name at once was the first try and it was unreadable: ten of them,
+  // most of a row empty, and the product's own name squeezed into three lines
+  // to make room. So they are chips instead — off to begin with, tapped on when
+  // somebody wants to read that price down the list, and remembered on this
+  // machine so it does not have to be tapped again tomorrow.
+  const COLS_KEY = 'productPriceColumns';
+  const readCols = () => {
+    try { return new Set(JSON.parse(localStorage.getItem(COLS_KEY) || '[]')); }
+    catch { return new Set(); }
+  };
+  const writeCols = (set) => {
+    try { localStorage.setItem(COLS_KEY, JSON.stringify([...set])); }
+    catch { /* a browser that will not remember is not a reason to fail */ }
+  };
+  let shownCols = readCols();
+
+  // The order the shop says them, with anything it added of its own after.
+  const SAID = ['RD', 'PD', 'CD', 'DD', 'RS'];
+  const inOrder = (codes) => [...SAID.filter((c) => codes.includes(c)),
+                              ...codes.filter((c) => !SAID.includes(c)).sort()];
+
+  const drawCols = (codes) => {
+    const bar = $('#brand_cols', page);
+    if (!bar) return;
+    if (!codes.length) { bar.innerHTML = ''; return; }
+    bar.innerHTML = '<span class="dim">Show a price:</span> '
+      + codes.map((c) => `<button class="btn ${shownCols.has(c) ? '' : 'line '}sm"
+          data-pcol="${esc(c)}">${esc(priceLabel(c))}</button>`).join('')
+      + (shownCols.size ? ' <button class="btn quiet sm" data-pcol="">Clear</button>' : '');
+    $$('[data-pcol]', bar).forEach((b) => b.addEventListener('click', () => {
+      const c = b.dataset.pcol;
+      if (!c) shownCols.clear();
+      else if (shownCols.has(c)) shownCols.delete(c);
+      else shownCols.add(c);
+      writeCols(shownCols);
+      drawBrands().catch(whoops);
+    }));
+  };
+
   const drawBrands = async () => {
     const box = $('#brand_list', page);
     if (!box) return;
@@ -892,14 +935,11 @@ SCREENS.products = async (page) => {
     const rows = all.filter((r) => !pcat
       || (r.category || '').trim().toLowerCase() === pcat);
 
-    // A column for every price name something is actually filed under, in the
-    // order the shop says them, with anything it added of its own after. A name
-    // nothing is priced at is not a column — an empty column down a thousand
-    // products is not information, it is width.
-    const said = ['RD', 'PD', 'CD', 'DD', 'RS'];
-    const used = [...new Set(rows.flatMap((p) => Object.keys(p.prices || {})))];
-    const codes = [...said.filter((c) => used.includes(c)),
-                   ...used.filter((c) => !said.includes(c)).sort()];
+    // Offered: every name something is actually filed under. A name nothing is
+    // priced at is not worth a chip either.
+    const offered = inOrder([...new Set(rows.flatMap((p) => Object.keys(p.prices || {})))]);
+    drawCols(offered);
+    const codes = offered.filter((c) => shownCols.has(c));
 
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
