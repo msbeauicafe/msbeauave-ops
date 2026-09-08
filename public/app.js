@@ -894,6 +894,28 @@ SCREENS.products = async (page) => {
   // column rather than a list that grows sideways without anybody deciding to.
   const TIERS = 8;
 
+  // The tiers are the shop's price names, not the names the rows on screen
+  // happen to carry. Read off the visible rows they moved: searching one
+  // product left it with the six names that product is priced at and no Tier 7
+  // or 8, which is not a tier — it is whatever is in front of you. Asked for
+  // once and kept, because it is the same answer every draw.
+  let tiers = null;
+  const tierCodes = async (rows) => {
+    if (tiers) return tiers;
+    const codes = await GET('/api/price-codes').catch(() => []);
+    // Base names only, in the order the price list itself keeps them: an
+    // adjustment of RD is a discount off a tier, not a tier of its own, and the
+    // shop's own order is a better answer than one sorted alphabetically here.
+    const named = codes.filter((c) => !c.base_code).map((c) => c.code);
+    // A sign-in that may not read the price list still gets a list — from what
+    // is in front of it, which is the old behaviour and better than nothing.
+    tiers = (named.length
+      ? named
+      : inOrder([...new Set(rows.flatMap((p) => Object.keys(p.prices || {})))]))
+      .slice(0, TIERS);
+    return tiers;
+  };
+
   const drawBrands = async () => {
     const box = $('#brand_list', page);
     if (!box) return;
@@ -904,10 +926,8 @@ SCREENS.products = async (page) => {
       || (r.category || '').trim().toLowerCase() === pcat);
 
     // A tier is a position, and the name under it says which price is filed
-    // there. Only names something is actually priced at get one — an empty
-    // column down a thousand products is not information, it is width.
-    const codes = inOrder([...new Set(rows.flatMap((p) => Object.keys(p.prices || {})))])
-      .slice(0, TIERS);
+    // there.
+    const codes = await tierCodes(all);
 
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
