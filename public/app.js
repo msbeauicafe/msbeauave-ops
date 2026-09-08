@@ -875,8 +875,8 @@ SCREENS.products = async (page) => {
         <button class="btn" id="add2">＋ New product</button>
         ${catChips('cat_prod')}
       </div>
-      <div class="dim">The brand, the category, how many are free to sell
-        wholesale, and what it sells at against what it cost us.</div>
+      <div class="dim">The brand, the category, how many there are, and what it
+        sells at against what it cost us.</div>
       <div class="pricecols mt" id="brand_cols"></div>
       <div class="panel mt" id="brand_list"></div>
     </div>`;
@@ -948,7 +948,10 @@ SCREENS.products = async (page) => {
           esc(p.sku)}"><b>${esc(p.name)}</b></button>` },
       { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
       { head: 'Category', cell: (p) => prodCatTag(p.category) },
-      { head: 'Wholesale', n: true, cell: (p) => count(p.free_b2b) },
+      // What there is. This column said Wholesale and showed the wholesale
+      // pool, so 200 units received read as 140 and looked like sixty had gone
+      // missing. The shop counts what it has, not how the system filed it.
+      { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
       { head: 'SRP', n: true, cell: (p) => peso(p.srp) },
       // A product not priced under a name is a dash rather than ₱0.00: nothing
       // set and nothing charged are not the same fact.
