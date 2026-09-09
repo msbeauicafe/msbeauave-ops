@@ -176,3 +176,74 @@ test('an employee cannot reach a colleague this way', async () => {
 
   assert.equal((await GET(staff, `/api/hr/people/${mine.id}`)).status, 403);
 });
+
+// ---------------------------------------------------------------------------
+// The money behind the person
+// ---------------------------------------------------------------------------
+// Payroll answers "what comes off this cutoff", so it lists only what is still
+// owed. Asked about a person rather than a cutoff, the answer has to include
+// the loan that was paid off in March — otherwise "what has Melmark ever
+// borrowed" is a question with no screen behind it.
+test('their ledgers and every payment come with them', async () => {
+  const boss = await signIn('admin');
+  const p = await person(boss);
+
+  const ca = await POST(boss, '/api/advances',
+    { employee_id: p.id, kind: 'ca', principal: 12000, per_cutoff: 2000 });
+  assert.equal(ca.status, 200, JSON.stringify(ca.data));
+  const loan = await POST(boss, '/api/advances',
+    { employee_id: p.id, kind: 'sss', loan_type: 'salary', principal: 5000 });
+  assert.equal(loan.status, 200, JSON.stringify(loan.data));
+
+  await POST(boss, `/api/advances/${ca.data.id}/take`, { amount: 4000 });
+  await POST(boss, `/api/advances/${loan.data.id}/take`, { amount: 5000 });
+
+  const d = (await GET(boss, `/api/hr/people/${p.id}`)).data;
+  assert.equal(d.ledgers.length, 2, 'both ledgers');
+  assert.equal(d.payments.length, 2, 'and both payments');
+
+  const owing = d.ledgers.find((l) => l.kind === 'ca');
+  assert.equal(Number(owing.principal), 12000);
+  assert.equal(Number(owing.paid), 4000);
+  assert.equal(Number(owing.balance), 8000);
+
+  // The one that is finished with is still on the list, at nothing.
+  const settled = d.ledgers.find((l) => l.kind === 'sss');
+  assert.equal(Number(settled.balance), 0, 'paid off, and still shown');
+  assert.equal(settled.loan_type, 'salary', 'by name, not just as an SSS loan');
+
+  const off = d.payments.find((r) => Number(r.amount) === 4000);
+  assert.equal(off.kind, 'ca');
+  assert.ok(off.created_by, 'who entered it');
+});
+
+test('a person who never borrowed has empty lists, not a missing key', async () => {
+  const boss = await signIn('admin');
+  const p = await person(boss);
+  const d = (await GET(boss, `/api/hr/people/${p.id}`)).data;
+  assert.deepEqual(d.ledgers, []);
+  assert.deepEqual(d.payments, []);
+});
+
+test('HR reads the money too, and nobody outside HR reads any of it', async () => {
+  // advances and advance_payments are tables, so the row policy is what holds
+  // here — the route alone would let the reply come back empty rather than
+  // refused, which reads as "no loans" and is worse than a 403.
+  const boss = await signIn('admin');
+  const officer = await signIn('hr');
+  const p = await person(boss);
+  const ca = await POST(boss, '/api/advances',
+    { employee_id: p.id, kind: 'ca', principal: 3000, per_cutoff: 500 });
+  await POST(boss, `/api/advances/${ca.data.id}/take`, { amount: 500 });
+
+  const hr = await GET(officer, `/api/hr/people/${p.id}`);
+  assert.equal(hr.status, 200, JSON.stringify(hr.data));
+  assert.equal(hr.data.ledgers.length, 1, 'HR sees the ledger');
+  assert.equal(hr.data.payments.length, 1, 'and what came off it');
+
+  for (const role of ['office', 'observer', 'supervisor', 'employee']) {
+    const nosey = await signIn(role);
+    assert.equal((await GET(nosey, `/api/hr/people/${p.id}`)).status, 403,
+      `${role} reached somebody's ledger`);
+  }
+});

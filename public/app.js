@@ -10406,7 +10406,15 @@ async function openProfile(id) {
   } catch (e) { closeDialog(); return whoops(e); }
   if (!$('#dialog')) return;             // they closed it while it loaded
 
+  d.ledgers ??= [];
+  d.payments ??= [];
+
   const p = d.person;
+  // Every ledger they have ever had, added up: what was lent, what has come
+  // back, and the difference. Settled ones are in the total because "borrowed
+  // in all" means all of it.
+  const sum = (f) => (d.ledgers || []).reduce((t, l) => t + Number(l[f] || 0), 0);
+  const owes = { borrowed: sum('principal'), paid: sum('paid'), balance: sum('balance') };
   const pay = p.salary == null ? null : `${peso(p.salary)} ${
     { monthly: 'a month', semi_monthly: 'twice a month', daily: 'a day' }[p.pay_period]
       ?? 'a month'}`;
@@ -10451,6 +10459,44 @@ async function openProfile(id) {
         { head: 'Note', cell: (s) => (s.note
             ? `<span class="dim">${esc(s.note)}</span>` : '') },
       ], 'No shifts in the last thirty days.')}</div>
+
+    <div class="panel"><h3>💰 Money — what they owe, and what they have paid</h3>
+      ${d.ledgers.length ? `
+        <div class="tiles">
+          <div class="tile"><div class="big">${peso(owes.borrowed)}</div>
+            <div class="label">Borrowed in all</div></div>
+          <div class="tile"><div class="big">${peso(owes.paid)}</div>
+            <div class="label">Paid back</div></div>
+          <div class="tile ${owes.balance > 0 ? 'warn' : 'good'}">
+            <div class="big">${peso(owes.balance)}</div>
+            <div class="label">${owes.balance > 0 ? 'Still owed' : 'Nothing owed'}</div></div>
+        </div>
+        ${table(d.ledgers, [
+          { head: 'Ledger', cell: (l) => tag(loanName(l), l.kind === 'ca' ? 'amber' : 'pink')
+              + (l.note ? `<div class="dim">${esc(l.note)}</div>` : '') },
+          { head: 'Opened', cell: (l) => onDay(l.started_on) },
+          { head: 'Borrowed', n: true, cell: (l) => peso(l.principal) },
+          { head: 'Paid', n: true, cell: (l) => peso(l.paid) },
+          { head: 'Balance', n: true, cell: (l) => (Number(l.balance) > 0
+              ? `<b>${peso(l.balance)}</b>` : tag('settled', 'green')) },
+          { head: 'A cutoff', n: true, cell: (l) => (Number(l.per_cutoff) > 0
+              ? peso(l.per_cutoff) : '<span class="dim">—</span>') },
+          { head: 'Last paid', cell: (l) => (l.last_paid
+              ? onDay(l.last_paid) : '<span class="dim">never</span>') },
+        ], '')}
+        <h3 class="mt">What has come off</h3>
+        ${table(d.payments, [
+          { head: 'Day', cell: (r) => onDay(r.paid_on) },
+          { head: 'Ledger', cell: (r) => tag(loanName(r), r.kind === 'ca' ? 'amber' : 'pink') },
+          { head: 'Amount', n: true, cell: (r) => peso(r.amount) },
+          { head: 'Cutoff', cell: (r) => (r.starts_on
+              ? `<span class="dim">${onDay(r.starts_on)} – ${onDay(r.ends_on)}</span>`
+              : '<span class="dim">not on a cutoff</span>') },
+          { head: 'Entered by', cell: (r) => `<span class="dim">${esc(r.created_by || '')}</span>` },
+        ], 'Nothing has come off yet.')}
+        <div class="dim mt">Money comes off a ledger on a cutoff, in
+          <b>Payroll → Cash advance</b>, and lands here.</div>`
+        : '<div class="none">Nothing borrowed — no cash advance and no loan on record.</div>'}</div>
 
     <div class="split">
       <div class="panel"><h3>🌴 Leave</h3>
