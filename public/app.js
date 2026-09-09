@@ -5346,8 +5346,12 @@ SCREENS.pricelists = async (page) => {
   // code that is not in use. Counting its eight hundred blanks as "not set"
   // buries the handful that somebody actually has to go and fill in — VIP,
   // STOCKIST and EXEC alone would have contributed some 2,700 of them.
+  //
+  // Eight is Product list's own ceiling on a ladder, so it is this screen's
+  // too now: the ninth and tenth codes in use still take a price through the
+  // product's own form, just not a column here.
   const inUse = () => data.codes.filter((c) =>
-    data.products.some((p) => p.prices[c] != null));
+    data.products.some((p) => p.prices[c] != null)).slice(0, 8);
   const unused = () => data.codes.filter((c) =>
     !data.products.some((p) => p.prices[c] != null));
 
