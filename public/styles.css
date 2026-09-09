@@ -249,12 +249,16 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
 /* A second line under a column heading: what the heading is, in small. */
 .thsub { font-size: .68rem; font-weight: 500; letter-spacing: .02em;
   color: var(--muted); text-transform: none;
-  margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+  /* A rule you can actually see. The hairline used everywhere else is a pale
+     pink meant for separating rows; between Tier 4 and the name of the price
+     filed there it read as a smudge. */
+  margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--rose-dust); }
 /* What a figure is, said over the figure. Tier 4 means nothing on its own and
-   is not the same price for two products, so the name travels in the cell —
-   read first, then the money it belongs to, ruled between. */
+   is not the same price for two products, so the name travels in the cell.
+   The column reads Tier 4, the heading's own rule, the name, the money — one
+   line down the whole table, not one under every name. */
 .cellsub { font-size: .66rem; color: var(--muted); font-weight: 500;
-  margin-bottom: 3px; padding-bottom: 3px; border-bottom: 1px solid var(--line); }
+  margin-bottom: 1px; }
 .panel > h2, .panel > h3 { margin-bottom: 12px; }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
 /* A grid track is min-content wide by default, so anything inside that is
