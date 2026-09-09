@@ -5338,9 +5338,9 @@ SCREENS.pricelists = async (page) => {
     <div class="tools">
       <input type="search" id="pl_find" placeholder="Search code, name or brand…" autofocus>
       <select id="pl_brand"><option value="">Every brand</option></select>
+      ${catChips('cat_pl')}
       <label class="dotkey" style="gap:6px">
         <input type="checkbox" id="pl_gaps"> only products missing a price</label>
-      ${catChips('cat_pl')}
     </div>
     <div id="pl_table" class="scrollx"></div>`;
 
