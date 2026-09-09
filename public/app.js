@@ -876,6 +876,7 @@ SCREENS.products = async (page) => {
         <input type="search" id="brand_find" placeholder="Search by code, name or brand…">
         <button class="btn" id="add2">＋ New product</button>
         ${catChips('cat_prod')}
+        <button class="btn line sm" id="qty_filter">Quantity</button>
       </div>
       <div class="dim">The brand, the category, how many there are, and what it
         sells at against what it cost us.</div>
@@ -888,6 +889,9 @@ SCREENS.products = async (page) => {
   // A brand to pick from a dropdown, not a name to get right by typing —
   // typing a search is hard for hands that would rather tap.
   let brandFilter = '';
+  // A tap to bring what's actually in stock to the top, rather than a column
+  // somebody has to read down themselves past a page of zero-stock freebies.
+  let qtySort = false;
 
   // Eight is the shop's own count of what it sells at. A ninth name gets no
   // column rather than a list that grows sideways without anybody deciding to.
@@ -918,6 +922,7 @@ SCREENS.products = async (page) => {
     const rows = all.filter((r) => (!pcat
       || (r.category || '').trim().toLowerCase() === pcat)
       && (!brandFilter || (r.brand || '') === brandFilter));
+    if (qtySort) rows.sort((a, b) => Number(b.total_on_hand) - Number(a.total_on_hand));
 
     // Worked out once per draw rather than once per cell.
     const rungs = new Map(rows.map((p) => [p.sku, ladder(p)]));
@@ -982,6 +987,11 @@ SCREENS.products = async (page) => {
     brandFilter = e.target.value; drawBrands().catch(whoops);
   });
   wireCatChips(page, 'cat_prod', (c) => { pcat = c; drawBrands().catch(whoops); });
+  $('#qty_filter', page).addEventListener('click', (e) => {
+    qtySort = !qtySort;
+    e.target.className = qtySort ? 'btn sm' : 'btn line sm';
+    drawBrands().catch(whoops);
+  });
   $('#add2', page)?.addEventListener('click', () => editProduct(null,
     () => { load().catch(whoops); drawBrands().catch(whoops); }));
 
