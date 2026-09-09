@@ -108,28 +108,23 @@ test('a cashier cannot read the price list', async () => {
     `a cashier got ${r.status} rather than being turned away`);
 });
 
-test('a price that is not set reads as missing, not as nothing owed', () => {
+test('a product closes its own prices up leftward, the way Product list does', () => {
   const at = app.indexOf('SCREENS.pricelists = async');
   assert.ok(at > 0, 'there is a Pricelists screen');
   const screen = app.slice(at, app.indexOf('\n};', at));
-  // Now that the cell is a box, the dash is its placeholder and the colour
-  // comes from the stylesheet — but the point is unchanged: a price nobody
-  // has set must not read as a zero.
-  assert.match(screen, /p\.prices\[c\] == null \? 'unset' : ''/,
-    'a cell with no price behind it is marked as such');
-  const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
-  assert.match(css, /\.cellbox\.unset::placeholder\s*\{[^}]*var\(--danger\)/,
-    'and its dash is in the danger colour, never a blank that reads as a zero');
+  // A code a product has nothing under does not open a blank box to type one
+  // into on this screen — that happens on the product's own form instead. So
+  // the columns close up leftward per product, same as Product list's ladder.
+  assert.match(screen, /const rung = \(codes, p\) => codes\.filter/,
+    "each product's set prices close up leftward into Tier 1, 2, 3");
   assert.match(screen, /prices not set|price\$\{/,
-    'the screen counts what is missing, because that is the thing to act on');
+    'the screen still counts what is missing, because that is the thing to act on');
   // Typed into directly. This screen began read-only and the owner overrode
   // that: the office keeps prices in a spreadsheet precisely because a
   // spreadsheet lets you fix a column without opening eight hundred cards.
-  const cells = screen.slice(screen.indexOf('...codes.map('),
-                             screen.indexOf("{ head: 'Retail'"));
-  assert.match(cells, /class="cellbox money/, 'every price is typed into');
-  assert.match(cells, /placeholder="—"/,
-    'and an unset one still shows a dash rather than an empty box');
+  const cells = screen.slice(screen.indexOf('Array.from({ length: deepest }'),
+                             screen.indexOf("{ head: 'SRP'"));
+  assert.match(cells, /class="cellbox money"/, 'a set price is still typed into');
   assert.match(screen, /class="cellbox code"/, 'so is the product code');
   assert.match(screen, /settle\(box, plainOf\(before\)\)/,
     'a refused save puts back what was there — a number on screen that is not '

@@ -1289,7 +1289,6 @@ input.n { text-align: right; }
   outline: none; border-color: var(--rose-deep); background: #fff;
   color: var(--ink);
 }
-.cellbox.unset::placeholder { color: var(--danger); opacity: 1; }
 .cellbox.saving { opacity: .45; pointer-events: none; }
 
 /* A table wider than the page. Nine price codes across is more than a laptop

@@ -5346,14 +5346,18 @@ SCREENS.pricelists = async (page) => {
   // code that is not in use. Counting its eight hundred blanks as "not set"
   // buries the handful that somebody actually has to go and fill in — VIP,
   // STOCKIST and EXEC alone would have contributed some 2,700 of them.
-  //
-  // Eight is Product list's own ceiling on a ladder, so it is this screen's
-  // too now: the ninth and tenth codes in use still take a price through the
-  // product's own form, just not a column here.
   const inUse = () => data.codes.filter((c) =>
-    data.products.some((p) => p.prices[c] != null)).slice(0, 8);
+    data.products.some((p) => p.prices[c] != null));
   const unused = () => data.codes.filter((c) =>
     !data.products.some((p) => p.prices[c] != null));
+
+  // Eight is Product list's own ceiling on a ladder, and this screen's ladder
+  // now too: each product's own set prices close up leftward into Tier 1, 2,
+  // 3, the same way, so a product sold at three codes shows three boxes
+  // rather than eight with five of them dashes. A code with nothing typed
+  // under it yet takes its first price through the product's own form; this
+  // screen no longer holds open a blank box for one that was never set.
+  const rung = (codes, p) => codes.filter((c) => p.prices[c] != null).slice(0, 8);
 
   const draw = () => {
     if (!data) return;
@@ -5367,6 +5371,11 @@ SCREENS.pricelists = async (page) => {
         || p.name.toLowerCase().includes(t)
         || (p.brand || '').toLowerCase().includes(t);
     });
+
+    // As many tiers as the deepest product on screen needs, and no more.
+    const rungs = new Map(shown.map((p) => [p.sku, rung(codes, p)]));
+    const deepest = Math.min(8,
+      [...rungs.values()].reduce((most, r) => Math.max(most, r.length), 0));
 
     // A missing price is the thing worth spotting, so it is a dash in the
     // danger colour rather than an empty cell that reads as a zero.
@@ -5385,15 +5394,20 @@ SCREENS.pricelists = async (page) => {
       { head: 'Cost price', n: true, cell: (p) => Number(p.unit_cost)
           ? `<span class="dim">${peso(p.unit_cost)}</span>`
           : '<span class="over">—</span>' },
-      // Tier N, the same way Product list numbers its own columns — the code
-      // itself rides along as the small label over the figure, so the column
-      // still says which price it is even though the heading no longer does.
-      ...codes.map((c, i) => ({
+      // Tier N, the same way Product list numbers its own columns: each
+      // product's own set prices close up leftward, and the code itself rides
+      // along as the small label over the figure so the column still says
+      // which price it is, even though the heading no longer does.
+      ...Array.from({ length: deepest }, (_, i) => ({
         head: `Tier ${i + 1}`, n: true,
-        cell: (p) => `<div class="cellsub">${esc(priceLabel(c))}</div>
-          <input class="cellbox money ${p.prices[c] == null ? 'unset' : ''}"
-          inputmode="decimal" data-sku="${esc(p.sku)}" data-code="${esc(c)}"
-          value="${plain(p.prices[c])}" placeholder="—">`,
+        cell: (p) => {
+          const c = rungs.get(p.sku)?.[i];
+          if (!c) return '<span class="dim">—</span>';
+          return `<div class="cellsub">${esc(priceLabel(c))}</div>
+            <input class="cellbox money" inputmode="decimal"
+            data-sku="${esc(p.sku)}" data-code="${esc(c)}"
+            value="${plain(p.prices[c])}">`;
+        },
       })),
       // SRP rather than the old retail figure: SRP is what the product form
       // sets, and a column reading a field nothing writes reads as a missing
@@ -5455,7 +5469,6 @@ SCREENS.pricelists = async (page) => {
         try {
           await POST(`/api/products/${encodeURIComponent(sku)}/price`, { code, price: asked });
           if (row) row.prices[code] = asked;
-          box.classList.remove('unset');
           settle(box, plainOf(asked));
           countUp();
         } catch (e) { whoops(e); settle(box, plainOf(before)); }
