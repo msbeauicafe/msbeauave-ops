@@ -872,6 +872,7 @@ SCREENS.products = async (page) => {
 
     <div id="pt_brand" hidden>
       <div class="tools">
+        <select id="brand_filter"><option value="">Every brand</option></select>
         <input type="search" id="brand_find" placeholder="Search by code, name or brand…">
         <button class="btn" id="add2">＋ New product</button>
         ${catChips('cat_prod')}
@@ -884,6 +885,9 @@ SCREENS.products = async (page) => {
   // The brand tab carries the detail the product list used to: brand, the stock
   // pools and the prices, one row per product.
   let pcat = '';
+  // A brand to pick from a dropdown, not a name to get right by typing —
+  // typing a search is hard for hands that would rather tap.
+  let brandFilter = '';
 
   // Eight is the shop's own count of what it sells at. A ninth name gets no
   // column rather than a list that grows sideways without anybody deciding to.
@@ -911,8 +915,9 @@ SCREENS.products = async (page) => {
     const term2 = ($('#brand_find', page)?.value || '').trim();
     const all = await GET(`/api/products?prices=1&q=${encodeURIComponent(term2)}`)
       .catch(() => []);
-    const rows = all.filter((r) => !pcat
-      || (r.category || '').trim().toLowerCase() === pcat);
+    const rows = all.filter((r) => (!pcat
+      || (r.category || '').trim().toLowerCase() === pcat)
+      && (!brandFilter || (r.brand || '') === brandFilter));
 
     // Worked out once per draw rather than once per cell.
     const rungs = new Map(rows.map((p) => [p.sku, ladder(p)]));
@@ -973,6 +978,9 @@ SCREENS.products = async (page) => {
     if (b.dataset.pt === 'brand') drawBrands().catch(whoops);
   }));
   $('#brand_find', page).addEventListener('input', () => drawBrands().catch(whoops));
+  $('#brand_filter', page).addEventListener('change', (e) => {
+    brandFilter = e.target.value; drawBrands().catch(whoops);
+  });
   wireCatChips(page, 'cat_prod', (c) => { pcat = c; drawBrands().catch(whoops); });
   $('#add2', page)?.addEventListener('click', () => editProduct(null,
     () => { load().catch(whoops); drawBrands().catch(whoops); }));
@@ -982,6 +990,13 @@ SCREENS.products = async (page) => {
   $('#add', page).addEventListener('click', () => supplierForm(null, load));
   $('#erase', page)?.addEventListener('click', () => erasePracticeData(load));
   await load();
+  // Every brand in the catalogue, not only the ones on screen after a search
+  // narrows it — the dropdown is how somebody who would rather tap than type
+  // gets to a brand, so it has to hold all of them from the start.
+  const allProducts = await GET('/api/products?prices=1').catch(() => []);
+  const brands = [...new Set(allProducts.map((p) => p.brand).filter(Boolean))].sort();
+  $('#brand_filter', page).innerHTML = '<option value="">Every brand</option>'
+    + brands.map((b) => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
   drawBrands().catch(whoops);
   repeat(load, 15000);
 };
