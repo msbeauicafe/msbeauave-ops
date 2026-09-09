@@ -1621,12 +1621,9 @@ input.n { text-align: right; }
 .payslip .rows th { text-align: left; font-size: 10px; letter-spacing: .04em;
   padding: 5px 0; border-top: 1.5px solid #46536b;
   border-bottom: 1.5px solid #46536b; }
-/* The two number columns are fixed and set hard right in tabular numerals, so
-   the decimal points line up down the page instead of wandering with the
-   length of each amount. */
-.payslip .rows th.c, .payslip .rows td.c { width: 22%; text-align: right;
-  padding-right: 14px; color: var(--dim); white-space: nowrap; }
-.payslip .rows th.n, .payslip .rows td.n { width: 26%; text-align: right;
+.payslip .rows th.c, .payslip .rows td.c { width: 22%; text-align: center;
+  color: var(--dim); white-space: nowrap; }
+.payslip .rows th.n, .payslip .rows td.n { width: 26%; text-align: center;
   white-space: nowrap; }
 .payslip .rows td.n, .payslip .rows td.c, .payslip .net td.n {
   font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
