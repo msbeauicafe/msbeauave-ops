@@ -1896,8 +1896,14 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       // SRP is the product's own column rather than a row on the price list, so
       // it carries the box it was typed in separately. Without that it was
       // simply put first every time, and moving it to the bottom never stuck.
+      //
+      // A product that has never been given one goes to the end rather than the
+      // front: the selling prices run in the shop's own pecking order, and SRP
+      // landing second pushed DD price — the one that belongs there — down a
+      // box on a form nobody had touched.
       if (Number(p.srp) > 0) {
-        const at = Number.isInteger(p.srp_position) ? p.srp_position - 1 : 0;
+        const at = Number.isInteger(p.srp_position) && p.srp_position > 0
+          ? p.srp_position - 1 : filled.length;
         filled.splice(Math.max(0, Math.min(at, filled.length)), 0,
           { name: 'SRP', amount: Number(p.srp) });
       }
@@ -11029,6 +11035,22 @@ start();
 // ledger and to the line in the same press.
 // ===========================================================================
 const PR_KINDS = { ca: 'Cash advance', pagibig: 'Pag-IBIG loan', sss: 'SSS loan' };
+// The six the shop actually collects. The family — Pag-IBIG's or SSS's — is
+// what a payslip is broken down by and stays the kind; which one it is rides
+// beside it, so two Pag-IBIG loans on one person stop reading identically.
+const PR_LOANS = [
+  { kind: 'pagibig', type: 'salary',     label: 'PAG-IBIG SALARY LOAN' },
+  { kind: 'pagibig', type: 'calamity',   label: 'PAG-IBIG CALAMITY LOAN' },
+  { kind: 'pagibig', type: 'short term', label: 'PAG-IBIG SHORT TERM LOAN' },
+  { kind: 'sss',     type: 'salary',     label: 'SSS SALARY LOAN' },
+  { kind: 'sss',     type: 'emergency',  label: 'SSS EMERGENCY LOAN' },
+  { kind: 'sss',     type: 'calamity',   label: 'SSS CALAMITY LOAN' },
+];
+// What a ledger is called on screen. A loan opened before there were six keeps
+// its family's name rather than being guessed into one of them.
+const loanName = (l) => PR_LOANS.find(
+  (x) => x.kind === l.kind && x.type === l.loan_type)?.label
+  ?? (PR_KINDS[l.kind] || l.kind);
 
 SCREENS.payroll = async (page) => {
   const owner = user.role === 'admin' || user.role === 'hr';
@@ -11284,7 +11306,7 @@ SCREENS.payroll = async (page) => {
           <thead><tr><th>Ledger</th><th class="n">Lent</th><th class="n">Paid</th>
             <th class="n">Balance</th><th class="n">Take off this cutoff</th><th></th></tr></thead>
           <tbody>${owing.map((l) => `<tr>
-            <td>${tag(PR_KINDS[l.kind] || l.kind, l.kind === 'ca' ? 'amber' : 'pink')}
+            <td>${tag(loanName(l), l.kind === 'ca' ? 'amber' : 'pink')}
               <div class="dim">since ${onDay(l.started_on)}</div></td>
             <td class="n">${money(l.principal)}</td>
             <td class="n">${money(l.paid)}</td>
@@ -11535,7 +11557,7 @@ SCREENS.payroll = async (page) => {
         { head: 'Company', cell: (l) => tag(l.company === 'BOA' ? 'BOA' : 'MS Beau',
             l.company === 'BOA' ? 'pink' : 'grey') },
         ...(kinds.length > 1 ? [{ head: 'Kind', cell: (l) =>
-          tag(PR_KINDS[l.kind] || l.kind, 'pink') }] : []),
+          tag(loanName(l), 'pink') }] : []),
         { head: 'Since', cell: (l) => onDay(l.started_on) },
         { head: 'Lent', n: true, cell: (l) => money(l.principal) },
         { head: 'Paid', n: true, cell: (l) => money(l.paid) },
@@ -11656,10 +11678,9 @@ SCREENS.payroll = async (page) => {
           <select id="nl_who">${people.map((p) => `<option value="${p.id}">${
             esc(p.name)}</option>`).join('')}</select></div>
         ${kind === 'ca' ? '<input type="hidden" id="nl_kind" value="ca">' : `
-        <div><label>Kind</label>
+        <div style="flex:2"><label>Which loan</label>
           <select id="nl_kind">
-            <option value="pagibig">Pag-IBIG loan</option>
-            <option value="sss">SSS loan</option>
+            ${PR_LOANS.map((x, n) => `<option value="${n}">${esc(x.label)}</option>`).join('')}
           </select></div>`}
       </div>
       <div class="row">
@@ -11676,9 +11697,14 @@ SCREENS.payroll = async (page) => {
 
     $('#nl_go').addEventListener('click', async () => {
       try {
+        // One dropdown says both halves: the family a payslip totals by, and
+        // which of that family's loans this is.
+        const picked = kind === 'ca'
+          ? { kind: 'ca', type: null } : PR_LOANS[+$('#nl_kind').value];
         await POST('/api/advances', {
           employee_id: +$('#nl_who').value,
-          kind: $('#nl_kind').value,
+          kind: picked.kind,
+          loan_type: picked.type,
           principal: +$('#nl_amt').value,
           per_cutoff: +$('#nl_each').value,
           started_on: $('#nl_on').value,
