@@ -1259,6 +1259,11 @@ label.sr {
 /* A money field in a form reads right-aligned, the way it does on the sheet
    the form is filling in. */
 input.n { text-align: right; }
+/* The box's own right padding sat the figure a few pixels inside its cell,
+   short of where the header above it stops — a price list's whole point is
+   the column reading straight down, and an input box a few pixels off is
+   still off. */
+.cellbox.money { padding-right: 0; }
 /* A quantity or a price in a column that is already narrow. The default
    minimum is set for a price list eight hundred rows deep; a dialog's table
    has six columns to fit and no room to spare. */
