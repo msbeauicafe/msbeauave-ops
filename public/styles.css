@@ -237,10 +237,15 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
 .tile.bad  { border-left: 4px solid var(--danger); }
 .tile.good { border-left: 4px solid var(--success); }
 .panel { padding: 18px; margin-bottom: 16px; }
-/* The product list can be given a column per price name, so it can end up
-   wider than the screen. It scrolls sideways inside its own panel rather than
-   dragging the whole page along with it. */
-#brand_list { overflow-x: auto; }
+/* The product list is a column per tier wide, so it can end up wider than the
+   screen. It scrolls sideways inside its own panel rather than dragging the
+   whole page along with it, and the headings stay put while it does: Tier 4
+   means nothing once the row naming it has scrolled off the top. */
+#brand_list { overflow-x: auto; max-height: calc(100vh - 300px); overflow-y: auto; }
+#brand_list thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--card); background-clip: padding-box;
+}
 /* A second line under a column heading: what the heading is, in small. */
 .thsub { font-size: .68rem; font-weight: 500; letter-spacing: .02em;
   color: var(--muted); text-transform: none;
@@ -264,6 +269,7 @@ table { border-collapse: collapse; width: 100%; font-size: .85rem; font-variant-
 th {
   text-align: left; color: var(--rose-deep); font-weight: 600; padding: 6px 8px;
   border-bottom: 2px solid var(--rose-soft); white-space: nowrap;
+  vertical-align: bottom;
 }
 td { padding: 6px 8px; border-bottom: 1px solid var(--rose-blush); }
 tbody tr:hover td { background: var(--rose-blush); }
