@@ -872,8 +872,8 @@ SCREENS.products = async (page) => {
 
     <div id="pt_brand" hidden>
       <div class="tools">
-        <select id="brand_filter"><option value="">Every brand</option></select>
         <input type="search" id="brand_find" placeholder="Search by code, name or brand…">
+        <select id="brand_filter"><option value="">Every brand</option></select>
         <button class="btn" id="add2">＋ New product</button>
         ${catChips('cat_prod')}
         <button class="btn line sm" id="qty_filter">Quantity</button>
