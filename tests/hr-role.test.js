@@ -95,13 +95,29 @@ test('the role picker offers it, and the badge has a name for it', () => {
   assert.match(app, /hr: 'HR \/ Operations'/, 'and it is not shown as a bare code');
 });
 
+// Every read the five screens make. The branch dropdown is on this list because
+// it was not: the Team screen fetches the branches separately from the table,
+// so the table filled in and the dropdown stayed empty with nothing to say why.
 test('the people screens answer them', async () => {
   const hr = await signIn('hr');
   for (const p of ['/api/team', '/api/hr', '/api/payroll', '/api/advances',
-    '/api/team/hours', '/api/hr/attendance']) {
+    '/api/team/hours', '/api/hr/attendance', '/api/branches']) {
     const r = await GET(hr, p);
     assert.equal(r.status, 200, `${p} answered ${r.status}`);
   }
+});
+
+// Clocking somebody was a cashier's job because the till stands by the door.
+// The person who keeps the hours is at least as entitled to correct them, and
+// the button was on her screen either way.
+test('they can clock somebody in and out', async () => {
+  const hr = await signIn('hr');
+  const made = await POST(hr, '/api/team', { name: unique('Clocked'), position: 'Live Seller' });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+
+  assert.equal((await POST(hr, `/api/team/${made.data.id}/clock`, {})).status, 200);
+  assert.equal((await POST(hr, `/api/team/${made.data.id}/clock`,
+    { direction: 'out' })).status, 200);
 });
 
 // The fifth screen, and the one that was missed: the route had been opened up
