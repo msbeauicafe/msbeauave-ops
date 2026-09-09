@@ -241,10 +241,21 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
    screen. It scrolls sideways inside its own panel rather than dragging the
    whole page along with it, and the headings stay put while it does: Tier 4
    means nothing once the row naming it has scrolled off the top. */
-#brand_list { overflow-x: auto; max-height: calc(100vh - 300px); overflow-y: auto; }
+/* The heading has to stick to the box that actually scrolls. table() already
+   wraps every table in its own .scroll, and a box with overflow set is where a
+   sticky child anchors — so pinning the heading to the panel outside it did
+   nothing but let the whole table, heading and all, slide up inside. The
+   scroller is given the height instead, and the heading sticks to that.
+
+   Both axes on the one box: the list is a column per tier wide as well as long,
+   and two nested scrollers is one scrollbar too many to explain. */
+#brand_list .scroll { max-height: calc(100vh - 270px); overflow: auto; }
 #brand_list thead th {
   position: sticky; top: 0; z-index: 2;
   background: var(--card); background-clip: padding-box;
+  /* A sticky cell keeps no border of its own once it lifts off the rows, so the
+     rule under the heading is drawn as a shadow that travels with it. */
+  box-shadow: inset 0 -2px 0 var(--rose-dust);
 }
 /* A second line under a column heading: what the heading is, in small. */
 .thsub { font-size: .68rem; font-weight: 500; letter-spacing: .02em;
