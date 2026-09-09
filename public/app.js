@@ -901,8 +901,8 @@ SCREENS.products = async (page) => {
   // — and the name under each figure says which price that is, because Tier 3
   // is PD for one product and CD for the next.
   //
-  // The order within a product is the product's own — the box each price was
-  // typed in on the form — and it arrives already in it.
+  // The order across products is the shop's own — the same RD, SUB RD, PD...
+  // order Pricelists reads down as columns — and it arrives already in it.
   const ladder = (p) => (Array.isArray(p.prices) ? p.prices : []).slice(0, TIERS);
 
   const drawBrands = async () => {
