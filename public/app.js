@@ -5329,6 +5329,7 @@ SCREENS.pricelists = async (page) => {
   let brand = '';
   let term = '';
   let gapsOnly = false;
+  let pcat = '';
 
   page.innerHTML = `
     <div class="head"><h2>Pricelists</h2>
@@ -5339,6 +5340,7 @@ SCREENS.pricelists = async (page) => {
       <select id="pl_brand"><option value="">Every brand</option></select>
       <label class="dotkey" style="gap:6px">
         <input type="checkbox" id="pl_gaps"> only products missing a price</label>
+      ${catChips('cat_pl')}
     </div>
     <div id="pl_table" class="scrollx"></div>`;
 
@@ -5375,6 +5377,7 @@ SCREENS.pricelists = async (page) => {
     const t = term.trim().toLowerCase();
     const shown = data.products.filter((p) => {
       if (brand && (p.brand || '') !== brand) return false;
+      if (pcat && (p.category || '').trim().toLowerCase() !== pcat) return false;
       if (gapsOnly && codes.every((c) => p.prices[c] != null)) return false;
       if (!t) return true;
       return p.sku.toLowerCase().includes(t)
@@ -5509,6 +5512,7 @@ SCREENS.pricelists = async (page) => {
 
   $('#pl_find', page).addEventListener('input', (e) => { term = e.target.value; draw(); });
   $('#pl_brand', page).addEventListener('change', (e) => { brand = e.target.value; draw(); });
+  wireCatChips(page, 'cat_pl', (c) => { pcat = c; draw(); });
   $('#pl_gaps', page).addEventListener('change', (e) => { gapsOnly = e.target.checked; draw(); });
 
   data = await GET('/api/pricelist');
