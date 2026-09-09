@@ -11203,7 +11203,20 @@ SCREENS.payroll = async (page) => {
     $('#pr_list', page).innerHTML = table(rows, [
       { head: 'Name', cell: (r) => `<button class="nameopen" data-person="${r.employee_id}"
           ><b>${esc(r.name)}</b></button><div class="dim">${esc(r.position || '')}</div>` },
-      { head: 'Rate/day', n: true, cell: (r) => money(r.daily_rate) },
+      // How somebody is paid, said rather than left to be worked out from a
+      // rate of nothing. A monthly person's rate per day is a reckoning for
+      // overtime and lateness, not what they are paid, so it is dimmed.
+      { head: 'Paid', cell: (r) => (r.pay_basis === 'monthly'
+          ? tag('monthly', 'pink') : tag('daily', 'grey')) },
+      { head: 'Salary/month', n: true, cell: (r) => (r.pay_basis === 'monthly'
+          ? money(r.monthly_rate) : '<span class="dim">—</span>') },
+      { head: 'Rate/day', n: true, cell: (r) => (r.pay_basis === 'monthly'
+          ? `<span class="dim" title="Month ÷ 26, for overtime and lateness only"
+              >${money(r.daily_rate)}</span>`
+          : money(r.daily_rate)) },
+      // The days are still counted for a monthly person — they are worth
+      // knowing, and lateness and overtime still come off — but they do not
+      // move the basic figure.
       { head: 'Days', n: true, cell: (r) => box(r, 'days_present', '0.5') },
       { head: 'Basic', n: true, cell: (r) => money(r.basic) },
       { head: 'NSD hrs', n: true, cell: (r) => box(r, 'nsd_hours', '0.25') },
