@@ -291,6 +291,9 @@ th {
 td { padding: 6px 8px; border-bottom: 1px solid var(--rose-blush); }
 tbody tr:hover td { background: var(--rose-blush); }
 td.n, th.n { text-align: right; }
+/* A column of tags rather than words or figures: neither edge is the right one
+   to hang them off, so they sit in the middle of it. */
+td.mid, th.mid { text-align: center; }
 .none { color: var(--muted); padding: 20px; text-align: center; font-size: .88rem; }
 .none.bad {
   color: var(--danger); background: #f3dddd; border-radius: 8px;
