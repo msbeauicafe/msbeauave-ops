@@ -11210,10 +11210,12 @@ SCREENS.payroll = async (page) => {
           ? tag('monthly', 'pink') : tag('daily', 'grey')) },
       { head: 'Salary/month', n: true, cell: (r) => (r.pay_basis === 'monthly'
           ? money(r.monthly_rate) : '<span class="dim">—</span>') },
+      // Empty for a monthly person. There is a figure behind it — the month
+      // over 26 — but it is a reckoning the payslip uses for overtime and
+      // lateness, not a rate anybody is paid, and a number in a column headed
+      // Rate/day is read as a rate however faintly it is printed.
       { head: 'Rate/day', n: true, cell: (r) => (r.pay_basis === 'monthly'
-          ? `<span class="dim" title="Month ÷ 26, for overtime and lateness only"
-              >${money(r.daily_rate)}</span>`
-          : money(r.daily_rate)) },
+          ? '<span class="dim">—</span>' : money(r.daily_rate)) },
       // The days are still counted for a monthly person — they are worth
       // knowing, and lateness and overtime still come off — but they do not
       // move the basic figure.
