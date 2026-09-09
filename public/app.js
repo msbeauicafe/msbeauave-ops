@@ -933,7 +933,16 @@ SCREENS.products = async (page) => {
       [...rungs.values()].reduce((most, r) => Math.max(most, r.length), 0));
 
 
-    box.innerHTML = table(rows, [
+    // Sorted by quantity is somebody checking stock, not pricing — the price
+    // columns are noise to scroll past to see it, so the Quantity button
+    // narrows the table to the four columns that answer that question.
+    const columns = qtySort ? [
+      { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
+      { head: 'Product', cell: (p) => `<button class="nameopen" data-prod="${
+          esc(p.sku)}"><b>${esc(p.name)}</b></button>` },
+      { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
+      { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
+    ] : [
       { head: '', cell: (p) => thumb(p) },
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
       { head: 'Product', cell: (p) => `<button class="nameopen" data-prod="${
@@ -967,7 +976,9 @@ SCREENS.products = async (page) => {
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
         `<button class="rowx" data-rmprod="${esc(p.sku)}"
           title="Open ${esc(p.name)} to remove">✕</button>` }] : []),
-    ], term2 ? 'No products match that search.' : 'No products yet.');
+    ];
+    box.innerHTML = table(rows, columns,
+      term2 ? 'No products match that search.' : 'No products yet.');
     // The name opens the product, the way a supplier's name opens the supplier.
     $$('[data-prod]', box).forEach((b) => b.addEventListener('click',
       () => editProduct(rows.find((r) => r.sku === b.dataset.prod), drawBrands)));
