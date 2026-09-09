@@ -11131,10 +11131,21 @@ SCREENS.payroll = async (page) => {
     data = await GET(`/api/payroll${id ? `?id=${id}` : ''}`);
     picked = data.periods.find((p) => String(p.id) === String(data.period_id)) || null;
 
+    // A block per company and year rather than one long pile. Two companies at
+    // twenty-four cutoffs a year is forty-eight lines by Christmas, and the
+    // company and the year are the two things anybody narrows by before they
+    // start reading dates. The company is in the block heading, so the lines
+    // themselves are just the fortnight.
+    const block = (p) => `${p.company} · ${String(p.ends_on).slice(0, 4)}`;
+    const blocks = [...new Set(data.periods.map(block))];
     $('#pr_period', page).innerHTML = data.periods.length
-      ? data.periods.map((p) => `<option value="${p.id}"
-          ${String(p.id) === String(data.period_id) ? 'selected' : ''}>${
-          esc(p.company)} · ${onDay(p.starts_on)} to ${onDay(p.ends_on)}</option>`).join('')
+      ? blocks.map((label) => `<optgroup label="${esc(label)}">${
+          data.periods.filter((p) => block(p) === label).map((p) => `
+            <option value="${p.id}"
+              ${String(p.id) === String(data.period_id) ? 'selected' : ''}>${
+              onDay(p.starts_on)} to ${onDay(p.ends_on)}${
+              p.status === 'closed' ? ' · closed' : ''}</option>`).join('')
+        }</optgroup>`).join('')
       : '<option value="">No cutoff yet</option>';
 
     $('#pr_state', page).innerHTML = picked
