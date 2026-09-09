@@ -10484,6 +10484,10 @@ const wirePeople = (root) => $$('[data-person]', root).forEach((el) => {
 });
 
 SCREENS.hr = async (page) => {
+  // Two shops on one list read as one shop with a muddle in it. Tapped rather
+  // than typed, like the category chips, and kept across a draw so approving
+  // somebody's leave does not throw the list back to Both.
+  let shop = '';
   const load = async () => {
     const d = await GET('/api/hr');
     const waiting = d.leave.filter((l) => l.status === 'pending');
@@ -10528,7 +10532,13 @@ SCREENS.hr = async (page) => {
       <div class="panel"><h3>👥 The company</h3>
         <div class="dim" style="margin-bottom:10px">Tap anybody to see their
           record, their hours and their leave.</div>
-        ${table(d.people.filter((p) => p.here), [
+        <div class="pricecols" style="margin-bottom:12px" id="hr_shops">
+          ${['', ...[...new Set(d.people.filter((p) => p.here)
+              .map((p) => p.branch).filter(Boolean))].sort()]
+            .map((c) => `<button class="btn ${c === shop ? '' : 'line '}sm"
+              data-shop="${esc(c)}">${c ? esc(c) : 'Both shops'}</button>`).join('')}
+        </div>
+        ${table(d.people.filter((p) => p.here && (!shop || p.branch === shop)), [
           { head: '', cell: (p) => `<span data-person="${p.id}">${faceOf(p)}</span>` },
           { head: 'Name', cell: (p) => `<span data-person="${p.id}"><b>${esc(p.name)}</b>
               <div class="dim">${esc(p.position)}</div></span>` },
@@ -10598,6 +10608,12 @@ SCREENS.hr = async (page) => {
       b.addEventListener('click', () => decide(b.dataset.yes, 'approved')));
     $$('[data-no]', page).forEach((b) =>
       b.addEventListener('click', () => decide(b.dataset.no, 'declined')));
+
+    // Which shop's list is showing.
+    $$('[data-shop]', page).forEach((b) => b.addEventListener('click', () => {
+      shop = b.dataset.shop;
+      load().catch(whoops);
+    }));
 
     $$('[data-pay]', page).forEach((b) => b.addEventListener('click', () =>
       employmentDialog(d.people.find((p) => String(p.id) === b.dataset.pay), load)));
@@ -11292,9 +11308,15 @@ SCREENS.payroll = async (page) => {
 
       <h3 class="mt">Paid on</h3>
       <div class="row">
-        <div><label>Rate per day</label>
+        <div><label>Paid</label>
+          <select id="pp_basis">
+            <option value="daily"${line.pay_basis === 'monthly' ? '' : ' selected'}>By the day</option>
+            <option value="monthly"${line.pay_basis === 'monthly' ? ' selected' : ''}>Monthly</option>
+          </select></div>
+        <div id="pp_ratebox"><label id="pp_ratelabel">Rate per day</label>
           <input id="pp_daily" type="number" step="0.01" min="0"
-            value="${Number(line.daily_rate || 0)}"></div>
+            value="${Number(line.pay_basis === 'monthly'
+              ? line.monthly_rate || 0 : line.daily_rate || 0)}"></div>
         <div><label>SSS</label><input id="pp_sss" type="number" step="0.01" min="0"
           value="${Number(line.sss || 0)}"></div>
         <div><label>PhilHealth</label><input id="pp_phic" type="number" step="0.01" min="0"
@@ -11326,24 +11348,40 @@ SCREENS.payroll = async (page) => {
           this person's Loan/CA on the cutoff, so the two can never disagree.</div>`
         : '<div class="dim">Nothing owed — no cash advance and no loan running.</div>'}`);
 
+    // A month has no hour in it, so one is worked out — the month over the 26
+    // days the shop counts in one — and it prices overtime, night hours and
+    // lateness only. Basic for a monthly person is half the month whatever the
+    // clock counted, which is what monthly means.
+    const MONTH_DAYS = 26;
+    const basis = () => $('#pp_basis')?.value || 'daily';
     const showRates = () => {
-      const d = Number($('#pp_daily')?.value || 0);
+      const typed = Number($('#pp_daily')?.value || 0);
+      const monthly = basis() === 'monthly';
+      $('#pp_ratelabel').textContent = monthly ? 'Salary a month' : 'Rate per day';
+      const d = monthly ? typed / MONTH_DAYS : typed;
       const box = $('#pp_rates');
       if (!box) return;
-      box.innerHTML = d > 0
-        ? `overtime ${peso(d / 8 * 1.25)}/hour · night ${peso(d / 8 * 0.10)}/hour ·
-           late ${peso(d / 480)}/minute · holiday ${peso(d)} ·
-           special holiday ${peso(d * 0.30)}`
+      box.innerHTML = typed > 0
+        ? `${monthly ? `half a month is <b>${peso(typed / 2)}</b> a cutoff, whatever
+             the clock counted · a day works out at ${peso(d)} (month ÷ ${MONTH_DAYS})
+             for the figures below · ` : ''}overtime ${peso(d / 8 * 1.25)}/hour ·
+           night ${peso(d / 8 * 0.10)}/hour · late ${peso(d / 480)}/minute ·
+           holiday ${peso(d)} · special holiday ${peso(d * 0.30)}`
         : 'No rate yet — this payslip cannot be worked out.';
     };
     showRates();
     $('#pp_daily').addEventListener('input', showRates);
+    $('#pp_basis').addEventListener('change', showRates);
 
     $('#pp_save').addEventListener('click', async () => {
       try {
+        const monthly = basis() === 'monthly';
+        const typed = +$('#pp_daily').value;
         await POST(`/api/team/${line.employee_id}/pay`, {
           company: picked?.company || 'MS BEAU',
-          daily_rate: +$('#pp_daily').value,
+          pay_basis: basis(),
+          daily_rate: monthly ? 0 : typed,
+          monthly_rate: monthly ? typed : 0,
           sss: +$('#pp_sss').value,
           philhealth: +$('#pp_phic').value,
           pagibig: +$('#pp_hdmf').value,
@@ -11352,7 +11390,9 @@ SCREENS.payroll = async (page) => {
         // typed rather than what it was opened with.
         if (picked?.status !== 'closed') {
           await PUT(`/api/payroll-lines/${line.id}`, {
-            daily_rate: +$('#pp_daily').value,
+            pay_basis: basis(),
+            daily_rate: monthly ? 0 : typed,
+            monthly_rate: monthly ? typed : 0,
             sss: +$('#pp_sss').value,
             philhealth: +$('#pp_phic').value,
             pagibig: +$('#pp_hdmf').value,
@@ -11884,7 +11924,9 @@ function payslip(period, r) {
       <table class="rows"><thead>
         <tr><th>Earnings</th><th class="c">Hours/Days</th><th class="n">Amount</th></tr>
       </thead><tbody>
-        ${line('Basic Pay', days(r.days_present), r.basic)}
+        ${r.pay_basis === 'monthly'
+          ? line('Basic Pay', 'half a month', r.basic)
+          : line('Basic Pay', days(r.days_present), r.basic)}
         ${line('Leave with Pay', days(r.leave_days), r.leave_pay)}
         ${line('Overtime', hrs(r.ot_hours), r.overtime)}
         ${line('Night Differential', hrs(r.nsd_hours), r.nsd)}
@@ -11895,7 +11937,9 @@ function payslip(period, r) {
       </tbody><tfoot>
         <tr><td>Gross Pay</td><td></td><td class="n">${money(r.total_earnings)}</td></tr>
       </tfoot></table>
-      <div class="rate">Rate per day ${money(r.daily_rate)} · hourly ${
+      <div class="rate">${r.pay_basis === 'monthly'
+        ? `Salary ${money(r.monthly_rate)} a month · half a month a cutoff · a day
+           reckoned at ` : 'Rate per day '}${money(r.daily_rate)} · hourly ${
         money(Number(r.daily_rate || 0) / 8)} · overtime ${
         money(Number(r.daily_rate || 0) / 8 * 1.25)}/hr · night ${
         money(Number(r.daily_rate || 0) / 8 * 0.10)}/hr · special holiday ${
@@ -11927,8 +11971,12 @@ function payslip(period, r) {
         <div><span class="rule"></span>Received by</div>
         <div><span class="rule"></span>Date</div>
       </div>
-      <div class="note">Computed from ${days(r.days_present)} at
-        ${money(r.daily_rate)}. Overtime at 125% of the hourly rate, night
+      <div class="note">${r.pay_basis === 'monthly'
+        ? `Half of a monthly salary of ${money(r.monthly_rate)}, whatever the days
+           worked. A day is reckoned at ${money(r.daily_rate)} for the figures
+           below only.`
+        : `Computed from ${days(r.days_present)} at ${money(r.daily_rate)}.`}
+        Overtime at 125% of the hourly rate, night
         differential at 10%, special holiday at 30%, late at
         ${peso(Number(r.daily_rate || 0) / 480)} a minute.</div>
       <div class="keep">
