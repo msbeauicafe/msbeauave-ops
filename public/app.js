@@ -922,18 +922,6 @@ SCREENS.products = async (page) => {
     const deepest = Math.min(TIERS,
       [...rungs.values()].reduce((most, r) => Math.max(most, r.length), 0));
 
-    // What most products call their Nth price. It goes in the heading, and a
-    // cell says its own name only when it differs from it — printing RD price
-    // under nine hundred figures that are all RD price is not telling anybody
-    // anything, and it buries the one row where the tier is something else.
-    const usual = Array.from({ length: deepest }, (_, i) => {
-      const tally = new Map();
-      for (const rung of rungs.values()) {
-        const at = rung[i];
-        if (at) tally.set(at.code, (tally.get(at.code) || 0) + 1);
-      }
-      return [...tally].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-    });
 
     box.innerHTML = table(rows, [
       { head: '', cell: (p) => thumb(p) },
@@ -946,17 +934,24 @@ SCREENS.products = async (page) => {
       // pool, so 200 units received read as 140 and looked like sixty had gone
       // missing. The shop counts what it has, not how the system filed it.
       { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
-      { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
+      // Named in its cell like every price beside it, so the row reads as one
+      // run of name-over-figure rather than one bare number and then six.
+      { head: 'Cost price', n: true, cell: (p) =>
+        `<div class="cellsub">Cost price</div>${peso(p.unit_cost)}` },
       // Tier N is this product's Nth price, whatever it is called. A product
       // with fewer than N prices has nothing there — a dash, and no name, since
       // there is no name to say.
+      // A column reads: Tier 4, the heading's rule, the name of the price filed
+      // there, the money. The name is in the cell rather than the heading
+      // because a tier is not the same price for two products — a heading can
+      // only name what most of them call it, and the row that differs is the
+      // row somebody misreads. The name belongs to the figure.
       ...Array.from({ length: deepest }, (_, i) => ({
-        head: `Tier ${i + 1}`, sub: usual[i] ? priceLabel(usual[i]) : '', n: true,
+        head: `Tier ${i + 1}`, n: true,
         cell: (p) => {
           const at = rungs.get(p.sku)?.[i];
           if (!at) return '<span class="dim">—</span>';
-          return at.code === usual[i] ? peso(at.price)
-            : `<div class="cellsub">${esc(priceLabel(at.code))}</div>${peso(at.price)}`;
+          return `<div class="cellsub">${esc(priceLabel(at.code))}</div>${peso(at.price)}`;
         },
       })),
       ...(user.role === 'admin' ? [{ head: '', n: true, cell: (p) =>
