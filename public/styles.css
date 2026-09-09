@@ -1259,6 +1259,11 @@ label.sr {
 /* A money field in a form reads right-aligned, the way it does on the sheet
    the form is filling in. */
 input.n { text-align: right; }
+/* The box's own right padding sat the figure a few pixels inside its cell,
+   short of where the header above it stops — a price list's whole point is
+   the column reading straight down, and an input box a few pixels off is
+   still off. */
+.cellbox.money { padding-right: 0; }
 /* A quantity or a price in a column that is already narrow. The default
    minimum is set for a price list eight hundred rows deep; a dialog's table
    has six columns to fit and no room to spare. */
@@ -1621,12 +1626,9 @@ input.n { text-align: right; }
 .payslip .rows th { text-align: left; font-size: 10px; letter-spacing: .04em;
   padding: 5px 0; border-top: 1.5px solid #46536b;
   border-bottom: 1.5px solid #46536b; }
-/* The two number columns are fixed and set hard right in tabular numerals, so
-   the decimal points line up down the page instead of wandering with the
-   length of each amount. */
-.payslip .rows th.c, .payslip .rows td.c { width: 22%; text-align: right;
-  padding-right: 14px; color: var(--dim); white-space: nowrap; }
-.payslip .rows th.n, .payslip .rows td.n { width: 26%; text-align: right;
+.payslip .rows th.c, .payslip .rows td.c { width: 22%; text-align: center;
+  color: var(--dim); white-space: nowrap; }
+.payslip .rows th.n, .payslip .rows td.n { width: 26%; text-align: center;
   white-space: nowrap; }
 .payslip .rows td.n, .payslip .rows td.c, .payslip .net td.n {
   font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
