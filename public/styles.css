@@ -272,7 +272,7 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
 table { border-collapse: collapse; width: 100%; font-size: .85rem; font-variant-numeric: tabular-nums; }
 th {
   text-align: left; color: var(--rose-deep); font-weight: 600; padding: 6px 8px;
-  border-bottom: 2px solid var(--rose-soft); white-space: nowrap;
+  border-bottom: 2px solid var(--rose-dust); white-space: nowrap;
   vertical-align: bottom;
 }
 td { padding: 6px 8px; border-bottom: 1px solid var(--rose-blush); }
