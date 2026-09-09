@@ -5382,9 +5382,13 @@ SCREENS.pricelists = async (page) => {
       { head: 'Cost price', n: true, cell: (p) => Number(p.unit_cost)
           ? `<span class="dim">${peso(p.unit_cost)}</span>`
           : '<span class="over">—</span>' },
-      ...codes.map((c) => ({
-        head: c, n: true,
-        cell: (p) => `<input class="cellbox money ${p.prices[c] == null ? 'unset' : ''}"
+      // Tier N, the same way Product list numbers its own columns — the code
+      // itself rides along as the small label over the figure, so the column
+      // still says which price it is even though the heading no longer does.
+      ...codes.map((c, i) => ({
+        head: `Tier ${i + 1}`, n: true,
+        cell: (p) => `<div class="cellsub">${esc(priceLabel(c))}</div>
+          <input class="cellbox money ${p.prices[c] == null ? 'unset' : ''}"
           inputmode="decimal" data-sku="${esc(p.sku)}" data-code="${esc(c)}"
           value="${plain(p.prices[c])}" placeholder="—">`,
       })),
