@@ -114,9 +114,14 @@ test('a product closes its own prices up leftward, the way Product list does', (
   const screen = app.slice(at, app.indexOf('\n};', at));
   // A code a product has nothing under does not open a blank box to type one
   // into on this screen — that happens on the product's own form instead. So
-  // the columns close up leftward per product, same as Product list's ladder.
-  assert.match(screen, /const rung = \(codes, p\) => codes\.filter/,
+  // the columns close up leftward per product, same as Product list's ladder,
+  // and in the product's own order — the box a price was typed into on its
+  // form — rather than the shop-wide RD, SUB RD, PD... hierarchy, so the two
+  // screens agree on what Tier 2 is for a given product.
+  assert.match(screen, /const rung = \(codes, p\) => \{/,
     "each product's set prices close up leftward into Tier 1, 2, 3");
+  assert.match(screen, /p\.price_order/,
+    "in the product's own order, not the shop-wide hierarchy");
   assert.match(screen, /prices not set|price\$\{/,
     'the screen still counts what is missing, because that is the thing to act on');
   // Typed into directly. This screen began read-only and the owner overrode
