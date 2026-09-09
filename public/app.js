@@ -941,6 +941,7 @@ SCREENS.products = async (page) => {
       { head: 'Product', cell: (p) => `<button class="nameopen" data-prod="${
           esc(p.sku)}"><b>${esc(p.name)}</b></button>` },
       { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
+      { head: 'Category', cell: (p) => prodCatTag(p.category) },
       { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
     ] : [
       { head: '', cell: (p) => thumb(p) },
