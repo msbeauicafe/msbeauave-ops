@@ -296,10 +296,10 @@ function table(rows, columns, empty) {
   if (!rows.length) return `<div class="none">${esc(empty)}</div>`;
   return `<div class="scroll"><table>
     <thead><tr>${columns.map((c) =>
-      `<th${c.n ? ' class="n"' : ''}>${esc(c.head)}${
+      `<th${c.n ? ' class="n"' : c.c ? ' class="mid"' : ''}>${esc(c.head)}${
         c.sub ? `<div class="thsub">${esc(c.sub)}</div>` : ''}</th>`).join('')}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${columns.map((c) =>
-      `<td${c.n ? ' class="n"' : ''}>${c.cell(r)}</td>`).join('')}</tr>`).join('')}</tbody>
+      `<td${c.n ? ' class="n"' : c.c ? ' class="mid"' : ''}>${c.cell(r)}</td>`).join('')}</tr>`).join('')}</tbody>
   </table></div>`;
 }
 
@@ -11206,7 +11206,7 @@ SCREENS.payroll = async (page) => {
       // How somebody is paid, said rather than left to be worked out from a
       // rate of nothing. A monthly person's rate per day is a reckoning for
       // overtime and lateness, not what they are paid, so it is dimmed.
-      { head: 'Paid', cell: (r) => (r.pay_basis === 'monthly'
+      { head: 'Paid', c: true, cell: (r) => (r.pay_basis === 'monthly'
           ? tag('monthly', 'pink') : tag('daily', 'grey')) },
       { head: 'Salary/month', n: true, cell: (r) => (r.pay_basis === 'monthly'
           ? money(r.monthly_rate) : '<span class="dim">—</span>') },
