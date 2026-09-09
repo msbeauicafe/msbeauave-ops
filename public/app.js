@@ -11661,8 +11661,21 @@ SCREENS.payroll = async (page) => {
     });
   };
 
-  const newLedger = (kind) => {
+  const newLedger = async (kind) => {
+    // Fetched here rather than taken on trust. The dialog used to read whatever
+    // the Loans tab happened to have loaded, so if that fetch had not landed —
+    // or had failed, with a toast that came and went — Who opened empty and
+    // there was no way to tell whether the shop had no staff or the screen had
+    // simply not asked yet.
+    if (!led.people.length) await loadLedgers(true).catch(whoops);
     const people = led.people;
+    if (!people.length) {
+      return dialog(`
+        <h3>${kind === 'ca' ? 'New cash advance' : 'New loan'}</h3>
+        <div class="banner warn mt">Nobody to open one for — the team list did
+          not answer. Try again in a moment, and if it keeps happening say so:
+          it is the screen at fault, not the ledger.</div>`);
+    }
     dialog(`
       <h3>${kind === 'ca' ? 'New cash advance' : 'New loan'}</h3>
       <div class="dim">${kind === 'ca'
@@ -11712,8 +11725,8 @@ SCREENS.payroll = async (page) => {
     });
   };
 
-  $('#ca_new', page).addEventListener('click', () => newLedger('ca'));
-  $('#ln_new', page).addEventListener('click', () => newLedger('loan'));
+  $('#ca_new', page).addEventListener('click', () => newLedger('ca').catch(whoops));
+  $('#ln_new', page).addEventListener('click', () => newLedger('loan').catch(whoops));
   $('#ca_find', page).addEventListener('input', drawLedgers);
   $('#ln_find', page).addEventListener('input', drawLedgers);
 
@@ -11793,6 +11806,24 @@ const PAYER = {
   'BOA':     { name: 'BEAUTY OBSESSION AVE CORPORATION', short: 'BOA', logo: '/boa-mark.png' },
 };
 
+// The six loans the shop collects, each named on the slip. One line saying
+// Pag-IBIG Loan is a figure somebody paying a salary loan and a calamity loan
+// has to take on trust is both of theirs added up.
+//
+// The two "…Loan" lines at the end carry money on a ledger opened before the
+// six existed: it says whose loan it is and nothing more, and guessing it into
+// one of the six would be inventing a fact about somebody's pay.
+const LOAN_LINES = [
+  ['SSS Salary Loan',          'sss_salary'],
+  ['SSS Emergency Loan',       'sss_emergency'],
+  ['SSS Calamity Loan',        'sss_calamity'],
+  ['SSS Loan',                 'sss_other'],
+  ['Pag-IBIG Salary Loan',     'pagibig_salary'],
+  ['Pag-IBIG Calamity Loan',   'pagibig_calamity'],
+  ['Pag-IBIG Short Term Loan', 'pagibig_short'],
+  ['Pag-IBIG Loan',            'pagibig_other'],
+];
+
 function payslip(period, r) {
   const money = (v) => peso(Number(v || 0));
   const co = PAYER[period.company] || PAYER['MS BEAU'];
@@ -11868,8 +11899,8 @@ function payslip(period, r) {
         ${line('PhilHealth Contribution', null, r.philhealth)}
         ${line('HDMF / Pag-IBIG Contribution', null, r.pagibig)}
         ${line('Withholding Tax', null, 0)}
-        ${line('SSS Loan', null, r.sss_loan)}
-        ${line('Pag-IBIG Loan', null, r.pagibig_loan)}
+        ${LOAN_LINES.map(([label, field]) =>
+          line(label, null, r[field])).join('')}
         ${line('Cash Advance', null, r.ca_taken)}
         ${line('Other Loan / Charges', null, otherLoan)}
       </tbody><tfoot>

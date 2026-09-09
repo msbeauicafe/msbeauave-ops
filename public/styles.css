@@ -249,8 +249,10 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
 
    Both axes on the one box: the list is a column per tier wide as well as long,
    and two nested scrollers is one scrollbar too many to explain. */
-#brand_list .scroll { max-height: calc(100vh - 270px); overflow: auto; }
-#brand_list thead th {
+#brand_list .scroll,
+#pr_list .scroll { max-height: calc(100vh - 270px); overflow: auto; }
+#brand_list thead th,
+#pr_list thead th {
   position: sticky; top: 0; z-index: 2;
   background: var(--card); background-clip: padding-box;
   /* A sticky cell keeps no border of its own once it lifts off the rows, so the
