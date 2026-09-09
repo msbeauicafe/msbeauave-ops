@@ -5379,7 +5379,6 @@ SCREENS.pricelists = async (page) => {
           : ' ' + tag('hidden', 'grey')}<br><span class="dim">${esc(p.brand || '')}${
           p.unit_type ? ' · ' + esc(p.unit_type) : ''}</span>` },
       { head: 'Category', cell: (p) => prodCatTag(p.category) },
-      { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
       // What it cost us, read-only, at the head of the money: every column to
       // the right of it is a price, and a price is only worth reading against
       // the cost beside it.
