@@ -5357,7 +5357,17 @@ SCREENS.pricelists = async (page) => {
   // rather than eight with five of them dashes. A code with nothing typed
   // under it yet takes its first price through the product's own form; this
   // screen no longer holds open a blank box for one that was never set.
-  const rung = (codes, p) => codes.filter((c) => p.prices[c] != null).slice(0, 8);
+  //
+  // The order within a product is the product's own — the box each price was
+  // typed in on its form — not the shop-wide RD, SUB RD, PD... hierarchy.
+  // Product list closes its ladder the same way, off the same price_order,
+  // so the two screens agree on what Tier 2 is for a given product instead
+  // of one reading it off the product and the other off the price list.
+  const rung = (codes, p) => {
+    const inCatalogue = new Set(codes);
+    return (Array.isArray(p.price_order) ? p.price_order : [])
+      .filter((c) => c === 'SRP' || inCatalogue.has(c)).slice(0, 8);
+  };
 
   const draw = () => {
     if (!data) return;
@@ -5398,22 +5408,23 @@ SCREENS.pricelists = async (page) => {
       // product's own set prices close up leftward, and the code itself rides
       // along as the small label over the figure so the column still says
       // which price it is, even though the heading no longer does.
+      // SRP rides in the same ladder now, at the box it was put in on the
+      // product's own form — Tier 5 for one product, Tier 8 for the next —
+      // the way Product list already reads it, rather than always trailing
+      // at the end in a column of its own. It stays read-only here: SRP is
+      // set on the product's own form, not typed into a price list cell.
       ...Array.from({ length: deepest }, (_, i) => ({
         head: `Tier ${i + 1}`, n: true,
         cell: (p) => {
           const c = rungs.get(p.sku)?.[i];
           if (!c) return '<span class="dim">—</span>';
+          if (c === 'SRP') return `<div class="cellsub">SRP price</div>${peso(p.srp)}`;
           return `<div class="cellsub">${esc(priceLabel(c))}</div>
             <input class="cellbox money" inputmode="decimal"
             data-sku="${esc(p.sku)}" data-code="${esc(c)}"
             value="${plain(p.prices[c])}">`;
         },
       })),
-      // SRP rather than the old retail figure: SRP is what the product form
-      // sets, and a column reading a field nothing writes reads as a missing
-      // price rather than as a column nobody fills.
-      { head: 'SRP', n: true, cell: (p) => Number(p.srp)
-          ? peso(p.srp) : '<span class="over">—</span>' },
     ], 'Nothing matches that.');
     wireCells();
 
