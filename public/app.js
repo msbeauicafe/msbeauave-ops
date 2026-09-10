@@ -2739,38 +2739,58 @@ SCREENS.purchaseorders = async (page) => {
   // it is for. Kept apart from the order itself: a bill is what the supplier
   // says is owed, an order is what was asked for, and a delivery is what
   // arrived — three facts that can each be right without agreeing.
+  // paid — the balance is nothing; paid w/ bal — some has come off but not
+  // all; unpaid — nothing has, including a bill just raised.
+  const billRowState = (b) => Number(b.balance) <= 0 ? tag('paid', 'green')
+    : Number(b.paid) > 0 ? tag('paid w/ bal', 'pink') : tag('unpaid', 'amber');
+
   const drawBills = async () => {
     const box = $('#bill_list', page);
     if (!box) return;
     const rows = await GET('/api/purchase-order-bills').catch(() => []);
     box.innerHTML = table(rows, [
+      { head: '#', cell: (b) => b.id },
       { head: 'PO No.', cell: (b) => `<b>${esc(b.po_no)}</b>` },
       { head: 'Supplier', cell: (b) => esc(b.supplier) },
       { head: 'Invoice no.', cell: (b) => b.invoice_no
           ? esc(b.invoice_no) : '<span class="dim">—</span>' },
-      { head: 'Invoice date', cell: (b) => onDay(b.invoice_date) },
-      { head: 'Amount', n: true, cell: (b) => peso(b.amount) },
+      { head: 'Issued', cell: (b) => onDay(b.invoice_date) },
       { head: 'Due', cell: (b) => b.due_date
           ? onDay(b.due_date) : '<span class="dim">—</span>' },
-      { head: 'Status', cell: (b) => b.paid_on
-          ? tag(`paid ${onDay(b.paid_on)}`, 'green') : tag('unpaid', 'amber') },
+      { head: 'Amount', n: true, cell: (b) => peso(b.amount) },
+      { head: 'Still owed', n: true, cell: (b) => Number(b.balance) > 0
+          ? `<b>${peso(b.balance)}</b>` : peso(0) },
+      { head: 'State', cell: (b) => billRowState(b) },
+      // Record payment first and on its own — the action this row exists
+      // for. Everything under it opens one of the papers behind the bill:
+      // the invoice itself, the order it answers, and the delivery that
+      // settled it, read the stockroom's way and the supplier's.
       { head: '', cell: (b) => `
-          <button class="btn sm quiet" data-billedit="${b.id}">Edit</button>
-          <button class="btn sm ${b.paid_on ? 'quiet' : ''}" data-billpaid="${b.id}"
-            data-now="${b.paid_on ? '0' : '1'}">${b.paid_on ? 'Mark unpaid' : 'Mark paid'}</button>
+          ${Number(b.balance) > 0
+            ? `<button class="btn sm" data-billpay="${b.id}">Record payment</button>` : ''}
+          <button class="btn sm quiet" data-billedit="${b.id}">Invoice</button>
+          <button class="btn sm quiet" data-billpo="${b.id}">Purchase order</button>
+          <button class="btn sm quiet" data-billrf="${b.id}">Receiving form</button>
+          <button class="btn sm quiet" data-billack="${b.id}">Acknowledgement form</button>
           <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>` },
     ], 'No bills recorded yet.');
 
-    $$('[data-billedit]', box).forEach((btn) => btn.addEventListener('click',
-      () => billForm(rows.find((b) => String(b.id) === btn.dataset.billedit), drawBills)));
+    const find = (id) => rows.find((b) => String(b.id) === id);
 
-    $$('[data-billpaid]', box).forEach((btn) => btn.addEventListener('click', async () => {
-      try {
-        await POST(`/api/purchase-order-bills/${btn.dataset.billpaid}/paid`,
-          { paid: btn.dataset.now === '1' });
-        drawBills();
-      } catch (e) { whoops(e); }
-    }));
+    $$('[data-billpay]', box).forEach((btn) => btn.addEventListener('click',
+      () => billPaymentForm(find(btn.dataset.billpay), drawBills)));
+
+    $$('[data-billedit]', box).forEach((btn) => btn.addEventListener('click',
+      () => billForm(find(btn.dataset.billedit), drawBills)));
+
+    $$('[data-billpo]', box).forEach((btn) => btn.addEventListener('click',
+      () => openPO(Number(find(btn.dataset.billpo).po_id)).catch(whoops)));
+
+    $$('[data-billrf]', box).forEach((btn) => btn.addEventListener('click',
+      () => openBillDelivery(find(btn.dataset.billrf), 'rf')));
+
+    $$('[data-billack]', box).forEach((btn) => btn.addEventListener('click',
+      () => openBillDelivery(find(btn.dataset.billack), 'ack')));
 
     $$('[data-billdrop]', box).forEach((btn) => btn.addEventListener('click', async () => {
       try {
@@ -2779,6 +2799,55 @@ SCREENS.purchaseorders = async (page) => {
         drawBills();
       } catch (e) { whoops(e); }
     }));
+  };
+
+  // What has come off this bill so far, and a box to take more off — the same
+  // shape as taking a cutoff off a cash advance.
+  const billPaymentForm = (bill, done) => {
+    dialog(`
+      <h3>Record a payment — ${esc(bill.po_no)}</h3>
+      <div class="dim">${esc(bill.supplier)}${bill.invoice_no
+        ? ` · invoice ${esc(bill.invoice_no)}` : ''}</div>
+      <div class="row mt">
+        <div><div class="dim">Amount</div><b>${peso(bill.amount)}</b></div>
+        <div><div class="dim">Paid so far</div><b>${peso(bill.paid)}</b></div>
+        <div><div class="dim">Still owed</div><b>${peso(bill.balance)}</b></div>
+      </div>
+      <div class="row mt">
+        <div><label>Amount paid</label>
+          <input id="bp_amount" type="number" step="0.01" min="0.01"
+            max="${Number(bill.balance)}" value="${Number(bill.balance)}"></div>
+        <div><label>Date</label><input id="bp_date" type="date"
+          value="${new Date().toISOString().slice(0, 10)}"></div>
+      </div>
+      <div><label>Note</label><input id="bp_note" type="text"></div>
+      <div class="mt right"><button class="btn" id="bp_go">Save</button></div>`, '', true);
+
+    $('#bp_go').addEventListener('click', async () => {
+      try {
+        await POST(`/api/purchase-order-bills/${bill.id}/payments`, {
+          amount: $('#bp_amount').value, paid_on: $('#bp_date').value,
+          note: $('#bp_note').value,
+        });
+        closeDialog();
+        notice('Payment recorded 🌸', 'good');
+        done();
+      } catch (e) { whoops(e); }
+    });
+  };
+
+  // The delivery a bill answers, opened as whichever of its two papers was
+  // asked for. A PO can have more than one receiving form against it — a
+  // split delivery — so this reads the latest, the one most likely being
+  // asked about.
+  const openBillDelivery = async (bill, mode) => {
+    try {
+      const forms = await GET(`/api/receiving-forms?po_id=${bill.po_id}`).catch(() => []);
+      if (!forms.length) return notice('No receiving form on file for this order yet.', 'bad');
+      const full = await GET(`/api/receiving-forms/${forms[0].id}`);
+      if (mode === 'ack') showAcknowledgementForm(full, true);
+      else showReceivingForm(full, true);
+    } catch (e) { whoops(e); }
   };
 
   // New bill, or an edit of one already on file — the same fields either way,
@@ -5365,6 +5434,97 @@ function showReceivingForm(f, over = false) {
       <button class="btn" id="rf_done">Done</button></div>`, 'wide', over);
   wireSave('#rf_save', '.doc', `${f.rf_no}.jpg`);
   $('#rf_done').addEventListener('click', closeDialog);
+}
+
+// ---------------------------------------------------------------------------
+// The acknowledgement form — the supplier's own proof of delivery
+//
+// The receiving form is the stockroom's paper: boxes, packings, the guard,
+// the gate. This is the supplier's: one page saying what came, that it came,
+// and who handed it to whom. The same delivery, read for a different reader —
+// so it carries the receiving form's own reference rather than a number of
+// its own, the way the sales invoice a reseller keeps points back at the
+// order it settles instead of inventing a second one.
+// ---------------------------------------------------------------------------
+function ackProducts(lines = []) {
+  return rfGroups(lines).map((g) => ({
+    name: g.name, sku: g.sku, unit: g.unit,
+    qty: g.packs.reduce((n, k) => n + k.qty_per_box * k.boxes, 0),
+  }));
+}
+
+function acknowledgementForm({ rfNo, poNo, deliveredOn, supplier = {},
+                                courier = {}, products = [], note }) {
+  const field = (label, value) => `
+    <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
+  const rows = products.length
+    ? products.map((p) => `<tr><td>${esc(p.name || p.sku)}</td>
+        <td class="c">${count(p.qty)}</td><td class="c">${esc(p.unit || 'PCS')}</td></tr>`).join('')
+    : '<tr><td colspan="3">&nbsp;</td></tr>';
+
+  return `
+    <div class="doc po rf">
+      <div class="rule"></div>
+      <div class="po-head">
+        <img src="/logo.png" alt="MS Beau Ave">
+        <div class="po-title">
+          <h2>ACKNOWLEDGEMENT FORM</h2>
+          <div class="po-nums">
+            ${field('DATE', onDay(deliveredOn))}
+            ${rfNo ? field('RECEIVING FORM', rfNo) : ''}
+            ${poNo ? field('PURCHASE ORDER', poNo) : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="po-parties">
+        <div>
+          <div class="barhd">SUPPLIER</div>
+          ${field('NAME:', supplier.supplier || supplier.name)}
+          ${field('BRAND', supplier.brand_name)}
+        </div>
+        <div>
+          <div class="barhd">RECEIVED AT</div>
+          ${field('COMPANY:', 'MS BEAU AVE')}
+          ${field('ADDRESS', 'MARIKINA CITY')}
+        </div>
+      </div>
+
+      <table class="lines">
+        <thead><tr>
+          <th>PRODUCT</th><th style="width:78px">QUANTITY</th><th style="width:62px">UNIT</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      <div class="rf-foot">
+        <div class="notes">
+          <div class="barhd">NOTES</div>
+          <div class="wrote">${esc(note || '')}</div>
+        </div>
+        <div class="sign2">
+          <div><div class="nm">${esc(courier.driver_name || '')}</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">DELIVERED BY:</div></div>
+          <div><div class="nm">${esc(courier.guard_on_duty || '')}</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">RECEIVED BY:</div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function showAcknowledgementForm(f, over = false) {
+  dialog(`${acknowledgementForm({
+    rfNo: f.rf_no, poNo: f.po_no, deliveredOn: f.received_on,
+    supplier: f, courier: f, products: ackProducts(f.lines || []), note: f.others,
+  })}
+    <div class="mt right">
+      <button class="btn quiet" id="ack_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
+      <button class="btn" id="ack_done">Done</button></div>`, 'wide', over);
+  wireSave('#ack_save', '.doc', `${f.rf_no}-acknowledgement.jpg`);
+  $('#ack_done').addEventListener('click', closeDialog);
 }
 
 function showOR(r, reseller, paid = {}, over = false) {
