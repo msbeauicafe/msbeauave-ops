@@ -2766,13 +2766,17 @@ SCREENS.purchaseorders = async (page) => {
       // the invoice itself, the order it answers, and the delivery that
       // settled it, read the stockroom's way and the supplier's.
       { head: '', cell: (b) => `
-          ${Number(b.balance) > 0
-            ? `<button class="btn sm" data-billpay="${b.id}">Record payment</button>` : ''}
-          <button class="btn sm quiet" data-billedit="${b.id}">Invoice</button>
-          <button class="btn sm quiet" data-billpo="${b.id}">Purchase order</button>
-          <button class="btn sm quiet" data-billrf="${b.id}">Receiving form</button>
-          <button class="btn sm quiet" data-billack="${b.id}">Acknowledgement form</button>
-          <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>` },
+          <div class="bill-actions">
+            <div class="bill-actions-top">
+              ${Number(b.balance) > 0
+                ? `<button class="btn sm" data-billpay="${b.id}">Record payment</button>` : ''}
+              <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>
+            </div>
+            <button class="btn sm quiet" data-billedit="${b.id}">🖨 Invoice</button>
+            <button class="btn sm quiet" data-billpo="${b.id}">🖨 Purchase order</button>
+            <button class="btn sm quiet" data-billrf="${b.id}">🖨 Receiving form</button>
+            <button class="btn sm quiet" data-billack="${b.id}">🖨 Acknowledgement form</button>
+          </div>` },
     ], 'No bills recorded yet.');
 
     const find = (id) => rows.find((b) => String(b.id) === id);
@@ -2781,7 +2785,7 @@ SCREENS.purchaseorders = async (page) => {
       () => billPaymentForm(find(btn.dataset.billpay), drawBills)));
 
     $$('[data-billedit]', box).forEach((btn) => btn.addEventListener('click',
-      () => billForm(find(btn.dataset.billedit), drawBills)));
+      () => showBillInvoice(find(btn.dataset.billedit), drawBills)));
 
     $$('[data-billpo]', box).forEach((btn) => btn.addEventListener('click',
       () => openPO(Number(find(btn.dataset.billpo).po_id)).catch(whoops)));
@@ -2897,6 +2901,77 @@ SCREENS.purchaseorders = async (page) => {
       } catch (e) { whoops(e); }
     });
   };
+
+  // The bill, read as the paper it is — what the supplier sent, what has come
+  // off it, what is left — the same document shape as the acknowledgement form
+  // and the receiving form beside it, not a settings form. Edit stays a click
+  // away, stacked on top, for the rare typo rather than the common case.
+  function billInvoiceDoc(b) {
+    const field = (label, value) => `
+      <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
+    return `
+      <div class="doc po">
+        <div class="rule"></div>
+        <div class="po-head">
+          <img src="/logo.png" alt="MS Beau Ave">
+          <div class="po-title">
+            <h2>SUPPLIER INVOICE</h2>
+            <div class="po-nums">
+              ${field('INVOICE NO.', b.invoice_no || '—')}
+              ${field('ISSUED', onDay(b.invoice_date))}
+              ${b.due_date ? field('DUE', onDay(b.due_date)) : ''}
+              ${field('PURCHASE ORDER', b.po_no)}
+            </div>
+          </div>
+        </div>
+
+        <div class="po-parties">
+          <div>
+            <div class="barhd">SUPPLIER</div>
+            ${field('NAME:', b.supplier)}
+            ${field('BRAND', b.brand_name)}
+          </div>
+          <div>
+            <div class="barhd">BILLED TO</div>
+            ${field('COMPANY:', 'MS BEAU AVE')}
+            ${field('ADDRESS', 'MARIKINA CITY')}
+          </div>
+        </div>
+
+        <table class="lines">
+          <thead><tr>
+            <th>AMOUNT</th><th style="width:100px">PAID</th>
+            <th style="width:100px">STILL OWED</th>
+          </tr></thead>
+          <tbody><tr>
+            <td>${peso(b.amount)}</td>
+            <td class="c">${peso(b.paid)}</td>
+            <td class="c">${peso(b.balance)}</td>
+          </tr></tbody>
+        </table>
+
+        ${b.note ? `
+        <div class="rf-foot">
+          <div class="notes">
+            <div class="barhd">NOTES</div>
+            <div class="wrote">${esc(b.note)}</div>
+          </div>
+        </div>` : ''}
+      </div>`;
+  }
+
+  function showBillInvoice(bill, done) {
+    dialog(`${billInvoiceDoc(bill)}
+      <div class="mt right">
+        <button class="btn quiet" id="billdoc_edit">Edit</button>
+        <button class="btn quiet" id="billdoc_save">⬇ Download JPEG</button>
+        ${PRINT_BTN}
+        <button class="btn" id="billdoc_done">Done</button></div>`, 'wide');
+    wireSave('#billdoc_save', '.doc', `${bill.invoice_no || bill.po_no}-invoice.jpg`);
+    $('#billdoc_edit').addEventListener('click',
+      () => billForm(bill, () => { closeDialog(); done(); }));
+    $('#billdoc_done').addEventListener('click', closeDialog);
+  }
 
   // The price list, right under the orders: what there is to order, with its
   // free stock and prices. A reference here, edited over on the Products screen.
