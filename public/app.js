@@ -2830,12 +2830,8 @@ SCREENS.purchaseorders = async (page) => {
           <div><label${n ? ' class="sr"' : ''}>Date</label>
             <input class="bp_on" type="date" value="${localDay()}"></div>
           <div><label${n ? ' class="sr"' : ''}>Mode of payment</label>
-            <select class="bp_method">
-              <option value="bank">Bank transfer</option>
-              <option value="cash">Cash</option>
-              <option value="gcash">GCash</option>
-              <option value="card">Card</option>
-            </select></div>
+            <select class="bp_method">${MOP_OPTIONS.map((m) =>
+              `<option value="${esc(m)}">${esc(m)}</option>`).join('')}</select></div>
           <div><label${n ? ' class="sr"' : ''}>Attachment</label>
             <input class="bp_file" type="file" accept="image/*"></div>
         </div>`).join('')}
