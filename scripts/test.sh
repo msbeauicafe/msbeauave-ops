@@ -128,6 +128,9 @@ node --test tests/line-descriptions.test.js
 echo "==> the order desk: what it may do, and what it may not"
 node --test tests/order-desk.test.js
 
+echo "==> billing: the supplier's own invoice against the order it is for"
+node --test tests/purchase-order-billing.test.js
+
 echo "==> the data coordinator: products and stock, never a price"
 node --test tests/data-coordinator.test.js
 

@@ -2496,6 +2496,7 @@ SCREENS.purchaseorders = async (page) => {
     <div class="subtabs">
       <button data-t="sup" class="on">Supplier information</button>
       <button data-t="form">Order</button>
+      <button data-t="bill">Billing</button>
       <button data-t="pend">Pending purchase order</button>
       <button data-t="ord">Purchase order</button>
     </div>
@@ -2507,6 +2508,16 @@ SCREENS.purchaseorders = async (page) => {
         <button class="btn line" id="po_newsup">＋ New supplier</button>
       </div>
       <div id="po_suplist"></div>
+    </div>
+
+    <div class="panel" id="pt_bill" hidden>
+      <div class="head" style="margin:0"><h3 class="sr">Billing</h3>
+        <button class="btn" id="bill_new">＋ New bill</button></div>
+      <div class="dim mt">The supplier's own invoice against the order it is for —
+        its number, its date, what it comes to and when it is due. Marking one
+        paid settles the invoice; it does not touch the order or what has come
+        in against it, because those are separate facts.</div>
+      <div id="bill_list" class="mt"></div>
     </div>
 
     <div class="panel" id="pt_pend" hidden>
@@ -2591,14 +2602,17 @@ SCREENS.purchaseorders = async (page) => {
       </div>
     </div>`;
 
-  // Four tabs, one panel at a time: the suppliers, the order form, the orders
-  // still awaiting delivery, and every purchase order.
+  // Five tabs, one panel at a time: the suppliers, the order form, the
+  // invoices billed against orders, the orders still awaiting delivery, and
+  // every purchase order.
   $$('[data-t]', page).forEach((b) => b.addEventListener('click', () => {
     $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x === b));
     $('#pt_sup', page).hidden = b.dataset.t !== 'sup';
     $('#pt_form', page).hidden = b.dataset.t !== 'form';
+    $('#pt_bill', page).hidden = b.dataset.t !== 'bill';
     $('#pt_pend', page).hidden = b.dataset.t !== 'pend';
     $('#pt_ord', page).hidden = b.dataset.t !== 'ord';
+    if (b.dataset.t === 'bill') drawBills();
     if (b.dataset.t === 'pend') drawPendingPOs();
   }));
 
@@ -2691,6 +2705,94 @@ SCREENS.purchaseorders = async (page) => {
     ], 'Nothing is awaiting delivery.');
     $$('[data-po]', box).forEach((b) => b.addEventListener('click',
       () => openPO(+b.dataset.po).catch(whoops)));
+  };
+
+  // Billing — the supplier's own invoice, one row per bill, against the order
+  // it is for. Kept apart from the order itself: a bill is what the supplier
+  // says is owed, an order is what was asked for, and a delivery is what
+  // arrived — three facts that can each be right without agreeing.
+  const drawBills = async () => {
+    const box = $('#bill_list', page);
+    if (!box) return;
+    const rows = await GET('/api/purchase-order-bills').catch(() => []);
+    box.innerHTML = table(rows, [
+      { head: 'PO No.', cell: (b) => `<b>${esc(b.po_no)}</b>` },
+      { head: 'Supplier', cell: (b) => esc(b.supplier) },
+      { head: 'Invoice no.', cell: (b) => b.invoice_no
+          ? esc(b.invoice_no) : '<span class="dim">—</span>' },
+      { head: 'Invoice date', cell: (b) => onDay(b.invoice_date) },
+      { head: 'Amount', n: true, cell: (b) => peso(b.amount) },
+      { head: 'Due', cell: (b) => b.due_date
+          ? onDay(b.due_date) : '<span class="dim">—</span>' },
+      { head: 'Status', cell: (b) => b.paid_on
+          ? tag(`paid ${onDay(b.paid_on)}`, 'green') : tag('unpaid', 'amber') },
+      { head: '', cell: (b) => `
+          <button class="btn sm quiet" data-billedit="${b.id}">Edit</button>
+          <button class="btn sm ${b.paid_on ? 'quiet' : ''}" data-billpaid="${b.id}"
+            data-now="${b.paid_on ? '0' : '1'}">${b.paid_on ? 'Mark unpaid' : 'Mark paid'}</button>
+          <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>` },
+    ], 'No bills recorded yet.');
+
+    $$('[data-billedit]', box).forEach((btn) => btn.addEventListener('click',
+      () => billForm(rows.find((b) => String(b.id) === btn.dataset.billedit), drawBills)));
+
+    $$('[data-billpaid]', box).forEach((btn) => btn.addEventListener('click', async () => {
+      try {
+        await POST(`/api/purchase-order-bills/${btn.dataset.billpaid}/paid`,
+          { paid: btn.dataset.now === '1' });
+        drawBills();
+      } catch (e) { whoops(e); }
+    }));
+
+    $$('[data-billdrop]', box).forEach((btn) => btn.addEventListener('click', async () => {
+      try {
+        await DELETE(`/api/purchase-order-bills/${btn.dataset.billdrop}`);
+        notice('Bill removed', 'good');
+        drawBills();
+      } catch (e) { whoops(e); }
+    }));
+  };
+
+  // New bill, or an edit of one already on file — the same fields either way,
+  // keyed on an id that is null the first time.
+  const billForm = async (bill, done) => {
+    const isNew = !bill;
+    const pos = await GET('/api/purchase-orders').catch(() => []);
+    if (!pos.length) return notice('Raise a purchase order first, on Order.', 'bad');
+    dialog(`
+      <h3>${isNew ? 'New bill' : 'Edit bill'}</h3>
+      <div class="row mt">
+        <div style="flex:2"><label>Purchase order</label>
+          <select id="b_po">${pos.map((o) => `<option value="${o.id}"
+            ${bill?.po_id === o.id ? 'selected' : ''}>
+            ${esc(o.po_no)} — ${esc(o.supplier)}</option>`).join('')}</select></div>
+        <div><label>Invoice no.</label>
+          <input id="b_no" type="text" value="${esc(bill?.invoice_no || '')}"></div>
+      </div>
+      <div class="row">
+        <div><label>Invoice date</label><input id="b_date" type="date"
+          value="${bill?.invoice_date || new Date().toISOString().slice(0, 10)}"></div>
+        <div><label>Amount</label><input id="b_amount" type="number" step="0.01" min="0.01"
+          value="${bill?.amount ?? ''}"></div>
+        <div><label>Due date</label><input id="b_due" type="date" value="${bill?.due_date || ''}"></div>
+      </div>
+      <div><label>Note</label><input id="b_note" type="text" value="${esc(bill?.note || '')}"></div>
+      <div class="mt right"><button class="btn" id="b_go">Save</button></div>`);
+
+    $('#b_go').addEventListener('click', async () => {
+      const body = {
+        po_id: Number($('#b_po').value), invoice_no: $('#b_no').value,
+        invoice_date: $('#b_date').value, amount: $('#b_amount').value,
+        due_date: $('#b_due').value || null, note: $('#b_note').value,
+      };
+      try {
+        if (isNew) await POST('/api/purchase-order-bills', body);
+        else await PUT(`/api/purchase-order-bills/${bill.id}`, body);
+        closeDialog();
+        notice('Bill saved 🌸', 'good');
+        done();
+      } catch (e) { whoops(e); }
+    });
   };
 
   // The price list, right under the orders: what there is to order, with its
@@ -2888,6 +2990,7 @@ SCREENS.purchaseorders = async (page) => {
   // One form for both a new supplier and an edit of an existing one — the same
   // fields, pre-filled when there is an id to keep.
   $('#po_newsup', page).addEventListener('click', () => supplierForm(null, drawSuppliers));
+  $('#bill_new', page).addEventListener('click', () => billForm(null, drawBills));
 
 
   // The Purchase form tab: the raise-an-order form, no longer a popup. Pick the
