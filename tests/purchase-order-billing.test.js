@@ -201,3 +201,41 @@ test('a supervisor holds the pen on billing, the same as on the order', async ()
   const made = await POST(boss, '/api/purchase-order-bills', { po_id: po.id, amount: 100 });
   assert.equal(made.status, 200, JSON.stringify(made.data));
 });
+
+// ---------------------------------------------------------------------------
+// The order's own list carries the billing state, not just the delivery one
+// ---------------------------------------------------------------------------
+// The Purchase order list once said "open" or "all in" — how much had arrived,
+// nothing about what was owed. The office reads it to know what still needs
+// paying, so the same list now carries how many bills are on file and how
+// many of those are settled, the two figures the paid / unpaid / paid w/ bal
+// tag on screen is worked out from.
+test('the order list carries how much of what is billed is paid', async () => {
+  const admin = await signIn('admin');
+  const po = await newPO(admin);
+
+  const bare = (await GET(admin, '/api/purchase-orders')).data
+    .find((o) => String(o.id) === String(po.id));
+  assert.equal(bare.bills, 0, 'nothing billed yet');
+  assert.equal(bare.bills_paid, 0);
+
+  const one = await POST(admin, '/api/purchase-order-bills', { po_id: po.id, amount: 100 });
+  const two = await POST(admin, '/api/purchase-order-bills', { po_id: po.id, amount: 50 });
+
+  const some = (await GET(admin, '/api/purchase-orders')).data
+    .find((o) => String(o.id) === String(po.id));
+  assert.equal(some.bills, 2, 'both bills counted');
+  assert.equal(some.bills_paid, 0, 'neither settled yet');
+
+  await POST(admin, `/api/purchase-order-bills/${one.data.id}/paid`, { paid: true });
+  const partway = (await GET(admin, '/api/purchase-orders')).data
+    .find((o) => String(o.id) === String(po.id));
+  assert.equal(partway.bills, 2);
+  assert.equal(partway.bills_paid, 1, 'one of the two');
+
+  await POST(admin, `/api/purchase-order-bills/${two.data.id}/paid`, { paid: true });
+  const settled = (await GET(admin, '/api/purchase-orders')).data
+    .find((o) => String(o.id) === String(po.id));
+  assert.equal(settled.bills, 2);
+  assert.equal(settled.bills_paid, 2, 'both, now');
+});
