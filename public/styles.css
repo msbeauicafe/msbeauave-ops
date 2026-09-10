@@ -1342,6 +1342,12 @@ input.n { text-align: right; }
 .doc.po .ticks { padding: 6px 8px; font-size: .66rem; }
 .doc.po .ticks span { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .doc.po .ticks i { width: 10px; height: 10px; border: 1px solid #555; display: inline-block; }
+/* Record payment on top, its own row with the remove button; the bill's own
+   papers stacked underneath, one per line — not a row of pills fighting for
+   space. */
+.bill-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.bill-actions-top { display: flex; align-items: center; gap: 6px; }
+
 .doc.po .sign3 {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px;
   margin-top: 30px; text-align: center;
