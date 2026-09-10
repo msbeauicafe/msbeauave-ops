@@ -2667,13 +2667,23 @@ SCREENS.purchaseorders = async (page) => {
     }));
   };
 
+  // Fetched fresh rather than found in the list already on the page: the
+  // orders and pending tabs both name a supplier without necessarily having
+  // loaded her, so opening her the way a name is opened everywhere else in
+  // here means asking for her again.
+  const openSupplierFrom = async (id) => {
+    try {
+      supplierForm(await GET(`/api/suppliers/${id}`), drawSuppliers);
+    } catch (e) { whoops(e); }
+  };
 
   const drawPOs = async () => {
     const rows = await GET('/api/purchase-orders').catch(() => []);
     $('#po_list', page).innerHTML = table(rows, [
       { head: 'No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
       { head: 'Raised', cell: (o) => onDay(o.ordered_on) },
-      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${
+      { head: 'Supplier', cell: (o) => `<button class="nameopen" data-opensup="${o.supplier_id}">
+          <b>${esc(o.supplier)}</b></button>${
           o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
       { head: 'Lines', n: true, cell: (o) => count(o.lines) },
       { head: 'Still short', n: true, cell: (o) => o.still_short > 0
@@ -2687,6 +2697,19 @@ SCREENS.purchaseorders = async (page) => {
     ], 'No purchase orders yet.');
     $$('[data-po]', page).forEach((b) => b.addEventListener('click',
       () => openPO(+b.dataset.po).catch(whoops)));
+    $$('[data-opensup]', $('#po_list', page)).forEach((b) => b.addEventListener('click',
+      () => openSupplierFrom(b.dataset.opensup)));
+  };
+
+  // paid — every bill on the order is settled; paid w/ bal — some are and some
+  // are not, so a balance remains; unpaid — nothing has been, including an
+  // order with no bill on file yet.
+  const billState = (o) => {
+    const bills = Number(o.bills || 0);
+    const paid = Number(o.bills_paid || 0);
+    if (!bills || !paid) return tag('unpaid', 'amber');
+    if (paid === bills) return tag('paid', 'green');
+    return tag('paid w/ bal', 'pink');
   };
 
   // paid — every bill on the order is settled; paid w/ bal — some are and some
@@ -2710,7 +2733,8 @@ SCREENS.purchaseorders = async (page) => {
     box.innerHTML = table(rows, [
       { head: 'No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
       { head: 'Raised', cell: (o) => onDay(o.ordered_on) },
-      { head: 'Supplier', cell: (o) => esc(o.supplier) },
+      { head: 'Supplier', cell: (o) => `<button class="nameopen" data-opensup="${
+          o.supplier_id}"><b>${esc(o.supplier)}</b></button>` },
       { head: 'Brand', cell: (o) => o.brand_name
           ? esc(o.brand_name) : '<span class="dim">—</span>' },
       { head: 'Quantity', n: true, cell: (o) => count(o.quantity) },
@@ -2718,6 +2742,8 @@ SCREENS.purchaseorders = async (page) => {
     ], 'Nothing is awaiting delivery.');
     $$('[data-po]', box).forEach((b) => b.addEventListener('click',
       () => openPO(+b.dataset.po).catch(whoops)));
+    $$('[data-opensup]', box).forEach((b) => b.addEventListener('click',
+      () => openSupplierFrom(b.dataset.opensup)));
   };
 
   // Billing — the supplier's own invoice, one row per bill, against the order
@@ -2768,8 +2794,14 @@ SCREENS.purchaseorders = async (page) => {
 
   // New bill, or an edit of one already on file — the same fields either way,
   // keyed on an id that is null the first time.
+  // The same form opens three ways: a blank one from + New bill, a filled one
+  // to edit, and — from the order itself, once its prices are saved — one
+  // already carrying the order and its total, so logging the bill the
+  // supplier will send for is one more click rather than a second form typed
+  // from scratch. Only what has an id is a bill on file; a total handed over
+  // without one is still new.
   const billForm = async (bill, done) => {
-    const isNew = !bill;
+    const isNew = !bill?.id;
     const pos = await GET('/api/purchase-orders').catch(() => []);
     if (!pos.length) return notice('Raise a purchase order first, on Order.', 'bad');
     dialog(`
@@ -2777,7 +2809,7 @@ SCREENS.purchaseorders = async (page) => {
       <div class="row mt">
         <div style="flex:2"><label>Purchase order</label>
           <select id="b_po">${pos.map((o) => `<option value="${o.id}"
-            ${bill?.po_id === o.id ? 'selected' : ''}>
+            ${String(bill?.po_id ?? '') === String(o.id) ? 'selected' : ''}>
             ${esc(o.po_no)} — ${esc(o.supplier)}</option>`).join('')}</select></div>
         <div><label>Invoice no.</label>
           <input id="b_no" type="text" value="${esc(bill?.invoice_no || '')}"></div>
@@ -2790,7 +2822,7 @@ SCREENS.purchaseorders = async (page) => {
         <div><label>Due date</label><input id="b_due" type="date" value="${bill?.due_date || ''}"></div>
       </div>
       <div><label>Note</label><input id="b_note" type="text" value="${esc(bill?.note || '')}"></div>
-      <div class="mt right"><button class="btn" id="b_go">Save</button></div>`);
+      <div class="mt right"><button class="btn" id="b_go">Save</button></div>`, '', true);
 
     $('#b_go').addEventListener('click', async () => {
       const body = {
@@ -2867,6 +2899,8 @@ SCREENS.purchaseorders = async (page) => {
       const canEdit = po.status === 'open';
       const SPARE = canEdit ? 3 : 0;
       const live = po.status === 'open' || po.status === 'part';
+      const grandTotal = po.lines.reduce((s, l) =>
+        s + Number(l.qty) * (Number(l.price) || 0), 0);
       const stateTag = po.status === 'closed' ? tag('all in', 'green')
         : po.status === 'part' ? tag('part delivered', 'amber')
         : po.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
@@ -2896,7 +2930,7 @@ SCREENS.purchaseorders = async (page) => {
             <div class="scroll"><table>
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
-                <th class="n">Price</th><th></th>
+                <th class="n">Price</th><th class="n">Total</th><th></th>
               </tr></thead>
               <tbody>
                 ${po.lines.map((l) => `<tr data-row="${l.id}">
@@ -2914,6 +2948,7 @@ SCREENS.purchaseorders = async (page) => {
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
                     : (l.price != null ? peso(l.price) : '—')}</td>
+                  <td class="n" data-tot>${peso((Number(l.price) || 0) * Number(l.qty))}</td>
                   <td class="n">${canEdit
                     ? `<button class="btn sm stop" data-remove="${l.id}"
                          title="Take off this order">✕</button>` : ''}</td>
@@ -2925,10 +2960,14 @@ SCREENS.purchaseorders = async (page) => {
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
                   <td class="n"><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
+                  <td class="n" data-tot>—</td>
                   <td></td>
                 </tr>`).join('')}
               </tbody>
             </table></div>
+            <div class="basket-sum">
+              <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
+            </div>
             ${canEdit ? `
               <div class="mt"><label for="po_note_in">Comments or special instructions</label>
                 <input id="po_note_in" type="text" value="${esc(po.note || '')}"></div>
@@ -2946,10 +2985,34 @@ SCREENS.purchaseorders = async (page) => {
     function wire() {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true));
 
-      $$('[data-remove]', $('#po_root')).forEach((b) => b.addEventListener('click', () => {
-        const tr = b.closest('tr');
-        if (tr) tr.remove();
-      }));
+      // The line total and the grand total, read straight off the boxes as
+      // they are typed — the same figure Billing is about to be handed once
+      // the order is saved. A closed order's rows have no boxes to read: the
+      // total painted from its saved lines is the whole answer already.
+      if (canEdit) {
+        const retotal = () => {
+          let grand = 0;
+          $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
+            const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
+            const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
+            const cell = $('[data-tot]', tr);
+            const qty = Number(qtyEl?.value || 0);
+            const lineTotal = qty * (Number(priceEl?.value) || 0);
+            if (cell) cell.textContent = qty > 0 ? peso(lineTotal) : '—';
+            grand += lineTotal;
+          });
+          const g = $('#po_grand');
+          if (g) g.textContent = peso(grand);
+        };
+        $$('[data-qty], [data-addqty], [data-price], [data-addprice]', $('#po_root'))
+          .forEach((i) => i.addEventListener('input', retotal));
+
+        $$('[data-remove]', $('#po_root')).forEach((b) => b.addEventListener('click', () => {
+          const tr = b.closest('tr');
+          if (tr) tr.remove();
+          retotal();
+        }));
+      }
 
       $('#po_keep')?.addEventListener('click', async () => {
         const lines = [];
@@ -2970,10 +3033,14 @@ SCREENS.purchaseorders = async (page) => {
         });
         if (unknown) return notice(`“${unknown}” is not a product on the price list.`, 'bad');
         if (!lines.length) return notice('A purchase order needs at least one line.', 'bad');
+        const total = lines.reduce((s, l) => s + Number(l.qty) * (Number(l.price) || 0), 0);
         try {
           await PUT(`/api/purchase-orders/${poId}`, { lines, note: $('#po_note_in').value });
           notice('Purchase order saved 🌸', 'good');
-          reload();
+          await reload();
+          // Straight to Billing with the total already on it — priced is
+          // pointless if logging what it comes to is a second errand.
+          if (total > 0) billForm({ po_id: poId, amount: total }, drawBills);
         } catch (e) { whoops(e); }
       });
 
