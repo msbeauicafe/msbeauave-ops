@@ -2511,13 +2511,43 @@ SCREENS.purchaseorders = async (page) => {
     </div>
 
     <div class="panel" id="pt_bill" hidden>
-      <div class="head" style="margin:0"><h3 class="sr">Billing</h3>
-        <button class="btn" id="bill_new">＋ New bill</button></div>
-      <div class="dim mt">The supplier's own invoice against the order it is for —
-        its number, its date, what it comes to and when it is due. Marking one
-        paid settles the invoice; it does not touch the order or what has come
-        in against it, because those are separate facts.</div>
-      <div id="bill_list" class="mt"></div>
+      <div class="subtabs">
+        <button data-bt="bill" class="on">Billing</button>
+        <button data-bt="po">Purchase order</button>
+        <button data-bt="rf">Receiving form</button>
+        <button data-bt="ack">Acknowledgement form</button>
+      </div>
+
+      <div id="bt_bill">
+        <div class="head" style="margin:0"><h3 class="sr">Billing</h3>
+          <button class="btn" id="bill_new">＋ New bill</button></div>
+        <div class="dim mt">The supplier's own invoice against the order it is for —
+          its number, its date, what it comes to and when it is due. Marking one
+          paid settles the invoice; it does not touch the order or what has come
+          in against it, because those are separate facts.</div>
+        <div id="bill_list" class="mt"></div>
+      </div>
+
+      <div id="bt_po" hidden>
+        <div class="head" style="margin:0"><h3 class="sr">Purchase orders</h3></div>
+        <div class="dim mt">The same orders as the Purchase order tab, reachable
+          from here too — raising a bill starts with picking one of these.</div>
+        <div id="bill_po_list" class="mt"></div>
+      </div>
+
+      <div id="bt_rf" hidden>
+        <div class="head" style="margin:0"><h3 class="sr">Receiving forms</h3></div>
+        <div class="dim mt">The stockroom's own paper for what came in — boxes,
+          packings, the guard, the gate.</div>
+        <div id="bill_rf_list" class="mt"></div>
+      </div>
+
+      <div id="bt_ack" hidden>
+        <div class="head" style="margin:0"><h3 class="sr">Acknowledgement forms</h3></div>
+        <div class="dim mt">The same deliveries, read for the supplier rather than
+          the stockroom — what came, that it came, and who handed it to whom.</div>
+        <div id="bill_ack_list" class="mt"></div>
+      </div>
     </div>
 
     <div class="panel" id="pt_pend" hidden>
@@ -2624,6 +2654,20 @@ SCREENS.purchaseorders = async (page) => {
     $('#pp_prod', page).hidden = b.dataset.p !== 'prod';
   }));
 
+  // Inside Billing, four tabs of its own: the bills, and the three documents
+  // a bill is raised against — the order, the delivery as the stockroom keeps
+  // it, and the same delivery as the supplier reads it.
+  $$('[data-bt]', page).forEach((b) => b.addEventListener('click', () => {
+    $$('[data-bt]', page).forEach((x) => x.classList.toggle('on', x === b));
+    $('#bt_bill', page).hidden = b.dataset.bt !== 'bill';
+    $('#bt_po', page).hidden = b.dataset.bt !== 'po';
+    $('#bt_rf', page).hidden = b.dataset.bt !== 'rf';
+    $('#bt_ack', page).hidden = b.dataset.bt !== 'ack';
+    if (b.dataset.bt === 'po') drawPOs('bill_po_list');
+    if (b.dataset.bt === 'rf') drawBillDeliveries('bill_rf_list', 'rf');
+    if (b.dataset.bt === 'ack') drawBillDeliveries('bill_ack_list', 'ack');
+  }));
+
   let selectedSup = null;
   let poCat = '';
 
@@ -2677,9 +2721,14 @@ SCREENS.purchaseorders = async (page) => {
     } catch (e) { whoops(e); }
   };
 
-  const drawPOs = async () => {
+  // Drawn into whichever container asks — its own tab, and Billing's own
+  // Purchase order subtab, which reads the same list rather than keeping a
+  // second one that could drift from it.
+  const drawPOs = async (containerId = 'po_list') => {
+    const box = $(`#${containerId}`, page);
+    if (!box) return;
     const rows = await GET('/api/purchase-orders').catch(() => []);
-    $('#po_list', page).innerHTML = table(rows, [
+    box.innerHTML = table(rows, [
       { head: 'No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
       { head: 'Raised', cell: (o) => onDay(o.ordered_on) },
       { head: 'Supplier', cell: (o) => `<button class="nameopen" data-opensup="${o.supplier_id}">
@@ -2695,9 +2744,9 @@ SCREENS.purchaseorders = async (page) => {
       { head: 'State', cell: (o) => billState(o) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'No purchase orders yet.');
-    $$('[data-po]', page).forEach((b) => b.addEventListener('click',
+    $$('[data-po]', box).forEach((b) => b.addEventListener('click',
       () => openPO(+b.dataset.po).catch(whoops)));
-    $$('[data-opensup]', $('#po_list', page)).forEach((b) => b.addEventListener('click',
+    $$('[data-opensup]', box).forEach((b) => b.addEventListener('click',
       () => openSupplierFrom(b.dataset.opensup)));
   };
 
@@ -2710,6 +2759,32 @@ SCREENS.purchaseorders = async (page) => {
     if (!bills || !paid) return tag('unpaid', 'amber');
     if (paid === bills) return tag('paid', 'green');
     return tag('paid w/ bal', 'pink');
+  };
+
+  // Billing's own Receiving form and Acknowledgement form subtabs — the same
+  // deliveries, opening a different document: the stockroom's own paper, or
+  // the one page written for the supplier instead.
+  const drawBillDeliveries = async (containerId, mode) => {
+    const box = $(`#${containerId}`, page);
+    if (!box) return;
+    const rows = await GET('/api/receiving-forms').catch(() => []);
+    box.innerHTML = table(rows, [
+      { head: 'No.', cell: (f) => `<b>${esc(f.rf_no)}</b>` },
+      { head: 'Received', cell: (f) => onDay(f.received_on) },
+      { head: 'Supplier', cell: (f) => `${esc(f.supplier)}${
+          f.brand_name ? `<div class="dim">${esc(f.brand_name)}</div>` : ''}` },
+      { head: 'Against', cell: (f) => f.po_no ? esc(f.po_no) : tag('no order', 'grey') },
+      { head: 'Products', n: true, cell: (f) => count(f.products) },
+      { head: 'Units', n: true, cell: (f) => count(f.units) },
+      { head: '', cell: (f) => `<button class="btn sm quiet" data-open="${f.id}">Open</button>` },
+    ], 'No receiving forms yet.');
+    $$('[data-open]', box).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const full = await GET(`/api/receiving-forms/${b.dataset.open}`);
+        if (mode === 'ack') showAcknowledgementForm(full);
+        else showReceivingForm(full);
+      } catch (e) { whoops(e); }
+    }));
   };
 
   // The pending tab: the same list, kept to the orders still awaiting a
@@ -5365,6 +5440,97 @@ function showReceivingForm(f, over = false) {
       <button class="btn" id="rf_done">Done</button></div>`, 'wide', over);
   wireSave('#rf_save', '.doc', `${f.rf_no}.jpg`);
   $('#rf_done').addEventListener('click', closeDialog);
+}
+
+// ---------------------------------------------------------------------------
+// The acknowledgement form — the supplier's own proof of delivery
+//
+// The receiving form is the stockroom's paper: boxes, packings, the guard,
+// the gate. This is the supplier's: one page saying what came, that it came,
+// and who handed it to whom. The same delivery, read for a different reader —
+// so it carries the receiving form's own reference rather than a number of
+// its own, the way the sales invoice a reseller keeps points back at the
+// order it settles instead of inventing a second one.
+// ---------------------------------------------------------------------------
+function ackProducts(lines = []) {
+  return rfGroups(lines).map((g) => ({
+    name: g.name, sku: g.sku, unit: g.unit,
+    qty: g.packs.reduce((n, k) => n + k.qty_per_box * k.boxes, 0),
+  }));
+}
+
+function acknowledgementForm({ rfNo, poNo, deliveredOn, supplier = {},
+                                courier = {}, products = [], note }) {
+  const field = (label, value) => `
+    <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
+  const rows = products.length
+    ? products.map((p) => `<tr><td>${esc(p.name || p.sku)}</td>
+        <td class="c">${count(p.qty)}</td><td class="c">${esc(p.unit || 'PCS')}</td></tr>`).join('')
+    : '<tr><td colspan="3">&nbsp;</td></tr>';
+
+  return `
+    <div class="doc po rf">
+      <div class="rule"></div>
+      <div class="po-head">
+        <img src="/logo.png" alt="MS Beau Ave">
+        <div class="po-title">
+          <h2>ACKNOWLEDGEMENT FORM</h2>
+          <div class="po-nums">
+            ${field('DATE', onDay(deliveredOn))}
+            ${rfNo ? field('RECEIVING FORM', rfNo) : ''}
+            ${poNo ? field('PURCHASE ORDER', poNo) : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="po-parties">
+        <div>
+          <div class="barhd">SUPPLIER</div>
+          ${field('NAME:', supplier.supplier || supplier.name)}
+          ${field('BRAND', supplier.brand_name)}
+        </div>
+        <div>
+          <div class="barhd">RECEIVED AT</div>
+          ${field('COMPANY:', 'MS BEAU AVE')}
+          ${field('ADDRESS', 'MARIKINA CITY')}
+        </div>
+      </div>
+
+      <table class="lines">
+        <thead><tr>
+          <th>PRODUCT</th><th style="width:78px">QUANTITY</th><th style="width:62px">UNIT</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      <div class="rf-foot">
+        <div class="notes">
+          <div class="barhd">NOTES</div>
+          <div class="wrote">${esc(note || '')}</div>
+        </div>
+        <div class="sign2">
+          <div><div class="nm">${esc(courier.driver_name || '')}</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">DELIVERED BY:</div></div>
+          <div><div class="nm">${esc(courier.guard_on_duty || '')}</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">RECEIVED BY:</div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function showAcknowledgementForm(f, over = false) {
+  dialog(`${acknowledgementForm({
+    rfNo: f.rf_no, poNo: f.po_no, deliveredOn: f.received_on,
+    supplier: f, courier: f, products: ackProducts(f.lines || []), note: f.others,
+  })}
+    <div class="mt right">
+      <button class="btn quiet" id="ack_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
+      <button class="btn" id="ack_done">Done</button></div>`, 'wide', over);
+  wireSave('#ack_save', '.doc', `${f.rf_no}-acknowledgement.jpg`);
+  $('#ack_done').addEventListener('click', closeDialog);
 }
 
 function showOR(r, reseller, paid = {}, over = false) {
