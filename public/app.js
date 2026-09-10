@@ -3041,7 +3041,7 @@ SCREENS.purchaseorders = async (page) => {
     $('#pf_basket', page).innerHTML = rows.length ? `
       <div class="scroll"><table>
         <thead><tr><th>Product</th><th class="n">Quantity</th><th>Unit</th>
-          <th class="n">Cost price</th><th></th></tr></thead>
+          <th class="n">Cost price</th><th class="n">Total</th><th></th></tr></thead>
         <tbody>
           ${rows.map((l) => `<tr>
             <td><b>${esc(l.name)}</b><div class="dim">${esc(l.sku)}</div></td>
@@ -3052,16 +3052,21 @@ SCREENS.purchaseorders = async (page) => {
             <td class="n"><input class="cellbox n" type="number" step="0.01" min="0"
                  value="${l.price === '' || l.price == null ? '' : l.price}"
                  data-pr="${esc(l.sku)}" placeholder="—"></td>
+            <td class="n" data-tot="${esc(l.sku)}">${peso((Number(l.price) || 0) * l.qty)}</td>
             <td class="n"><button class="btn sm stop" data-x="${esc(l.sku)}">✕</button></td>
           </tr>`).join('')}
         </tbody>
       </table></div>` : '<div class="none">Nothing added yet.</div>';
-    // The count and the total, read straight off the basket. Kept apart from
-    // the drawing because a quantity or a price being typed must move them
-    // while it is typed: redrawing the table instead would take the box out
-    // from under the cursor mid-number.
+    // The line total, the count and the grand total, all read straight off the
+    // basket. Kept apart from the drawing because a quantity or a price being
+    // typed must move them while it is typed: redrawing the table instead
+    // would take the box out from under the cursor mid-number.
     const retotal = () => {
       const now = [...basket.values()];
+      $$('[data-tot]', $('#pf_basket', page)).forEach((cell) => {
+        const l = basket.get(cell.dataset.tot);
+        if (l) cell.textContent = peso((Number(l.price) || 0) * l.qty);
+      });
       const items = $('#pf_items', page);
       if (items) items.textContent = count(now.reduce((s, l) => s + l.qty, 0));
       const total = $('#pf_total', page);
