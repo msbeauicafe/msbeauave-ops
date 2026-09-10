@@ -1355,19 +1355,12 @@ input.n { text-align: right; }
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px;
   margin-top: 30px; text-align: center;
 }
-/* Two signers, not three — the acknowledgement form asks who handed it over
-   and who took it in, nothing past that. Same bones as sign3, one column
-   fewer, so it does not inherit an empty third slot. */
-.doc.po .sign2 {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 26px;
-  margin-top: 30px; text-align: center;
-}
-.doc.po .sign3 .nm, .doc.po .sign2 .nm {
+.doc.po .sign3 .nm {
   font-weight: 700; font-size: .7rem; border-bottom: 1px solid #000;
   padding-bottom: 2px; min-height: 18px;
 }
-.doc.po .sign3 .role, .doc.po .sign2 .role { font-size: .6rem; color: #444; margin-top: 2px; }
-.doc.po .sign3 .cap, .doc.po .sign2 .cap { font-weight: 700; font-size: .64rem; margin-top: 3px; }
+.doc.po .sign3 .role { font-size: .6rem; color: #444; margin-top: 2px; }
+.doc.po .sign3 .cap { font-weight: 700; font-size: .64rem; margin-top: 3px; }
 
 /* The receiving form wears the same bones as the purchase order and a
    different colour, because they are two halves of one transaction and the
