@@ -2826,7 +2826,7 @@ SCREENS.purchaseorders = async (page) => {
           <div><label${n ? ' class="sr"' : ''}>Attachment</label>
             <input class="bp_file" type="file" accept="image/*"></div>
         </div>`).join('')}
-      <div class="mt right"><button class="btn" id="bp_go">Save</button></div>`, '', true);
+      <div class="mt right"><button class="btn" id="bp_go">Save</button></div>`, 'wide', true);
 
     $('#bp_go').addEventListener('click', async () => {
       const jobs = $$('.payrow').map((row) => ({
