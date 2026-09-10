@@ -2566,6 +2566,7 @@ SCREENS.purchaseorders = async (page) => {
           <div class="panel">
             <h3>Product list</h3>
             <input type="search" id="pf_find" placeholder="Search products…">
+            <div style="margin-top:8px">${catChips('cat_pf')}</div>
             <div class="dim" id="pf_count" style="font-size:.72rem;margin:4px 0 2px"></div>
             <div id="pf_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
           </div>
@@ -2978,6 +2979,10 @@ SCREENS.purchaseorders = async (page) => {
   // before, the same money-follows-receiving rule.
   let catalogue = [];
   const basket = new Map();
+  // Same three categories as the Product list and Supplier information tabs —
+  // Promo and Freebies do not come with a cost the way stock does, so ordering
+  // one apart from the other means finding it apart from the other.
+  let pfCat = '';
 
   const drawGoods = () => {
     const term = ($('#pf_find', page).value || '').trim().toLowerCase();
@@ -2991,14 +2996,18 @@ SCREENS.purchaseorders = async (page) => {
     // Typing a brand should bring back that brand: the search reads the name,
     // the code and the brand, so "brilliant" finds everything of theirs and
     // nothing else.
-    const rows = mine.filter((p) => !term
-      || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term)
-      || (p.brand || '').toLowerCase().includes(term));
+    const rows = mine.filter((p) => (!pfCat
+        || (p.category || '').trim().toLowerCase() === pfCat)
+      && (!term
+        || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term)
+        || (p.brand || '').toLowerCase().includes(term)));
     $('#pf_count', page).textContent = term
       ? `${rows.length} of ${mine.length} products match “${term}”`
-      : mine === catalogue
-        ? `All ${rows.length} products — type to narrow it down`
-        : `${rows.length} ${esc(pfSup.brand_name)} products — type to narrow it down`;
+      : pfCat
+        ? `${rows.length} of ${mine.length} products`
+        : mine === catalogue
+          ? `All ${rows.length} products — type to narrow it down`
+          : `${rows.length} ${esc(pfSup.brand_name)} products — type to narrow it down`;
     $('#pf_goods', page).innerHTML = table(rows, [
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>
           <span class="dim">${esc(p.brand || p.sku)}</span>` },
@@ -3137,6 +3146,7 @@ SCREENS.purchaseorders = async (page) => {
   $('#pf_change', page).addEventListener('click', showSupPicker);
   $('#pf_supfind', page).addEventListener('input', drawSupPick);
   $('#pf_find', page).addEventListener('input', drawGoods);
+  wireCatChips(page, 'cat_pf', (c) => { pfCat = c; drawGoods(); });
 
   $('#pf_clear', page).addEventListener('click', async () => {
     if (basket.size && !await askFirst('Clear this order?', '', 'Clear it')) return;
