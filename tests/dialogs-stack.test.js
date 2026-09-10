@@ -50,21 +50,16 @@ test('the invoice read from an account is opened over that account', () => {
     'reading an invoice from an account must not close the account');
 });
 
-// The same promise, one screen over: the sheet and the delivery form are both
-// opened from a purchase order and both have to give it back.
+// The same promise, one screen over: the sheet read from a purchase order has
+// to give it back. Receiving no longer opens from inside this dialog at all —
+// it moved to its own screen, Receive — so there is nothing left here to
+// stack on top of the order.
 test('what is opened from a purchase order is opened over it', () => {
   const at = app.indexOf('SCREENS.purchaseorders = async');
   assert.notEqual(at, -1, 'the purchase order screen is gone');
   const screen = app.slice(at);
   assert.match(screen, /showPurchaseOrder\(po,\s*true\)/,
     'the sheet must not close the order it was printed from');
-  assert.match(screen, /receiveDelivery\(\{[\s\S]{0,220}?over:\s*true/,
-    'the delivery form must not close the order it answers');
-  // Receiving one line, read out of its own function rather than by guessing
-  // how many characters its dialog runs to.
-  const rl = screen.slice(screen.indexOf('function receiveLine('));
-  assert.match(rl.slice(0, rl.indexOf('\n  }\n')), /`,\s*'',\s*true\)/,
-    'receiving one line must not close the order either');
 });
 
 // Leaving the screen is not going back a step, and must not leave a veil behind.

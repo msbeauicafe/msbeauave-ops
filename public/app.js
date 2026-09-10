@@ -2729,7 +2729,6 @@ SCREENS.purchaseorders = async (page) => {
   // or all at once once a delivery lands. Its own number can be corrected the
   // way a customer order's can.
   async function openPO(poId) {
-    const shops = await branches();
     let po = await GET(`/api/purchase-orders/${poId}`);
     const cat = catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
@@ -2772,30 +2771,17 @@ SCREENS.purchaseorders = async (page) => {
             </div>
           </div>
           <div class="edit-side">
-            ${canEdit ? `
-              <div class="panel">
-                <h3>The purchase order number</h3>
-                <div class="dim">The number this order goes out under. Change it only
-                  to line up with one already used, or a gap left by a cancelled order.</div>
-                <div class="row">
-                  <div><label for="po_no_in">Purchase order no.</label>
-                    <input id="po_no_in" type="text" autocomplete="off" value="${esc(po.po_no)}"></div>
-                  <div style="flex:0 0 auto;align-self:flex-end">
-                    <button class="btn sm" id="po_num_keep">Save the number</button></div>
-                </div>
-              </div>` : ''}
             <h3>Products on this order</h3>
             <div class="dim">${canEdit
               ? 'Every box can be typed in. Change the product, how many, the unit'
                 + ' or the price; empty a quantity to take that product off. The'
                 + ' price is the expected cost — the sheet the supplier reads still'
                 + ' carries none.'
-              : 'This order has deliveries against it, so its lines are fixed. Receive'
-                + ' what is still short.'}</div>
+              : 'This order has deliveries against it, so its lines are fixed.'}</div>
             <div class="scroll"><table>
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
-                <th class="n">Price</th><th class="n">In</th><th class="n">Short</th><th></th>
+                <th class="n">Price</th><th></th>
               </tr></thead>
               <tbody>
                 ${po.lines.map((l) => `<tr data-row="${l.id}">
@@ -2813,12 +2799,8 @@ SCREENS.purchaseorders = async (page) => {
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
                     : (l.price != null ? peso(l.price) : '—')}</td>
-                  <td class="n">${count(l.received)}</td>
-                  <td class="n">${l.qty - l.received > 0
-                    ? count(l.qty - l.received) : tag('all in', 'green')}</td>
-                  <td class="n">${l.qty - l.received > 0 && live
-                    ? `<button class="btn sm" data-recv="${l.id}">Receive</button>` : ''}${canEdit
-                    ? ` <button class="btn sm stop" data-remove="${l.id}"
+                  <td class="n">${canEdit
+                    ? `<button class="btn sm stop" data-remove="${l.id}"
                          title="Take off this order">✕</button>` : ''}</td>
                 </tr>`).join('')}
                 ${Array.from({ length: SPARE }, (_x, i) => `<tr data-spare="${i}">
@@ -2828,7 +2810,7 @@ SCREENS.purchaseorders = async (page) => {
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
                   <td class="n"><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
-                  <td class="n"></td><td class="n"></td><td></td>
+                  <td></td>
                 </tr>`).join('')}
               </tbody>
             </table></div>
@@ -2838,7 +2820,6 @@ SCREENS.purchaseorders = async (page) => {
               <div class="right mt">
                 <button class="btn" id="po_keep">Save the changes</button></div>` : ''}
             <div class="mt right">
-              ${live ? '<button class="btn line" id="po_rf">📗 Receive the whole delivery</button>' : ''}
               ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
             </div>
           </div>
@@ -2850,23 +2831,10 @@ SCREENS.purchaseorders = async (page) => {
     function wire() {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true));
 
-      $$('[data-recv]', $('#po_root')).forEach((b) => b.addEventListener('click', () => {
-        const line = po.lines.find((l) => String(l.id) === b.dataset.recv);
-        receiveLine(po, line, shops, reload);
-      }));
-
       $$('[data-remove]', $('#po_root')).forEach((b) => b.addEventListener('click', () => {
         const tr = b.closest('tr');
         if (tr) tr.remove();
       }));
-
-      $('#po_num_keep')?.addEventListener('click', async () => {
-        try {
-          const out = await PUT(`/api/purchase-orders/${poId}`, { po_no: $('#po_no_in').value });
-          notice(`Now ${out.po_no}`, 'good');
-          reload();
-        } catch (e) { whoops(e); }
-      });
 
       $('#po_keep')?.addEventListener('click', async () => {
         const lines = [];
@@ -2894,10 +2862,6 @@ SCREENS.purchaseorders = async (page) => {
         } catch (e) { whoops(e); }
       });
 
-      $('#po_rf')?.addEventListener('click', () => {
-        receiveDelivery({ po, catalogue: cat, shops, suppliers, over: true, done: reload });
-      });
-
       $('#po_cancel')?.addEventListener('click', async () => {
         try {
           await POST(`/api/purchase-orders/${poId}/cancel`, {});
@@ -2911,59 +2875,14 @@ SCREENS.purchaseorders = async (page) => {
     paint();
   }
 
-  // The delivery itself. Batch, expiry and cost are the same three things
-  // receiving has always asked for, because this is the same receiving.
-
-  function receiveLine(po, line, shops, done) {
-    const short = line.qty - line.received;
-    dialog(`
-      <h3>Receive against ${esc(po.po_no)}</h3>
-      <div class="dim"><b>${esc(line.name)}</b> — ${count(short)} of
-        ${count(line.qty)} ${esc(line.unit)} still to come.</div>
-      <div class="row mt">
-        <div><label>Batch number</label><input id="pr_batch" type="text" autofocus></div>
-        <div><label>Expiry date</label><input id="pr_exp" type="date"></div>
-        <div><label>How many arrived</label>
-          <input id="pr_qty" type="number" min="1" value="${short}"></div>
-        <div><label>Cost each</label>
-          <input id="pr_cost" type="number" step="0.01" min="0" placeholder="unchanged"></div>
-      </div>
-      <div class="row">
-        <div><label>Paid by</label><select id="pr_method">
-          <option value="bank">Bank transfer</option><option value="cash">Cash</option>
-          <option value="gcash">GCash</option><option value="card">Card</option></select></div>
-        ${branchPicker(shops, 'pr_branch', 'Arrived at')}
-        <div style="flex:0 0 auto"><button class="btn" id="pr_go">Receive</button></div>
-      </div>
-      <div class="dim">More than was ordered is recorded, not refused — a
-        supplier who sends a hundred against an order for ninety-six has sent a
-        hundred.</div>`, '', true);
-
-    $('#pr_go').addEventListener('click', async () => {
-      const qty = +$('#pr_qty').value;
-      if (!(qty > 0)) return whoops(new Error('How many arrived?'));
-      $('#pr_go').disabled = true;
-      try {
-        const out = await POST(`/api/purchase-orders/lines/${line.id}/receive`, {
-          batch_no: $('#pr_batch').value, expiry: $('#pr_exp').value, qty,
-          unit_cost: $('#pr_cost').value, method: $('#pr_method').value,
-          branch_id: branchOf(document, 'pr_branch'),
-        });
-        notice(`${count(out.received)} of ${count(out.ordered)} in 🌸`, 'good');
-        closeDialog();
-        done();
-      } catch (e) { whoops(e); $('#pr_go').disabled = false; }
-    });
-  }
-
   // -------------------------------------------------------------------------
   // The receiving form: the whole delivery at once, counted in boxes
   //
-  // receiveLine above takes one product because sometimes one product is what
-  // turned up. This takes the van: every product on it, each in the packings it
-  // came in, and the courier, the shipping and the guard around them. It posts
-  // the same receive_stock underneath, once per product, and where it is
-  // answering a purchase order it ticks that order off as it goes.
+  // Raising an order is one screen; receiving against it is another, on
+  // Receive — every product on the delivery, each in the packings it came in,
+  // and the courier, the shipping and the guard around them. It posts the same
+  // receive_stock underneath, once per product, and where it is answering a
+  // purchase order it ticks that order off as it goes.
   // -------------------------------------------------------------------------
 
   // One form for both a new supplier and an edit of an existing one — the same
