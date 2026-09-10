@@ -3046,12 +3046,31 @@ SCREENS.purchaseorders = async (page) => {
   // or all at once once a delivery lands. Its own number can be corrected the
   // way a customer order's can.
   async function openPO(poId) {
-    const po = await GET(`/api/purchase-orders/${poId}`);
+    let po = await GET(`/api/purchase-orders/${poId}`);
+    const cat = catalogue.length ? catalogue
+      : await GET('/api/products?q=').catch(() => []);
+    const nameToSku = new Map(cat.map((p) => [p.name.trim().toLowerCase(), p.sku]));
+    po.lines.forEach((l) => {
+      const k = (l.name || '').trim().toLowerCase();
+      if (k && !nameToSku.has(k)) nameToSku.set(k, l.sku);
+    });
+    const datalist = `<datalist id="po_goods">${
+      cat.map((p) => `<option value="${esc(p.name)}"></option>`).join('')}</datalist>`;
 
     dialog('<div id="po_root"></div>', 'wide co-open');
 
+    const reload = async () => {
+      po = await GET(`/api/purchase-orders/${poId}`);
+      paint();
+      drawPOs();
+    };
+
     function paint() {
+      const canEdit = po.status === 'open';
+      const SPARE = canEdit ? 3 : 0;
       const live = po.status === 'open' || po.status === 'part';
+      const grandTotal = po.lines.reduce((s, l) =>
+        s + Number(l.qty) * (Number(l.price) || 0), 0);
       const stateTag = po.status === 'closed' ? tag('all in', 'green')
         : po.status === 'part' ? tag('part delivered', 'amber')
         : po.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
@@ -3063,16 +3082,149 @@ SCREENS.purchaseorders = async (page) => {
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span></h3>
         <div class="tags">${stateTag}
           <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
-        <div class="co-scale">${doc}</div>
-        <div class="co-actions">
-          <button class="btn quiet" id="po_sheet">🧾 Print / download</button>
-          ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
-        </div>`;
-      wire();
+        <div class="order-split">
+          <div class="co-side">
+            <div class="co-scale">${doc}</div>
+            <div class="co-actions">
+              <button class="btn quiet" id="po_sheet">🧾 Print / download</button>
+            </div>
+          </div>
+          <div class="edit-side">
+            <h3>Products on this order</h3>
+            <div class="dim">${canEdit
+              ? 'Every box can be typed in. Change the product, how many, the unit'
+                + ' or the price; empty a quantity to take that product off. The'
+                + ' price is the expected cost — the sheet the supplier reads still'
+                + ' carries none.'
+              : 'This order has deliveries against it, so its lines are fixed.'}</div>
+            <div class="scroll"><table>
+              <thead><tr>
+                <th>Product</th><th class="n">Quantity</th><th>Unit</th>
+                <th class="n">Price</th><th class="n">Total</th><th></th>
+              </tr></thead>
+              <tbody>
+                ${po.lines.map((l) => `<tr data-row="${l.id}">
+                  <td>${canEdit
+                    ? `<input class="cellbox open" list="po_goods" data-name
+                         autocomplete="off" value="${esc(l.name)}">`
+                    : `<b>${esc(l.name)}</b><div class="dim">${esc(l.sku)}</div>`}</td>
+                  <td class="n">${canEdit
+                    ? `<input class="cellbox open n" data-qty inputmode="numeric" value="${Number(l.qty)}">`
+                    : count(l.qty)}</td>
+                  <td>${canEdit
+                    ? `<input class="cellbox open" data-unit value="${esc(l.unit)}" style="width:70px">`
+                    : esc(l.unit)}</td>
+                  <td class="n">${canEdit
+                    ? `<input class="cellbox open n" data-price inputmode="decimal"
+                         value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
+                    : (l.price != null ? peso(l.price) : '—')}</td>
+                  <td class="n" data-tot>${peso((Number(l.price) || 0) * Number(l.qty))}</td>
+                  <td class="n">${canEdit
+                    ? `<button class="btn sm stop" data-remove="${l.id}"
+                         title="Take off this order">✕</button>` : ''}</td>
+                </tr>`).join('')}
+                ${Array.from({ length: SPARE }, (_x, i) => `<tr data-spare="${i}">
+                  <td><input class="cellbox open" list="po_goods" data-addname
+                        autocomplete="off" placeholder="Add a product"></td>
+                  <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
+                  <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
+                  <td class="n"><input class="cellbox open n" data-addprice inputmode="decimal"
+                        placeholder="—" style="width:80px"></td>
+                  <td class="n" data-tot>—</td>
+                  <td></td>
+                </tr>`).join('')}
+              </tbody>
+            </table></div>
+            <div class="basket-sum">
+              <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
+            </div>
+            ${canEdit ? `
+              <div class="mt"><label for="po_note_in">Comments or special instructions</label>
+                <input id="po_note_in" type="text" value="${esc(po.note || '')}"></div>
+              <div class="right mt">
+                <button class="btn" id="po_keep">Save the changes</button></div>` : ''}
+            <div class="mt right">
+              ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
+            </div>
+          </div>
+        </div>
+        ${datalist}`;
+      wire(canEdit);
     }
 
-    function wire() {
+    function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true));
+
+      // The line total and the grand total, read straight off the boxes as
+      // they are typed — the same figure Billing is about to be handed once
+      // the order is saved. A closed order's rows have no boxes to read: the
+      // total painted from its saved lines is the whole answer already.
+      if (canEdit) {
+        const retotal = () => {
+          let grand = 0;
+          $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
+            const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
+            const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
+            const cell = $('[data-tot]', tr);
+            const qty = Number(qtyEl?.value || 0);
+            const lineTotal = qty * (Number(priceEl?.value) || 0);
+            if (cell) cell.textContent = qty > 0 ? peso(lineTotal) : '—';
+            grand += lineTotal;
+          });
+          const g = $('#po_grand');
+          if (g) g.textContent = peso(grand);
+        };
+        $$('[data-qty], [data-addqty], [data-price], [data-addprice]', $('#po_root'))
+          .forEach((i) => i.addEventListener('input', retotal));
+
+        $$('[data-remove]', $('#po_root')).forEach((b) => b.addEventListener('click', () => {
+          const tr = b.closest('tr');
+          if (tr) tr.remove();
+          retotal();
+        }));
+      }
+
+      $('#po_keep')?.addEventListener('click', async () => {
+        const lines = [];
+        let unknown = '';
+        $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
+          const nameEl = $('[data-name]', tr) || $('[data-addname]', tr);
+          const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
+          const unitEl = $('[data-unit]', tr) || $('[data-addunit]', tr);
+          const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
+          if (!nameEl) return;
+          const name = (nameEl.value || '').trim();
+          const qty = Number(qtyEl?.value || 0);
+          if (!name || !(qty > 0)) return;
+          const sku = nameToSku.get(name.toLowerCase());
+          if (!sku) { unknown = unknown || name; return; }
+          lines.push({ sku, qty, unit: (unitEl?.value || 'PCS').trim() || 'PCS',
+            price: (priceEl?.value || '').trim() });
+        });
+        if (unknown) return notice(`“${unknown}” is not a product on the price list.`, 'bad');
+        if (!lines.length) return notice('A purchase order needs at least one line.', 'bad');
+        const total = lines.reduce((s, l) => s + Number(l.qty) * (Number(l.price) || 0), 0);
+        try {
+          await PUT(`/api/purchase-orders/${poId}`, { lines, note: $('#po_note_in').value });
+          notice('Purchase order saved 🌸', 'good');
+          await reload();
+          // Raise the bill against it right here — with what it comes to
+          // already on it, not a second errand for the office — as long as
+          // one is not on file for this order yet. One already billed is
+          // left alone: it may carry payments the total can no longer
+          // rewrite out from under.
+          if (total > 0) {
+            const bills = await GET('/api/purchase-order-bills').catch(() => []);
+            if (!bills.some((b) => String(b.po_id) === String(poId))) {
+              await POST('/api/purchase-order-bills', { po_id: poId, amount: total }).catch(() => {});
+            }
+          }
+          closeDialog();
+          // Straight to the Billing tab — not a dialog stacked on top of the
+          // order, the tab itself.
+          $('[data-t="bill"]', page)?.click();
+        } catch (e) { whoops(e); }
+      });
 
       $('#po_cancel')?.addEventListener('click', async () => {
         try {
