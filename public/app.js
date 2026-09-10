@@ -3143,6 +3143,12 @@ SCREENS.purchaseorders = async (page) => {
                 <input id="po_note_in" type="text" value="${esc(po.note || '')}"></div>
               <div class="right mt">
                 <button class="btn" id="po_keep">Save the changes</button></div>` : ''}
+            ${live ? `
+            <div class="mt right">
+              <button class="btn quiet" id="po_startreceive">Start receiving</button>
+              <button class="btn quiet" id="po_wholedelivery">Receive the whole delivery</button>
+              <button class="btn quiet" id="po_lackings">Delivery with lackings</button>
+            </div>` : ''}
             <div class="mt right">
               ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
             </div>
@@ -3241,6 +3247,23 @@ SCREENS.purchaseorders = async (page) => {
           closeDialog();
           drawPOs();
         } catch (e) { whoops(e); }
+      });
+
+      // Three ways into receiving, right from the order it is for: the quick
+      // one box at a time, the whole delivery pasted in at once, and the
+      // counted receiving form — pre-filled with what is still outstanding —
+      // for a delivery that comes up short.
+      $('#po_startreceive')?.addEventListener('click', () => {
+        closeDialog();
+        document.querySelector('[data-tab="receive"]')?.click();
+      });
+
+      $('#po_wholedelivery')?.addEventListener('click', () => {
+        deliveryDialog(GET('/api/products?q=').catch(() => []), () => {});
+      });
+
+      $('#po_lackings')?.addEventListener('click', () => {
+        receiveDelivery({ po, catalogue: cat, shops, suppliers, done: reload, over: true });
       });
     }
 
