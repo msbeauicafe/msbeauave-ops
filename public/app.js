@@ -3043,10 +3043,10 @@ SCREENS.purchaseorders = async (page) => {
           </div>
         </div>
         ${datalist}`;
-      wire();
+      wire(canEdit);
     }
 
-    function wire() {
+    function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true));
 
       // The line total and the grand total, read straight off the boxes as
