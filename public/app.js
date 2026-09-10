@@ -3143,12 +3143,6 @@ SCREENS.purchaseorders = async (page) => {
                 <input id="po_note_in" type="text" value="${esc(po.note || '')}"></div>
               <div class="right mt">
                 <button class="btn" id="po_keep">Save the changes</button></div>` : ''}
-            ${live ? `
-            <div class="mt right">
-              <button class="btn quiet" id="po_startreceive">Start receiving</button>
-              <button class="btn quiet" id="po_wholedelivery">Receive the whole delivery</button>
-              <button class="btn quiet" id="po_lackings">Delivery with lackings</button>
-            </div>` : ''}
             <div class="mt right">
               ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
             </div>
@@ -3162,7 +3156,13 @@ SCREENS.purchaseorders = async (page) => {
         <div class="co-actions">
           <button class="btn quiet" id="po_sheet">🧾 Print / download</button>
           ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
-        </div>`;
+        </div>
+        ${live ? `
+        <div class="mt right">
+          <button class="btn quiet" id="po_startreceive">Start receiving</button>
+          <button class="btn quiet" id="po_wholedelivery">Receive the whole delivery</button>
+          <button class="btn quiet" id="po_lackings">Delivery with lackings</button>
+        </div>` : ''}`;
       wire(canEdit);
     }
 
@@ -3262,8 +3262,9 @@ SCREENS.purchaseorders = async (page) => {
         deliveryDialog(GET('/api/products?q=').catch(() => []), () => {});
       });
 
-      $('#po_lackings')?.addEventListener('click', () => {
-        receiveDelivery({ po, catalogue: cat, shops, suppliers, done: reload, over: true });
+      $('#po_lackings')?.addEventListener('click', async () => {
+        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
+        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, over: true });
       });
     }
 
