@@ -2805,8 +2805,10 @@ SCREENS.purchaseorders = async (page) => {
     }));
   };
 
-  // What has come off this bill so far, and a box to take more off — the same
-  // shape as taking a cutoff off a cash advance.
+  // What has come off this bill so far, and up to five rows to take more off
+  // at once — the same shape Confirm the bank payment already uses for a
+  // reseller settling in several transfers, one row per payment: how much,
+  // when, how it arrived, and the proof that it did.
   const billPaymentForm = (bill, done) => {
     dialog(`
       <h3>Record a payment — ${esc(bill.po_no)}</h3>
@@ -2817,26 +2819,52 @@ SCREENS.purchaseorders = async (page) => {
         <div><div class="dim">Paid so far</div><b>${peso(bill.paid)}</b></div>
         <div><div class="dim">Still owed</div><b>${peso(bill.balance)}</b></div>
       </div>
-      <div class="row mt">
-        <div><label>Amount paid</label>
-          <input id="bp_amount" type="number" step="0.01" min="0.01"
-            max="${Number(bill.balance)}" value="${Number(bill.balance)}"></div>
-        <div><label>Date</label><input id="bp_date" type="date"
-          value="${new Date().toISOString().slice(0, 10)}"></div>
-      </div>
-      <div><label>Note</label><input id="bp_note" type="text"></div>
+      <div class="dim mt">Up to five payments at once — fill in as many rows
+        as have actually landed.</div>
+      ${[0, 1, 2, 3, 4].map((n) => `
+        <div class="row payrow">
+          <div><label${n ? ' class="sr"' : ''}>Amount paid</label>
+            <input class="bp_amt" type="number" step="0.01" min="0.01"
+              placeholder="${n ? '' : '0.00'}"
+              ${n === 0 ? `value="${Number(bill.balance)}"` : ''}></div>
+          <div><label${n ? ' class="sr"' : ''}>Date</label>
+            <input class="bp_on" type="date" value="${localDay()}"></div>
+          <div><label${n ? ' class="sr"' : ''}>Mode of payment</label>
+            <select class="bp_method">
+              <option value="bank">Bank transfer</option>
+              <option value="cash">Cash</option>
+              <option value="gcash">GCash</option>
+              <option value="card">Card</option>
+            </select></div>
+          <div><label${n ? ' class="sr"' : ''}>Attachment</label>
+            <input class="bp_file" type="file" accept="image/*"></div>
+        </div>`).join('')}
       <div class="mt right"><button class="btn" id="bp_go">Save</button></div>`, '', true);
 
     $('#bp_go').addEventListener('click', async () => {
+      const jobs = $$('.payrow').map((row) => ({
+        amount: Number($('.bp_amt', row).value || 0),
+        paid_on: $('.bp_on', row).value,
+        method: $('.bp_method', row).value,
+        file: $('.bp_file', row).files[0] || null,
+      })).filter((j) => j.amount > 0);
+      if (!jobs.length) return whoops(new Error('Enter at least one payment.'));
+
+      $('#bp_go').disabled = true;
       try {
-        await POST(`/api/purchase-order-bills/${bill.id}/payments`, {
-          amount: $('#bp_amount').value, paid_on: $('#bp_date').value,
-          note: $('#bp_note').value,
-        });
+        for (const j of jobs) {
+          const saved = await POST(`/api/purchase-order-bills/${bill.id}/payments`, {
+            amount: j.amount, paid_on: j.paid_on, method: j.method,
+          });
+          if (j.file) {
+            await POST(`/api/purchase-order-bill-payments/${saved.id}/files`,
+              { dataUrl: await shrink(j.file, 1600) });
+          }
+        }
         closeDialog();
         notice('Payment recorded 🌸', 'good');
         done();
-      } catch (e) { whoops(e); }
+      } catch (e) { whoops(e); $('#bp_go').disabled = false; }
     });
   };
 
