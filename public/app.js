@@ -3002,9 +3002,14 @@ SCREENS.purchaseorders = async (page) => {
     $('#pf_goods', page).innerHTML = table(rows, [
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>
           <span class="dim">${esc(p.brand || p.sku)}</span>` },
-      { head: 'Price', n: true, cell: (p) => peso(p.wholesale_price) },
-      { head: 'Have', n: true, cell: (p) => count(
-          (p.free_b2b || 0) + (p.free_shop || 0) + (p.free_reserve || 0)) },
+      // What the shop pays the supplier, not what it sells at — buying is
+      // costed, not priced, and showing the wholesale figure here read as the
+      // supplier's bill when it was really the reseller's.
+      { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
+      // On hand, whole — not the free-to-sell split the shop stopped wanting
+      // on the Product list, and for the same reason: ordering more asks how
+      // much there is, not how it is pooled.
+      { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
       { head: '', cell: (p) => `<button class="btn sm quiet"
           data-add="${esc(p.sku)}">Add</button>` },
     ], 'Nothing matches.');
@@ -3012,22 +3017,22 @@ SCREENS.purchaseorders = async (page) => {
       const prod = catalogue.find((x) => x.sku === b.dataset.add);
       const at = basket.get(prod.sku)
         ?? { sku: prod.sku, name: prod.name, unit: prod.unit_type || 'PCS',
-             qty: 0, price: prod.wholesale_price != null ? Number(prod.wholesale_price) : '' };
+             qty: 0, price: prod.unit_cost != null ? Number(prod.unit_cost) : '' };
       at.qty += 1;
       basket.set(prod.sku, at);
       drawBasket();
     }));
   };
 
-  // The list of orders as a table — product, quantity, unit and price, each box
-  // typed in. Price is the expected cost; it rides with the order and is not on
-  // the sheet the supplier reads.
+  // The list of orders as a table — product, quantity, unit and cost, each box
+  // typed in. Cost price is what is expected to land; it rides with the order
+  // and is not on the sheet the supplier reads.
   const drawBasket = () => {
     const rows = [...basket.values()];
     $('#pf_basket', page).innerHTML = rows.length ? `
       <div class="scroll"><table>
         <thead><tr><th>Product</th><th class="n">Quantity</th><th>Unit</th>
-          <th class="n">Price</th><th></th></tr></thead>
+          <th class="n">Cost price</th><th></th></tr></thead>
         <tbody>
           ${rows.map((l) => `<tr>
             <td><b>${esc(l.name)}</b><div class="dim">${esc(l.sku)}</div></td>
