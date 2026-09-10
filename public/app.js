@@ -2683,13 +2683,10 @@ SCREENS.purchaseorders = async (page) => {
     box.innerHTML = table(rows, [
       { head: 'No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
       { head: 'Raised', cell: (o) => onDay(o.ordered_on) },
-      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${
-          o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
-      { head: 'Lines', n: true, cell: (o) => count(o.lines) },
-      { head: 'Still short', n: true, cell: (o) => o.still_short > 0
-          ? `<b>${count(o.still_short)}</b>` : '—' },
-      { head: 'State', cell: (o) => o.status === 'part'
-          ? tag('part delivered', 'amber') : tag('open', 'pink') },
+      { head: 'Supplier', cell: (o) => esc(o.supplier) },
+      { head: 'Brand', cell: (o) => o.brand_name
+          ? esc(o.brand_name) : '<span class="dim">—</span>' },
+      { head: 'Quantity', n: true, cell: (o) => count(o.quantity) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'Nothing is awaiting delivery.');
     $$('[data-po]', box).forEach((b) => b.addEventListener('click',
