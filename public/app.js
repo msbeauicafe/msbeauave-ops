@@ -3214,14 +3214,16 @@ SCREENS.purchaseorders = async (page) => {
         });
         if (unknown) return notice(`“${unknown}” is not a product on the price list.`, 'bad');
         if (!lines.length) return notice('A purchase order needs at least one line.', 'bad');
-        const total = lines.reduce((s, l) => s + Number(l.qty) * (Number(l.price) || 0), 0);
         try {
           await PUT(`/api/purchase-orders/${poId}`, { lines, note: $('#po_note_in').value });
           notice('Purchase order saved 🌸', 'good');
           await reload();
-          // Straight to Billing with the total already on it — priced is
-          // pointless if logging what it comes to is a second errand.
-          if (total > 0) billForm({ po_id: poId, amount: total }, drawBills);
+          closeDialog();
+          // Straight to the Billing tab — not a dialog stacked on top of the
+          // order, the tab itself, so raising the bill against what was just
+          // priced is the very next thing on screen rather than in the way
+          // of it.
+          $('[data-t="bill"]', page)?.click();
         } catch (e) { whoops(e); }
       });
 
