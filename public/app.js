@@ -3214,15 +3214,25 @@ SCREENS.purchaseorders = async (page) => {
         });
         if (unknown) return notice(`“${unknown}” is not a product on the price list.`, 'bad');
         if (!lines.length) return notice('A purchase order needs at least one line.', 'bad');
+        const total = lines.reduce((s, l) => s + Number(l.qty) * (Number(l.price) || 0), 0);
         try {
           await PUT(`/api/purchase-orders/${poId}`, { lines, note: $('#po_note_in').value });
           notice('Purchase order saved 🌸', 'good');
           await reload();
+          // Raise the bill against it right here — with what it comes to
+          // already on it, not a second errand for the office — as long as
+          // one is not on file for this order yet. One already billed is
+          // left alone: it may carry payments the total can no longer
+          // rewrite out from under.
+          if (total > 0) {
+            const bills = await GET('/api/purchase-order-bills').catch(() => []);
+            if (!bills.some((b) => String(b.po_id) === String(poId))) {
+              await POST('/api/purchase-order-bills', { po_id: poId, amount: total }).catch(() => {});
+            }
+          }
           closeDialog();
           // Straight to the Billing tab — not a dialog stacked on top of the
-          // order, the tab itself, so raising the bill against what was just
-          // priced is the very next thing on screen rather than in the way
-          // of it.
+          // order, the tab itself.
           $('[data-t="bill"]', page)?.click();
         } catch (e) { whoops(e); }
       });
