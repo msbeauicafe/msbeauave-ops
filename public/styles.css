@@ -1332,6 +1332,9 @@ input.n { text-align: right; }
   font-size: .66rem; letter-spacing: .03em;
 }
 .doc.po table.lines td { border-color: #f6dfba; height: 17px; }
+.doc.po table.lines tfoot td {
+  background: #fdecd2; border-color: #f5a623; font-weight: 700;
+}
 .doc.po .po-foot { margin-top: 14px; }
 .doc.po .notes { width: 260px; border: 1px solid #f6dfba; }
 .doc.po .notes .barhd { display: block; margin: 0; }
