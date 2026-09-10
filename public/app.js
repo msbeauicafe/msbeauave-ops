@@ -2930,9 +2930,32 @@ SCREENS.purchaseorders = async (page) => {
   // off it, what is left — the same document shape as the acknowledgement form
   // and the receiving form beside it, not a settings form. Edit stays a click
   // away, stacked on top, for the rare typo rather than the common case.
-  function billInvoiceDoc(b) {
+  //
+  // The body is a running ledger, not a single paid/owed figure: the invoice
+  // itself is the first charge, each payment a credit against it in the order
+  // it landed, and the balance after each one is worked out here rather than
+  // trusted from a number that could drift from the rows behind it.
+  function billInvoiceDoc(b, payments = []) {
     const field = (label, value) => `
       <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
+
+    let running = Number(b.amount);
+    const charge = `<tr>
+        <td>${onDay(b.invoice_date)}</td>
+        <td>${esc(b.invoice_no ? `INVOICE #${b.invoice_no}` : 'INVOICE')}</td>
+        <td class="c">${peso(b.amount)}</td><td class="c"></td>
+        <td class="c">${peso(running)}</td>
+      </tr>`;
+    const credits = payments.map((p) => {
+      running -= Number(p.amount);
+      return `<tr>
+          <td>${onDay(p.paid_on)}</td>
+          <td>${esc(p.method ? `${p.method} PAYMENT` : 'PAYMENT')}</td>
+          <td class="c"></td><td class="c">${peso(p.amount)}</td>
+          <td class="c">${peso(running)}</td>
+        </tr>`;
+    }).join('');
+
     return `
       <div class="doc po">
         <div class="rule"></div>
@@ -2964,14 +2987,14 @@ SCREENS.purchaseorders = async (page) => {
 
         <table class="lines">
           <thead><tr>
-            <th>AMOUNT</th><th style="width:100px">PAID</th>
-            <th style="width:100px">STILL OWED</th>
+            <th>DATE</th><th>DESCRIPTION</th>
+            <th style="width:100px">CHARGES</th><th style="width:100px">CREDITS</th>
+            <th style="width:112px">ACCOUNT BALANCE</th>
           </tr></thead>
-          <tbody><tr>
-            <td>${peso(b.amount)}</td>
-            <td class="c">${peso(b.paid)}</td>
-            <td class="c">${peso(b.balance)}</td>
-          </tr></tbody>
+          <tbody>${charge}${credits}</tbody>
+          <tfoot><tr>
+            <td colspan="4">CURRENT BAL:</td><td class="c">${peso(running)}</td>
+          </tr></tfoot>
         </table>
 
         ${b.note ? `
@@ -2984,8 +3007,9 @@ SCREENS.purchaseorders = async (page) => {
       </div>`;
   }
 
-  function showBillInvoice(bill, done) {
-    dialog(`${billInvoiceDoc(bill)}
+  async function showBillInvoice(bill, done) {
+    const payments = await GET(`/api/purchase-order-bills/${bill.id}/payments`).catch(() => []);
+    dialog(`${billInvoiceDoc(bill, payments)}
       <div class="mt right">
         <button class="btn quiet" id="billdoc_edit">Edit</button>
         <button class="btn quiet" id="billdoc_save">⬇ Download JPEG</button>
