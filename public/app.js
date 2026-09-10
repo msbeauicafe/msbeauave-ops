@@ -2730,7 +2730,7 @@ SCREENS.purchaseorders = async (page) => {
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'Nothing is awaiting delivery.');
     $$('[data-po]', box).forEach((b) => b.addEventListener('click',
-      () => openPO(+b.dataset.po).catch(whoops)));
+      () => openPO(+b.dataset.po, true).catch(whoops)));
     $$('[data-opensup]', box).forEach((b) => b.addEventListener('click',
       () => openSupplierFrom(b.dataset.opensup)));
   };
@@ -3045,9 +3045,9 @@ SCREENS.purchaseorders = async (page) => {
   // editable while it is still open (nothing received), received line by line
   // or all at once once a delivery lands. Its own number can be corrected the
   // way a customer order's can.
-  async function openPO(poId) {
+  async function openPO(poId, showPricing = false) {
     let po = await GET(`/api/purchase-orders/${poId}`);
-    const cat = catalogue.length ? catalogue
+    const cat = !showPricing ? [] : catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
     const nameToSku = new Map(cat.map((p) => [p.name.trim().toLowerCase(), p.sku]));
     po.lines.forEach((l) => {
@@ -3066,7 +3066,7 @@ SCREENS.purchaseorders = async (page) => {
     };
 
     function paint() {
-      const canEdit = po.status === 'open';
+      const canEdit = showPricing && po.status === 'open';
       const SPARE = canEdit ? 3 : 0;
       const live = po.status === 'open' || po.status === 'part';
       const grandTotal = po.lines.reduce((s, l) =>
@@ -3078,7 +3078,7 @@ SCREENS.purchaseorders = async (page) => {
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
         lines: po.lines, note: po.note, preparedBy: po.raised_by,
       });
-      $('#po_root').innerHTML = `
+      $('#po_root').innerHTML = showPricing ? `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span></h3>
         <div class="tags">${stateTag}
           <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
@@ -3148,7 +3148,15 @@ SCREENS.purchaseorders = async (page) => {
             </div>
           </div>
         </div>
-        ${datalist}`;
+        ${datalist}` : `
+        <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span></h3>
+        <div class="tags">${stateTag}
+          <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
+        <div class="co-scale">${doc}</div>
+        <div class="co-actions">
+          <button class="btn quiet" id="po_sheet">🧾 Print / download</button>
+          ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
+        </div>`;
       wire(canEdit);
     }
 
@@ -3463,7 +3471,7 @@ SCREENS.purchaseorders = async (page) => {
       $('#pt_sup', page).hidden = true;
       $('#pt_pend', page).hidden = false;
       $('#pt_form', page).hidden = true;
-      openPO(Number(out.id)).catch(whoops);
+      openPO(Number(out.id), true).catch(whoops);
     } catch (e) { whoops(e); }
     $('#pf_go', page).disabled = false;
   });
