@@ -2566,6 +2566,7 @@ SCREENS.purchaseorders = async (page) => {
           <div class="panel">
             <h3>Product list</h3>
             <input type="search" id="pf_find" placeholder="Search products…">
+            <div style="margin-top:8px">${catChips('cat_pf')}</div>
             <div class="dim" id="pf_count" style="font-size:.72rem;margin:4px 0 2px"></div>
             <div id="pf_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
           </div>
@@ -2978,6 +2979,10 @@ SCREENS.purchaseorders = async (page) => {
   // before, the same money-follows-receiving rule.
   let catalogue = [];
   const basket = new Map();
+  // Same three categories as the Product list and Supplier information tabs —
+  // Promo and Freebies do not come with a cost the way stock does, so ordering
+  // one apart from the other means finding it apart from the other.
+  let pfCat = '';
 
   const drawGoods = () => {
     const term = ($('#pf_find', page).value || '').trim().toLowerCase();
@@ -2991,20 +2996,29 @@ SCREENS.purchaseorders = async (page) => {
     // Typing a brand should bring back that brand: the search reads the name,
     // the code and the brand, so "brilliant" finds everything of theirs and
     // nothing else.
-    const rows = mine.filter((p) => !term
-      || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term)
-      || (p.brand || '').toLowerCase().includes(term));
+    const rows = mine.filter((p) => (!pfCat
+        || (p.category || '').trim().toLowerCase() === pfCat)
+      && (!term
+        || p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term)
+        || (p.brand || '').toLowerCase().includes(term)));
     $('#pf_count', page).textContent = term
       ? `${rows.length} of ${mine.length} products match “${term}”`
-      : mine === catalogue
-        ? `All ${rows.length} products — type to narrow it down`
-        : `${rows.length} ${esc(pfSup.brand_name)} products — type to narrow it down`;
+      : pfCat
+        ? `${rows.length} of ${mine.length} products`
+        : mine === catalogue
+          ? `All ${rows.length} products — type to narrow it down`
+          : `${rows.length} ${esc(pfSup.brand_name)} products — type to narrow it down`;
     $('#pf_goods', page).innerHTML = table(rows, [
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>
           <span class="dim">${esc(p.brand || p.sku)}</span>` },
-      { head: 'Price', n: true, cell: (p) => peso(p.wholesale_price) },
-      { head: 'Have', n: true, cell: (p) => count(
-          (p.free_b2b || 0) + (p.free_shop || 0) + (p.free_reserve || 0)) },
+      // What the shop pays the supplier, not what it sells at — buying is
+      // costed, not priced, and showing the wholesale figure here read as the
+      // supplier's bill when it was really the reseller's.
+      { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
+      // On hand, whole — not the free-to-sell split the shop stopped wanting
+      // on the Product list, and for the same reason: ordering more asks how
+      // much there is, not how it is pooled.
+      { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
       { head: '', cell: (p) => `<button class="btn sm quiet"
           data-add="${esc(p.sku)}">Add</button>` },
     ], 'Nothing matches.');
@@ -3012,22 +3026,22 @@ SCREENS.purchaseorders = async (page) => {
       const prod = catalogue.find((x) => x.sku === b.dataset.add);
       const at = basket.get(prod.sku)
         ?? { sku: prod.sku, name: prod.name, unit: prod.unit_type || 'PCS',
-             qty: 0, price: prod.wholesale_price != null ? Number(prod.wholesale_price) : '' };
+             qty: 0, price: prod.unit_cost != null ? Number(prod.unit_cost) : '' };
       at.qty += 1;
       basket.set(prod.sku, at);
       drawBasket();
     }));
   };
 
-  // The list of orders as a table — product, quantity, unit and price, each box
-  // typed in. Price is the expected cost; it rides with the order and is not on
-  // the sheet the supplier reads.
+  // The list of orders as a table — product, quantity, unit and cost, each box
+  // typed in. Cost price is what is expected to land; it rides with the order
+  // and is not on the sheet the supplier reads.
   const drawBasket = () => {
     const rows = [...basket.values()];
     $('#pf_basket', page).innerHTML = rows.length ? `
       <div class="scroll"><table>
         <thead><tr><th>Product</th><th class="n">Quantity</th><th>Unit</th>
-          <th class="n">Price</th><th></th></tr></thead>
+          <th class="n">Cost price</th><th></th></tr></thead>
         <tbody>
           ${rows.map((l) => `<tr>
             <td><b>${esc(l.name)}</b><div class="dim">${esc(l.sku)}</div></td>
@@ -3132,6 +3146,7 @@ SCREENS.purchaseorders = async (page) => {
   $('#pf_change', page).addEventListener('click', showSupPicker);
   $('#pf_supfind', page).addEventListener('input', drawSupPick);
   $('#pf_find', page).addEventListener('input', drawGoods);
+  wireCatChips(page, 'cat_pf', (c) => { pfCat = c; drawGoods(); });
 
   $('#pf_clear', page).addEventListener('click', async () => {
     if (basket.size && !await askFirst('Clear this order?', '', 'Clear it')) return;
