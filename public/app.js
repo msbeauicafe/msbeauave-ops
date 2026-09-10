@@ -2496,8 +2496,8 @@ SCREENS.purchaseorders = async (page) => {
     <div class="subtabs">
       <button data-t="sup" class="on">Supplier information</button>
       <button data-t="form">Order</button>
-      <button data-t="bill">Billing</button>
       <button data-t="pend">Pending purchase order</button>
+      <button data-t="bill">Billing</button>
       <button data-t="ord">Purchase order</button>
     </div>
 
@@ -3430,11 +3430,13 @@ SCREENS.purchaseorders = async (page) => {
       drawBasket();
       $('#pf_note', page).value = '';
       showSupPicker();
-      await drawPOs();
-      // Back to the orders tab and open the one just raised.
-      $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'ord'));
+      // Back to Pending purchase order — where a just-raised order actually
+      // sits, awaiting delivery — and open the one just raised. The full
+      // Purchase order list is kept in step too, hidden or not.
+      await Promise.all([drawPOs(), drawPendingPOs()]);
+      $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'pend'));
       $('#pt_sup', page).hidden = true;
-      $('#pt_ord', page).hidden = false;
+      $('#pt_pend', page).hidden = false;
       $('#pt_form', page).hidden = true;
       openPO(Number(out.id)).catch(whoops);
     } catch (e) { whoops(e); }
