@@ -3112,7 +3112,7 @@ SCREENS.purchaseorders = async (page) => {
           <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
         <div class="order-split">
           <div class="co-side">
-            <div class="co-scale">${doc}</div>
+            <div class="co-scale" id="po_doc">${doc}</div>
             <div class="co-actions">
               <button class="btn quiet" id="po_sheet">🧾 Print / download</button>
             </div>
@@ -3205,7 +3205,35 @@ SCREENS.purchaseorders = async (page) => {
       // they are typed — the same figure Billing is about to be handed once
       // the order is saved. A closed order's rows have no boxes to read: the
       // total painted from its saved lines is the whole answer already.
+      //
+      // The printed sheet on the left redraws the same moment: it carries
+      // prices now, so a box typed on the right and never reflected on the
+      // left would be the two halves of this dialog disagreeing.
       if (canEdit) {
+        const previewLines = () => {
+          const out = [];
+          $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
+            const nameEl = $('[data-name]', tr) || $('[data-addname]', tr);
+            const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
+            const unitEl = $('[data-unit]', tr) || $('[data-addunit]', tr);
+            const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
+            const name = (nameEl?.value || '').trim();
+            const qty = Number(qtyEl?.value || 0);
+            if (!name || !(qty > 0)) return;
+            out.push({ name, qty, unit: (unitEl?.value || '').trim() || 'PCS',
+              price: priceEl?.value === '' || priceEl?.value == null ? null : Number(priceEl.value) });
+          });
+          return out;
+        };
+        const redrawDoc = () => {
+          const docBox = $('#po_doc');
+          if (!docBox) return;
+          docBox.innerHTML = purchaseOrder({
+            poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
+            lines: previewLines(), note: $('#po_note_in')?.value ?? po.note,
+            preparedBy: po.raised_by,
+          });
+        };
         const retotal = () => {
           let grand = 0;
           $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
@@ -3219,9 +3247,12 @@ SCREENS.purchaseorders = async (page) => {
           });
           const g = $('#po_grand');
           if (g) g.textContent = peso(grand);
+          redrawDoc();
         };
-        $$('[data-qty], [data-addqty], [data-price], [data-addprice]', $('#po_root'))
+        $$('[data-name], [data-addname], [data-qty], [data-addqty],'
+          + ' [data-unit], [data-addunit], [data-price], [data-addprice]', $('#po_root'))
           .forEach((i) => i.addEventListener('input', retotal));
+        $('#po_note_in')?.addEventListener('input', redrawDoc);
 
         $$('[data-remove]', $('#po_root')).forEach((b) => b.addEventListener('click', () => {
           const tr = b.closest('tr');
