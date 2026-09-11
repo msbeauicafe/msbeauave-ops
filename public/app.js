@@ -1426,8 +1426,8 @@ function supplierForm(existing, reload) {
     <div class="filegrid mt" id="sp_fdagrid">${existing
       ? '<div class="dim">Loading…</div>' : '<div class="dim">None yet.</div>'}</div>
     <div class="row mt">
-      <div style="flex:2"><label>Registration number or what it covers</label>
-        <input id="sp_fdalabel" type="text" placeholder="e.g. CPR 12345 — Brilliant Skin"></div>
+      <div style="flex:2"><label>FDA expiration</label>
+        <input id="sp_fdalabel" type="date"></div>
       <div style="flex:2"><label>Choose a scan</label>
         <input id="sp_fdafile" type="file" accept="image/jpeg,image/png,image/webp"></div>
     </div>
