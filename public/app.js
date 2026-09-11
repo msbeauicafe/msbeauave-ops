@@ -1402,6 +1402,11 @@ function supplierForm(existing, reload) {
         <input id="s_brand" type="text" list="s_brandopts" autocomplete="off"
           value="${esc(e.brand_name || '')}" placeholder="Pick a brand or type a new one…">
         <datalist id="s_brandopts"></datalist></div>
+      <div><label>Tier</label>
+        <select id="s_tier">
+          <option value="main" ${e.tier === 'distributor' ? '' : 'selected'}>Main</option>
+          <option value="distributor" ${e.tier === 'distributor' ? 'selected' : ''}>Distributor</option>
+        </select></div>
     </div>
     <div class="row">
       <div><label>Brings</label>
@@ -1548,7 +1553,7 @@ function supplierForm(existing, reload) {
 
         tin: $('#sp_tin').value, address: $('#sp_addr').value,
         // Not on the form; carried through so an edit keeps it.
-        supplier_name: e.supplier_name || '', tier: e.tier || 'main',
+        supplier_name: e.supplier_name || '', tier: $('#s_tier').value,
       });
       const supId = e.id || (saved && saved.id);
       if (supId) {
