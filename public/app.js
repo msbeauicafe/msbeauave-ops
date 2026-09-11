@@ -2546,7 +2546,7 @@ SCREENS.purchaseorders = async (page) => {
 
     <div class="panel" id="pt_ord" hidden>
       <div class="subtabs">
-        <button data-p="ord" class="on">Pending purchase order</button>
+        <button data-p="ord" class="on">Purchase orders</button>
         <button data-p="prod">Product list</button>
       </div>
 
