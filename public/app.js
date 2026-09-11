@@ -2793,6 +2793,8 @@ SCREENS.purchaseorders = async (page) => {
             <div class="bill-actions-top">
               ${Number(b.balance) > 0
                 ? `<button class="btn sm" data-billpay="${b.id}">Record payment</button>` : ''}
+              <button class="btn sm quiet" data-billfile="${b.id}"
+                title="The supplier's own invoice, photographed">📎 Supplier billing</button>
               <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>
             </div>
             <button class="btn sm quiet" data-billedit="${b.id}">🖨 Invoice</button>
@@ -2805,6 +2807,9 @@ SCREENS.purchaseorders = async (page) => {
 
     $$('[data-billpay]', box).forEach((btn) => btn.addEventListener('click',
       () => billPaymentForm(find(btn.dataset.billpay), drawBills)));
+
+    $$('[data-billfile]', box).forEach((btn) => btn.addEventListener('click',
+      () => billAttachmentForm(find(btn.dataset.billfile))));
 
     $$('[data-billedit]', box).forEach((btn) => btn.addEventListener('click',
       () => showBillInvoice(find(btn.dataset.billedit), drawBills)));
@@ -2828,7 +2833,8 @@ SCREENS.purchaseorders = async (page) => {
   // at once — the same shape Confirm the bank payment already uses for a
   // reseller settling in several transfers, one row per payment: how much,
   // when, how it arrived, and the proof that it did.
-  const billPaymentForm = (bill, done) => {
+  const billPaymentForm = async (bill, done) => {
+    const prior = await GET(`/api/purchase-order-bills/${bill.id}/payments`).catch(() => []);
     dialog(`
       <h3>Record a payment — ${esc(bill.po_no)}</h3>
       <div class="dim">${esc(bill.supplier)}${bill.invoice_no
@@ -2838,6 +2844,21 @@ SCREENS.purchaseorders = async (page) => {
         <div><div class="dim">Paid so far</div><b>${peso(bill.paid)}</b></div>
         <div><div class="dim">Still owed</div><b>${peso(bill.balance)}</b></div>
       </div>
+      ${prior.length ? `
+      <h3 class="mt">Payments on file</h3>
+      <div class="filegrid" id="bp_prior">${prior.map((p) => `
+        <figure class="filecard">
+          ${p.file_ids?.length
+            ? `<img class="filethumb" src="/api/purchase-order-bill-payment-files/${p.file_ids[0]}"
+                 alt="" loading="lazy" data-zoom="/api/purchase-order-bill-payment-files/${p.file_ids[0]}"
+                 data-zoom-cap="${esc(p.method || '')} · ${esc(peso(p.amount))}">`
+            : `<span class="filethumb none-photo" style="width:132px;height:96px;
+                 border-radius:8px;background:var(--rose-blush);
+                 border:1px solid var(--rose-soft)">🧾</span>`}
+          <figcaption><b>${esc(peso(p.amount))}</b><br>
+            <span class="dim">${onDay(p.paid_on)}${p.method ? ` · ${esc(p.method)}` : ''}</span>
+          </figcaption>
+        </figure>`).join('')}</div>` : ''}
       <div class="dim mt">Up to five payments at once — fill in as many rows
         as have actually landed.</div>
       ${[0, 1, 2, 3, 4].map((n) => `
@@ -2881,6 +2902,58 @@ SCREENS.purchaseorders = async (page) => {
         done();
       } catch (e) { whoops(e); $('#bp_go').disabled = false; }
     });
+  };
+
+  // The supplier's own paper, photographed — kept against the bill and shown
+  // back the same way an FDA scan is: a thumbnail that stays there, clicks to
+  // fill the screen, and downloads from the same click.
+  const billAttachmentForm = async (bill) => {
+    dialog(`
+      <h3>Supplier billing — ${esc(bill.po_no)}</h3>
+      <div class="dim">${esc(bill.supplier)}${bill.invoice_no
+        ? ` · invoice ${esc(bill.invoice_no)}` : ''}</div>
+      <div class="filegrid mt" id="bf_grid"><div class="dim">Loading…</div></div>
+      <div class="row mt">
+        <div style="flex:2"><label>Add a photo or scan</label>
+          <input id="bf_file" type="file" accept="image/*"></div>
+      </div>
+      <div class="mt right"><button class="btn quiet" id="bf_done">Done</button></div>`, '', true);
+
+    const paintFiles = async () => {
+      const grid = $('#bf_grid');
+      if (!grid) return;
+      const files = await GET(`/api/purchase-order-bills/${bill.id}/files`).catch(() => []);
+      grid.innerHTML = files.length ? files.map((f) => `<figure class="filecard">
+          <img class="filethumb" src="/api/purchase-order-bill-files/${f.id}" alt=""
+            loading="lazy" data-zoom="/api/purchase-order-bill-files/${f.id}"
+            data-zoom-cap="${esc(bill.po_no)}">
+          <figcaption><span class="dim">${esc(f.uploaded_by || '')} · ${onDay(f.uploaded_at)}</span>
+            <button class="linkbtn del-file" data-file="${f.id}">remove</button></figcaption>
+        </figure>`).join('') : '<div class="dim">None yet.</div>';
+      $$('.del-file', grid).forEach((btn) => btn.addEventListener('click', async () => {
+        if (!await askFirst('Remove this file from the record?')) return;
+        try {
+          await DELETE(`/api/purchase-order-bill-files/${btn.dataset.file}`);
+          notice('Removed', 'good');
+          await paintFiles();
+        } catch (e) { whoops(e); }
+      }));
+    };
+    await paintFiles();
+
+    $('#bf_file').addEventListener('change', async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      try {
+        const dataUrl = await shrink(file, 1600);
+        await POST(`/api/purchase-order-bills/${bill.id}/files`, { dataUrl });
+        notice('Saved 🌸', 'good');
+        ev.target.value = '';
+        await paintFiles();
+      } catch (e) { whoops(e); }
+    });
+
+    $('#bf_done').addEventListener('click', closeDialog);
   };
 
   // The delivery a bill answers. A PO can have more than one receiving form
