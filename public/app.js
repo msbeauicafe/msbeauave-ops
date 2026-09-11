@@ -2791,8 +2791,8 @@ SCREENS.purchaseorders = async (page) => {
       { head: '', cell: (b) => `
           <div class="bill-actions">
             <div class="bill-actions-top">
-              <button class="btn sm${Number(b.balance) > 0 ? '' : ' quiet'}" data-billpay="${b.id}">${
-                Number(b.balance) > 0 ? 'Record payment' : 'Payments'}</button>
+              <button class="btn sm${Number(b.balance) > 0 ? '' : ' quiet'}"
+                data-billpay="${b.id}">Record payment</button>
               <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>
             </div>
             <button class="btn sm quiet" data-billedit="${b.id}">🖨 Invoice</button>
@@ -2836,7 +2836,7 @@ SCREENS.purchaseorders = async (page) => {
   const billPaymentForm = async (bill, done) => {
     const canPay = Number(bill.balance) > 0;
     dialog(`
-      <h3>${canPay ? 'Record a payment' : 'Payments'} — ${esc(bill.po_no)}</h3>
+      <h3>Record a payment — ${esc(bill.po_no)}</h3>
       <div class="dim">${esc(bill.supplier)}${bill.invoice_no
         ? ` · invoice ${esc(bill.invoice_no)}` : ''}</div>
       <div class="row mt" id="bp_figs">
