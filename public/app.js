@@ -2749,6 +2749,8 @@ SCREENS.purchaseorders = async (page) => {
     box.innerHTML = table(rows, [
       { head: 'No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
       { head: 'Date', cell: (o) => onDay(o.ordered_on) },
+      { head: 'Supplier', cell: (o) => `<button class="nameopen" data-opensup="${
+          o.supplier_id}"><b>${esc(o.supplier)}</b></button>` },
       { head: 'Brand', cell: (o) => o.brand_name
           ? esc(o.brand_name) : '<span class="dim">—</span>' },
       { head: 'Stage', cell: poStage },
@@ -2757,6 +2759,8 @@ SCREENS.purchaseorders = async (page) => {
     ], 'Nothing is awaiting delivery.');
     $$('[data-po]', box).forEach((b) => b.addEventListener('click',
       () => openPO(+b.dataset.po, true).catch(whoops)));
+    $$('[data-opensup]', box).forEach((b) => b.addEventListener('click',
+      () => openSupplierFrom(b.dataset.opensup)));
   };
 
   // Billing — the supplier's own invoice, one row per bill, against the order
