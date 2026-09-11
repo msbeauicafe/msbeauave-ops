@@ -11425,9 +11425,77 @@ SCREENS.notices = async (page) => {
 const clockAt = (v) => (v ? new Date(v).toLocaleTimeString('en-PH',
   { hour: 'numeric', minute: '2-digit', timeZone: TZ }) : '—');
 
+// Correcting a shift by hand — the one screen where this belongs, because it
+// is the screen where the anomaly is actually seen: a shift still "on" three
+// days later, or a few seconds of ghost hours the old double-press bug wrote.
+// No id raises a new shift instead of correcting one, for the other half of a
+// shift a missed toggle merged into a single multi-day row.
+//
+// Manila is fixed at UTC+8 the whole year, so the input can be read and
+// written as that offset directly rather than trusting whatever timezone the
+// PC filling it in happens to be set to.
+const manilaInput = (iso) => (iso
+  ? new Date(new Date(iso).getTime() + 8 * 3600 * 1000).toISOString().slice(0, 16) : '');
+const fromManilaInput = (v) => (v ? `${v}:00+08:00` : null);
+
+function editShiftForm(existing, employeeHint, reload) {
+  const s = existing || {};
+  dialog(`
+    <h3>${existing ? 'Correct this shift' : 'Add a shift'}</h3>
+    ${existing
+      ? `<div class="dim">${esc(s.name || employeeHint?.name || '')}</div>`
+      : `<div class="row"><div style="flex:2"><label>Who</label>
+          <input id="es_who" type="text" list="es_team" autocomplete="off"
+            placeholder="Pick a name…">
+          <datalist id="es_team"></datalist></div></div>`}
+    <div class="row mt">
+      <div><label>Started</label>
+        <input id="es_start" type="datetime-local" value="${manilaInput(s.started_at)}"></div>
+      <div><label>Ended</label>
+        <input id="es_end" type="datetime-local" value="${manilaInput(s.ended_at)}">
+        <div class="dim">Leave blank for still on shift.</div></div>
+    </div>
+    <div class="row mt">
+      <div style="flex:3"><label>Why this is being corrected</label>
+        <input id="es_note" type="text" value="${esc(s.note || '')}"></div>
+    </div>
+    <div class="mt right"><button class="btn" id="es_save">Save</button></div>`);
+
+  let teamByName = new Map();
+  if (!existing) {
+    GET('/api/team').then((d) => {
+      const opts = $('#es_team');
+      if (!opts) return;
+      teamByName = new Map((d.team || []).map((p) => [p.name, p.id]));
+      opts.innerHTML = (d.team || []).map((p) => `<option value="${esc(p.name)}"></option>`).join('');
+    }).catch(() => {});
+  }
+
+  $('#es_save').addEventListener('click', async () => {
+    const started_at = fromManilaInput($('#es_start').value);
+    const ended_at = fromManilaInput($('#es_end').value);
+    const note = $('#es_note').value.trim();
+    if (!started_at) return notice('Say when the shift started.', 'bad');
+    if (!note) return notice('Say why this shift is being corrected.', 'bad');
+    let employee_id = employeeHint?.id || s.employee_id || null;
+    if (!existing) {
+      employee_id = teamByName.get(($('#es_who').value || '').trim());
+      if (!employee_id) return notice('Pick a name from the list.', 'bad');
+    }
+    try {
+      await POST('/api/shifts/edit',
+        { id: existing ? s.id : null, employee_id, started_at, ended_at, note });
+      notice('Shift saved 🌸', 'good');
+      closeDialog();
+      reload();
+    } catch (e) { whoops(e); }
+  });
+}
+
 SCREENS.attendance = async (page) => {
   let day = localDay();
   let shop = '';
+  const canEditShifts = user.role === 'admin' || user.role === 'hr';
 
   const load = async () => {
     const d = await GET(`/api/hr/attendance?on=${encodeURIComponent(day)}${
@@ -11498,7 +11566,8 @@ SCREENS.attendance = async (page) => {
           { head: 'Shop', cell: (p) => esc(p.branch || '—') },
         ], 'Everybody clocked on 🌸')}</div>
 
-      <div class="panel"><h3>🕒 Every press, in order</h3>
+      <div class="panel"><h3>🕒 Every press, in order
+          ${canEditShifts ? '<button class="btn sm quiet" id="a_addshift">＋ Add a shift</button>' : ''}</h3>
         ${howLine(d.stretches)}
         ${table(d.stretches, [
           { head: 'In', cell: (s) => esc(clockAt(s.started_at)) },
@@ -11524,6 +11593,8 @@ SCREENS.attendance = async (page) => {
             }</span>` },
           { head: 'Note', cell: (s) => (s.note
               ? `<span class="dim">${esc(s.note)}</span>` : '') },
+          { head: '', cell: (s) => (canEditShifts
+              ? `<button class="btn sm quiet" data-editshift="${s.id}">Edit</button>` : '') },
         ], 'Nothing recorded on this day.')}</div>`;
 
     const go = (d2) => { day = d2; load().catch(whoops); };
@@ -11536,6 +11607,15 @@ SCREENS.attendance = async (page) => {
       go(back.toLocaleDateString('en-CA', { timeZone: TZ }));
     });
     wirePeople(page);
+
+    if (canEditShifts) {
+      $('#a_addshift', page)?.addEventListener('click',
+        () => editShiftForm(null, null, load));
+      $$('[data-editshift]', page).forEach((b) => b.addEventListener('click', () => {
+        const row = d.stretches.find((s) => String(s.id) === b.dataset.editshift);
+        if (row) editShiftForm(row, null, load);
+      }));
+    }
   };
 
   await load();
