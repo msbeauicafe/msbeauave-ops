@@ -3103,7 +3103,7 @@ SCREENS.purchaseorders = async (page) => {
         lines: po.lines, note: po.note, preparedBy: po.raised_by,
       });
       $('#po_root').innerHTML = showPricing ? `
-        <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span></h3>
+        <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
           <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
         <div class="order-split">
@@ -3169,17 +3169,21 @@ SCREENS.purchaseorders = async (page) => {
                 <button class="btn" id="po_keep">Save the changes</button></div>` : ''}
             <div class="mt right">
               ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
+              ${po.status === 'cancelled' ? '<button class="btn quiet" id="po_commit">Committed</button>' : ''}
+              ${live ? '<button class="btn stop" id="po_cancel2">Cancelled</button>' : ''}
             </div>
           </div>
         </div>
         ${datalist}` : `
-        <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span></h3>
+        <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
           <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
         <div class="co-scale">${doc}</div>
         <div class="co-actions">
           <button class="btn quiet" id="po_sheet">🧾 Print / download</button>
           ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
+          ${po.status === 'cancelled' ? '<button class="btn quiet" id="po_commit">Committed</button>' : ''}
+          ${live ? '<button class="btn stop" id="po_cancel2">Cancelled</button>' : ''}
         </div>
         ${live ? `
         <div class="mt right">
@@ -3264,7 +3268,7 @@ SCREENS.purchaseorders = async (page) => {
         } catch (e) { whoops(e); }
       });
 
-      $('#po_cancel')?.addEventListener('click', async () => {
+      $$('#po_cancel, #po_cancel2').forEach((b) => b.addEventListener('click', async () => {
         const reason = prompt('Why is this order being cancelled?');
         if (!reason) return;
         try {
@@ -3272,6 +3276,15 @@ SCREENS.purchaseorders = async (page) => {
           notice('Purchase order cancelled', 'good');
           closeDialog();
           drawPOs();
+          drawPendingPOs();
+        } catch (e) { whoops(e); }
+      }));
+
+      $('#po_commit')?.addEventListener('click', async () => {
+        try {
+          await POST(`/api/purchase-orders/${poId}/reopen`, {});
+          notice('Purchase order recommitted 🌸', 'good');
+          await reload();
           drawPendingPOs();
         } catch (e) { whoops(e); }
       });
@@ -5394,7 +5407,7 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note,
       <div class="po-head">
         <img src="/logo.png" alt="MS Beau Ave">
         <div class="po-title">
-          <h2>PURCHASE ORDER</h2>
+          <h2>PURCHASE BILLING</h2>
           <div class="po-nums">
             ${field('DATE', onDay(orderedOn))}
             ${field('PURCHASE ORDER', poNo)}
@@ -5423,8 +5436,10 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note,
         <thead><tr>
           <th style="width:52px">No.</th>
           <th>PRODUCT DESCRIPTION</th>
-          <th style="width:110px">QUANTITY</th>
-          <th style="width:90px">UNIT</th>
+          <th style="width:90px">QUANTITY</th>
+          <th style="width:70px">UNIT</th>
+          <th style="width:90px">PRICE</th>
+          <th style="width:100px">TOTAL</th>
         </tr></thead>
         <tbody>
           ${lines.map((l, i) => `<tr>
@@ -5432,10 +5447,17 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note,
             <td>${esc(l.name)}</td>
             <td class="c">${count(l.qty)}</td>
             <td class="c">${esc(l.unit || l.unit_type || 'PCS')}</td>
+            <td class="c">${l.price != null ? peso(l.price) : '—'}</td>
+            <td class="c">${l.price != null ? peso(Number(l.price) * Number(l.qty)) : '—'}</td>
           </tr>`).join('')}
           ${Array.from({ length: BLANKS },
-            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>').join('')}
+            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
         </tbody>
+        <tfoot><tr>
+          <td colspan="5" class="c"><b>TOTAL</b></td>
+          <td class="c"><b>${peso(lines.reduce((s, l) =>
+            s + Number(l.qty) * (Number(l.price) || 0), 0))}</b></td>
+        </tr></tfoot>
       </table>
 
       <div class="po-foot">
