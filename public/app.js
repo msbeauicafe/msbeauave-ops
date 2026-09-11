@@ -2513,7 +2513,7 @@ SCREENS.purchaseorders = async (page) => {
     <div class="subtabs">
       <button data-t="sup" class="on">Supplier information</button>
       <button data-t="form">Order</button>
-      <button data-t="pend">Pending purchase order</button>
+      <button data-t="pend">Pending purchase billing</button>
       <button data-t="bill">Billing</button>
       <button data-t="ord">Purchase order</button>
     </div>
@@ -2538,7 +2538,7 @@ SCREENS.purchaseorders = async (page) => {
     </div>
 
     <div class="panel" id="pt_pend" hidden>
-      <div class="head" style="margin:0"><h3 class="sr">Pending purchase orders</h3></div>
+      <div class="head" style="margin:0"><h3 class="sr">Pending purchase billing</h3></div>
       <div class="dim mt">Purchase orders still awaiting delivery. Open one to edit
         it while it is open, or to receive what has arrived.</div>
       <div id="po_pend_list" class="mt"></div>
@@ -2754,7 +2754,7 @@ SCREENS.purchaseorders = async (page) => {
       { head: 'Brand', cell: (o) => o.brand_name
           ? esc(o.brand_name) : '<span class="dim">—</span>' },
       { head: 'Stage', cell: poStage },
-      { head: 'Quantity', n: true, cell: (o) => count(o.quantity) },
+      { head: 'Total purchase', n: true, cell: (o) => peso(o.total_purchase) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'Nothing is awaiting delivery.');
     $$('[data-po]', box).forEach((b) => b.addEventListener('click',
