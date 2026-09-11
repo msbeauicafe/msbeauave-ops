@@ -2732,25 +2732,31 @@ SCREENS.purchaseorders = async (page) => {
 
   // The pending tab: the same list, kept to the orders still awaiting a
   // delivery — open and part-delivered — so what is outstanding stands alone.
+  // Cancelled stays on this list rather than vanishing off it — the owner
+  // should be able to see what got called off and why, not just what is
+  // still coming. Closed is the one status that leaves: fully received is
+  // a done deal, tracked on the Purchase order list from here on.
+  const poStage = (o) => o.status === 'cancelled'
+    ? `${tag('Cancelled', 'red')}${o.cancel_reason
+        ? `<div class="dim" style="font-size:.72rem;margin-top:2px">— ${esc(o.cancel_reason)}</div>` : ''}`
+    : tag('Committed', 'green');
+
   const drawPendingPOs = async () => {
     const box = $('#po_pend_list', page);
     if (!box) return;
     const rows = (await GET('/api/purchase-orders').catch(() => []))
-      .filter((o) => o.status === 'open' || o.status === 'part');
+      .filter((o) => o.status !== 'closed');
     box.innerHTML = table(rows, [
       { head: 'No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
-      { head: 'Raised', cell: (o) => onDay(o.ordered_on) },
-      { head: 'Supplier', cell: (o) => `<button class="nameopen" data-opensup="${
-          o.supplier_id}"><b>${esc(o.supplier)}</b></button>` },
+      { head: 'Date', cell: (o) => onDay(o.ordered_on) },
       { head: 'Brand', cell: (o) => o.brand_name
           ? esc(o.brand_name) : '<span class="dim">—</span>' },
+      { head: 'Stage', cell: poStage },
       { head: 'Quantity', n: true, cell: (o) => count(o.quantity) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'Nothing is awaiting delivery.');
     $$('[data-po]', box).forEach((b) => b.addEventListener('click',
       () => openPO(+b.dataset.po, true).catch(whoops)));
-    $$('[data-opensup]', box).forEach((b) => b.addEventListener('click',
-      () => openSupplierFrom(b.dataset.opensup)));
   };
 
   // Billing — the supplier's own invoice, one row per bill, against the order
@@ -3259,11 +3265,14 @@ SCREENS.purchaseorders = async (page) => {
       });
 
       $('#po_cancel')?.addEventListener('click', async () => {
+        const reason = prompt('Why is this order being cancelled?');
+        if (!reason) return;
         try {
-          await POST(`/api/purchase-orders/${poId}/cancel`, {});
+          await POST(`/api/purchase-orders/${poId}/cancel`, { reason });
           notice('Purchase order cancelled', 'good');
           closeDialog();
           drawPOs();
+          drawPendingPOs();
         } catch (e) { whoops(e); }
       });
 
