@@ -358,6 +358,18 @@ input[type=search], select, textarea {
   border-radius: 8px; background: #fff; width: 100%; outline: none;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--rose-deep); }
+/* A file box otherwise renders as the browser's own plain grey control —
+   the one input left unstyled while everything beside it carries the theme. */
+input[type=file] {
+  font-size: .8rem; padding: 6px 8px; border: 1px solid var(--rose-dust);
+  border-radius: 8px; background: var(--bg); width: 100%;
+}
+input[type=file]::file-selector-button {
+  background: var(--rose-blush); color: var(--rose-deep); border: none;
+  border-radius: 6px; padding: 5px 10px; font: inherit; font-size: .78rem;
+  font-weight: 600; cursor: pointer; margin-right: 8px;
+}
+input[type=file]::file-selector-button:hover { background: var(--rose-soft); }
 label { display: block; font-size: .76rem; color: var(--muted); margin: 10px 0 3px; }
 .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .row > div { flex: 1; min-width: 128px; }
