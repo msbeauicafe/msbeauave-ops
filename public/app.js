@@ -44,6 +44,17 @@ const when = (v) => (v ? new Date(v).toLocaleString('en-PH',
 const onDay = (v) => (v ? new Date(v).toLocaleDateString('en-PH',
   { dateStyle: 'medium', timeZone: TZ }) : '—');
 
+// Two months out, the same warning window a shelf-life alert already reads
+// against — a scan that is not renewed in time is a supplier who cannot sell,
+// same shape as a batch that is not moved in time.
+const fdaSoon = (v) => v && (new Date(v) - new Date()) / 86_400_000 <= 60;
+const fdaCell = (s) => s.fda_expires_on
+  ? `<span style="display:flex;align-items:center;gap:6px">${
+      fdaSoon(s.fda_expires_on)
+        ? `<span class="blip late" title="Expires within two months"></span>` : ''
+    }${onDay(s.fda_expires_on)}</span>`
+  : '<span class="dim">—</span>';
+
 // A product's picture, if it has one. The stamp is only there to defeat the
 // cache after a re-upload — without it the browser keeps showing the old shot.
 const photoUrl = (sku, stamp) =>
@@ -839,6 +850,7 @@ SCREENS.products = async (page) => {
           ? tag('inactive', 'grey') : tag('active', 'green') },
       { head: 'FB', cell: (s) => socialLink(s.fb_link, 'fb') },
       { head: 'Chat', cell: (s) => chatBadge(s.chat_link) },
+      { head: 'FDA exp.', cell: fdaCell },
       { head: '', n: true, cell: (s) => `<button class="rowx" data-sup="${s.id}"
           title="Open ${esc(s.name)} to remove">✕</button>` },
     ], t ? 'No suppliers match that.' : 'No suppliers yet.');
@@ -2658,6 +2670,7 @@ SCREENS.purchaseorders = async (page) => {
           ? tag('inactive', 'grey') : tag('active', 'green') },
       { head: 'FB', cell: (s) => socialLink(s.fb_link, 'fb') },
       { head: 'Chat', cell: (s) => chatBadge(s.chat_link) },
+      { head: 'FDA exp.', cell: fdaCell },
       { head: '', n: true, cell: (s) => `<button class="rowx" data-sup="${s.id}"
           title="Open ${esc(s.name)} to remove">✕</button>` },
     ], term ? 'No suppliers match that.' : 'No suppliers yet.');
