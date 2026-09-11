@@ -5596,18 +5596,6 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note,
         </tr></tfoot>
       </table>
 
-      <div class="po-foot">
-        <div class="notes">
-          <div class="barhd">Comments or Special Instructions</div>
-          <div class="wrote">${esc(note || '')}</div>
-          <div class="ticks">
-            <span><i></i>COMPLETED</span>
-            <span><i></i>LACKINGS</span>
-            <span><i></i>RECORDED</span>
-          </div>
-        </div>
-      </div>
-
       <div class="sign3">
         <div><div class="nm">${esc(preparedBy || user?.name || '')}</div>
           <div class="role">Signature Over Printed Name</div>
