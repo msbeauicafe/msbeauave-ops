@@ -2791,8 +2791,8 @@ SCREENS.purchaseorders = async (page) => {
       { head: '', cell: (b) => `
           <div class="bill-actions">
             <div class="bill-actions-top">
-              ${Number(b.balance) > 0
-                ? `<button class="btn sm" data-billpay="${b.id}">Record payment</button>` : ''}
+              <button class="btn sm${Number(b.balance) > 0 ? '' : ' quiet'}" data-billpay="${b.id}">${
+                Number(b.balance) > 0 ? 'Record payment' : 'Payments'}</button>
               <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>
             </div>
             <button class="btn sm quiet" data-billedit="${b.id}">🖨 Invoice</button>
@@ -2834,8 +2834,9 @@ SCREENS.purchaseorders = async (page) => {
   // happened. The dialog now stays open, the new row and its thumbnail
   // painted straight back, until told to close.
   const billPaymentForm = async (bill, done) => {
+    const canPay = Number(bill.balance) > 0;
     dialog(`
-      <h3>Record a payment — ${esc(bill.po_no)}</h3>
+      <h3>${canPay ? 'Record a payment' : 'Payments'} — ${esc(bill.po_no)}</h3>
       <div class="dim">${esc(bill.supplier)}${bill.invoice_no
         ? ` · invoice ${esc(bill.invoice_no)}` : ''}</div>
       <div class="row mt" id="bp_figs">
@@ -2845,6 +2846,7 @@ SCREENS.purchaseorders = async (page) => {
       </div>
       <h3 class="mt">Payments on file</h3>
       <div class="filegrid" id="bp_prior"><div class="dim">Loading…</div></div>
+      ${canPay ? `
       <div class="dim mt">Up to five payments at once — fill in as many rows
         as have actually landed.</div>
       <div id="bp_rows">${[0, 1, 2, 3, 4].map((n) => `
@@ -2860,10 +2862,10 @@ SCREENS.purchaseorders = async (page) => {
               `<option value="${esc(m)}">${esc(m)}</option>`).join('')}</select></div>
           <div><label${n ? ' class="sr"' : ''}>Attachment</label>
             <input class="bp_file" type="file" accept="image/*"></div>
-        </div>`).join('')}</div>
+        </div>`).join('')}</div>` : ''}
       <div class="mt right">
         <button class="btn quiet" id="bp_done">Done</button>
-        <button class="btn" id="bp_go">Save</button>
+        ${canPay ? '<button class="btn" id="bp_go">Save</button>' : ''}
       </div>`, 'wide', true);
 
     let current = bill;
@@ -2896,41 +2898,43 @@ SCREENS.purchaseorders = async (page) => {
       });
     };
 
-    $('#bp_go').addEventListener('click', async () => {
-      const jobs = $$('.payrow').map((row) => ({
-        amount: Number($('.bp_amt', row).value || 0),
-        paid_on: $('.bp_on', row).value,
-        method: $('.bp_method', row).value,
-        file: $('.bp_file', row).files[0] || null,
-      })).filter((j) => j.amount > 0);
-      if (!jobs.length) return whoops(new Error('Enter at least one payment.'));
+    if (canPay) {
+      $('#bp_go').addEventListener('click', async () => {
+        const jobs = $$('.payrow').map((row) => ({
+          amount: Number($('.bp_amt', row).value || 0),
+          paid_on: $('.bp_on', row).value,
+          method: $('.bp_method', row).value,
+          file: $('.bp_file', row).files[0] || null,
+        })).filter((j) => j.amount > 0);
+        if (!jobs.length) return whoops(new Error('Enter at least one payment.'));
 
-      $('#bp_go').disabled = true;
-      try {
-        for (const j of jobs) {
-          const saved = await POST(`/api/purchase-order-bills/${current.id}/payments`, {
-            amount: j.amount, paid_on: j.paid_on, method: j.method,
-          });
-          if (j.file) {
-            await POST(`/api/purchase-order-bill-payments/${saved.id}/files`,
-              { dataUrl: await shrink(j.file, 1600) });
+        $('#bp_go').disabled = true;
+        try {
+          for (const j of jobs) {
+            const saved = await POST(`/api/purchase-order-bills/${current.id}/payments`, {
+              amount: j.amount, paid_on: j.paid_on, method: j.method,
+            });
+            if (j.file) {
+              await POST(`/api/purchase-order-bill-payments/${saved.id}/files`,
+                { dataUrl: await shrink(j.file, 1600) });
+            }
           }
-        }
-        // Read the bill back rather than doing the arithmetic here a second
-        // time — the balance the dialog shows should be the one the server
-        // just computed, not a copy of it.
-        const refreshed = await GET('/api/purchase-order-bills').catch(() => []);
-        current = refreshed.find((b) => String(b.id) === String(current.id)) || current;
-        $('#bp_amount').textContent = peso(current.amount);
-        $('#bp_paid').textContent = peso(current.paid);
-        $('#bp_owed').textContent = peso(current.balance);
-        resetRows();
-        await paintPrior();
-        notice('Payment recorded 🌸', 'good');
-        done();
-      } catch (e) { whoops(e); }
-      $('#bp_go').disabled = false;
-    });
+          // Read the bill back rather than doing the arithmetic here a second
+          // time — the balance the dialog shows should be the one the server
+          // just computed, not a copy of it.
+          const refreshed = await GET('/api/purchase-order-bills').catch(() => []);
+          current = refreshed.find((b) => String(b.id) === String(current.id)) || current;
+          $('#bp_amount').textContent = peso(current.amount);
+          $('#bp_paid').textContent = peso(current.paid);
+          $('#bp_owed').textContent = peso(current.balance);
+          resetRows();
+          await paintPrior();
+          notice('Payment recorded 🌸', 'good');
+          done();
+        } catch (e) { whoops(e); }
+        $('#bp_go').disabled = false;
+      });
+    }
 
     $('#bp_done').addEventListener('click', closeDialog);
   };
