@@ -35,7 +35,7 @@ $AS_PG "$PGBIN/pg_ctl" -D "$WORK/pgdata" -w \
 "$PGBIN/psql" -q -h "$WORK" -p "$PGPORT" -d postgres -c "CREATE DATABASE msbeauave" >/dev/null
 
 echo "==> building the schema"
-for f in "$ROOT"/db/0*.sql; do
+for f in "$ROOT"/db/[0-8]*.sql; do
   echo "    $(basename "$f")"
   "$PGBIN/psql" -q -v ON_ERROR_STOP=1 -h "$WORK" -p "$PGPORT" -d msbeauave -f "$f" >/dev/null
 done
