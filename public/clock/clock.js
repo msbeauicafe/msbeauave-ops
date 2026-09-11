@@ -205,6 +205,20 @@ function clocked(r) {
   load().catch(() => {});
 }
 
+// A PIN typed again a minute after it already worked is not somebody asking
+// to be clocked straight back out — it is somebody who did not see the cheer,
+// or did not trust it, and is checking. The scanner already answers a second
+// press of the same finger this way (door.js's own settled map); the keypad
+// and the tapped face had nothing, so a "checking" press toggled the shift a
+// second time and left a few seconds of ghost hours on the record.
+const PIN_SETTLED_MS = 90_000;
+const settledPins = new Map();
+const settledAnswer = (pin) => {
+  const prior = settledPins.get(pin);
+  return prior && Date.now() - prior.at < PIN_SETTLED_MS ? prior.result : null;
+};
+const rememberPin = (pin, result) => settledPins.set(pin, { at: Date.now(), result });
+
 // Manila, not the machine. Every other time on this page is pinned to the
 // shop's clock — the arrivals, the departures, the date under a face — and
 // this one was following whatever the PC happened to be set to. A door whose
@@ -487,10 +501,13 @@ async function start() {
   $('#kwipe').addEventListener('click', () => { typed = ''; kdots(); });
   const punch = async () => {
     if (typed.length < 4) return say('Type your four-digit PIN.', 'bad');
+    const pin = typed;
+    const again = settledAnswer(pin);
+    if (again) { typed = ''; kdots(); clocked(again); return; }
     $('#kgo').disabled = true;
     try {
       const r = await POST('/api/clock/by-pin',
-        { pin: typed, branch_id: fixedBranch, scanner: hasScanner });
+        { pin, branch_id: fixedBranch, scanner: hasScanner });
       typed = ''; kdots();
       // Named, but nothing written down yet. The finger is what says they
       // meant it, and that they are the one who owns the number.
@@ -498,6 +515,7 @@ async function start() {
         startAsking(r.name, r.seconds);
         say(`${r.name} — now press your finger`, 'good', CONFIRM_MS);
       } else {
+        rememberPin(pin, r);
         clocked(r);
       }
     } catch (e) {
@@ -851,6 +869,8 @@ function pad(person) {
   $('#cancel', veil).addEventListener('click', () => veil.remove());
 
   $('#ok', veil).addEventListener('click', async () => {
+    const again = settledAnswer(pin);
+    if (again) { veil.remove(); clocked(again); return; }
     $('#ok', veil).disabled = true;
     try {
       const r = await POST('/api/clock',
@@ -860,6 +880,7 @@ function pad(person) {
         startAsking(r.name, r.seconds);
         say(`${r.name} — now press your finger`, 'good', CONFIRM_MS);
       } else {
+        rememberPin(pin, r);
         clocked(r);
       }
     } catch (e) {

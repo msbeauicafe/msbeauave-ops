@@ -75,7 +75,7 @@ let lastLoad = null;
 // The agent lives on the shop PCs and does not update itself the way the clock
 // screen does — somebody copies a file in. Asking a machine over the counter
 // whether the copy took beats walking to it and reading a date in Explorer.
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 
 // Everything this says also goes to door-log.txt beside the program.
 //
@@ -180,7 +180,13 @@ let reading = false;     // a finger is on the glass and being dealt with
 //
 // So a second press from the same finger inside this window is answered with
 // what happened the first time, and nothing is written.
-const SETTLED_MS = 8000;
+//
+// 8 seconds covered the round trip and nothing past it — the same log this
+// comment describes has presses 14, 20 and 27 seconds apart that this window
+// let straight through, each one a real ghost shift a few seconds long.
+// Somebody unsure whether it worked checks again over the better part of a
+// minute or two, not just the next second.
+const SETTLED_MS = 90_000;
 const settled = new Map();
 
 async function watch() {
