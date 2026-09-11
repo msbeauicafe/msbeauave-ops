@@ -2791,7 +2791,7 @@ SCREENS.purchaseorders = async (page) => {
       { head: '', cell: (b) => `
           <div class="bill-actions">
             <div class="bill-actions-top">
-              <button class="btn sm${Number(b.balance) > 0 ? '' : ' quiet'}"
+              <button class="btn sm stop"
                 data-billpay="${b.id}">Record payment</button>
               <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>
             </div>
