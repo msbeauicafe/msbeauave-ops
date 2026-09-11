@@ -922,6 +922,22 @@ label.inline input { width: auto; }
 .face-grid.bdays .face-card .face,
 .face-grid.bdays .face-card img.face { width: 68px; height: 68px; font-size: 1.5rem; }
 .face-grid.bdays .face-card .strip b { font-size: .7rem; }
+/* The New-order supplier picker: ten across whatever the screen is, so a
+   card is wide enough to carry a brand name above the supplier's own name
+   instead of neither fitting. */
+.face-grid.pf-pick { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+.face-grid.pf-pick .face-card {
+  width: auto; height: auto; min-height: 150px; justify-content: flex-start; gap: 6px;
+}
+.face-grid.pf-pick .face-card .face,
+.face-grid.pf-pick .face-card img.face { width: 56px; height: 56px; font-size: 1.1rem; }
+.face-grid.pf-pick .face-card .strip .supname {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; font-size: .56rem; line-height: 1.15; color: var(--muted); font-weight: 400;
+}
+@media (max-width: 900px) {
+  .face-grid.pf-pick { grid-template-columns: repeat(auto-fill, 96px); }
+}
 /* The pair pulled to the middle: labelled, and set off from the grid below. */
 .qlabel {
   font-size: .78rem; font-weight: 700; color: var(--rose-deep);

@@ -3447,11 +3447,17 @@ SCREENS.purchaseorders = async (page) => {
     const shown = suppliers.filter((s) => !term
       || s.name.toLowerCase().includes(term)
       || (s.brand_name || '').toLowerCase().includes(term));
-    box.innerHTML = shown.length ? `<div class="face-grid">${shown.map((s) => `
-      <button class="face-card" data-picksup="${s.id}" title="${esc(s.name)}">
-        <span class="face">${esc(supInitials(s.name))}</span>
-        <span class="strip"><b>${esc(s.name)}</b>
-          <span class="under">${tierTag(s)}</span></span>
+    box.innerHTML = shown.length ? `<div class="face-grid pf-pick">${shown.map((s) => `
+      <button class="face-card" data-picksup="${s.id}"
+        title="${esc(s.name)}${s.brand_name ? ` — ${esc(s.brand_name)}` : ''}">
+        ${s.photo_at
+          ? `<img class="face" src="/api/suppliers/${s.id}/photo?v=${s.photo_at}" alt="">`
+          : `<span class="face">${esc(supInitials(s.name))}</span>`}
+        <span class="strip">
+          <b>${s.brand_name ? esc(s.brand_name) : '<span class="dim">—</span>'}</b>
+          <span class="supname">${esc(s.name)}</span>
+          <span class="under">${tierTag(s)}</span>
+        </span>
       </button>`).join('')}</div>`
       : '<div class="dim">No supplier matches that.</div>';
     $$('[data-picksup]', box).forEach((b) => b.addEventListener('click',
