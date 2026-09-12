@@ -2838,6 +2838,14 @@ SCREENS.purchaseorders = async (page) => {
       <h3>Record a payment — ${esc(bill.po_no)}</h3>
       <div class="dim">${esc(bill.supplier)}${bill.invoice_no
         ? ` · invoice ${esc(bill.invoice_no)}` : ''}</div>
+      <h3 class="mt">Supplier billing</h3>
+      <div class="dim">A photo or scan of the paper the supplier actually handed
+        over — click any to see it full-size and download.</div>
+      <div class="filegrid mt" id="bp_billgrid"><div class="dim">Loading…</div></div>
+      <div class="row mt">
+        <div style="flex:2"><label>Add a photo or scan</label>
+          <input id="bp_billfile" type="file" accept="image/*"></div>
+      </div>
       <div class="row mt" id="bp_figs">
         <div><div class="dim">Amount</div><b id="bp_amount">${peso(bill.amount)}</b></div>
         <div><div class="dim">Paid so far</div><b id="bp_paid">${peso(bill.paid)}</b></div>
@@ -2886,6 +2894,40 @@ SCREENS.purchaseorders = async (page) => {
         </figure>`).join('') : '<div class="dim">None recorded yet.</div>';
     };
     await paintPrior();
+
+    const paintBillFiles = async () => {
+      const grid = $('#bp_billgrid');
+      if (!grid) return;
+      const files = await GET(`/api/purchase-order-bills/${current.id}/files`).catch(() => []);
+      grid.innerHTML = files.length ? files.map((f) => `<figure class="filecard">
+          <img class="filethumb" src="/api/purchase-order-bill-files/${f.id}" alt=""
+            loading="lazy" data-zoom="/api/purchase-order-bill-files/${f.id}"
+            data-zoom-cap="${esc(current.po_no)}">
+          <figcaption><span class="dim">${esc(f.uploaded_by || '')} · ${onDay(f.uploaded_at)}</span>
+            <button class="linkbtn del-billfile" data-file="${f.id}">remove</button></figcaption>
+        </figure>`).join('') : '<div class="dim">None yet.</div>';
+      $$('.del-billfile', grid).forEach((btn) => btn.addEventListener('click', async () => {
+        if (!await askFirst('Remove this file from the record?')) return;
+        try {
+          await DELETE(`/api/purchase-order-bill-files/${btn.dataset.file}`);
+          notice('Removed', 'good');
+          await paintBillFiles();
+        } catch (e) { whoops(e); }
+      }));
+    };
+    await paintBillFiles();
+
+    $('#bp_billfile').addEventListener('change', async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      try {
+        const dataUrl = await shrink(file, 1600);
+        await POST(`/api/purchase-order-bills/${current.id}/files`, { dataUrl });
+        notice('Saved 🌸', 'good');
+        ev.target.value = '';
+        await paintBillFiles();
+      } catch (e) { whoops(e); }
+    });
 
     const resetRows = () => {
       $$('.payrow', $('#bp_rows')).forEach((row, n) => {
