@@ -3100,9 +3100,22 @@ SCREENS.purchaseorders = async (page) => {
   // itself is the first charge, each payment a credit against it in the order
   // it landed, and the balance after each one is worked out here rather than
   // trusted from a number that could drift from the rows behind it.
-  function billInvoiceDoc(b, payments = []) {
+  function billInvoiceDoc(b, payments = [], files = []) {
     const field = (label, value) => `
       <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
+
+    // Blank rows pad the ledger to fill the page on their own when there is
+    // no photo above it; less padding is needed once the supplier's own
+    // paper is taking up room at the top — printOneSheet still shrinks the
+    // whole sheet to fit one page regardless, this just keeps that shrink
+    // from having to do all the work.
+    const billingImages = files.length ? `
+      <div class="po-billing-image">
+        <div class="barhd">SUPPLIER BILLING</div>
+        <div class="po-billing-photos">${files.map((f) => `
+          <img src="/api/purchase-order-bill-files/${f.id}" alt="Supplier billing">`).join('')}
+        </div>
+      </div>` : '';
 
     let running = Number(b.amount);
     const charge = `<tr>
@@ -3122,10 +3135,11 @@ SCREENS.purchaseorders = async (page) => {
           <td class="c">${peso(running)}</td>
         </tr>`;
     }).join('');
-    const BLANKS = Math.max(0, 24 - (1 + payments.length));
+    const BLANKS = Math.max(0, (files.length ? 10 : 24) - (1 + payments.length));
 
     return `
       <div class="doc po">
+        ${billingImages}
         <div class="rule"></div>
         <div class="po-head">
           <img src="/logo.png" alt="MS Beau Ave">
@@ -3179,8 +3193,11 @@ SCREENS.purchaseorders = async (page) => {
   }
 
   async function showBillInvoice(bill) {
-    const payments = await GET(`/api/purchase-order-bills/${bill.id}/payments`).catch(() => []);
-    dialog(`${billInvoiceDoc(bill, payments)}
+    const [payments, files] = await Promise.all([
+      GET(`/api/purchase-order-bills/${bill.id}/payments`).catch(() => []),
+      GET(`/api/purchase-order-bills/${bill.id}/files`).catch(() => []),
+    ]);
+    dialog(`${billInvoiceDoc(bill, payments, files)}
       <div class="mt right">
         <button class="btn quiet" id="billdoc_save">⬇ Download JPEG</button>
         ${PRINT_BTN}

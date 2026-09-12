@@ -1324,6 +1324,12 @@ input.n { text-align: right; }
    it is the one that does not wear the house rose — orange, and laid out as
    the paper it replaces is, with two parties across the top instead of one. */
 .doc.po { color: #000; }
+.doc.po .po-billing-image { margin-bottom: 12px; }
+.doc.po .po-billing-photos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.doc.po .po-billing-photos img {
+  max-height: 220px; max-width: 100%; object-fit: contain;
+  border: 1px solid #f6dfba; border-radius: 4px;
+}
 .doc.po .rule { border-top: 6px solid #f5a623; margin-bottom: 12px; }
 .doc.po .po-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
 .doc.po .po-head img { height: 86px; }
