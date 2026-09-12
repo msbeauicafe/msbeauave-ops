@@ -830,6 +830,9 @@ label.inline input { width: auto; }
 .doc table.lines td.c { text-align: center; }
 /* A code wrapped over two lines makes every row on the sheet taller. */
 .doc table.lines td.c:first-child { white-space: nowrap; }
+.doc table.lines td.refno {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;
+}
 .doc .duebox {
   float: right; border: 1px solid #ccc; background: #f4f4f4; padding: 4px 10px;
   font-size: .62rem; text-align: right; margin-bottom: 4px;
