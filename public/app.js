@@ -3131,14 +3131,13 @@ SCREENS.purchaseorders = async (page) => {
           <td class="c">${peso(running)}</td>
         </tr>`;
     }).join('');
-    // Just 5 blank rows below the ledger with no photo — this isn't trying
-    // to fill a printed page anymore, only to leave a little room to add an
-    // entry by hand. Each photo takes roughly 9 rows' worth of the page (its
-    // own height plus the margins around it), so that target still comes
-    // down by that much per photo rather than a flat number.
-    const BLANKS = files.length
-      ? Math.max(0, Math.max(0, 18 - 9 * (files.length - 1)) - (1 + payments.length))
-      : 5;
+    // 7 rows total with no photo — data rows plus just enough blanks to
+    // round it out, not a wall of empty boxes trying to fill a printed
+    // page. Each photo takes roughly 9 rows' worth of the page (its own
+    // height plus the margins around it), so that target still comes down
+    // by that much per photo rather than a flat number.
+    const rowTarget = files.length ? Math.max(0, 18 - 9 * (files.length - 1)) : 7;
+    const BLANKS = Math.max(0, rowTarget - (1 + payments.length));
 
     return `
       <div class="doc po">
@@ -5594,7 +5593,9 @@ function officialReceipt({ receiptNo, issuedOn, resellerName, who = {},
  * it is to be sent.
  */
 function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note }) {
-  const BLANKS = Math.max(0, 24 - lines.length);
+  // 7 rows total — product lines plus just enough blanks to round it out,
+  // not a wall of empty boxes trying to fill a printed page.
+  const BLANKS = Math.max(0, 7 - lines.length);
   const field = (label, value) => `
     <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
   return `
