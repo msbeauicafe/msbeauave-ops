@@ -2870,6 +2870,8 @@ SCREENS.purchaseorders = async (page) => {
           <div><label${n ? ' class="sr"' : ''}>Mode of payment</label>
             <select class="bp_method">${MOP_OPTIONS.map((m) =>
               `<option value="${esc(m)}">${esc(m)}</option>`).join('')}</select></div>
+          <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
+            <input class="bp_ref" type="text"></div>
           <div><label${n ? ' class="sr"' : ''}>Attachment</label>
             <input class="bp_file" type="file" accept="image/*"></div>
         </div>`).join('')}</div>
@@ -2893,7 +2895,8 @@ SCREENS.purchaseorders = async (page) => {
                  border-radius:8px;background:var(--rose-blush);
                  border:1px solid var(--rose-soft)">🧾</span>`}
           <figcaption><b>${esc(peso(p.amount))}</b><br>
-            <span class="dim">${onDay(p.paid_on)}${p.method ? ` · ${esc(p.method)}` : ''}</span>
+            <span class="dim">${onDay(p.paid_on)}${p.method ? ` · ${esc(p.method)}` : ''}${
+              p.note ? ` · ${esc(p.note)}` : ''}</span>
           </figcaption>
         </figure>`).join('') : '<div class="dim">None recorded yet.</div>';
     };
@@ -2938,6 +2941,7 @@ SCREENS.purchaseorders = async (page) => {
         $('.bp_amt', row).value = n === 0 && Number(current.balance) > 0 ? Number(current.balance) : '';
         $('.bp_on', row).value = localDay();
         $('.bp_method', row).selectedIndex = 0;
+        $('.bp_ref', row).value = '';
         $('.bp_file', row).value = '';
       });
     };
@@ -2947,6 +2951,7 @@ SCREENS.purchaseorders = async (page) => {
         amount: Number($('.bp_amt', row).value || 0),
         paid_on: $('.bp_on', row).value,
         method: $('.bp_method', row).value,
+        ref: $('.bp_ref', row).value,
         file: $('.bp_file', row).files[0] || null,
       })).filter((j) => j.amount > 0);
       if (!jobs.length) return whoops(new Error('Enter at least one payment.'));
@@ -2955,7 +2960,7 @@ SCREENS.purchaseorders = async (page) => {
       try {
         for (const j of jobs) {
           const saved = await POST(`/api/purchase-order-bills/${current.id}/payments`, {
-            amount: j.amount, paid_on: j.paid_on, method: j.method,
+            amount: j.amount, paid_on: j.paid_on, method: j.method, note: j.ref,
           });
           if (j.file) {
             await POST(`/api/purchase-order-bill-payments/${saved.id}/files`,
@@ -3112,7 +3117,7 @@ SCREENS.purchaseorders = async (page) => {
       return `<tr>
           <td>${onDay(p.paid_on)}</td>
           <td>${esc(p.method ? `${p.method} PAYMENT` : 'PAYMENT')}</td>
-          <td></td>
+          <td>${esc(p.note || '')}</td>
           <td class="c"></td><td class="c">${peso(p.amount)}</td>
           <td class="c">${peso(running)}</td>
         </tr>`;
