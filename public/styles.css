@@ -1318,13 +1318,11 @@ input.n { text-align: right; }
 
 @media print { .dialog-x { display: none !important; } }
 
-/* ---------- the purchase order ----------
+/* ---------- the purchase billing sheet ----------
    The one sheet in this system that goes out rather than back: the company
    buying rather than selling, read by a supplier rather than a reseller. So
    it is the one that does not wear the house rose — orange, and laid out as
-   the paper it replaces is, with two parties across the top instead of one
-   and three signatures instead of one, because buying is the one thing here
-   nobody does alone. */
+   the paper it replaces is, with two parties across the top instead of one. */
 .doc.po { color: #000; }
 .doc.po .rule { border-top: 6px solid #f5a623; margin-bottom: 12px; }
 .doc.po .po-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
@@ -1352,16 +1350,12 @@ input.n { text-align: right; }
 .doc.po table.lines tfoot td {
   background: #fdecd2; border-color: #f5a623; font-weight: 700;
 }
-.doc.po .po-foot { margin-top: 14px; }
 .doc.po .notes { width: 260px; border: 1px solid #f6dfba; }
 .doc.po .notes .barhd { display: block; margin: 0; }
 .doc.po .notes .wrote {
   min-height: 34px; padding: 5px 8px; font-size: .68rem;
   border-bottom: 1px solid #f6dfba;
 }
-.doc.po .ticks { padding: 6px 8px; font-size: .66rem; }
-.doc.po .ticks span { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
-.doc.po .ticks i { width: 10px; height: 10px; border: 1px solid #555; display: inline-block; }
 /* Record payment on top, its own row with the remove button; the bill's own
    papers stacked underneath, one per line — not a row of pills fighting for
    space. */
