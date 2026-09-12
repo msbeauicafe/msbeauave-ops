@@ -3298,7 +3298,7 @@ SCREENS.purchaseorders = async (page) => {
             <div class="scroll"><table>
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
-                <th class="n" hidden>Price</th><th class="n" hidden>Total</th><th></th>
+                <th class="n">Price</th><th class="n">Total</th><th></th>
               </tr></thead>
               <tbody>
                 ${po.lines.map((l) => `<tr data-row="${l.id}">
@@ -3312,11 +3312,11 @@ SCREENS.purchaseorders = async (page) => {
                   <td>${canEdit
                     ? `<input class="cellbox open" data-unit value="${esc(l.unit)}" style="width:70px">`
                     : esc(l.unit)}</td>
-                  <td class="n" hidden>${canEdit
+                  <td class="n">${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
                     : (l.price != null ? peso(l.price) : '—')}</td>
-                  <td class="n" data-tot hidden>${peso((Number(l.price) || 0) * Number(l.qty))}</td>
+                  <td class="n" data-tot>${peso((Number(l.price) || 0) * Number(l.qty))}</td>
                   <td class="n">${canEdit
                     ? `<button class="btn sm stop" data-remove="${l.id}"
                          title="Take off this order">✕</button>` : ''}</td>
@@ -3326,9 +3326,9 @@ SCREENS.purchaseorders = async (page) => {
                         autocomplete="off" placeholder="Add a product"></td>
                   <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
-                  <td class="n" hidden><input class="cellbox open n" data-addprice inputmode="decimal"
+                  <td class="n"><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
-                  <td class="n" data-tot hidden>—</td>
+                  <td class="n" data-tot>—</td>
                   <td></td>
                 </tr>`).join('')}
               </tbody>
@@ -5635,6 +5635,8 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note }) {
           <th>PRODUCT DESCRIPTION</th>
           <th style="width:90px">QUANTITY</th>
           <th style="width:70px">UNIT</th>
+          <th style="width:90px">PRICE</th>
+          <th style="width:100px">TOTAL</th>
         </tr></thead>
         <tbody>
           ${lines.map((l, i) => `<tr>
@@ -5642,10 +5644,17 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note }) {
             <td>${esc(l.name)}</td>
             <td class="c">${count(l.qty)}</td>
             <td class="c">${esc(l.unit || l.unit_type || 'PCS')}</td>
+            <td class="c">${l.price != null ? peso(l.price) : '—'}</td>
+            <td class="c">${l.price != null ? peso(Number(l.price) * Number(l.qty)) : '—'}</td>
           </tr>`).join('')}
           ${Array.from({ length: BLANKS },
-            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>').join('')}
+            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
         </tbody>
+        <tfoot><tr>
+          <td colspan="5" class="c"><b>TOTAL</b></td>
+          <td class="c"><b>${peso(lines.reduce((s, l) =>
+            s + Number(l.qty) * (Number(l.price) || 0), 0))}</b></td>
+        </tr></tfoot>
       </table>
     </div>`;
 }
