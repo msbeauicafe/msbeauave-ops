@@ -3201,7 +3201,7 @@ SCREENS.purchaseorders = async (page) => {
         : po.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
       const doc = purchaseOrder({
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
-        lines: po.lines, note: po.note, preparedBy: po.raised_by,
+        lines: po.lines, note: po.note,
       });
       $('#po_root').innerHTML = showPricing ? `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
@@ -3328,7 +3328,6 @@ SCREENS.purchaseorders = async (page) => {
           docBox.innerHTML = purchaseOrder({
             poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
             lines: previewLines(), note: $('#po_note_in')?.value ?? po.note,
-            preparedBy: po.raised_by,
           });
         };
         const retotal = () => {
@@ -5513,24 +5512,15 @@ function officialReceipt({ receiptNo, issuedOn, resellerName, who = {},
 }
 
 /**
- * The PURCHASE ORDER: the first sheet in this system that goes out rather than
- * back. Everything else here is the company selling; this is the company
- * buying, and the reader is a supplier, not a reseller.
+ * The PURCHASE BILLING sheet: the first document in this system that goes out
+ * rather than back. Everything else here is the company selling; this is the
+ * company buying, and the reader is a supplier, not a reseller.
  *
- * It carries no prices, because the paper it replaces carries none. A purchase
- * order is a request — what is wanted and how much of it — and what a case
- * costs is settled between the office and the supplier and lands when the
- * goods are received, which is where this system has always recorded cost.
- *
- * Two parties across the top rather than one: who is being asked, and where it
- * is to be sent. And three signatures rather than one, because buying is the
- * one thing here that nobody does alone — it is prepared, recorded and
- * acknowledged, and the boxes down the left are what the warehouse ticks when
- * the delivery is checked against it.
+ * Two parties across the top rather than one: who is being asked, and where
+ * it is to be sent.
  */
-function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note,
-                         preparedBy, recordedBy, acknowledgedBy }) {
-  const BLANKS = Math.max(0, 8 - lines.length);
+function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note }) {
+  const BLANKS = Math.max(0, 24 - lines.length);
   const field = (label, value) => `
     <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
   return `
@@ -5591,18 +5581,6 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note,
             s + Number(l.qty) * (Number(l.price) || 0), 0))}</b></td>
         </tr></tfoot>
       </table>
-
-      <div class="sign3">
-        <div><div class="nm">${esc(preparedBy || user?.name || '')}</div>
-          <div class="role">Signature Over Printed Name</div>
-          <div class="cap">PREPARED BY:</div></div>
-        <div><div class="nm">${esc(recordedBy || '')}</div>
-          <div class="role">Signature Over Printed Name</div>
-          <div class="cap">RECORDED BY:</div></div>
-        <div><div class="nm">${esc(acknowledgedBy || '')}</div>
-          <div class="role">Signature Over Printed Name</div>
-          <div class="cap">ACKNOWLEDGED BY:</div></div>
-      </div>
     </div>`;
 }
 
@@ -5610,7 +5588,6 @@ function showPurchaseOrder(po, over = false) {
   dialog(`${purchaseOrder({
     poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
     lines: po.lines || [], note: po.note,
-    preparedBy: po.raised_by,
   })}
     <div class="mt right">
       <button class="btn quiet" id="po_save">⬇ Download JPEG</button>
