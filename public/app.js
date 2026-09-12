@@ -2810,7 +2810,7 @@ SCREENS.purchaseorders = async (page) => {
       () => showBillInvoice(find(btn.dataset.billedit))));
 
     $$('[data-billpo]', box).forEach((btn) => btn.addEventListener('click',
-      () => openPO(Number(find(btn.dataset.billpo).po_id), true, true).catch(whoops)));
+      () => openPO(Number(find(btn.dataset.billpo).po_id), true, true, true).catch(whoops)));
 
     $$('[data-billrf]', box).forEach((btn) => btn.addEventListener('click',
       () => openBillDelivery(find(btn.dataset.billrf))));
@@ -3236,7 +3236,7 @@ SCREENS.purchaseorders = async (page) => {
   // editable while it is still open (nothing received), received line by line
   // or all at once once a delivery lands. Its own number can be corrected the
   // way a customer order's can.
-  async function openPO(poId, showPricing = false, hidePrice = false) {
+  async function openPO(poId, showPricing = false, hidePrice = false, showStatus = false) {
     let po = await GET(`/api/purchase-orders/${poId}`);
     const cat = !showPricing ? [] : catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
@@ -3292,6 +3292,7 @@ SCREENS.purchaseorders = async (page) => {
             <div class="scroll"><table>
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
+                ${showStatus ? '<th>Status</th>' : ''}
                 <th class="n" ${H}>Price</th><th class="n" ${H}>Total</th><th></th>
               </tr></thead>
               <tbody>
@@ -3306,6 +3307,12 @@ SCREENS.purchaseorders = async (page) => {
                   <td>${canEdit
                     ? `<input class="cellbox open" data-unit value="${esc(l.unit)}" style="width:70px">`
                     : esc(l.unit)}</td>
+                  ${showStatus ? `<td>
+                    <select class="cellbox open" data-status="${l.id}">
+                      <option value="">—</option>
+                      <option value="receive">Receive</option>
+                      <option value="lackings">Lackings</option>
+                    </select></td>` : ''}
                   <td class="n" ${H}>${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
@@ -3320,6 +3327,7 @@ SCREENS.purchaseorders = async (page) => {
                         autocomplete="off" placeholder="Add a product"></td>
                   <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
+                  ${showStatus ? '<td></td>' : ''}
                   <td class="n" ${H}><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
                   <td class="n" data-tot ${H}>—</td>
@@ -3364,6 +3372,21 @@ SCREENS.purchaseorders = async (page) => {
 
     function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
+
+      // Picking a status opens the same receiving form the whole-order
+      // buttons do, just pre-filled to this one line — there is no stored
+      // status to hold, so the box resets right away rather than sticking on
+      // whatever was last picked.
+      if (showStatus) {
+        $$('[data-status]', $('#po_root')).forEach((sel) => sel.addEventListener('change', () => {
+          const val = sel.value;
+          sel.value = '';
+          if (!val) return;
+          const line = po.lines.find((l) => String(l.id) === sel.dataset.status);
+          if (!line) return;
+          receiveDelivery({ po: { ...po, lines: [line] }, catalogue, shops, suppliers, done: reload, over: true });
+        }));
+      }
 
       // The line total and the grand total, read straight off the boxes as
       // they are typed — the same figure Billing is about to be handed once
