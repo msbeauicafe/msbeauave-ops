@@ -2795,7 +2795,6 @@ SCREENS.purchaseorders = async (page) => {
                 data-billpay="${b.id}">Record payment</button>
               <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>
             </div>
-            <button class="btn sm quiet" data-billopen="${b.id}">✎ Edit</button>
             <button class="btn sm quiet" data-billedit="${b.id}">🖨 Invoice</button>
             <button class="btn sm quiet" data-billpo="${b.id}">🖨 Purchase order</button>
             <button class="btn sm quiet" data-billrf="${b.id}">🖨 Receiving form</button>
@@ -2806,9 +2805,6 @@ SCREENS.purchaseorders = async (page) => {
 
     $$('[data-billpay]', box).forEach((btn) => btn.addEventListener('click',
       () => billPaymentForm(find(btn.dataset.billpay), drawBills)));
-
-    $$('[data-billopen]', box).forEach((btn) => btn.addEventListener('click',
-      () => billForm(find(btn.dataset.billopen), drawBills)));
 
     $$('[data-billedit]', box).forEach((btn) => btn.addEventListener('click',
       () => showBillInvoice(find(btn.dataset.billedit))));
