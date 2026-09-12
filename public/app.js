@@ -2795,6 +2795,7 @@ SCREENS.purchaseorders = async (page) => {
                 data-billpay="${b.id}">Record payment</button>
               <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>
             </div>
+            <button class="btn sm quiet" data-billopen="${b.id}">✎ Edit</button>
             <button class="btn sm quiet" data-billedit="${b.id}">🖨 Invoice</button>
             <button class="btn sm quiet" data-billpo="${b.id}">🖨 Purchase order</button>
             <button class="btn sm quiet" data-billrf="${b.id}">🖨 Receiving form</button>
@@ -2806,8 +2807,11 @@ SCREENS.purchaseorders = async (page) => {
     $$('[data-billpay]', box).forEach((btn) => btn.addEventListener('click',
       () => billPaymentForm(find(btn.dataset.billpay), drawBills)));
 
+    $$('[data-billopen]', box).forEach((btn) => btn.addEventListener('click',
+      () => billForm(find(btn.dataset.billopen), drawBills)));
+
     $$('[data-billedit]', box).forEach((btn) => btn.addEventListener('click',
-      () => showBillInvoice(find(btn.dataset.billedit), drawBills)));
+      () => showBillInvoice(find(btn.dataset.billedit))));
 
     $$('[data-billpo]', box).forEach((btn) => btn.addEventListener('click',
       () => openPO(Number(find(btn.dataset.billpo).po_id)).catch(whoops)));
@@ -3098,7 +3102,8 @@ SCREENS.purchaseorders = async (page) => {
     let running = Number(b.amount);
     const charge = `<tr>
         <td>${onDay(b.invoice_date)}</td>
-        <td>${esc(b.invoice_no ? `INVOICE #${b.invoice_no}` : 'INVOICE')}</td>
+        <td>INVOICE</td>
+        <td>${esc(b.invoice_no || '—')}</td>
         <td class="c">${peso(b.amount)}</td><td class="c"></td>
         <td class="c">${peso(running)}</td>
       </tr>`;
@@ -3107,10 +3112,12 @@ SCREENS.purchaseorders = async (page) => {
       return `<tr>
           <td>${onDay(p.paid_on)}</td>
           <td>${esc(p.method ? `${p.method} PAYMENT` : 'PAYMENT')}</td>
+          <td></td>
           <td class="c"></td><td class="c">${peso(p.amount)}</td>
           <td class="c">${peso(running)}</td>
         </tr>`;
     }).join('');
+    const BLANKS = Math.max(0, 24 - (1 + payments.length));
 
     return `
       <div class="doc po">
@@ -3143,13 +3150,16 @@ SCREENS.purchaseorders = async (page) => {
 
         <table class="lines">
           <thead><tr>
-            <th>DATE</th><th>DESCRIPTION</th>
+            <th>DATE</th><th>DESCRIPTION</th><th>REFERENCE NO.</th>
             <th style="width:100px">CHARGES</th><th style="width:100px">CREDITS</th>
             <th style="width:112px">ACCOUNT BALANCE</th>
           </tr></thead>
-          <tbody>${charge}${credits}</tbody>
+          <tbody>${charge}${credits}
+            ${Array.from({ length: BLANKS },
+              () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
+          </tbody>
           <tfoot><tr>
-            <td colspan="4">CURRENT BAL:</td><td class="c">${peso(running)}</td>
+            <td colspan="5">CURRENT BAL:</td><td class="c">${peso(running)}</td>
           </tr></tfoot>
         </table>
 
@@ -3163,17 +3173,14 @@ SCREENS.purchaseorders = async (page) => {
       </div>`;
   }
 
-  async function showBillInvoice(bill, done) {
+  async function showBillInvoice(bill) {
     const payments = await GET(`/api/purchase-order-bills/${bill.id}/payments`).catch(() => []);
     dialog(`${billInvoiceDoc(bill, payments)}
       <div class="mt right">
-        <button class="btn quiet" id="billdoc_edit">Edit</button>
         <button class="btn quiet" id="billdoc_save">⬇ Download JPEG</button>
         ${PRINT_BTN}
         <button class="btn" id="billdoc_done">Done</button></div>`, 'wide');
     wireSave('#billdoc_save', '.doc', `${bill.invoice_no || bill.po_no}-invoice.jpg`);
-    $('#billdoc_edit').addEventListener('click',
-      () => billForm(bill, () => { closeDialog(); done(); }));
     $('#billdoc_done').addEventListener('click', closeDialog);
   }
 
