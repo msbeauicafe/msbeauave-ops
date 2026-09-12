@@ -1327,9 +1327,13 @@ input.n { text-align: right; }
 .doc.po .po-billing-image { margin-bottom: 12px; }
 .doc.po .po-billing-photos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .doc.po .po-billing-photos img {
-  max-height: 220px; max-width: 100%; object-fit: contain;
+  width: 100%; height: 220px; object-fit: cover;
   border: 1px solid #f6dfba; border-radius: 4px;
 }
+/* One photo alone takes the document's full width, same as the ledger below
+   it; more than one splits that width evenly rather than each staying full
+   width and stacking tall. */
+.doc.po .po-billing-photos:has(img:nth-child(2)) img { width: calc(50% - 4px); }
 .doc.po .rule { border-top: 6px solid #f5a623; margin-bottom: 12px; }
 .doc.po .po-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
 .doc.po .po-head img { height: 86px; }
