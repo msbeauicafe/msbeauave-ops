@@ -3131,11 +3131,12 @@ SCREENS.purchaseorders = async (page) => {
           <td class="c">${peso(running)}</td>
         </tr>`;
     }).join('');
-    // 24 blank rows fills a page with no photo above the ledger. Each
-    // photo takes roughly 9 rows' worth of the page (its own height plus
-    // the margins around it), so the target comes down by that much per
-    // photo rather than a flat number regardless of how many there are.
-    const photoTarget = files.length ? Math.max(0, 18 - 9 * (files.length - 1)) : 24;
+    // 11 blank rows with no photo above the ledger — trimmed down from 24,
+    // which read as a wall of empty boxes on screen for an ordinary invoice.
+    // Each photo takes roughly 9 rows' worth of the page (its own height
+    // plus the margins around it), so the target comes down by that much
+    // per photo rather than a flat number regardless of how many there are.
+    const photoTarget = files.length ? Math.max(0, 18 - 9 * (files.length - 1)) : 11;
     const BLANKS = Math.max(0, photoTarget - (1 + payments.length));
 
     return `
