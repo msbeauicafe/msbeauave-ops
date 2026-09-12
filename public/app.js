@@ -3131,7 +3131,12 @@ SCREENS.purchaseorders = async (page) => {
           <td class="c">${peso(running)}</td>
         </tr>`;
     }).join('');
-    const BLANKS = Math.max(0, (files.length ? 10 : 24) - (1 + payments.length));
+    // 24 blank rows fills a page with no photo above the ledger. Each
+    // photo takes roughly 9 rows' worth of the page (its own height plus
+    // the margins around it), so the target comes down by that much per
+    // photo rather than a flat number regardless of how many there are.
+    const photoTarget = files.length ? Math.max(0, 18 - 9 * (files.length - 1)) : 24;
+    const BLANKS = Math.max(0, photoTarget - (1 + payments.length));
 
     return `
       <div class="doc po">
