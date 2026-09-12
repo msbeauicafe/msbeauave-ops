@@ -58,7 +58,7 @@ test('what is opened from a purchase order is opened over it', () => {
   const at = app.indexOf('SCREENS.purchaseorders = async');
   assert.notEqual(at, -1, 'the purchase order screen is gone');
   const screen = app.slice(at);
-  assert.match(screen, /showPurchaseOrder\(po,\s*true\)/,
+  assert.match(screen, /showPurchaseOrder\(po,\s*true[,)]/,
     'the sheet must not close the order it was printed from');
 });
 

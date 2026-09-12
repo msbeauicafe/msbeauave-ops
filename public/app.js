@@ -2810,7 +2810,7 @@ SCREENS.purchaseorders = async (page) => {
       () => showBillInvoice(find(btn.dataset.billedit))));
 
     $$('[data-billpo]', box).forEach((btn) => btn.addEventListener('click',
-      () => openPO(Number(find(btn.dataset.billpo).po_id), true).catch(whoops)));
+      () => openPO(Number(find(btn.dataset.billpo).po_id), true, true).catch(whoops)));
 
     $$('[data-billrf]', box).forEach((btn) => btn.addEventListener('click',
       () => openBillDelivery(find(btn.dataset.billrf))));
@@ -3243,7 +3243,7 @@ SCREENS.purchaseorders = async (page) => {
   // editable while it is still open (nothing received), received line by line
   // or all at once once a delivery lands. Its own number can be corrected the
   // way a customer order's can.
-  async function openPO(poId, showPricing = false) {
+  async function openPO(poId, showPricing = false, hidePrice = false) {
     let po = await GET(`/api/purchase-orders/${poId}`);
     const cat = !showPricing ? [] : catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
@@ -3274,8 +3274,9 @@ SCREENS.purchaseorders = async (page) => {
         : po.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
       const doc = purchaseOrder({
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
-        lines: po.lines, note: po.note,
+        lines: po.lines, note: po.note, hidePrice,
       });
+      const H = hidePrice ? 'hidden' : '';
       $('#po_root').innerHTML = showPricing ? `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
@@ -3298,7 +3299,7 @@ SCREENS.purchaseorders = async (page) => {
             <div class="scroll"><table>
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
-                <th class="n" hidden>Price</th><th class="n" hidden>Total</th><th></th>
+                <th class="n" ${H}>Price</th><th class="n" ${H}>Total</th><th></th>
               </tr></thead>
               <tbody>
                 ${po.lines.map((l) => `<tr data-row="${l.id}">
@@ -3312,11 +3313,11 @@ SCREENS.purchaseorders = async (page) => {
                   <td>${canEdit
                     ? `<input class="cellbox open" data-unit value="${esc(l.unit)}" style="width:70px">`
                     : esc(l.unit)}</td>
-                  <td class="n" hidden>${canEdit
+                  <td class="n" ${H}>${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
                     : (l.price != null ? peso(l.price) : '—')}</td>
-                  <td class="n" data-tot hidden>${peso((Number(l.price) || 0) * Number(l.qty))}</td>
+                  <td class="n" data-tot ${H}>${peso((Number(l.price) || 0) * Number(l.qty))}</td>
                   <td class="n">${canEdit
                     ? `<button class="btn sm stop" data-remove="${l.id}"
                          title="Take off this order">✕</button>` : ''}</td>
@@ -3326,9 +3327,9 @@ SCREENS.purchaseorders = async (page) => {
                         autocomplete="off" placeholder="Add a product"></td>
                   <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
-                  <td class="n" hidden><input class="cellbox open n" data-addprice inputmode="decimal"
+                  <td class="n" ${H}><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
-                  <td class="n" data-tot hidden>—</td>
+                  <td class="n" data-tot ${H}>—</td>
                   <td></td>
                 </tr>`).join('')}
               </tbody>
@@ -3369,7 +3370,7 @@ SCREENS.purchaseorders = async (page) => {
     }
 
     function wire(canEdit) {
-      $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true));
+      $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
 
       // The line total and the grand total, read straight off the boxes as
       // they are typed — the same figure Billing is about to be handed once
@@ -3400,7 +3401,7 @@ SCREENS.purchaseorders = async (page) => {
           if (!docBox) return;
           docBox.innerHTML = purchaseOrder({
             poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
-            lines: previewLines(), note: $('#po_note_in')?.value ?? po.note,
+            lines: previewLines(), note: $('#po_note_in')?.value ?? po.note, hidePrice,
           });
         };
         const retotal = () => {
@@ -5592,7 +5593,7 @@ function officialReceipt({ receiptNo, issuedOn, resellerName, who = {},
  * Two parties across the top rather than one: who is being asked, and where
  * it is to be sent.
  */
-function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note }) {
+function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note, hidePrice = false }) {
   // 7 rows total — product lines plus just enough blanks to round it out,
   // not a wall of empty boxes trying to fill a printed page.
   const BLANKS = Math.max(0, 7 - lines.length);
@@ -5635,6 +5636,9 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note }) {
           <th>PRODUCT DESCRIPTION</th>
           <th style="width:90px">QUANTITY</th>
           <th style="width:70px">UNIT</th>
+          ${hidePrice ? '' : `
+          <th style="width:90px">PRICE</th>
+          <th style="width:100px">TOTAL</th>`}
         </tr></thead>
         <tbody>
           ${lines.map((l, i) => `<tr>
@@ -5642,18 +5646,28 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note }) {
             <td>${esc(l.name)}</td>
             <td class="c">${count(l.qty)}</td>
             <td class="c">${esc(l.unit || l.unit_type || 'PCS')}</td>
+            ${hidePrice ? '' : `
+            <td class="c">${l.price != null ? peso(l.price) : '—'}</td>
+            <td class="c">${l.price != null ? peso(Number(l.price) * Number(l.qty)) : '—'}</td>`}
           </tr>`).join('')}
-          ${Array.from({ length: BLANKS },
-            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>').join('')}
+          ${Array.from({ length: BLANKS }, () => hidePrice
+            ? '<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>'
+            : '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
         </tbody>
+        ${hidePrice ? '' : `
+        <tfoot><tr>
+          <td colspan="5" class="c"><b>TOTAL</b></td>
+          <td class="c"><b>${peso(lines.reduce((s, l) =>
+            s + Number(l.qty) * (Number(l.price) || 0), 0))}</b></td>
+        </tr></tfoot>`}
       </table>
     </div>`;
 }
 
-function showPurchaseOrder(po, over = false) {
+function showPurchaseOrder(po, over = false, hidePrice = false) {
   dialog(`${purchaseOrder({
     poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
-    lines: po.lines || [], note: po.note,
+    lines: po.lines || [], note: po.note, hidePrice,
   })}
     <div class="mt right">
       <button class="btn quiet" id="po_save">⬇ Download JPEG</button>
