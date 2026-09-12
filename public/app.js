@@ -3117,7 +3117,7 @@ SCREENS.purchaseorders = async (page) => {
     const charge = `<tr>
         <td>${onDay(b.invoice_date)}</td>
         <td>INVOICE</td>
-        <td>${esc(b.invoice_no || '—')}</td>
+        <td class="refno">${esc(b.invoice_no || '—')}</td>
         <td class="c">${peso(b.amount)}</td><td class="c"></td>
         <td class="c">${peso(running)}</td>
       </tr>`;
@@ -3126,7 +3126,7 @@ SCREENS.purchaseorders = async (page) => {
       return `<tr>
           <td>${onDay(p.paid_on)}</td>
           <td>${esc(p.method ? `${p.method} PAYMENT` : 'PAYMENT')}</td>
-          <td>${esc(p.note || '')}</td>
+          <td class="refno">${esc(p.note || '')}</td>
           <td class="c"></td><td class="c">${peso(p.amount)}</td>
           <td class="c">${peso(running)}</td>
         </tr>`;
@@ -3170,7 +3170,7 @@ SCREENS.purchaseorders = async (page) => {
 
         <table class="lines">
           <thead><tr>
-            <th>DATE</th><th>DESCRIPTION</th><th>REFERENCE NO.</th>
+            <th>DATE</th><th>DESCRIPTION</th><th style="width:150px">REFERENCE NO.</th>
             <th style="width:100px">CHARGES</th><th style="width:100px">CREDITS</th>
             <th style="width:112px">ACCOUNT BALANCE</th>
           </tr></thead>
