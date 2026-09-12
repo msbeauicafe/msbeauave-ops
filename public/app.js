@@ -3100,11 +3100,6 @@ SCREENS.purchaseorders = async (page) => {
     const field = (label, value) => `
       <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
 
-    // Blank rows pad the ledger to fill the page on their own when there is
-    // no photo above it; less padding is needed once the supplier's own
-    // paper is taking up room at the top — printOneSheet still shrinks the
-    // whole sheet to fit one page regardless, this just keeps that shrink
-    // from having to do all the work.
     const billingImages = files.length ? `
       <div class="po-billing-image">
         <div class="barhd">SUPPLIER BILLING</div>
@@ -3131,13 +3126,11 @@ SCREENS.purchaseorders = async (page) => {
           <td class="c">${peso(running)}</td>
         </tr>`;
     }).join('');
-    // 7 rows total with no photo — data rows plus just enough blanks to
-    // round it out, not a wall of empty boxes trying to fill a printed
-    // page. Each photo takes roughly 9 rows' worth of the page (its own
-    // height plus the margins around it), so that target still comes down
-    // by that much per photo rather than a flat number.
-    const rowTarget = files.length ? Math.max(0, 18 - 9 * (files.length - 1)) : 7;
-    const BLANKS = Math.max(0, rowTarget - (1 + payments.length));
+    // 7 rows total — data rows plus just enough blanks to round it out, not
+    // a wall of empty boxes trying to fill a printed page. This no longer
+    // differs with a photo attached: the photo is not filling a page either,
+    // so there is no page-space left over to make up for.
+    const BLANKS = Math.max(0, 7 - (1 + payments.length));
 
     return `
       <div class="doc po">
