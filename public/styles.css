@@ -316,11 +316,16 @@ textarea.sheet {
    printed width (so it stays crisp), the working order on the right, both in
    one popup. Stacks to one column when the screen is too narrow to hold them. */
 .dialog.co-open { max-width: 96vw; width: min(1780px, 96vw); }
-.order-split { display: flex; gap: 20px; align-items: flex-start; }
+.order-split { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
 /* The form scrolls on its own within the left column, so a tall order does not
    push the working order on the right down the page. The chat link, Download
-   and Print sit all the way below the sheet. */
-.order-split .co-side { flex: 0 0 900px; max-width: 900px;
+   and Print sit all the way below the sheet. co-side shrinks below its native
+   900px (the sheet itself scales down to match, see scaleCoForm) so the two
+   columns keep sitting side by side on an ordinary laptop screen — Windows
+   display scaling shrinks the effective CSS width well below the 1920 the
+   screen is actually reporting. Only once neither column can shrink to its
+   floor does flex-wrap drop the working order to its own row below. */
+.order-split .co-side { flex: 1 1 480px; max-width: 900px; min-width: 380px;
   display: flex; flex-direction: column; max-height: 78vh; overflow-y: auto; }
 .order-split .co-actions { display: flex; gap: 8px; align-items: center;
   justify-content: flex-end; flex-wrap: wrap; padding-top: 10px; }
@@ -330,12 +335,11 @@ textarea.sheet {
 /* The running total on Record a payment — the figure checked against the bank,
    so big and in the house dark pink. */
 .paytot { font-size: 1.35rem; color: var(--rose-deep); }
-.order-split .edit-side { flex: 1 1 520px; min-width: 0; }
+.order-split .edit-side { flex: 1 1 380px; min-width: 380px; }
 .order-split .co-scale { overflow: hidden; }
-@media (max-width: 1500px) {
+@media (max-width: 900px) {
   .dialog.co-open { width: 96vw; }
-  .order-split { flex-direction: column; }
-  .order-split .co-side, .order-split .edit-side { flex: 1 1 auto; width: 100%; max-width: 100%; }
+  .order-split .co-side, .order-split .edit-side { flex: 1 1 auto; width: 100%; max-width: 100%; min-width: 0; }
 }
 /* A line struck off an order with the ✕ — greyed and ruled through while it
    stays on screen to bring back, until the order is saved. */
