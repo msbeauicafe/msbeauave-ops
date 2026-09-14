@@ -3357,10 +3357,11 @@ SCREENS.purchaseorders = async (page) => {
               <h3 class="mt">Receiving log</h3>
               <div class="scroll"><table>
                 <thead><tr><th>Product</th><th>Batch</th><th class="n">Qty</th>
-                  <th>Expiry</th><th>Received</th></tr></thead>
+                  <th class="n">Lackings</th><th>Expiry</th><th>Received</th></tr></thead>
                 <tbody>${po.receipts.map((r) => `<tr>
                   <td>${esc(r.name)}</td><td class="dim">${esc(r.batch_no)}</td>
                   <td class="n">${count(r.qty_received)}</td>
+                  <td class="n">${Number(r.lackings_after) > 0 ? count(r.lackings_after) : '—'}</td>
                   <td>${onDay(r.expiry)}</td>
                   <td>${when(r.received_at)}</td>
                 </tr>`).join('')}</tbody>
