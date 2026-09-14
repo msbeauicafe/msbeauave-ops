@@ -3271,8 +3271,13 @@ SCREENS.purchaseorders = async (page) => {
       const canEdit = showPricing && po.status === 'open';
       const SPARE = canEdit ? 3 : 0;
       const live = po.status === 'open' || po.status === 'part';
+      // A cancelled order stops being billed for what it asked for and goes
+      // back to what actually showed up — the rest of the quantity is not
+      // coming, so it is not what the supplier gets paid for either.
+      const billQty = (l) => (po.status === 'cancelled'
+        ? Math.min(Number(l.qty), Number(l.received || 0)) : Number(l.qty));
       const grandTotal = po.lines.reduce((s, l) =>
-        s + Number(l.qty) * (Number(l.price) || 0), 0);
+        s + billQty(l) * (Number(l.price) || 0), 0);
       const stateTag = po.status === 'closed' ? tag('all in', 'green')
         : po.status === 'part' ? tag('part delivered', 'amber')
         : po.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
@@ -3314,7 +3319,7 @@ SCREENS.purchaseorders = async (page) => {
                     : `<b>${esc(l.name)}</b><div class="dim">${esc(l.sku)}</div>`}</td>
                   <td class="n">${canEdit
                     ? `<input class="cellbox open n" data-qty inputmode="numeric" value="${Number(l.qty)}">`
-                    : count(l.qty)}</td>
+                    : count(billQty(l))}</td>
                   <td>${canEdit
                     ? `<input class="cellbox open" data-unit value="${esc(l.unit)}" style="width:70px">`
                     : esc(l.unit)}</td>
@@ -3329,7 +3334,7 @@ SCREENS.purchaseorders = async (page) => {
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
                     : (l.price != null ? peso(l.price) : '—')}</td>
-                  <td class="n" data-tot ${H}>${peso((Number(l.price) || 0) * Number(l.qty))}</td>
+                  <td class="n" data-tot ${H}>${peso((Number(l.price) || 0) * billQty(l))}</td>
                   <td class="n">${canEdit
                     ? `<button class="btn sm stop" data-remove="${l.id}"
                          title="Take off this order">✕</button>` : ''}</td>
