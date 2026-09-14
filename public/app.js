@@ -3320,11 +3320,13 @@ SCREENS.purchaseorders = async (page) => {
                     : esc(l.unit)}</td>
                   ${showStatus ? `<td>${Number(l.received) >= Number(l.qty)
                       ? '<b>Received</b>'
-                      : `<select class="cellbox open" data-status="${l.id}">
-                          <option value="">—</option>
-                          <option value="receive">Receive</option>
-                          <option value="lackings">Lackings</option>
-                        </select>`}</td>
+                      : Number(l.lackings) > 0
+                        ? '<b>Received w/ Lackings</b>'
+                        : `<select class="cellbox open" data-status="${l.id}">
+                            <option value="">—</option>
+                            <option value="receive">Receive</option>
+                            <option value="lackings">Lackings</option>
+                          </select>`}</td>
                     <td class="n" data-lackings="${l.id}">${l.lackings ? count(l.lackings) : '—'}</td>` : ''}
                   <td class="n" ${H}>${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
