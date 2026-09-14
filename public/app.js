@@ -3385,12 +3385,14 @@ SCREENS.purchaseorders = async (page) => {
     function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
 
-      // Receive opens the same receiving form the whole-order buttons do,
-      // just pre-filled to this one line — batch, expiry, cost, the works.
-      // Lackings is lighter: a number typed on the spot, nothing else about
-      // the delivery being on file yet. Neither one is a status to hold on
-      // the box itself, so it resets right away rather than sticking on
-      // whatever was last picked.
+      // Two quick prompts rather than the whole-order receiving form's
+      // driver, plate no., shipping fee and the rest — a batch number and
+      // an expiry date are the two things stock itself cannot be received
+      // without (every batch on file has both, not by this screen's choice),
+      // so those are the only two still asked. Lackings is lighter again: a
+      // number typed on the spot, nothing else about the delivery on file
+      // yet. Neither is a status to hold on the box itself, so it resets
+      // right away rather than sticking on whatever was last picked.
       if (showStatus) {
         $$('[data-status]', $('#po_root')).forEach((sel) => sel.addEventListener('change', async () => {
           const val = sel.value;
@@ -3399,7 +3401,21 @@ SCREENS.purchaseorders = async (page) => {
           const line = po.lines.find((l) => String(l.id) === sel.dataset.status);
           if (!line) return;
           if (val === 'receive') {
-            receiveDelivery({ po: { ...po, lines: [line] }, catalogue, shops, suppliers, done: reload, over: true });
+            const shortQty = Math.max(0, Number(line.qty) - Number(line.received || 0));
+            const qty = Number(prompt(`How many of "${line.name}" arrived?`, shortQty || Number(line.qty)));
+            if (!(qty > 0)) return;
+            const batchNo = prompt('Batch number on the box:');
+            if (batchNo == null || batchNo.trim() === '') return;
+            const expiry = prompt('Expiry date (YYYY-MM-DD):');
+            if (expiry == null || expiry.trim() === '') return;
+            if (Number.isNaN(Date.parse(expiry)) || new Date(expiry) <= new Date()) {
+              return notice('That is not a future date.', 'bad');
+            }
+            try {
+              await POST(`/api/purchase-orders/lines/${line.id}/receive`,
+                { qty, batch_no: batchNo.trim(), expiry });
+              reload();
+            } catch (e) { whoops(e); }
             return;
           }
           const said = prompt(`How many of "${line.name}" came up short?`, line.lackings || '');
