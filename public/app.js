@@ -3358,13 +3358,12 @@ SCREENS.purchaseorders = async (page) => {
             ${showStatus && po.receipts && po.receipts.length ? `
               <h3 class="mt">Receiving log</h3>
               <div class="scroll"><table>
-                <thead><tr><th>Product</th><th>Batch</th><th class="n">Qty</th>
-                  <th class="n">Lackings</th><th>Expiry</th><th>Received</th></tr></thead>
+                <thead><tr><th>Product</th><th class="n">Qty</th>
+                  <th class="n">Lackings</th><th>Received</th></tr></thead>
                 <tbody>${po.receipts.map((r) => `<tr>
-                  <td>${esc(r.name)}</td><td class="dim">${esc(r.batch_no)}</td>
+                  <td>${esc(r.name)}</td>
                   <td class="n">${count(r.qty_received)}</td>
                   <td class="n">${Number(r.lackings_after) > 0 ? count(r.lackings_after) : '—'}</td>
-                  <td>${onDay(r.expiry)}</td>
                   <td>${when(r.received_at)}</td>
                 </tr>`).join('')}</tbody>
               </table></div>` : ''}
@@ -3421,7 +3420,12 @@ SCREENS.purchaseorders = async (page) => {
           if (!line) return;
           const was = Number(line.received || 0);
           const total = Number(inp.value);
-          if (!(total > was)) { inp.value = was || ''; return; }
+          if (!(total > was)) {
+            inp.value = was || '';
+            return notice(was
+              ? `Type the new total received — it has to be more than the ${count(was)} already on file.`
+              : 'Type how many have been received in total, not just this delivery.', 'bad');
+          }
           const qty = total - was;
           const batchNo = `${po.po_no}-${line.id}-${Date.now()}`;
           const exp = new Date();
