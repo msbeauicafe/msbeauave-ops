@@ -1376,6 +1376,10 @@ input.n { text-align: right; }
   color: #f5a623; font-size: 1.7rem; letter-spacing: .01em; text-align: right;
   margin: 6px 0 16px;
 }
+/* The supplier invoice alone carries its logo on the right, title and
+   numbers on the left — the title's text still has to hug the edge it is
+   now next to, not the one it left. */
+.doc.po .po-head.logo-right .po-title h2 { text-align: left; }
 .doc.po .fld { display: flex; gap: 8px; font-size: .68rem; line-height: 1.5; }
 .doc.po .fld span { color: #333; min-width: 118px; }
 .doc.po .fld b { font-weight: 700; }

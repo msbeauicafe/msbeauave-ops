@@ -3230,8 +3230,7 @@ SCREENS.purchaseorders = async (page) => {
     return `
       <div class="doc po${files.length ? ' landscape' : ''}">
         <div class="rule"></div>
-        <div class="po-head">
-          <img src="/logo.png" alt="MS Beau Ave">
+        <div class="po-head logo-right">
           <div class="po-title">
             <h2>SUPPLIER INVOICE</h2>
             <div class="po-nums">
@@ -3241,6 +3240,7 @@ SCREENS.purchaseorders = async (page) => {
               ${field('PURCHASE ORDER', b.po_no)}
             </div>
           </div>
+          <img src="/logo.png" alt="MS Beau Ave">
         </div>
 
         <div class="po-parties">
