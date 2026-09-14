@@ -3328,8 +3328,11 @@ SCREENS.purchaseorders = async (page) => {
                       : Number(l.received) > 0
                         ? '<b>Received w/ Lackings</b>'
                         : '—'}</td>
-                    <td class="n"><input class="cellbox open n" data-received="${l.id}"
-                        inputmode="numeric" value="${Number(l.received) || ''}"></td>` : ''}
+                    <td class="n"><span style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
+                        <input class="cellbox open n" data-received="${l.id}"
+                          inputmode="numeric" value="${Number(l.received) || ''}">
+                        <button class="btn sm" data-savereceived="${l.id}">Save</button>
+                      </span></td>` : ''}
                   <td class="n" ${H}>${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
@@ -3415,7 +3418,9 @@ SCREENS.purchaseorders = async (page) => {
         // Typed straight into the Received cell as a running total, the same
         // as Quantity and Price beside it — the increment receive_po_line
         // wants is just the gap between what was there and what was typed.
-        $$('[data-received]', $('#po_root')).forEach((inp) => inp.addEventListener('change', async () => {
+        // Saved either by leaving the box (change) or the button beside it,
+        // for whoever wants to see the click land rather than trust a blur.
+        const saveReceived = async (inp) => {
           const line = po.lines.find((l) => String(l.id) === inp.dataset.received);
           if (!line) return;
           const was = Number(line.received || 0);
@@ -3436,6 +3441,12 @@ SCREENS.purchaseorders = async (page) => {
               { qty, batch_no: batchNo, expiry });
             reload();
           } catch (e) { inp.value = was || ''; whoops(e); }
+        };
+        $$('[data-received]', $('#po_root')).forEach((inp) =>
+          inp.addEventListener('change', () => saveReceived(inp)));
+        $$('[data-savereceived]', $('#po_root')).forEach((btn) => btn.addEventListener('click', () => {
+          const inp = $(`[data-received="${btn.dataset.savereceived}"]`, $('#po_root'));
+          if (inp) saveReceived(inp);
         }));
       }
 
