@@ -312,10 +312,9 @@ textarea.sheet {
 /* A price list is seven columns wide before it is anything else. */
 .dialog.wide { max-width: 1000px; }
 .dialog.wide td:first-child, .dialog.wide th:first-child { white-space: nowrap; }
-/* The supplier invoice with a billing photo attached puts the photo and the
-   six-column ledger side by side — the standard wide dialog is not wide
-   enough to hold both without the ledger's last column running off the
-   edge, so this pairing alone gets more room. */
+/* The supplier invoice keeps a blank left panel beside the ledger — the
+   standard wide dialog is not wide enough to hold an empty column and the
+   full ledger without the ledger's last column running off the edge. */
 .dialog.wide.invoice-wide { max-width: 1150px; }
 /* Opening a pending order: the customer order form on the left at its full
    printed width (so it stays crisp), the working order on the right, both in
@@ -844,19 +843,24 @@ label.inline input { width: auto; }
 }
 .doc table.lines th.refnoh { width: 150px; }
 .doc table.lines th.moneyh { width: 104px; }
-/* The billing photo and the ledger it backs up, side by side rather than one
-   stacked on the other — two things read together read better next to each
-   other. Printed landscape (see printOneSheet's .landscape handling) so the
-   ledger's six columns have a real column to sit in rather than the narrow
-   half a portrait sheet would leave them. Sized the same way the portrait
-   sheet's columns already are — a width hint on each th, auto layout doing
-   the actual arithmetic — rather than table-layout: fixed, which measured
-   fine on screen but rendered inconsistently through the real print-to-PDF
-   path (columns bleeding into each other) in a way this project has never
-   hit with plain auto layout. */
-.doc.po .invoice-split { display: flex; gap: 16px; align-items: flex-start; }
-.doc.po .invoice-split-photo { flex: 1 1 0; min-width: 0; }
-.doc.po .invoice-split-photo .po-billing-image { margin-bottom: 0; }
+/* The supplier invoice sets a blank panel beside the ledger rather than
+   handing the ledger the full sheet — sized the same way the portrait
+   sheet's columns already are, a width hint on each th with auto layout
+   doing the actual arithmetic, rather than table-layout: fixed, which
+   measured fine on screen but rendered inconsistently through the real
+   print-to-PDF path (columns bleeding into each other) in a way this
+   project has never hit with plain auto layout. */
+.doc.po .invoice-split { display: flex; gap: 16px; align-items: stretch; }
+.doc.po .invoice-split-blank {
+  flex: 1 1 0; min-width: 0; overflow: hidden; border-radius: 4px;
+}
+.doc.po .invoice-split-blank .po-billing-photos {
+  display: flex; flex-direction: column; gap: 8px; height: 100%;
+}
+.doc.po .invoice-split-blank .po-billing-photos img {
+  width: 100%; height: 100%; object-fit: cover; flex: 1 1 0; display: block;
+  border-radius: 4px;
+}
 .doc.po .invoice-split-ledger { flex: 1 1 0; min-width: 0; }
 .doc.po table.lines.ledger-split { font-size: .68rem; }
 .doc.po table.lines.ledger-split th:nth-child(1) { width: 60px; }
@@ -1367,12 +1371,6 @@ input.n { text-align: right; }
    it is the one that does not wear the house rose — orange, and laid out as
    the paper it replaces is, with two parties across the top instead of one. */
 .doc.po { color: #000; }
-.doc.po .po-billing-image { margin-bottom: 12px; }
-.doc.po .po-billing-photos { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-.doc.po .po-billing-photos img {
-  width: 100%; height: 220px; object-fit: cover;
-  border: 1px solid #f6dfba; border-radius: 4px;
-}
 .doc.po .rule { border-top: 6px solid #f5a623; margin-bottom: 12px; }
 .doc.po .po-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
 .doc.po .po-head img { height: 86px; }
@@ -1384,7 +1382,9 @@ input.n { text-align: right; }
 /* The supplier invoice alone carries its logo on the right, title and
    numbers on the left — the title's text still has to hug the edge it is
    now next to, not the one it left. */
-.doc.po .po-head.logo-right .po-title h2 { text-align: left; }
+.doc.po .po-head.logo-only { justify-content: flex-end; }
+.doc.po .invoice-split-ledger .po-title { min-width: 0; }
+.doc.po .invoice-split-ledger .po-title h2 { text-align: left; }
 .doc.po .fld { display: flex; gap: 8px; font-size: .68rem; line-height: 1.5; }
 .doc.po .fld span { color: #333; min-width: 118px; }
 .doc.po .fld b { font-weight: 700; }
@@ -1395,6 +1395,7 @@ input.n { text-align: right; }
 .doc.po .po-parties {
   display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 6px 0 12px;
 }
+.doc.po .po-parties.one { grid-template-columns: 1fr; }
 .doc.po table.lines th {
   background: #f5a623; color: #fff; border-color: #f5a623;
   font-size: .66rem; letter-spacing: .03em;
