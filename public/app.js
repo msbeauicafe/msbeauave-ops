@@ -44,6 +44,19 @@ const when = (v) => (v ? new Date(v).toLocaleString('en-PH',
 const onDay = (v) => (v ? new Date(v).toLocaleDateString('en-PH',
   { dateStyle: 'medium', timeZone: TZ }) : '—');
 
+// An amount typed into a text box, read back as a plain number — strips
+// whatever comma() dressed it up with on the way in.
+const num = (v) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
+// Comma-separates a figure as it's typed, so ₱9,000 reads as nine thousand
+// on sight rather than a string of digits somebody has to count.
+const comma = (el) => {
+  const raw = String(el.value).replace(/[^0-9.]/g, '');
+  const parts = raw.split('.');
+  const intp = parts[0].replace(/^0+(?=\d)/, '');
+  const whole = intp === '' ? '' : Number(intp).toLocaleString('en-US');
+  el.value = parts.length > 1 ? `${whole || '0'}.${parts[1].slice(0, 2)}` : whole;
+};
+
 // Two months out, the same warning window a shelf-life alert already reads
 // against — a scan that is not renewed in time is a supplier who cannot sell,
 // same shape as a batch that is not moved in time.
@@ -2858,9 +2871,10 @@ SCREENS.purchaseorders = async (page) => {
       <div id="bp_rows">${[0, 1, 2, 3, 4].map((n) => `
         <div class="row payrow">
           <div><label${n ? ' class="sr"' : ''}>Amount paid</label>
-            <input class="bp_amt" type="number" step="0.01" min="0.01"
+            <input class="bp_amt" type="text" inputmode="decimal"
               placeholder="${n ? '' : '0.00'}"
-              ${n === 0 && Number(bill.balance) > 0 ? `value="${Number(bill.balance)}"` : ''}></div>
+              ${n === 0 && Number(bill.balance) > 0
+                ? `value="${Number(bill.balance).toLocaleString('en-US')}"` : ''}></div>
           <div><label${n ? ' class="sr"' : ''}>Date</label>
             <input class="bp_on" type="date" value="${localDay()}"></div>
           <div><label${n ? ' class="sr"' : ''}>Mode of payment</label>
@@ -2876,9 +2890,9 @@ SCREENS.purchaseorders = async (page) => {
         doesn't get forgotten. Doesn't touch Paid so far or Still owed; record it
         as an actual payment above once it lands.</div>
       <div id="bp_pending"><div class="dim">Loading…</div></div>
-      <div class="row payrow mt">
+      <div class="row pendrow mt">
         <div><label>Amount paid</label>
-          <input id="bpp_amt" type="number" step="0.01" min="0.01" placeholder="0.00"></div>
+          <input id="bpp_amt" type="text" inputmode="decimal" placeholder="0.00"></div>
         <div><label>Date</label>
           <input id="bpp_on" type="date" value="${localDay()}"></div>
         <div style="flex:0 0 auto;align-self:flex-end">
@@ -2931,9 +2945,10 @@ SCREENS.purchaseorders = async (page) => {
       }));
     };
     await paintPending();
+    $('#bpp_amt').addEventListener('input', () => comma($('#bpp_amt')));
 
     $('#bpp_go').addEventListener('click', async () => {
-      const amount = Number($('#bpp_amt').value || 0);
+      const amount = num($('#bpp_amt').value);
       const expected_on = $('#bpp_on').value;
       if (!(amount > 0)) return whoops(new Error('How much is expected?'));
       $('#bpp_go').disabled = true;
@@ -2983,17 +2998,19 @@ SCREENS.purchaseorders = async (page) => {
 
     const resetRows = () => {
       $$('.payrow', $('#bp_rows')).forEach((row, n) => {
-        $('.bp_amt', row).value = n === 0 && Number(current.balance) > 0 ? Number(current.balance) : '';
+        $('.bp_amt', row).value = n === 0 && Number(current.balance) > 0
+          ? Number(current.balance).toLocaleString('en-US') : '';
         $('.bp_on', row).value = localDay();
         $('.bp_method', row).selectedIndex = 0;
         $('.bp_ref', row).value = '';
         $('.bp_file', row).value = '';
       });
     };
+    $$('.bp_amt', $('#bp_rows')).forEach((el) => el.addEventListener('input', () => comma(el)));
 
     $('#bp_go').addEventListener('click', async () => {
-      const jobs = $$('.payrow').map((row) => ({
-        amount: Number($('.bp_amt', row).value || 0),
+      const jobs = $$('.payrow', $('#bp_rows')).map((row) => ({
+        amount: num($('.bp_amt', row).value),
         paid_on: $('.bp_on', row).value,
         method: $('.bp_method', row).value,
         ref: $('.bp_ref', row).value,
@@ -7704,16 +7721,6 @@ async function openReseller(id, reload, part = 'account') {
     const owed = Number(b.dataset.owed);
     const invoiceNo = b.dataset.pay;
     const orderNo = b.dataset.order;
-    // Commas as they type, because six figures without them is where a nought
-    // goes astray. Stripped back to a plain number on the way out.
-    const num = (v) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
-    const comma = (el) => {
-      const raw = String(el.value).replace(/[^0-9.]/g, '');
-      const parts = raw.split('.');
-      const intp = parts[0].replace(/^0+(?=\d)/, '');
-      const whole = intp === '' ? '' : Number(intp).toLocaleString('en-US');
-      el.value = parts.length > 1 ? `${whole || '0'}.${parts[1].slice(0, 2)}` : whole;
-    };
     dialog(`
       <h3>${esc(r.name)} — Invoice #${esc(invoiceNo)}</h3>
       <div class="dim">${orderNo && orderNo !== invoiceNo
