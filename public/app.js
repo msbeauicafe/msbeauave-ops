@@ -2810,6 +2810,7 @@ SCREENS.purchaseorders = async (page) => {
             </div>
             <button class="btn sm quiet" data-billedit="${b.id}">🖨 Invoice</button>
             <button class="btn sm quiet" data-billpo="${b.id}">🖨 Purchase order</button>
+            <button class="btn sm quiet" data-billpb="${b.id}">🖨 Purchase billing</button>
             <button class="btn sm quiet" data-billrf="${b.id}">🖨 Receiving form</button>
           </div>` },
     ], 'No bills recorded yet.');
@@ -2824,6 +2825,9 @@ SCREENS.purchaseorders = async (page) => {
 
     $$('[data-billpo]', box).forEach((btn) => btn.addEventListener('click',
       () => openPO(Number(find(btn.dataset.billpo).po_id), true, true, true).catch(whoops)));
+
+    $$('[data-billpb]', box).forEach((btn) => btn.addEventListener('click',
+      () => openPO(Number(find(btn.dataset.billpb).po_id), true).catch(whoops)));
 
     $$('[data-billrf]', box).forEach((btn) => btn.addEventListener('click',
       () => openBillDelivery(find(btn.dataset.billrf))));
