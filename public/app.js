@@ -2871,6 +2871,19 @@ SCREENS.purchaseorders = async (page) => {
           <div><label${n ? ' class="sr"' : ''}>Attachment</label>
             <input class="bp_file" type="file" accept="image/*"></div>
         </div>`).join('')}</div>
+      <h3 class="mt">Pending payment</h3>
+      <div class="dim">Not a payment yet — what the supplier said and when, so it
+        doesn't get forgotten. Doesn't touch Paid so far or Still owed; record it
+        as an actual payment above once it lands.</div>
+      <div id="bp_pending"><div class="dim">Loading…</div></div>
+      <div class="row payrow mt">
+        <div><label>Amount paid</label>
+          <input id="bpp_amt" type="number" step="0.01" min="0.01" placeholder="0.00"></div>
+        <div><label>Date</label>
+          <input id="bpp_on" type="date" value="${localDay()}"></div>
+        <div style="flex:0 0 auto;align-self:flex-end">
+          <button class="btn sm" id="bpp_go">Save</button></div>
+      </div>
       <div class="mt right">
         <button class="btn quiet" id="bp_done">Done</button>
         <button class="btn" id="bp_go">Save</button>
@@ -2897,6 +2910,42 @@ SCREENS.purchaseorders = async (page) => {
         </figure>`).join('') : '<div class="dim">None recorded yet.</div>';
     };
     await paintPrior();
+
+    const paintPending = async () => {
+      const box = $('#bp_pending');
+      if (!box) return;
+      const pending = await GET(`/api/purchase-order-bills/${current.id}/pending-payments`).catch(() => []);
+      box.innerHTML = pending.length ? pending.map((p) => `
+        <div class="row payrow">
+          <div><b>${esc(peso(p.amount))}</b>
+            <span class="dim">expected ${onDay(p.expected_on)}</span></div>
+          <div style="flex:0 0 auto">
+            <button class="linkbtn del-pending" data-pending="${p.id}">remove</button></div>
+        </div>`).join('') : '<div class="dim">None on file.</div>';
+      $$('.del-pending', box).forEach((btn) => btn.addEventListener('click', async () => {
+        if (!await askFirst('Remove this pending payment?')) return;
+        try {
+          await DELETE(`/api/purchase-order-bill-pending-payments/${btn.dataset.pending}`);
+          await paintPending();
+        } catch (e) { whoops(e); }
+      }));
+    };
+    await paintPending();
+
+    $('#bpp_go').addEventListener('click', async () => {
+      const amount = Number($('#bpp_amt').value || 0);
+      const expected_on = $('#bpp_on').value;
+      if (!(amount > 0)) return whoops(new Error('How much is expected?'));
+      $('#bpp_go').disabled = true;
+      try {
+        await POST(`/api/purchase-order-bills/${current.id}/pending-payments`, { amount, expected_on });
+        $('#bpp_amt').value = '';
+        $('#bpp_on').value = localDay();
+        await paintPending();
+        notice('Saved 🌸', 'good');
+      } catch (e) { whoops(e); }
+      $('#bpp_go').disabled = false;
+    });
 
     const paintBillFiles = async () => {
       const grid = $('#bp_billgrid');
