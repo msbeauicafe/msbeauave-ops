@@ -837,6 +837,37 @@ label.inline input { width: auto; }
 .doc table.lines td.refno {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;
 }
+.doc table.lines th.refnoh { width: 150px; }
+.doc table.lines th.moneyh { width: 104px; }
+/* The billing photo and the ledger it backs up, side by side rather than one
+   stacked on the other — two things read together read better next to each
+   other. Printed landscape (see printOneSheet's .landscape handling) so the
+   ledger's six columns have a real column to sit in rather than the narrow
+   half a portrait sheet would leave them. Sized the same way the portrait
+   sheet's columns already are — a width hint on each th, auto layout doing
+   the actual arithmetic — rather than table-layout: fixed, which measured
+   fine on screen but rendered inconsistently through the real print-to-PDF
+   path (columns bleeding into each other) in a way this project has never
+   hit with plain auto layout. */
+.doc.po .invoice-split { display: flex; gap: 16px; align-items: flex-start; }
+.doc.po .invoice-split-photo { flex: 1 1 0; min-width: 0; }
+.doc.po .invoice-split-photo .po-billing-image { margin-bottom: 0; }
+.doc.po .invoice-split-ledger { flex: 1 1 0; min-width: 0; }
+.doc.po table.lines.ledger-split { font-size: .68rem; }
+.doc.po table.lines.ledger-split th:nth-child(1) { width: 60px; }
+.doc.po table.lines.ledger-split th:nth-child(2) { width: 110px; }
+.doc.po table.lines.ledger-split th.refnoh { width: 65px; }
+.doc.po table.lines.ledger-split th.moneyh { width: 60px; }
+/* A width hint only holds if the content agrees to it — a date, a
+   description or a reference number that runs long still has to be told
+   not to spill into the next cell rather than wrap and make every blank
+   row on the sheet as tall as its tallest neighbour. */
+.doc.po table.lines.ledger-split td:nth-child(1),
+.doc.po table.lines.ledger-split td:nth-child(2) {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.doc.po table.lines.ledger-split td.refno { max-width: 65px; }
+.doc.po table.lines.ledger-split td.c { white-space: nowrap; }
 .doc .duebox {
   float: right; border: 1px solid #ccc; background: #f4f4f4; padding: 4px 10px;
   font-size: .62rem; text-align: right; margin-bottom: 4px;
