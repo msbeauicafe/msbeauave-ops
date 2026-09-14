@@ -3273,7 +3273,7 @@ SCREENS.purchaseorders = async (page) => {
       <div class="mt right">
         <button class="btn quiet" id="billdoc_save">⬇ Download JPEG</button>
         ${PRINT_BTN}
-        <button class="btn" id="billdoc_done">Done</button></div>`, 'wide');
+        <button class="btn" id="billdoc_done">Done</button></div>`, files.length ? 'wide invoice-wide' : 'wide');
     wireSave('#billdoc_save', '.doc', `${bill.invoice_no || bill.po_no}-invoice.jpg`);
     $('#billdoc_done').addEventListener('click', closeDialog);
   }

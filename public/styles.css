@@ -312,6 +312,11 @@ textarea.sheet {
 /* A price list is seven columns wide before it is anything else. */
 .dialog.wide { max-width: 1000px; }
 .dialog.wide td:first-child, .dialog.wide th:first-child { white-space: nowrap; }
+/* The supplier invoice with a billing photo attached puts the photo and the
+   six-column ledger side by side — the standard wide dialog is not wide
+   enough to hold both without the ledger's last column running off the
+   edge, so this pairing alone gets more room. */
+.dialog.wide.invoice-wide { max-width: 1150px; }
 /* Opening a pending order: the customer order form on the left at its full
    printed width (so it stays crisp), the working order on the right, both in
    one popup. Stacks to one column when the screen is too narrow to hold them. */
