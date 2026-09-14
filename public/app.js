@@ -3167,11 +3167,8 @@ SCREENS.purchaseorders = async (page) => {
       <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
 
     const billingImages = files.length ? `
-      <div class="po-billing-image">
-        <div class="barhd">SUPPLIER BILLING</div>
-        <div class="po-billing-photos">${files.map((f) => `
-          <img src="/api/purchase-order-bill-files/${f.id}" alt="Supplier billing">`).join('')}
-        </div>
+      <div class="po-billing-photos">${files.map((f) => `
+        <img src="/api/purchase-order-bill-files/${f.id}" alt="Supplier billing">`).join('')}
       </div>` : '';
 
     let running = Number(b.amount);
@@ -3193,18 +3190,11 @@ SCREENS.purchaseorders = async (page) => {
         </tr>`;
     }).join('');
     // 7 rows total — data rows plus just enough blanks to round it out, not
-    // a wall of empty boxes trying to fill a printed page. This no longer
-    // differs with a photo attached: the photo is not filling a page either,
-    // so there is no page-space left over to make up for.
+    // a wall of empty boxes trying to fill a printed page.
     const BLANKS = Math.max(0, 7 - (1 + payments.length));
 
-    // With a supplier billing photo on file, it sits beside the ledger
-    // rather than above it — two things being read together read better
-    // side by side than one stacked on the other and both squeezed to fit.
-    // With no photo there is nothing to sit beside, so the ledger just
-    // takes the page the way it always did.
     const ledger = `
-        <table class="lines${files.length ? ' ledger-split' : ''}">
+        <table class="lines ledger-split">
           <thead><tr>
             <th>DATE</th><th>DESCRIPTION</th><th class="refnoh">REFERENCE NO.</th>
             <th class="moneyh">CHARGES</th><th class="moneyh">CREDITS</th>
@@ -3228,39 +3218,34 @@ SCREENS.purchaseorders = async (page) => {
         </div>` : ''}`;
 
     return `
-      <div class="doc po${files.length ? ' landscape' : ''}">
-        <div class="rule"></div>
-        <div class="po-head logo-right">
-          <div class="po-title">
-            <h2>SUPPLIER INVOICE</h2>
-            <div class="po-nums">
-              ${field('INVOICE NO.', b.invoice_no || '—')}
-              ${field('ISSUED', onDay(b.invoice_date))}
-              ${b.due_date ? field('DUE', onDay(b.due_date)) : ''}
-              ${field('PURCHASE ORDER', b.po_no)}
-            </div>
-          </div>
+      <div class="doc po landscape">
+        <div class="po-head logo-only">
           <img src="/logo.png" alt="MS Beau Ave">
         </div>
 
-        <div class="po-parties">
-          <div>
-            <div class="barhd">SUPPLIER</div>
-            ${field('NAME:', b.supplier)}
-            ${field('BRAND', b.brand_name)}
-          </div>
-          <div>
-            <div class="barhd">BILLED TO</div>
-            ${field('COMPANY:', 'MS BEAU AVE')}
-            ${field('ADDRESS', 'MARIKINA CITY')}
+        <div class="invoice-split">
+          <div class="invoice-split-blank">${billingImages}</div>
+          <div class="invoice-split-ledger">
+            <div class="rule"></div>
+            <div class="po-title">
+              <h2>SUPPLIER INVOICE</h2>
+              <div class="po-nums">
+                ${field('INVOICE NO.', b.invoice_no || '—')}
+                ${field('ISSUED', onDay(b.invoice_date))}
+                ${b.due_date ? field('DUE', onDay(b.due_date)) : ''}
+                ${field('PURCHASE ORDER', b.po_no)}
+              </div>
+            </div>
+            <div class="po-parties one">
+              <div>
+                <div class="barhd">BILLED TO</div>
+                ${field('COMPANY:', 'MS BEAU AVE')}
+                ${field('ADDRESS', 'MARIKINA CITY')}
+              </div>
+            </div>
+            ${ledger}
           </div>
         </div>
-
-        ${files.length ? `
-        <div class="invoice-split">
-          <div class="invoice-split-photo">${billingImages}</div>
-          <div class="invoice-split-ledger">${ledger}</div>
-        </div>` : ledger}
       </div>`;
   }
 
@@ -3273,7 +3258,7 @@ SCREENS.purchaseorders = async (page) => {
       <div class="mt right">
         <button class="btn quiet" id="billdoc_save">⬇ Download JPEG</button>
         ${PRINT_BTN}
-        <button class="btn" id="billdoc_done">Done</button></div>`, files.length ? 'wide invoice-wide' : 'wide');
+        <button class="btn" id="billdoc_done">Done</button></div>`, 'wide invoice-wide');
     wireSave('#billdoc_save', '.doc', `${bill.invoice_no || bill.po_no}-invoice.jpg`);
     $('#billdoc_done').addEventListener('click', closeDialog);
   }
