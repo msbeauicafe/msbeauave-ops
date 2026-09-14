@@ -3303,7 +3303,7 @@ SCREENS.purchaseorders = async (page) => {
             <div class="scroll"><table>
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
-                ${showStatus ? '<th>Status</th><th class="n">Received</th><th class="n">Lackings</th>' : ''}
+                ${showStatus ? '<th>Status</th><th class="n">Received</th>' : ''}
                 <th class="n" ${H}>Price</th><th class="n" ${H}>Total</th><th></th>
               </tr></thead>
               <tbody>
@@ -3324,10 +3324,7 @@ SCREENS.purchaseorders = async (page) => {
                         ? '<b>Received w/ Lackings</b>'
                         : '—'}</td>
                     <td class="n"><input class="cellbox open n" data-received="${l.id}"
-                        inputmode="numeric" value="${Number(l.received) || ''}"></td>
-                    <td class="n"><input class="cellbox open n" data-lackings="${l.id}"
-                        inputmode="numeric" value="${Number(l.received) > 0 && Number(l.qty) > Number(l.received)
-                          ? Number(l.qty) - Number(l.received) : ''}"></td>` : ''}
+                        inputmode="numeric" value="${Number(l.received) || ''}"></td>` : ''}
                   <td class="n" ${H}>${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
@@ -3342,7 +3339,7 @@ SCREENS.purchaseorders = async (page) => {
                         autocomplete="off" placeholder="Add a product"></td>
                   <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
-                  ${showStatus ? '<td></td><td></td><td></td>' : ''}
+                  ${showStatus ? '<td></td><td></td>' : ''}
                   <td class="n" ${H}><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
                   <td class="n" data-tot ${H}>—</td>
@@ -3408,17 +3405,18 @@ SCREENS.purchaseorders = async (page) => {
       // table is what makes that a fair trade rather than a black box.
       // Lackings is not a separate thing to record — it is just what is left
       // of the order once what arrived is typed in, so it reads straight off
-      // qty and received rather than holding a status of its own.
+      // qty and received rather than holding a status of its own, and is
+      // shown per receipt on the log rather than as a box on this table.
       if (showStatus) {
-        // Received and Lackings are the same fact read from two ends: typing
-        // a Received total or typing what's still short both land here as
-        // "this line should now be at this total received", and the gap
-        // from what was already on file is what gets receipted. Returns
-        // whether it went through, so each input can revert itself on its
-        // own terms rather than share one notion of what to fall back to.
-        const bumpReceived = async (line, total) => {
+        // Typed straight into the Received cell as a running total, the same
+        // as Quantity and Price beside it — the increment receive_po_line
+        // wants is just the gap between what was there and what was typed.
+        $$('[data-received]', $('#po_root')).forEach((inp) => inp.addEventListener('change', async () => {
+          const line = po.lines.find((l) => String(l.id) === inp.dataset.received);
+          if (!line) return;
           const was = Number(line.received || 0);
-          if (!(total > was)) return false;
+          const total = Number(inp.value);
+          if (!(total > was)) { inp.value = was || ''; return; }
           const qty = total - was;
           const batchNo = `${po.po_no}-${line.id}-${Date.now()}`;
           const exp = new Date();
@@ -3428,31 +3426,7 @@ SCREENS.purchaseorders = async (page) => {
             await POST(`/api/purchase-orders/lines/${line.id}/receive`,
               { qty, batch_no: batchNo, expiry });
             reload();
-            return true;
-          } catch (e) { whoops(e); return false; }
-        };
-
-        // Typed straight into the Received cell as a running total, the same
-        // as Quantity and Price beside it — the increment receive_po_line
-        // wants is just the gap between what was there and what was typed.
-        $$('[data-received]', $('#po_root')).forEach((inp) => inp.addEventListener('change', async () => {
-          const line = po.lines.find((l) => String(l.id) === inp.dataset.received);
-          if (!line) return;
-          const was = Number(line.received || 0);
-          if (!(await bumpReceived(line, Number(inp.value)))) inp.value = was || '';
-        }));
-
-        // The same total, read the other way round: what's typed here is what
-        // should still be short, so the receipt is however much closes that gap.
-        $$('[data-lackings]', $('#po_root')).forEach((inp) => inp.addEventListener('change', async () => {
-          const line = po.lines.find((l) => String(l.id) === inp.dataset.lackings);
-          if (!line) return;
-          const was = Number(line.received || 0);
-          const stillShort = Number(inp.value) || 0;
-          if (!(await bumpReceived(line, Number(line.qty) - stillShort))) {
-            const short = Number(line.qty) > was ? Number(line.qty) - was : 0;
-            inp.value = short || '';
-          }
+          } catch (e) { inp.value = was || ''; whoops(e); }
         }));
       }
 
