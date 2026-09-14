@@ -3329,8 +3329,8 @@ SCREENS.purchaseorders = async (page) => {
                         ? '<b>Received w/ Lackings</b>'
                         : '—'}</td>
                     <td class="n"><span style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
-                        <input class="cellbox open n" data-received="${l.id}"
-                          inputmode="numeric" value="${Number(l.received) || ''}">
+                        <input class="cellbox open n" data-received="${l.id}" inputmode="numeric"
+                          value="" placeholder="${Number(l.received) || 0}" title="${Number(l.received) || 0} received so far">
                         <button class="btn sm" data-savereceived="${l.id}">Save</button>
                       </span></td>` : ''}
                   <td class="n" ${H}>${canEdit
@@ -3415,35 +3415,35 @@ SCREENS.purchaseorders = async (page) => {
       // qty and received rather than holding a status of its own, and is
       // shown per receipt on the log rather than as a box on this table.
       if (showStatus) {
-        // Typed straight into the Received cell as a running total, the same
-        // as Quantity and Price beside it — the increment receive_po_line
-        // wants is just the gap between what was there and what was typed.
-        // Saved either by leaving the box (change) or the button beside it,
-        // for whoever wants to see the click land rather than trust a blur.
+        // What's typed into the Received cell is how many just arrived —
+        // not the new running total, so nobody has to do the addition in
+        // their head or gets told a number they typed "isn't big enough."
+        // The box starts empty every time and shows the total on file as
+        // a placeholder, so it can't be mistaken for a total sitting there
+        // to resave by accident. The button is the only way it saves —
+        // leaving the box also blurs it, which would otherwise fire beside
+        // a click on the button and post the same delivery twice.
+        let saving = false;
         const saveReceived = async (inp) => {
+          if (saving) return;
           const line = po.lines.find((l) => String(l.id) === inp.dataset.received);
           if (!line) return;
-          const was = Number(line.received || 0);
-          const total = Number(inp.value);
-          if (!(total > was)) {
-            inp.value = was || '';
-            return notice(was
-              ? `Type the new total received — it has to be more than the ${count(was)} already on file.`
-              : 'Type how many have been received in total, not just this delivery.', 'bad');
+          const qty = Number(inp.value);
+          if (!(qty > 0)) {
+            inp.value = '';
+            return notice('Type how many just arrived.', 'bad');
           }
-          const qty = total - was;
           const batchNo = `${po.po_no}-${line.id}-${Date.now()}`;
           const exp = new Date();
           exp.setMonth(exp.getMonth() + (Number(line.shelf_life_months) || 24));
           const expiry = exp.toISOString().slice(0, 10);
+          saving = true;
           try {
             await POST(`/api/purchase-orders/lines/${line.id}/receive`,
               { qty, batch_no: batchNo, expiry });
             reload();
-          } catch (e) { inp.value = was || ''; whoops(e); }
+          } catch (e) { inp.value = ''; whoops(e); } finally { saving = false; }
         };
-        $$('[data-received]', $('#po_root')).forEach((inp) =>
-          inp.addEventListener('change', () => saveReceived(inp)));
         $$('[data-savereceived]', $('#po_root')).forEach((btn) => btn.addEventListener('click', () => {
           const inp = $(`[data-received="${btn.dataset.savereceived}"]`, $('#po_root'));
           if (inp) saveReceived(inp);
