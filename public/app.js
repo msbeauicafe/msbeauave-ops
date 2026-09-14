@@ -3303,7 +3303,7 @@ SCREENS.purchaseorders = async (page) => {
             <div class="scroll"><table>
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
-                ${showStatus ? '<th>Status</th>' : ''}
+                ${showStatus ? '<th>Status</th><th class="n">Lackings</th>' : ''}
                 <th class="n" ${H}>Price</th><th class="n" ${H}>Total</th><th></th>
               </tr></thead>
               <tbody>
@@ -3323,7 +3323,8 @@ SCREENS.purchaseorders = async (page) => {
                       <option value="">—</option>
                       <option value="receive">Receive</option>
                       <option value="lackings">Lackings</option>
-                    </select></td>` : ''}
+                    </select></td>
+                    <td class="n" data-lackings="${l.id}">${l.lackings ? count(l.lackings) : '—'}</td>` : ''}
                   <td class="n" ${H}>${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
@@ -3338,7 +3339,7 @@ SCREENS.purchaseorders = async (page) => {
                         autocomplete="off" placeholder="Add a product"></td>
                   <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
-                  ${showStatus ? '<td></td>' : ''}
+                  ${showStatus ? '<td></td><td></td>' : ''}
                   <td class="n" ${H}><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
                   <td class="n" data-tot ${H}>—</td>
@@ -3384,18 +3385,31 @@ SCREENS.purchaseorders = async (page) => {
     function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
 
-      // Picking a status opens the same receiving form the whole-order
-      // buttons do, just pre-filled to this one line — there is no stored
-      // status to hold, so the box resets right away rather than sticking on
+      // Receive opens the same receiving form the whole-order buttons do,
+      // just pre-filled to this one line — batch, expiry, cost, the works.
+      // Lackings is lighter: a number typed on the spot, nothing else about
+      // the delivery being on file yet. Neither one is a status to hold on
+      // the box itself, so it resets right away rather than sticking on
       // whatever was last picked.
       if (showStatus) {
-        $$('[data-status]', $('#po_root')).forEach((sel) => sel.addEventListener('change', () => {
+        $$('[data-status]', $('#po_root')).forEach((sel) => sel.addEventListener('change', async () => {
           const val = sel.value;
           sel.value = '';
           if (!val) return;
           const line = po.lines.find((l) => String(l.id) === sel.dataset.status);
           if (!line) return;
-          receiveDelivery({ po: { ...po, lines: [line] }, catalogue, shops, suppliers, done: reload, over: true });
+          if (val === 'receive') {
+            receiveDelivery({ po: { ...po, lines: [line] }, catalogue, shops, suppliers, done: reload, over: true });
+            return;
+          }
+          const said = prompt(`How many of "${line.name}" came up short?`, line.lackings || '');
+          if (said == null || said.trim() === '') return;
+          const qty = Number(said);
+          if (!(qty >= 0)) return notice('That is not a number of pieces.', 'bad');
+          try {
+            await POST(`/api/purchase-orders/lines/${line.id}/lackings`, { qty });
+            reload();
+          } catch (e) { whoops(e); }
         }));
       }
 
