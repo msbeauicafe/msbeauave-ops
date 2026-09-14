@@ -3325,8 +3325,9 @@ SCREENS.purchaseorders = async (page) => {
                         : '—'}</td>
                     <td class="n"><input class="cellbox open n" data-received="${l.id}"
                         inputmode="numeric" value="${Number(l.received) || ''}"></td>
-                    <td class="n">${Number(l.received) > 0 && Number(l.qty) > Number(l.received)
-                        ? count(Number(l.qty) - Number(l.received)) : '—'}</td>` : ''}
+                    <td class="n"><input class="cellbox open n" data-lackings="${l.id}"
+                        inputmode="numeric" value="${Number(l.received) > 0 && Number(l.qty) > Number(l.received)
+                          ? Number(l.qty) - Number(l.received) : ''}"></td>` : ''}
                   <td class="n" ${H}>${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
@@ -3352,6 +3353,18 @@ SCREENS.purchaseorders = async (page) => {
             <div class="basket-sum">
               <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
             </div>
+            ${showStatus && po.receipts && po.receipts.length ? `
+              <h3 class="mt">Receiving log</h3>
+              <div class="scroll"><table>
+                <thead><tr><th>Product</th><th>Batch</th><th class="n">Qty</th>
+                  <th>Expiry</th><th>Received</th></tr></thead>
+                <tbody>${po.receipts.map((r) => `<tr>
+                  <td>${esc(r.name)}</td><td class="dim">${esc(r.batch_no)}</td>
+                  <td class="n">${count(r.qty_received)}</td>
+                  <td>${onDay(r.expiry)}</td>
+                  <td>${when(r.received_at)}</td>
+                </tr>`).join('')}</tbody>
+              </table></div>` : ''}
             ${canEdit ? `
               <div class="mt"><label for="po_note_in">Comments or special instructions</label>
                 <input id="po_note_in" type="text" value="${esc(po.note || '')}"></div>
@@ -3360,7 +3373,6 @@ SCREENS.purchaseorders = async (page) => {
             <div class="mt right">
               ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
               ${po.status === 'cancelled' ? '<button class="btn quiet" id="po_commit">Committed</button>' : ''}
-              ${live ? '<button class="btn stop" id="po_cancel2">Cancelled</button>' : ''}
             </div>
           </div>
         </div>
@@ -3388,38 +3400,58 @@ SCREENS.purchaseorders = async (page) => {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
 
       // A batch number and an expiry date are the two things stock itself
-      // cannot be received without (every batch on file has both, not by
-      // this screen's choice), so those are the only two still asked.
+      // cannot be received without, but nobody is standing at this screen
+      // reading them off a box — so this screen makes them up: a batch
+      // number built from the order and the moment it was typed, an expiry
+      // read off the product's own shelf life. The receiving log below the
+      // table is what makes that a fair trade rather than a black box.
       // Lackings is not a separate thing to record — it is just what is left
       // of the order once what arrived is typed in, so it reads straight off
       // qty and received rather than holding a status of its own.
       if (showStatus) {
+        // Received and Lackings are the same fact read from two ends: typing
+        // a Received total or typing what's still short both land here as
+        // "this line should now be at this total received", and the gap
+        // from what was already on file is what gets receipted. Returns
+        // whether it went through, so each input can revert itself on its
+        // own terms rather than share one notion of what to fall back to.
+        const bumpReceived = async (line, total) => {
+          const was = Number(line.received || 0);
+          if (!(total > was)) return false;
+          const qty = total - was;
+          const batchNo = `${po.po_no}-${line.id}-${Date.now()}`;
+          const exp = new Date();
+          exp.setMonth(exp.getMonth() + (Number(line.shelf_life_months) || 24));
+          const expiry = exp.toISOString().slice(0, 10);
+          try {
+            await POST(`/api/purchase-orders/lines/${line.id}/receive`,
+              { qty, batch_no: batchNo, expiry });
+            reload();
+            return true;
+          } catch (e) { whoops(e); return false; }
+        };
+
         // Typed straight into the Received cell as a running total, the same
         // as Quantity and Price beside it — the increment receive_po_line
         // wants is just the gap between what was there and what was typed.
         $$('[data-received]', $('#po_root')).forEach((inp) => inp.addEventListener('change', async () => {
           const line = po.lines.find((l) => String(l.id) === inp.dataset.received);
           if (!line) return;
-          const total = Number(inp.value);
           const was = Number(line.received || 0);
-          if (!(total > was)) {
-            inp.value = was || '';
-            return;
+          if (!(await bumpReceived(line, Number(inp.value)))) inp.value = was || '';
+        }));
+
+        // The same total, read the other way round: what's typed here is what
+        // should still be short, so the receipt is however much closes that gap.
+        $$('[data-lackings]', $('#po_root')).forEach((inp) => inp.addEventListener('change', async () => {
+          const line = po.lines.find((l) => String(l.id) === inp.dataset.lackings);
+          if (!line) return;
+          const was = Number(line.received || 0);
+          const stillShort = Number(inp.value) || 0;
+          if (!(await bumpReceived(line, Number(line.qty) - stillShort))) {
+            const short = Number(line.qty) > was ? Number(line.qty) - was : 0;
+            inp.value = short || '';
           }
-          const qty = total - was;
-          const batchNo = prompt('Batch number on the box:');
-          if (batchNo == null || batchNo.trim() === '') { inp.value = was || ''; return; }
-          const expiry = prompt('Expiry date (YYYY-MM-DD):');
-          if (expiry == null || expiry.trim() === '') { inp.value = was || ''; return; }
-          if (Number.isNaN(Date.parse(expiry)) || new Date(expiry) <= new Date()) {
-            inp.value = was || '';
-            return notice('That is not a future date.', 'bad');
-          }
-          try {
-            await POST(`/api/purchase-orders/lines/${line.id}/receive`,
-              { qty, batch_no: batchNo.trim(), expiry });
-            reload();
-          } catch (e) { whoops(e); }
         }));
       }
 
