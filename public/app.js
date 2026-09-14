@@ -3218,23 +3218,22 @@ SCREENS.purchaseorders = async (page) => {
         </div>` : ''}`;
 
     return `
-      <div class="doc po landscape">
-        <div class="po-head logo-only">
-          <img src="/logo.png" alt="MS Beau Ave">
-        </div>
-
+      <div class="doc po invoice-doc">
         <div class="invoice-split">
           <div class="invoice-split-blank">${billingImages}</div>
           <div class="invoice-split-ledger">
             <div class="rule"></div>
-            <div class="po-title">
-              <h2>SUPPLIER INVOICE</h2>
-              <div class="po-nums">
-                ${field('INVOICE NO.', b.invoice_no || '—')}
-                ${field('ISSUED', onDay(b.invoice_date))}
-                ${b.due_date ? field('DUE', onDay(b.due_date)) : ''}
-                ${field('PURCHASE ORDER', b.po_no)}
+            <div class="po-head logo-right">
+              <div class="po-title">
+                <h2>SUPPLIER INVOICE</h2>
+                <div class="po-nums">
+                  ${field('INVOICE NO.', b.invoice_no || '—')}
+                  ${field('ISSUED', onDay(b.invoice_date))}
+                  ${b.due_date ? field('DUE', onDay(b.due_date)) : ''}
+                  ${field('PURCHASE ORDER', b.po_no)}
+                </div>
               </div>
+              <img src="/logo.png" alt="MS Beau Ave">
             </div>
             <div class="po-parties one">
               <div>

@@ -850,6 +850,28 @@ label.inline input { width: auto; }
    measured fine on screen but rendered inconsistently through the real
    print-to-PDF path (columns bleeding into each other) in a way this
    project has never hit with plain auto layout. */
+/* On paper the two panels stop at the ledger's own rows and leave the rest
+   of the sheet blank underneath — printOneSheet stretches .doc down to the
+   full page height, but that height has nowhere to go unless something
+   inside is told to grow into it. */
+.doc.po.invoice-doc { display: flex; flex-direction: column; }
+.doc.po.invoice-doc .invoice-split { flex: 1 1 auto; }
+/* On the printed portrait sheet the two panels stack top over bottom rather
+   than sitting side by side — a portrait page is narrow, not wide, and a
+   photo plus a six-column ledger both want the full width more than they
+   want each other's company. The dialog on screen keeps the side-by-side
+   split; only the print output stacks. */
+@media print {
+  .doc.po.invoice-doc .invoice-split { flex-direction: column; }
+  /* Stacked, the ledger has the whole sheet's width to itself again, so it
+     wears the same column widths as every other printed ledger rather than
+     the narrow ones sized for sitting beside a photo on screen. */
+  .doc.po.invoice-doc table.lines.ledger-split { font-size: .72rem; }
+  .doc.po.invoice-doc table.lines.ledger-split th:nth-child(1),
+  .doc.po.invoice-doc table.lines.ledger-split th:nth-child(2) { width: auto; }
+  .doc.po.invoice-doc table.lines.ledger-split th.refnoh { width: 150px; }
+  .doc.po.invoice-doc table.lines.ledger-split th.moneyh { width: 104px; }
+}
 .doc.po .invoice-split { display: flex; gap: 16px; align-items: stretch; }
 .doc.po .invoice-split-blank {
   flex: 1 1 0; min-width: 0; overflow: hidden; border-radius: 4px;
@@ -1382,7 +1404,6 @@ input.n { text-align: right; }
 /* The supplier invoice alone carries its logo on the right, title and
    numbers on the left — the title's text still has to hug the edge it is
    now next to, not the one it left. */
-.doc.po .po-head.logo-only { justify-content: flex-end; }
 .doc.po .invoice-split-ledger .po-title { min-width: 0; }
 .doc.po .invoice-split-ledger .po-title h2 { text-align: left; }
 .doc.po .fld { display: flex; gap: 8px; font-size: .68rem; line-height: 1.5; }
