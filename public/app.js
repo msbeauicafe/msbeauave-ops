@@ -3132,9 +3132,37 @@ SCREENS.purchaseorders = async (page) => {
     // so there is no page-space left over to make up for.
     const BLANKS = Math.max(0, 7 - (1 + payments.length));
 
+    // With a supplier billing photo on file, it sits beside the ledger
+    // rather than above it — two things being read together read better
+    // side by side than one stacked on the other and both squeezed to fit.
+    // With no photo there is nothing to sit beside, so the ledger just
+    // takes the page the way it always did.
+    const ledger = `
+        <table class="lines${files.length ? ' ledger-split' : ''}">
+          <thead><tr>
+            <th>DATE</th><th>DESCRIPTION</th><th class="refnoh">REFERENCE NO.</th>
+            <th class="moneyh">CHARGES</th><th class="moneyh">CREDITS</th>
+            <th class="moneyh">ACCOUNT BALANCE</th>
+          </tr></thead>
+          <tbody>${charge}${credits}
+            ${Array.from({ length: BLANKS },
+              () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
+          </tbody>
+          <tfoot><tr>
+            <td colspan="5">CURRENT BAL:</td><td class="c">${peso(running)}</td>
+          </tr></tfoot>
+        </table>
+
+        ${b.note ? `
+        <div class="rf-foot">
+          <div class="notes">
+            <div class="barhd">NOTES</div>
+            <div class="wrote">${esc(b.note)}</div>
+          </div>
+        </div>` : ''}`;
+
     return `
-      <div class="doc po">
-        ${billingImages}
+      <div class="doc po${files.length ? ' landscape' : ''}">
         <div class="rule"></div>
         <div class="po-head">
           <img src="/logo.png" alt="MS Beau Ave">
@@ -3162,28 +3190,11 @@ SCREENS.purchaseorders = async (page) => {
           </div>
         </div>
 
-        <table class="lines">
-          <thead><tr>
-            <th>DATE</th><th>DESCRIPTION</th><th style="width:150px">REFERENCE NO.</th>
-            <th style="width:100px">CHARGES</th><th style="width:100px">CREDITS</th>
-            <th style="width:112px">ACCOUNT BALANCE</th>
-          </tr></thead>
-          <tbody>${charge}${credits}
-            ${Array.from({ length: BLANKS },
-              () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
-          </tbody>
-          <tfoot><tr>
-            <td colspan="5">CURRENT BAL:</td><td class="c">${peso(running)}</td>
-          </tr></tfoot>
-        </table>
-
-        ${b.note ? `
-        <div class="rf-foot">
-          <div class="notes">
-            <div class="barhd">NOTES</div>
-            <div class="wrote">${esc(b.note)}</div>
-          </div>
-        </div>` : ''}
+        ${files.length ? `
+        <div class="invoice-split">
+          <div class="invoice-split-photo">${billingImages}</div>
+          <div class="invoice-split-ledger">${ledger}</div>
+        </div>` : ledger}
       </div>`;
   }
 
@@ -4953,9 +4964,27 @@ function printOneSheet() {
   // The printable area of the shortest paper anybody here prints on, less the
   // 10mm margin the stylesheet asks for, in the 96 pixels-to-the-inch the
   // browser lays out with. Short bond and Letter are both 8.5 × 11; long bond
-  // and A4 are taller, so a sheet that fits this fits those.
-  const WIDE = 8.5 * 96 - (20 / 25.4) * 96;
-  const TALL = 11 * 96 - (20 / 25.4) * 96;
+  // and A4 are taller, so a sheet that fits this fits those. A sheet marked
+  // .landscape (the supplier invoice with a billing photo beside the ledger)
+  // gets the two swapped, and a @page rule to turn the physical page with it —
+  // without that, the browser still paginates portrait and shrinks the wide
+  // layout down into a portrait sheet, right back to the cramped column this
+  // was for.
+  // Measured against the real print pipeline (a landscape page rendered by
+  // Chromium's own print-to-PDF, not just the on-screen approximation),
+  // the right-hand margin does not come back the way the left one does —
+  // so landscape gets an extra allowance the portrait math has never
+  // needed, rather than a sheet that measures fine on screen and still
+  // runs the last column off the edge of the paper.
+  const landscape = doc.classList.contains('landscape');
+  const WIDE = (landscape ? 11 : 8.5) * 96 - (20 / 25.4) * 96 - (landscape ? 60 : 0);
+  const TALL = (landscape ? 8.5 : 11) * 96 - (20 / 25.4) * 96;
+  let pageStyle = null;
+  if (landscape) {
+    pageStyle = document.createElement('style');
+    pageStyle.textContent = '@page { size: landscape; }';
+    document.head.appendChild(pageStyle);
+  }
 
   // The order preview is fitted to its column on screen with a CSS scale set
   // inline on the sheet, inside a wrapper pinned to that shrunk height and
@@ -5018,6 +5047,7 @@ function printOneSheet() {
     Object.assign(doc.style, was);
     doc.style.setProperty('transform', fitScreen);
     if (box && boxWas) Object.assign(box.style, boxWas);
+    if (pageStyle) pageStyle.remove();
     window.removeEventListener('afterprint', undo);
   };
   window.addEventListener('afterprint', undo);
