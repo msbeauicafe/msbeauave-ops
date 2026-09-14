@@ -3330,7 +3330,7 @@ SCREENS.purchaseorders = async (page) => {
                         : '—'}</td>
                     <td class="n"><span style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
                         <input class="cellbox open n" data-received="${l.id}" inputmode="numeric"
-                          value="" placeholder="${Number(l.received) || 0}" title="${Number(l.received) || 0} received so far">
+                          value="" title="${Number(l.received) || 0} received so far">
                         <button class="btn sm" data-savereceived="${l.id}">Save</button>
                       </span></td>` : ''}
                   <td class="n" ${H}>${canEdit
@@ -3422,9 +3422,13 @@ SCREENS.purchaseorders = async (page) => {
         // a placeholder, so it can't be mistaken for a total sitting there
         // to resave by accident. The button is the only way it saves —
         // leaving the box also blurs it, which would otherwise fire beside
-        // a click on the button and post the same delivery twice.
+        // a click on the button and post the same delivery twice. The
+        // button is disabled the instant it's clicked, not just while the
+        // POST is in flight — reload() repainting the whole panel takes a
+        // beat, and a second click landing in that gap before the button
+        // itself is redrawn was posting the same delivery again.
         let saving = false;
-        const saveReceived = async (inp) => {
+        const saveReceived = async (inp, btn) => {
           if (saving) return;
           const line = po.lines.find((l) => String(l.id) === inp.dataset.received);
           if (!line) return;
@@ -3438,15 +3442,20 @@ SCREENS.purchaseorders = async (page) => {
           exp.setMonth(exp.getMonth() + (Number(line.shelf_life_months) || 24));
           const expiry = exp.toISOString().slice(0, 10);
           saving = true;
+          btn.disabled = true;
           try {
             await POST(`/api/purchase-orders/lines/${line.id}/receive`,
               { qty, batch_no: batchNo, expiry });
-            reload();
-          } catch (e) { inp.value = ''; whoops(e); } finally { saving = false; }
+            await reload();
+          } catch (e) {
+            inp.value = '';
+            btn.disabled = false;
+            whoops(e);
+          } finally { saving = false; }
         };
         $$('[data-savereceived]', $('#po_root')).forEach((btn) => btn.addEventListener('click', () => {
           const inp = $(`[data-received="${btn.dataset.savereceived}"]`, $('#po_root'));
-          if (inp) saveReceived(inp);
+          if (inp) saveReceived(inp, btn);
         }));
       }
 
