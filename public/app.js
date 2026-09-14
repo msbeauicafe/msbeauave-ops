@@ -3303,7 +3303,7 @@ SCREENS.purchaseorders = async (page) => {
             <div class="scroll"><table>
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
-                ${showStatus ? '<th>Status</th><th class="n">Lackings</th>' : ''}
+                ${showStatus ? '<th>Status</th><th class="n">Received</th><th class="n">Lackings</th>' : ''}
                 <th class="n" ${H}>Price</th><th class="n" ${H}>Total</th><th></th>
               </tr></thead>
               <tbody>
@@ -3318,16 +3318,15 @@ SCREENS.purchaseorders = async (page) => {
                   <td>${canEdit
                     ? `<input class="cellbox open" data-unit value="${esc(l.unit)}" style="width:70px">`
                     : esc(l.unit)}</td>
-                  ${showStatus ? `<td>${Number(l.received) >= Number(l.qty)
+                  ${showStatus ? `<td>${Number(l.received) >= Number(l.qty) && Number(l.qty) > 0
                       ? '<b>Received</b>'
-                      : Number(l.lackings) > 0
+                      : Number(l.received) > 0
                         ? '<b>Received w/ Lackings</b>'
-                        : `<select class="cellbox open" data-status="${l.id}">
-                            <option value="">—</option>
-                            <option value="receive">Receive</option>
-                            <option value="lackings">Lackings</option>
-                          </select>`}</td>
-                    <td class="n" data-lackings="${l.id}">${l.lackings ? count(l.lackings) : '—'}</td>` : ''}
+                        : '—'}</td>
+                    <td class="n"><input class="cellbox open n" data-received="${l.id}"
+                        inputmode="numeric" value="${Number(l.received) || ''}"></td>
+                    <td class="n">${Number(l.received) > 0 && Number(l.qty) > Number(l.received)
+                        ? count(Number(l.qty) - Number(l.received)) : '—'}</td>` : ''}
                   <td class="n" ${H}>${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
@@ -3342,7 +3341,7 @@ SCREENS.purchaseorders = async (page) => {
                         autocomplete="off" placeholder="Add a product"></td>
                   <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
-                  ${showStatus ? '<td></td><td></td>' : ''}
+                  ${showStatus ? '<td></td><td></td><td></td>' : ''}
                   <td class="n" ${H}><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
                   <td class="n" data-tot ${H}>—</td>
@@ -3388,45 +3387,37 @@ SCREENS.purchaseorders = async (page) => {
     function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
 
-      // Two quick prompts rather than the whole-order receiving form's
-      // driver, plate no., shipping fee and the rest — a batch number and
-      // an expiry date are the two things stock itself cannot be received
-      // without (every batch on file has both, not by this screen's choice),
-      // so those are the only two still asked. Lackings is lighter again: a
-      // number typed on the spot, nothing else about the delivery on file
-      // yet. Neither is a status to hold on the box itself, so it resets
-      // right away rather than sticking on whatever was last picked.
+      // A batch number and an expiry date are the two things stock itself
+      // cannot be received without (every batch on file has both, not by
+      // this screen's choice), so those are the only two still asked.
+      // Lackings is not a separate thing to record — it is just what is left
+      // of the order once what arrived is typed in, so it reads straight off
+      // qty and received rather than holding a status of its own.
       if (showStatus) {
-        $$('[data-status]', $('#po_root')).forEach((sel) => sel.addEventListener('change', async () => {
-          const val = sel.value;
-          sel.value = '';
-          if (!val) return;
-          const line = po.lines.find((l) => String(l.id) === sel.dataset.status);
+        // Typed straight into the Received cell as a running total, the same
+        // as Quantity and Price beside it — the increment receive_po_line
+        // wants is just the gap between what was there and what was typed.
+        $$('[data-received]', $('#po_root')).forEach((inp) => inp.addEventListener('change', async () => {
+          const line = po.lines.find((l) => String(l.id) === inp.dataset.received);
           if (!line) return;
-          if (val === 'receive') {
-            const shortQty = Math.max(0, Number(line.qty) - Number(line.received || 0));
-            const qty = Number(prompt(`How many of "${line.name}" arrived?`, shortQty || Number(line.qty)));
-            if (!(qty > 0)) return;
-            const batchNo = prompt('Batch number on the box:');
-            if (batchNo == null || batchNo.trim() === '') return;
-            const expiry = prompt('Expiry date (YYYY-MM-DD):');
-            if (expiry == null || expiry.trim() === '') return;
-            if (Number.isNaN(Date.parse(expiry)) || new Date(expiry) <= new Date()) {
-              return notice('That is not a future date.', 'bad');
-            }
-            try {
-              await POST(`/api/purchase-orders/lines/${line.id}/receive`,
-                { qty, batch_no: batchNo.trim(), expiry });
-              reload();
-            } catch (e) { whoops(e); }
+          const total = Number(inp.value);
+          const was = Number(line.received || 0);
+          if (!(total > was)) {
+            inp.value = was || '';
             return;
           }
-          const said = prompt(`How many of "${line.name}" came up short?`, line.lackings || '');
-          if (said == null || said.trim() === '') return;
-          const qty = Number(said);
-          if (!(qty >= 0)) return notice('That is not a number of pieces.', 'bad');
+          const qty = total - was;
+          const batchNo = prompt('Batch number on the box:');
+          if (batchNo == null || batchNo.trim() === '') { inp.value = was || ''; return; }
+          const expiry = prompt('Expiry date (YYYY-MM-DD):');
+          if (expiry == null || expiry.trim() === '') { inp.value = was || ''; return; }
+          if (Number.isNaN(Date.parse(expiry)) || new Date(expiry) <= new Date()) {
+            inp.value = was || '';
+            return notice('That is not a future date.', 'bad');
+          }
           try {
-            await POST(`/api/purchase-orders/lines/${line.id}/lackings`, { qty });
+            await POST(`/api/purchase-orders/lines/${line.id}/receive`,
+              { qty, batch_no: batchNo.trim(), expiry });
             reload();
           } catch (e) { whoops(e); }
         }));
