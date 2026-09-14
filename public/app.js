@@ -2808,7 +2808,7 @@ SCREENS.purchaseorders = async (page) => {
                 data-billpay="${b.id}">Record payment</button>
               <button class="btn sm stop" data-billdrop="${b.id}" title="Remove this bill">✕</button>
             </div>
-            <button class="btn sm quiet" data-billedit="${b.id}">🖨 Invoice</button>
+            <button class="btn sm quiet" data-billedit="${b.id}">🖨 Billing statement</button>
             <button class="btn sm quiet" data-billpo="${b.id}">🖨 Purchase order</button>
             <button class="btn sm quiet" data-billpb="${b.id}">🖨 Purchase billing</button>
             <button class="btn sm quiet" data-billrf="${b.id}">🖨 Receiving form</button>
@@ -3229,7 +3229,7 @@ SCREENS.purchaseorders = async (page) => {
             <div class="rule"></div>
             <div class="po-head logo-right">
               <div class="po-title">
-                <h2>SUPPLIER INVOICE</h2>
+                <h2>BILLING STATEMENT</h2>
                 <div class="po-nums">
                   ${field('INVOICE NO.', b.invoice_no || '—')}
                   ${field('ISSUED', onDay(b.invoice_date))}
@@ -3262,7 +3262,7 @@ SCREENS.purchaseorders = async (page) => {
         <button class="btn quiet" id="billdoc_save">⬇ Download JPEG</button>
         ${PRINT_BTN}
         <button class="btn" id="billdoc_done">Done</button></div>`, 'wide invoice-wide');
-    wireSave('#billdoc_save', '.doc', `${bill.invoice_no || bill.po_no}-invoice.jpg`);
+    wireSave('#billdoc_save', '.doc', `${bill.invoice_no || bill.po_no}-billing-statement.jpg`);
     $('#billdoc_done').addEventListener('click', closeDialog);
   }
 
