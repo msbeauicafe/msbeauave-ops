@@ -2843,7 +2843,7 @@ SCREENS.purchaseorders = async (page) => {
       $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'ord'));
       $('#pt_bill', page).hidden = true;
       $('#pt_ord', page).hidden = false;
-      openPO(poId, true, true, true).catch(whoops);
+      openPO(poId, true, true, true, false).catch(whoops);
     }));
 
     $$('[data-billpb]', box).forEach((btn) => btn.addEventListener('click', async () => {
