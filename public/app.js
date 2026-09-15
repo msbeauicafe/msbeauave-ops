@@ -2563,15 +2563,18 @@ SCREENS.purchaseorders = async (page) => {
         <button data-p="prod">Product list</button>
       </div>
 
-      <div id="pp_ord">
-        <div class="head" style="margin:0"><h3 class="sr">Purchase orders</h3>
-          <button class="btn" id="po_new">＋ New order</button></div>
-        <div class="dim mt">A purchase order carries no prices: it says what is
-          wanted and how much of it, and what it costs lands when the goods are
-          received. Receiving against a line records the batch and the cost
-          exactly as receiving anything does — it also notes how much of the
-          order that delivery covered.</div>
-        <div id="po_list" class="mt"></div>
+      <div id="pp_ord" class="po-split">
+        <div class="po-split-left">
+          <div class="head" style="margin:0"><h3 class="sr">Purchase orders</h3>
+            <button class="btn" id="po_new">＋ New order</button></div>
+          <div class="dim mt">A purchase order carries no prices: it says what is
+            wanted and how much of it, and what it costs lands when the goods are
+            received. Receiving against a line records the batch and the cost
+            exactly as receiving anything does — it also notes how much of the
+            order that delivery covered.</div>
+          <div id="po_list" class="mt"></div>
+        </div>
+        <div class="po-split-right"></div>
       </div>
 
       <div id="pp_prod" hidden>
@@ -2711,19 +2714,17 @@ SCREENS.purchaseorders = async (page) => {
   const drawPOs = async () => {
     const rows = await GET('/api/purchase-orders').catch(() => []);
     $('#po_list', page).innerHTML = table(rows, [
-      { head: 'No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
-      { head: 'Raised', cell: (o) => onDay(o.ordered_on) },
+      { head: 'PO No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
+      { head: 'Invoice No.', cell: (o) => esc(o.invoice_no || '—') },
+      { head: 'Date', cell: (o) => onDay(o.ordered_on) },
       { head: 'Supplier', cell: (o) => `<button class="nameopen" data-opensup="${o.supplier_id}">
           <b>${esc(o.supplier)}</b></button>${
           o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
-      { head: 'Lines', n: true, cell: (o) => count(o.lines) },
-      { head: 'Still short', n: true, cell: (o) => o.still_short > 0
-          ? `<b>${count(o.still_short)}</b>` : '—' },
       // What has been billed, not what has arrived — Billing's own question,
       // answered here so it does not take a second tab to ask. Nothing paid
       // yet, whether or not an invoice is even on file, reads the same as
       // nothing owed: both are "unpaid" until a bill says otherwise.
-      { head: 'State', cell: (o) => billState(o) },
+      { head: 'PO Status', cell: (o) => billState(o) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'No purchase orders yet.');
     $$('[data-po]', page).forEach((b) => b.addEventListener('click',
