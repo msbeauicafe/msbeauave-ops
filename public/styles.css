@@ -1794,6 +1794,7 @@ input.n { text-align: right; }
   .payslip .keep { display: none !important; }
 }
 
-.po-split { display: flex; gap: 22px; align-items: stretch; }
-.po-split-left { flex: 1 1 auto; min-width: 0; }
-.po-split-right { flex: 1 1 auto; border-left: 3px solid var(--rose-dust); padding-left: 22px; }
+.po-split { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; }
+.po-split-left { min-width: 0; padding-right: 22px; }
+.po-split-left #po_list th, .po-split-left #po_list td { padding: 6px 5px; }
+.po-split-right { min-width: 0; border-left: 3px solid var(--rose-dust); padding-left: 22px; }
