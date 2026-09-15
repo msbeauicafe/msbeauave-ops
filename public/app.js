@@ -2825,17 +2825,17 @@ SCREENS.purchaseorders = async (page) => {
     $$('[data-billedit]', box).forEach((btn) => btn.addEventListener('click',
       () => showBillInvoice(find(btn.dataset.billedit))));
 
-    $$('[data-billpo]', box).forEach((btn) => btn.addEventListener('click',
-      () => openPO(Number(find(btn.dataset.billpo).po_id), true, true, true).catch(whoops)));
-
-    $$('[data-billpb]', box).forEach((btn) => btn.addEventListener('click', async () => {
-      const poId = Number(find(btn.dataset.billpb).po_id);
+    $$('[data-billpo]', box).forEach((btn) => btn.addEventListener('click', async () => {
+      const poId = Number(find(btn.dataset.billpo).po_id);
       await drawPendingPOs();
       $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'pend'));
       $('#pt_bill', page).hidden = true;
       $('#pt_pend', page).hidden = false;
-      openPO(poId, true).catch(whoops);
+      openPO(poId, true, true, true).catch(whoops);
     }));
+
+    $$('[data-billpb]', box).forEach((btn) => btn.addEventListener('click',
+      () => openPO(Number(find(btn.dataset.billpb).po_id), true).catch(whoops)));
 
     $$('[data-billrf]', box).forEach((btn) => btn.addEventListener('click',
       () => openBillDelivery(find(btn.dataset.billrf))));
