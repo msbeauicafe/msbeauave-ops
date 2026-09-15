@@ -3318,7 +3318,7 @@ SCREENS.purchaseorders = async (page) => {
     const datalist = `<datalist id="po_goods">${
       cat.map((p) => `<option value="${esc(p.name)}"></option>`).join('')}</datalist>`;
 
-    dialog('<div id="po_root"></div>', 'wide co-open');
+    dialog('<div id="po_root"></div>', 'wide co-open po-open');
 
     const reload = async () => {
       po = await GET(`/api/purchase-orders/${poId}`);
@@ -3360,7 +3360,7 @@ SCREENS.purchaseorders = async (page) => {
               ? `Every box can be typed in. Change the product, how many, the unit${
                   H ? '' : ' or the price'}; empty a quantity to take that product off.`
               : 'This order has deliveries against it, so its lines are fixed.'}</div>
-            <div class="scroll"><table>
+            <div class="scroll"><table class="po-lines-table">
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
                 ${showStatus ? '<th>Status</th><th class="n">Received</th>' : ''}
