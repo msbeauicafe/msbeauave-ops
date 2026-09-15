@@ -2786,6 +2786,18 @@ SCREENS.purchaseorders = async (page) => {
   const billRowState = (b) => Number(b.balance) <= 0 ? tag('paid', 'green')
     : Number(b.paid) > 0 ? tag('paid w/ bal', 'pink') : tag('unpaid', 'amber');
 
+  // Paid and delivered are separate facts — a bill settled in full can still
+  // be waiting on goods, and a delivery that arrived whole can still be owed
+  // for. Four states, not two questions asked separately.
+  const billLackState = (b) => {
+    const paid = Number(b.balance) <= 0;
+    const lacking = Number(b.still_short) > 0;
+    if (paid && lacking) return tag('paid, lackings', 'pink');
+    if (paid) return tag('paid, completed', 'green');
+    if (lacking) return tag('unpaid, lackings', 'red');
+    return tag('unpaid, completed', 'amber');
+  };
+
   const drawBills = async () => {
     const box = $('#bill_list', page);
     if (!box) return;
@@ -2800,6 +2812,7 @@ SCREENS.purchaseorders = async (page) => {
       { head: 'Balance', n: true, cell: (b) => Number(b.balance) > 0
           ? `<b>${peso(b.balance)}</b>` : peso(0) },
       { head: 'Status', cell: (b) => billRowState(b) },
+      { head: 'Delivery', cell: (b) => billLackState(b) },
       // Record payment first and on its own — the action this row exists
       // for. Everything under it opens one of the papers behind the bill:
       // the invoice itself and the order it answers.
@@ -3329,7 +3342,7 @@ SCREENS.purchaseorders = async (page) => {
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
         lines: po.lines, note: po.note, hidePrice,
       });
-      const H = 'hidden';
+      const H = showStatus ? '' : 'hidden';
       $('#po_root').innerHTML = showPricing ? `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
@@ -3344,8 +3357,8 @@ SCREENS.purchaseorders = async (page) => {
           <div class="edit-side">
             <h3>Products on this order</h3>
             <div class="dim">${canEdit
-              ? 'Every box can be typed in. Change the product, how many or the'
-                + ' unit; empty a quantity to take that product off.'
+              ? `Every box can be typed in. Change the product, how many, the unit${
+                  H ? '' : ' or the price'}; empty a quantity to take that product off.`
               : 'This order has deliveries against it, so its lines are fixed.'}</div>
             <div class="scroll"><table>
               <thead><tr>
@@ -3401,12 +3414,15 @@ SCREENS.purchaseorders = async (page) => {
               <h3 class="mt">Receiving log</h3>
               <div class="scroll"><table>
                 <thead><tr><th>Product</th><th class="n">Qty</th>
-                  <th class="n">Lackings</th><th>Received</th></tr></thead>
+                  <th class="n">Lackings</th><th>Received</th>
+                  <th class="n">Price</th><th class="n">Total</th></tr></thead>
                 <tbody>${po.receipts.map((r) => `<tr>
                   <td>${esc(r.name)}</td>
                   <td class="n">${count(r.qty_received)}</td>
                   <td class="n">${Number(r.lackings_after) > 0 ? count(r.lackings_after) : '—'}</td>
                   <td>${when(r.received_at)}</td>
+                  <td class="n">${r.price != null ? peso(r.price) : '—'}</td>
+                  <td class="n">${r.price != null ? peso(Number(r.price) * Number(r.qty_received)) : '—'}</td>
                 </tr>`).join('')}</tbody>
               </table></div>` : ''}
             ${canEdit ? `
