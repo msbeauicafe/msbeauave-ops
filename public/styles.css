@@ -1793,3 +1793,7 @@ input.n { text-align: right; }
   .payslip .note { padding: 7px 12px 0; font-size: 9px; }
   .payslip .keep { display: none !important; }
 }
+
+.po-split { display: flex; gap: 22px; align-items: stretch; }
+.po-split-left { flex: 1 1 auto; min-width: 0; }
+.po-split-right { flex: 1 1 auto; border-left: 3px solid var(--rose-dust); padding-left: 22px; }
