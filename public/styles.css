@@ -1810,3 +1810,33 @@ input.n { text-align: right; }
 .po-split-left #po_list td:nth-child(4) b,
 .po-split-left #po_list td:nth-child(4) .dim { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .po-split-right { min-width: 0; border-left: 3px solid var(--rose-dust); padding-left: 22px; }
+
+/* The order's Received/Price columns crowded against the printed sheet's
+   fixed 900px column — give the sheet less room so the working table gets
+   enough to lay out its columns without a horizontal scrollbar. */
+.dialog.po-open .order-split .co-side { max-width: 740px; }
+.dialog.po-open .order-split .edit-side .po-lines-table { table-layout: fixed; }
+.dialog.po-open .order-split .edit-side .po-lines-table th,
+.dialog.po-open .order-split .edit-side .po-lines-table td {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(1),
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) { width: 27%; }
+.dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(2),
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(2) { width: 9%; }
+.dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(3),
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(3) { width: 7%; }
+.dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(4),
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(4) {
+  width: 13%; overflow: visible; white-space: normal; text-overflow: clip;
+}
+.dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(5),
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(5) { width: 16%; overflow: visible; }
+.dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(6),
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(6) { width: 9%; }
+.dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(7),
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(7) { width: 11%; }
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) b,
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) .dim {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
+}
