@@ -2839,10 +2839,10 @@ SCREENS.purchaseorders = async (page) => {
 
     $$('[data-billpo]', box).forEach((btn) => btn.addEventListener('click', async () => {
       const poId = Number(find(btn.dataset.billpo).po_id);
-      await drawPendingPOs();
-      $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'pend'));
+      await drawPOs();
+      $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'ord'));
       $('#pt_bill', page).hidden = true;
-      $('#pt_pend', page).hidden = false;
+      $('#pt_ord', page).hidden = false;
       openPO(poId, true, true, true).catch(whoops);
     }));
 
