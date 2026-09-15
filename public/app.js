@@ -3341,6 +3341,8 @@ SCREENS.purchaseorders = async (page) => {
       // coming, so it is not what the supplier gets paid for either.
       const billQty = (l) => (po.status === 'cancelled'
         ? Math.min(Number(l.qty), Number(l.received || 0)) : Number(l.qty));
+      const grandTotal = po.lines.reduce((s, l) =>
+        s + billQty(l) * (Number(l.price) || 0), 0);
       const stateTag = po.status === 'closed' ? tag('all in', 'green')
         : po.status === 'part' ? tag('part delivered', 'amber')
         : po.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
@@ -3416,6 +3418,10 @@ SCREENS.purchaseorders = async (page) => {
                 </tr>`).join('')}
               </tbody>
             </table></div>
+            ${H ? '' : `
+            <div class="basket-sum">
+              <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
+            </div>`}
             ${showStatus && po.receipts && po.receipts.length ? `
               <h3 class="mt">Receiving log</h3>
               <div class="scroll"><table>
