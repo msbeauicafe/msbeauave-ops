@@ -2527,8 +2527,8 @@ SCREENS.purchaseorders = async (page) => {
       <button data-t="sup" class="on">Supplier information</button>
       <button data-t="form">Order</button>
       <button data-t="pend">Pending purchase billing</button>
-      <button data-t="bill">Billing</button>
-      <button data-t="ord">Purchase order</button>
+      <button data-t="bill">Billing statement</button>
+      <button data-t="ord">Receiving status</button>
     </div>
 
     <div class="panel" id="pt_sup">
