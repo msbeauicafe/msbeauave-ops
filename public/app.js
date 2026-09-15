@@ -2728,7 +2728,7 @@ SCREENS.purchaseorders = async (page) => {
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'No purchase orders yet.');
     $$('[data-po]', page).forEach((b) => b.addEventListener('click',
-      () => openPO(+b.dataset.po, true, true, false, false).catch(whoops)));
+      () => openPO(+b.dataset.po, true, true, true, false).catch(whoops)));
     $$('[data-opensup]', $('#po_list', page)).forEach((b) => b.addEventListener('click',
       () => openSupplierFrom(b.dataset.opensup)));
   };
