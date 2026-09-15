@@ -2572,7 +2572,7 @@ SCREENS.purchaseorders = async (page) => {
             received. Receiving against a line records the batch and the cost
             exactly as receiving anything does — it also notes how much of the
             order that delivery covered.</div>
-          <div id="po_list" class="mt"></div>
+          <div id="po_list" class="mt scrollx"></div>
         </div>
         <div class="po-split-right"></div>
       </div>
