@@ -3420,15 +3420,12 @@ SCREENS.purchaseorders = async (page) => {
               <h3 class="mt">Receiving log</h3>
               <div class="scroll"><table>
                 <thead><tr><th>Product</th><th class="n">Qty</th>
-                  <th class="n">Lackings</th><th>Received</th>
-                  <th class="n">Price</th><th class="n">Total</th></tr></thead>
+                  <th class="n">Lackings</th><th>Received</th></tr></thead>
                 <tbody>${po.receipts.map((r) => `<tr>
                   <td>${esc(r.name)}</td>
                   <td class="n">${count(r.qty_received)}</td>
                   <td class="n">${Number(r.lackings_after) > 0 ? count(r.lackings_after) : '—'}</td>
                   <td>${when(r.received_at)}</td>
-                  <td class="n">${r.price != null ? peso(r.price) : '—'}</td>
-                  <td class="n">${r.price != null ? peso(Number(r.price) * Number(r.qty_received)) : '—'}</td>
                 </tr>`).join('')}</tbody>
               </table></div>` : ''}
             ${canEdit ? `
