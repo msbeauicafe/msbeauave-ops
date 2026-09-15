@@ -2720,6 +2720,10 @@ SCREENS.purchaseorders = async (page) => {
       { head: 'Supplier', cell: (o) => `<button class="nameopen" data-opensup="${o.supplier_id}">
           <b>${esc(o.supplier)}</b></button>${
           o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
+      // What has arrived, not what has been paid — the same states the dialog
+      // itself shows once opened, so the list does not make the owner open
+      // every row just to see which ones are still short.
+      { head: 'Status', cell: (o) => receivingState(o) },
       // What has been billed, not what has arrived — Billing's own question,
       // answered here so it does not take a second tab to ask. Nothing paid
       // yet, whether or not an invoice is even on file, reads the same as
@@ -2732,6 +2736,13 @@ SCREENS.purchaseorders = async (page) => {
     $$('[data-opensup]', $('#po_list', page)).forEach((b) => b.addEventListener('click',
       () => openSupplierFrom(b.dataset.opensup)));
   };
+
+  // The same states the dialog's own header tag shows — open, part delivered,
+  // all in, cancelled — kept in one word here rather than named freshly, so
+  // the list and the form behind it never drift apart.
+  const receivingState = (o) => o.status === 'closed' ? tag('all in', 'green')
+    : o.status === 'part' ? tag('part delivered', 'amber')
+    : o.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
 
   // paid — every bill on the order is settled; paid w/ bal — some are and some
   // are not, so a balance remains; unpaid — nothing has been, including an
@@ -2786,17 +2797,12 @@ SCREENS.purchaseorders = async (page) => {
   const billRowState = (b) => Number(b.balance) <= 0 ? tag('paid', 'green')
     : Number(b.paid) > 0 ? tag('paid w/ bal', 'pink') : tag('unpaid', 'amber');
 
-  // Paid and delivered are separate facts — a bill settled in full can still
-  // be waiting on goods, and a delivery that arrived whole can still be owed
-  // for. Four states, not two questions asked separately.
-  const billLackState = (b) => {
-    const paid = Number(b.balance) <= 0;
-    const lacking = Number(b.still_short) > 0;
-    if (paid && lacking) return tag('paid, lackings', 'pink');
-    if (paid) return tag('paid, completed', 'green');
-    if (lacking) return tag('unpaid, lackings', 'red');
-    return tag('unpaid, completed', 'amber');
-  };
+  // What has arrived, told the same way the Receiving status list and the
+  // dialog's own header tag tell it — not crossed with paid/unpaid, which
+  // the Status column already answers on its own.
+  const billLackState = (b) => b.po_status === 'closed' ? tag('Received', 'green')
+    : b.po_status === 'part' ? tag('Received w/ Lackings', 'amber')
+    : b.po_status === 'cancelled' ? tag('Cancelled', 'grey') : tag('Not yet received', 'pink');
 
   const drawBills = async () => {
     const box = $('#bill_list', page);
