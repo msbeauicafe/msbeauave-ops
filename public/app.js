@@ -2813,7 +2813,6 @@ SCREENS.purchaseorders = async (page) => {
             <button class="btn sm quiet" data-billedit="${b.id}">🖨 Billing statement</button>
             <button class="btn sm quiet" data-billpo="${b.id}">🖨 Purchase order</button>
             <button class="btn sm quiet" data-billpb="${b.id}">🖨 Purchase billing</button>
-            <button class="btn sm quiet" data-billrf="${b.id}">🖨 Receiving form</button>
           </div>` },
     ], 'No bills recorded yet.');
 
@@ -2836,9 +2835,6 @@ SCREENS.purchaseorders = async (page) => {
 
     $$('[data-billpb]', box).forEach((btn) => btn.addEventListener('click',
       () => openPO(Number(find(btn.dataset.billpb).po_id), true).catch(whoops)));
-
-    $$('[data-billrf]', box).forEach((btn) => btn.addEventListener('click',
-      () => openBillDelivery(find(btn.dataset.billrf))));
 
     $$('[data-billdrop]', box).forEach((btn) => btn.addEventListener('click', async () => {
       try {
@@ -3058,18 +3054,6 @@ SCREENS.purchaseorders = async (page) => {
     });
 
     $('#bp_done').addEventListener('click', closeDialog);
-  };
-
-  // The delivery a bill answers. A PO can have more than one receiving form
-  // against it — a split delivery — so this reads the latest, the one most
-  // likely being asked about.
-  const openBillDelivery = async (bill) => {
-    try {
-      const forms = await GET(`/api/receiving-forms?po_id=${bill.po_id}`).catch(() => []);
-      if (!forms.length) return notice('No receiving form on file for this order yet.', 'bad');
-      const full = await GET(`/api/receiving-forms/${forms[0].id}`);
-      showReceivingForm(full, true);
-    } catch (e) { whoops(e); }
   };
 
   // New bill, or an edit of one already on file — the same fields either way,
