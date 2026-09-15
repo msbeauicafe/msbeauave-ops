@@ -3332,8 +3332,6 @@ SCREENS.purchaseorders = async (page) => {
       // coming, so it is not what the supplier gets paid for either.
       const billQty = (l) => (po.status === 'cancelled'
         ? Math.min(Number(l.qty), Number(l.received || 0)) : Number(l.qty));
-      const grandTotal = po.lines.reduce((s, l) =>
-        s + billQty(l) * (Number(l.price) || 0), 0);
       const stateTag = po.status === 'closed' ? tag('all in', 'green')
         : po.status === 'part' ? tag('part delivered', 'amber')
         : po.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
@@ -3341,7 +3339,7 @@ SCREENS.purchaseorders = async (page) => {
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
         lines: po.lines, note: po.note, hidePrice,
       });
-      const H = hidePrice ? 'hidden' : '';
+      const H = 'hidden';
       $('#po_root').innerHTML = showPricing ? `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
@@ -3356,10 +3354,8 @@ SCREENS.purchaseorders = async (page) => {
           <div class="edit-side">
             <h3>Products on this order</h3>
             <div class="dim">${canEdit
-              ? 'Every box can be typed in. Change the product, how many, the unit'
-                + ' or the price; empty a quantity to take that product off. The'
-                + ' price is the expected cost — the sheet the supplier reads still'
-                + ' carries none.'
+              ? 'Every box can be typed in. Change the product, how many or the'
+                + ' unit; empty a quantity to take that product off.'
               : 'This order has deliveries against it, so its lines are fixed.'}</div>
             <div class="scroll"><table>
               <thead><tr>
@@ -3411,9 +3407,6 @@ SCREENS.purchaseorders = async (page) => {
                 </tr>`).join('')}
               </tbody>
             </table></div>
-            <div class="basket-sum">
-              <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
-            </div>
             ${showStatus && po.receipts && po.receipts.length ? `
               <h3 class="mt">Receiving log</h3>
               <div class="scroll"><table>
@@ -5748,7 +5741,7 @@ function officialReceipt({ receiptNo, issuedOn, resellerName, who = {},
 }
 
 /**
- * The PURCHASE BILLING sheet: the first document in this system that goes out
+ * The PURCHASE ORDER sheet: the first document in this system that goes out
  * rather than back. Everything else here is the company selling; this is the
  * company buying, and the reader is a supplier, not a reseller.
  *
@@ -5767,7 +5760,7 @@ function purchaseOrder({ poNo, orderedOn, supplier = {}, lines = [], note, hideP
       <div class="po-head">
         <img src="/logo.png" alt="MS Beau Ave">
         <div class="po-title">
-          <h2>PURCHASE BILLING</h2>
+          <h2>PURCHASE ORDER</h2>
           <div class="po-nums">
             ${field('DATE', onDay(orderedOn))}
             ${field('PURCHASE ORDER', poNo)}
