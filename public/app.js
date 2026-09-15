@@ -2846,8 +2846,14 @@ SCREENS.purchaseorders = async (page) => {
       openPO(poId, true, true, true).catch(whoops);
     }));
 
-    $$('[data-billpb]', box).forEach((btn) => btn.addEventListener('click',
-      () => openPO(Number(find(btn.dataset.billpb).po_id), true).catch(whoops)));
+    $$('[data-billpb]', box).forEach((btn) => btn.addEventListener('click', async () => {
+      const poId = Number(find(btn.dataset.billpb).po_id);
+      await drawPendingPOs();
+      $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'pend'));
+      $('#pt_bill', page).hidden = true;
+      $('#pt_pend', page).hidden = false;
+      openPO(poId, true).catch(whoops);
+    }));
 
     $$('[data-billdrop]', box).forEach((btn) => btn.addEventListener('click', async () => {
       try {
