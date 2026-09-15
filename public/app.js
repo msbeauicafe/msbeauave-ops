@@ -2728,7 +2728,7 @@ SCREENS.purchaseorders = async (page) => {
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'No purchase orders yet.');
     $$('[data-po]', page).forEach((b) => b.addEventListener('click',
-      () => openPO(+b.dataset.po, true).catch(whoops)));
+      () => openPO(+b.dataset.po, true, true, false, false).catch(whoops)));
     $$('[data-opensup]', $('#po_list', page)).forEach((b) => b.addEventListener('click',
       () => openSupplierFrom(b.dataset.opensup)));
   };
@@ -3312,7 +3312,8 @@ SCREENS.purchaseorders = async (page) => {
   // editable while it is still open (nothing received), received line by line
   // or all at once once a delivery lands. Its own number can be corrected the
   // way a customer order's can.
-  async function openPO(poId, showPricing = false, hidePrice = false, showStatus = false) {
+  async function openPO(poId, showPricing = false, hidePrice = false, showStatus = false,
+    showRightPrice = true) {
     let po = await GET(`/api/purchase-orders/${poId}`);
     const cat = !showPricing ? [] : catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
@@ -3350,7 +3351,7 @@ SCREENS.purchaseorders = async (page) => {
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
         lines: po.lines, note: po.note, hidePrice,
       });
-      const H = '';
+      const H = showRightPrice ? '' : 'hidden';
       $('#po_root').innerHTML = showPricing ? `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
