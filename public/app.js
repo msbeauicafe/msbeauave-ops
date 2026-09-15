@@ -3348,7 +3348,7 @@ SCREENS.purchaseorders = async (page) => {
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
         lines: po.lines, note: po.note, hidePrice,
       });
-      const H = 'hidden';
+      const H = '';
       $('#po_root').innerHTML = showPricing ? `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
