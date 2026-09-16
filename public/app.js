@@ -2732,12 +2732,11 @@ SCREENS.purchaseorders = async (page) => {
       () => openSupplierFrom(b.dataset.opensup)));
   };
 
-  // The same states the dialog's own header tag shows — open, part delivered,
-  // all in, cancelled — kept in one word here rather than named freshly, so
-  // the list and the form behind it never drift apart.
-  const receivingState = (o) => o.status === 'closed' ? tag('all in', 'green')
-    : o.status === 'part' ? tag('part delivered', 'amber')
-    : o.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
+  // The same wording as the Billing statement's own Delivery column, so the
+  // shop reads one vocabulary for what has arrived, not two.
+  const receivingState = (o) => o.status === 'closed' ? tag('Received', 'green')
+    : o.status === 'part' ? tag('Received w/ Lackings', 'amber')
+    : o.status === 'cancelled' ? tag('Cancelled', 'grey') : tag('Not yet received', 'pink');
 
   // The pending tab: the same list, kept to the orders still awaiting a
   // delivery — open and part-delivered — so what is outstanding stands alone.
@@ -3334,9 +3333,9 @@ SCREENS.purchaseorders = async (page) => {
         ? Math.min(Number(l.qty), Number(l.received || 0)) : Number(l.qty));
       const grandTotal = po.lines.reduce((s, l) =>
         s + billQty(l) * (Number(l.price) || 0), 0);
-      const stateTag = po.status === 'closed' ? tag('all in', 'green')
-        : po.status === 'part' ? tag('part delivered', 'amber')
-        : po.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
+      const stateTag = po.status === 'closed' ? tag('Received', 'green')
+        : po.status === 'part' ? tag('Received w/ Lackings', 'amber')
+        : po.status === 'cancelled' ? tag('Cancelled', 'grey') : tag('Not yet received', 'pink');
       const doc = purchaseOrder({
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
         lines: po.lines, note: po.note, hidePrice,
