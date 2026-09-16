@@ -2724,11 +2724,6 @@ SCREENS.purchaseorders = async (page) => {
       // itself shows once opened, so the list does not make the owner open
       // every row just to see which ones are still short.
       { head: 'Status', cell: (o) => receivingState(o) },
-      // What has been billed, not what has arrived — Billing's own question,
-      // answered here so it does not take a second tab to ask. Nothing paid
-      // yet, whether or not an invoice is even on file, reads the same as
-      // nothing owed: both are "unpaid" until a bill says otherwise.
-      { head: 'PO Status', cell: (o) => billState(o) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-po="${o.id}">Open</button>` },
     ], 'No purchase orders yet.');
     $$('[data-po]', page).forEach((b) => b.addEventListener('click',
@@ -2743,17 +2738,6 @@ SCREENS.purchaseorders = async (page) => {
   const receivingState = (o) => o.status === 'closed' ? tag('all in', 'green')
     : o.status === 'part' ? tag('part delivered', 'amber')
     : o.status === 'cancelled' ? tag('cancelled', 'grey') : tag('open', 'pink');
-
-  // paid — every bill on the order is settled; paid w/ bal — some are and some
-  // are not, so a balance remains; unpaid — nothing has been, including an
-  // order with no bill on file yet.
-  const billState = (o) => {
-    const bills = Number(o.bills || 0);
-    const paid = Number(o.bills_paid || 0);
-    if (!bills || !paid) return tag('unpaid', 'amber');
-    if (paid === bills) return tag('paid', 'green');
-    return tag('paid w/ bal', 'pink');
-  };
 
   // The pending tab: the same list, kept to the orders still awaiting a
   // delivery — open and part-delivered — so what is outstanding stands alone.
