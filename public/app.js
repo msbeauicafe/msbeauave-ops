@@ -2792,9 +2792,8 @@ SCREENS.purchaseorders = async (page) => {
     if (!box) return;
     const rows = await GET('/api/purchase-order-bills').catch(() => []);
     box.innerHTML = table(rows, [
-      { head: '#', cell: (b) => b.id },
       { head: 'PO No.', cell: (b) => `<b>${esc(b.po_no)}</b>` },
-      { head: 'Invoice No.', cell: (b) => esc(b.invoice_no || '—') },
+      { head: 'Invoice No.', cell: (b) => esc(b.invoice_no || `INV${b.id}`) },
       { head: 'Supplier', cell: (b) => esc(b.supplier) },
       { head: 'Issued', cell: (b) => onDay(b.invoice_date) },
       { head: 'Amount', n: true, cell: (b) => peso(b.amount) },
