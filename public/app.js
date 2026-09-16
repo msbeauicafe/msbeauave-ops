@@ -3496,13 +3496,19 @@ SCREENS.purchaseorders = async (page) => {
           const expiry = exp.toISOString().slice(0, 10);
           saving = true;
           btn.disabled = true;
+          inp.disabled = true;
+          const label = btn.textContent;
+          btn.textContent = 'Saving…';
           try {
             await POST(`/api/purchase-orders/lines/${line.id}/receive`,
               { qty, batch_no: batchNo, expiry });
+            notice(`${count(qty)} of ${esc(line.name)} received 🌸`, 'good');
             await reload();
           } catch (e) {
             inp.value = '';
+            inp.disabled = false;
             btn.disabled = false;
+            btn.textContent = label;
             whoops(e);
           } finally { saving = false; }
         };
