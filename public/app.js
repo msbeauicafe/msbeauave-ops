@@ -2715,7 +2715,7 @@ SCREENS.purchaseorders = async (page) => {
     const rows = await GET('/api/purchase-orders').catch(() => []);
     $('#po_list', page).innerHTML = table(rows, [
       { head: 'PO No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
-      { head: 'Invoice No.', cell: (o) => esc(o.invoice_no || '—') },
+      { head: 'Invoice No.', cell: (o) => esc(o.invoice_no || `INV${o.id}`) },
       { head: 'Date', cell: (o) => onDay(o.ordered_on) },
       { head: 'Supplier', cell: (o) => `<button class="nameopen" data-opensup="${o.supplier_id}">
           <b>${esc(o.supplier)}</b></button>${
