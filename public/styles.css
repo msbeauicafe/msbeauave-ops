@@ -1838,6 +1838,28 @@ input.n { text-align: right; }
 .dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(6) { width: 9%; }
 .dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(7),
 .dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(7) { width: 11%; }
+
+/* Only when a second branch makes the Branch column real — otherwise the
+   columns above already add up to a whole table and this would just steal
+   room nobody asked to give up. */
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(1),
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(1) { width: 21%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(2),
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(2) { width: 10%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(3),
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(3) { width: 6%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(4),
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(4) { width: 12%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(5),
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(5) { width: 15%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(6),
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(6) {
+  width: 15%; overflow: visible;
+}
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(7),
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(7) { width: 8%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(8),
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(8) { width: 9%; }
 .dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) b,
 .dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) .dim {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;

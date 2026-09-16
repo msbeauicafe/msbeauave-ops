@@ -2574,7 +2574,12 @@ SCREENS.purchaseorders = async (page) => {
             order that delivery covered.</div>
           <div id="po_list" class="mt scrollx"></div>
         </div>
-        <div class="po-split-right"></div>
+        <div class="po-split-right">
+          <h3 class="sr">Received by branch</h3>
+          <div class="dim">What has landed lately, and at which shop — more than one
+            branch receives, so a delivery on file is not enough to say where it is.</div>
+          <div id="po_branch_log" class="mt"></div>
+        </div>
       </div>
 
       <div id="pp_prod" hidden>
@@ -2730,6 +2735,18 @@ SCREENS.purchaseorders = async (page) => {
       () => openPO(+b.dataset.po, true, true, true, false).catch(whoops)));
     $$('[data-opensup]', $('#po_list', page)).forEach((b) => b.addEventListener('click',
       () => openSupplierFrom(b.dataset.opensup)));
+
+    const log = $('#po_branch_log', page);
+    if (log) {
+      const receipts = await GET('/api/purchase-orders/receiving-log').catch(() => []);
+      log.innerHTML = table(receipts, [
+        { head: 'Branch', cell: (r) => esc(r.branch || '—') },
+        { head: 'Product', cell: (r) => esc(r.product) },
+        { head: 'Qty', n: true, cell: (r) => count(r.qty_received) },
+        { head: 'PO No.', cell: (r) => esc(r.po_no) },
+        { head: 'When', cell: (r) => when(r.received_at) },
+      ], 'Nothing received yet.');
+    }
   };
 
   // The same wording as the Billing statement's own Delivery column, so the
@@ -3303,6 +3320,7 @@ SCREENS.purchaseorders = async (page) => {
   async function openPO(poId, showPricing = false, hidePrice = false, showStatus = false,
     showRightPrice = true) {
     let po = await GET(`/api/purchase-orders/${poId}`);
+    const shops = showStatus ? await branches().catch(() => []) : [];
     const cat = !showPricing ? [] : catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
     const nameToSku = new Map(cat.map((p) => [p.name.trim().toLowerCase(), p.sku]));
@@ -3357,10 +3375,12 @@ SCREENS.purchaseorders = async (page) => {
               ? `Every box can be typed in. Change the product, how many, the unit${
                   H ? '' : ' or the price'}; empty a quantity to take that product off.`
               : 'This order has deliveries against it, so its lines are fixed.'}</div>
-            <div class="scroll"><table class="po-lines-table">
+            <div class="scroll"><table class="po-lines-table${
+              showStatus && shops.length > 1 ? ' has-branch-col' : ''}">
               <thead><tr>
                 <th>Product</th><th class="n">Quantity</th><th>Unit</th>
                 ${showStatus ? '<th>Status</th><th class="n">Received</th>' : ''}
+                ${showStatus && shops.length > 1 ? '<th>Branch</th>' : ''}
                 <th class="n" ${H}>Price</th><th class="n" ${H}>Total</th><th></th>
               </tr></thead>
               <tbody>
@@ -3385,6 +3405,12 @@ SCREENS.purchaseorders = async (page) => {
                           value="" title="${Number(l.received) || 0} received so far">
                         <button class="btn sm" data-savereceived="${l.id}">Save</button>
                       </span></td>` : ''}
+                  ${showStatus && shops.length > 1 ? `<td>
+                      <select class="cellbox open" data-branchpick="${l.id}" style="width:100%">
+                        <option value="">Which branch?</option>
+                        ${shops.filter((b) => b.active).map((b) =>
+                          `<option value="${b.id}">${esc(b.name)}</option>`).join('')}
+                      </select></td>` : ''}
                   <td class="n" ${H}>${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
@@ -3400,6 +3426,7 @@ SCREENS.purchaseorders = async (page) => {
                   <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
                   ${showStatus ? '<td></td><td></td>' : ''}
+                  ${showStatus && shops.length > 1 ? '<td></td>' : ''}
                   <td class="n" ${H}><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
                   <td class="n" data-tot ${H}>—</td>
@@ -3415,11 +3442,12 @@ SCREENS.purchaseorders = async (page) => {
               <h3 class="mt">Receiving log</h3>
               <div class="scroll"><table>
                 <thead><tr><th>Product</th><th class="n">Qty</th>
-                  <th class="n">Lackings</th><th>Received</th></tr></thead>
+                  <th class="n">Lackings</th><th>Branch</th><th>Received</th></tr></thead>
                 <tbody>${po.receipts.map((r) => `<tr>
                   <td>${esc(r.name)}</td>
                   <td class="n">${count(r.qty_received)}</td>
                   <td class="n">${Number(r.lackings_after) > 0 ? count(r.lackings_after) : '—'}</td>
+                  <td>${esc(r.branch || '—')}</td>
                   <td>${when(r.received_at)}</td>
                 </tr>`).join('')}</tbody>
               </table></div>` : ''}
@@ -3490,6 +3518,10 @@ SCREENS.purchaseorders = async (page) => {
             inp.value = '';
             return notice('Type how many just arrived.', 'bad');
           }
+          const branchSel = $(`[data-branchpick="${line.id}"]`, $('#po_root'));
+          if (branchSel && !branchSel.value) {
+            return notice('Which branch did this land at?', 'bad');
+          }
           const batchNo = `${po.po_no}-${line.id}-${Date.now()}`;
           const exp = new Date();
           exp.setMonth(exp.getMonth() + (Number(line.shelf_life_months) || 24));
@@ -3497,17 +3529,19 @@ SCREENS.purchaseorders = async (page) => {
           saving = true;
           btn.disabled = true;
           inp.disabled = true;
+          if (branchSel) branchSel.disabled = true;
           const label = btn.textContent;
           btn.textContent = 'Saving…';
           try {
             await POST(`/api/purchase-orders/lines/${line.id}/receive`,
-              { qty, batch_no: batchNo, expiry });
+              { qty, batch_no: batchNo, expiry, branch_id: branchSel?.value || null });
             notice(`${count(qty)} of ${esc(line.name)} received 🌸`, 'good');
             await reload();
           } catch (e) {
             inp.value = '';
             inp.disabled = false;
             btn.disabled = false;
+            if (branchSel) branchSel.disabled = false;
             btn.textContent = label;
             whoops(e);
           } finally { saving = false; }
