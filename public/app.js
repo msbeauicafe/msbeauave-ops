@@ -2715,7 +2715,7 @@ SCREENS.purchaseorders = async (page) => {
     const rows = await GET('/api/purchase-orders').catch(() => []);
     $('#po_list', page).innerHTML = table(rows, [
       { head: 'PO No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
-      { head: 'Invoice No.', cell: (o) => esc(o.invoice_no || '—') },
+      { head: 'Invoice No.', cell: (o) => esc(o.invoice_no || `INV${o.id}`) },
       { head: 'Date', cell: (o) => onDay(o.ordered_on) },
       { head: 'Supplier', cell: (o) => `<button class="nameopen" data-opensup="${o.supplier_id}">
           <b>${esc(o.supplier)}</b></button>${
@@ -2792,9 +2792,8 @@ SCREENS.purchaseorders = async (page) => {
     if (!box) return;
     const rows = await GET('/api/purchase-order-bills').catch(() => []);
     box.innerHTML = table(rows, [
-      { head: '#', cell: (b) => b.id },
       { head: 'PO No.', cell: (b) => `<b>${esc(b.po_no)}</b>` },
-      { head: 'Invoice No.', cell: (b) => esc(b.invoice_no || '—') },
+      { head: 'Invoice No.', cell: (b) => esc(b.invoice_no || `INV${b.id}`) },
       { head: 'Supplier', cell: (b) => esc(b.supplier) },
       { head: 'Issued', cell: (b) => onDay(b.invoice_date) },
       { head: 'Amount', n: true, cell: (b) => peso(b.amount) },
