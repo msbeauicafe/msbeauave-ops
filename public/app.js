@@ -2458,14 +2458,13 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       closeDialog();
       done();
       if (useReceived) {
-        // The paperwork for an already-received order — the Receiving forms
-        // list is where it belongs on file, not another paper popped up on
-        // top of the one just closed.
+        // The paperwork for an already-received order belongs on the
+        // Receiving forms list, so land there — with the form itself
+        // already open, not one more click to find it.
         document.querySelector('[data-tab="receive"]')?.click();
-      } else {
-        const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
-        if (full) showReceivingForm(full, true);
       }
+      const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
+      if (full) showReceivingForm(full, true);
     } catch (e) { whoops(e); $('#rf_go').disabled = false; }
   });
 }
@@ -3398,6 +3397,10 @@ SCREENS.purchaseorders = async (page) => {
     };
 
     function paint() {
+      // Transfer to Receive opens over this dialog without keeping it
+      // underneath, so by the time its own save reloads the order, this
+      // one has already been closed — nothing left here to repaint.
+      if (!$('#po_root')) return;
       const canEdit = showPricing && po.status === 'open';
       const SPARE = canEdit ? 3 : 0;
       const live = po.status === 'open' || po.status === 'part';
