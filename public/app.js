@@ -2742,8 +2742,6 @@ SCREENS.receive = async (page) => {
       { head: 'Supplier', cell: (f) => `${esc(f.supplier)}${
           f.brand_name ? `<div class="dim">${esc(f.brand_name)}</div>` : ''}` },
       { head: 'Against', cell: (f) => f.po_no ? esc(f.po_no) : tag('no order', 'grey') },
-      { head: 'Products', n: true, cell: (f) => count(f.products) },
-      { head: 'Units', n: true, cell: (f) => count(f.units) },
       { head: 'Boxes', n: true, cell: (f) => count(f.total_boxes) },
       { head: '', cell: (f) => `<button class="btn sm quiet" data-rf="${f.id}">Open</button>` },
     ], 'No receiving forms yet.');
