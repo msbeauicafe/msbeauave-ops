@@ -2609,12 +2609,10 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       notice(`${esc(out.rf_no)} — ${count(out.units)} units in 🌸`, 'good');
       closeDialog();
       done();
-      if (useReceived) {
-        // The paperwork for an already-received order belongs on the
-        // Receiving forms list, so land there — with the form itself
-        // already open, not one more click to find it.
-        document.querySelector('[data-tab="receive"]')?.click();
-      }
+      // The paperwork belongs on the Receive screen's own list, so land
+      // there with the form itself already open — a no-op click if this was
+      // opened from the Receive screen to begin with.
+      document.querySelector('[data-tab="receive"]')?.click();
       const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
       if (full) showReceivingForm(full, true);
     } catch (e) { whoops(e); $('#rf_go').disabled = false; }
@@ -3579,9 +3577,8 @@ SCREENS.purchaseorders = async (page) => {
           <div class="co-side">
             <div class="co-scale" id="po_doc">${doc}</div>
             <div class="co-actions">
-              ${canEdit
-                ? '<button class="btn quiet" id="po_sheet">🧾 Print / download</button>'
-                : '<button class="btn quiet" id="po_transfer">🧾 Transfer to Receive</button>'}
+              ${canEdit ? '<button class="btn quiet" id="po_sheet">🧾 Print / download</button>' : ''}
+              <button class="btn quiet" id="po_transfer">🧾 Transfer to Receive</button>
             </div>
           </div>
           <div class="edit-side">
@@ -3712,7 +3709,11 @@ SCREENS.purchaseorders = async (page) => {
           return;
         }
         const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
-        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true });
+        // An order nothing has arrived against yet has nothing to merely
+        // document — pressing this receives it as the order says it should
+        // be, in full, and writes the paperwork for that in the same step.
+        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload,
+          useReceived: po.status !== 'open' });
       });
 
       // A batch number and an expiry date are the two things stock itself
