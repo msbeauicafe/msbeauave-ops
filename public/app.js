@@ -1708,17 +1708,22 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     </div>
     ${isNew ? `
     <div id="f_variations_wrap" class="mt" hidden>
-      <h3>Variations to add</h3>
+      <h3>Inclusion Product</h3>
       <div class="dim">Each row becomes its own product under this name, brand
         and category. Its product code is worked out from the one it comes
         after.</div>
-      <div class="variation-rows mt" id="f_variations"></div>
+      <div class="variation-row variation-head mt">
+        <span>Product</span><span>Unit</span><span>Variation</span><span>Category</span><span></span>
+      </div>
+      <div class="variation-rows" id="f_variations"></div>
       <button class="btn quiet sm mt" id="f_addvariation">＋ Add a row</button>
     </div>` : ''}
-    <h3 class="mt">Price name</h3>
-    <div class="dim">Seven at a time, each under the name it is sold at. A name
-      not on the list yet is added from the bottom of the dropdown.</div>
-    <div class="pricerows mt" id="f_prices"></div>
+    <div id="f_prices_wrap">
+      <h3 class="mt">Price name</h3>
+      <div class="dim">Seven at a time, each under the name it is sold at. A name
+        not on the list yet is added from the bottom of the dropdown.</div>
+      <div class="pricerows mt" id="f_prices"></div>
+    </div>
     <h3 class="mt">Photograph</h3>
     <div class="dim">What the till and the customer app show for this product.</div>
     <div class="row" style="align-items:center">
@@ -1748,7 +1753,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       order behind it can be removed — what was bought and sold is kept. Hide it
       instead if it simply should not be on the list. This cannot be undone.</div>
     <div class="mt"><button class="btn warn sm" id="f_remove">Remove ${esc(p.name)}</button></div>`}
-    <div class="mt right">
+    <div class="mt right" id="f_save_wrap">
       ${isNew ? '' : `<button class="btn quiet" id="f_toggle">${p.active ? 'Hide' : 'Show again'}</button>`}
       <button class="btn" id="f_save">Save</button>
     </div>`);
@@ -1812,20 +1817,61 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         + rows.map((r) => `<option value="${esc(r.sku)}">${esc(r.name)}</option>`).join('');
     }).catch(() => {});
 
+    // Every code already on the catalogue, plus every one handed out to a
+    // row already saved in this sitting — so five rows saved one after
+    // another still land on five different codes, not the same one five
+    // times.
+    let takenSkus = new Set();
+    GET('/api/products?q=').then((rows) => { takenSkus = new Set(rows.map((r) => r.sku)); }).catch(() => {});
+
+    const saveVariationRow = async (n, btn) => {
+      const row = variationRows[n];
+      if (row.saving || row.saved) return;
+      row.saving = true;
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = 'Saving…';
+      try {
+        const sku = nextSkuAfter(basedOn.sku, takenSkus);
+        const name = row.variation.trim()
+          ? `${basedOn.name} — ${row.variation.trim()}` : basedOn.name;
+        await POST('/api/products', {
+          sku, name, brand: basedOn.brand, category: row.category,
+          unit_type: row.unit.trim() || 'PCS',
+        });
+        if (row.file) await POST(`/api/products/${encodeURIComponent(sku)}/files`, { dataUrl: row.file, label: null });
+        takenSkus.add(sku);
+        row.saving = false;
+        row.saved = true;
+        row.savedSku = sku;
+        notice(`${esc(sku)} added 🌸`, 'good');
+        reload();
+        paintVariations();
+      } catch (e) {
+        row.saving = false;
+        btn.disabled = false;
+        btn.textContent = label;
+        whoops(e);
+      }
+    };
+
     const paintVariations = () => {
       const box = $('#f_variations');
       if (!box) return;
       box.innerHTML = variationRows.map((r, n) => `
         <div class="variation-row">
           <input type="text" value="${esc(basedOn?.name || '')}" disabled>
-          <input type="text" placeholder="Unit" data-vunit="${n}" value="${esc(r.unit)}">
+          <input type="text" placeholder="Unit" data-vunit="${n}" value="${esc(r.unit)}" ${r.saved ? 'disabled' : ''}>
           <input type="text" placeholder="What makes this one different — e.g. 100ml, Rose scent"
-            data-vname="${n}" value="${esc(r.variation)}">
-          <select data-vcat="${n}">${[...new Set(['PROMO', 'FREEBIES', 'PRODUCT', r.category].filter(Boolean))]
+            data-vname="${n}" value="${esc(r.variation)}" ${r.saved ? 'disabled' : ''}>
+          <select data-vcat="${n}" ${r.saved ? 'disabled' : ''}>${[...new Set(['PROMO', 'FREEBIES', 'PRODUCT', r.category].filter(Boolean))]
             .map((c) => `<option value="${c}"${c === r.category ? ' selected' : ''}>${c}</option>`).join('')}</select>
           <div style="display:flex; gap:6px; align-items:center">
-            <input type="file" data-vfile="${n}" accept="image/jpeg,image/png,image/webp" style="width:110px">
-            <button class="rowx" data-vremove="${n}" title="Remove this row">✕</button>
+            <input type="file" data-vfile="${n}" accept="image/jpeg,image/png,image/webp" style="width:110px" ${r.saved ? 'disabled' : ''}>
+            ${r.saved
+              ? `<span class="dim">${esc(r.savedSku)} ✓</span>`
+              : `<button class="btn sm" data-vsave="${n}">Save</button>
+                 <button class="rowx" data-vremove="${n}" title="Remove this row">✕</button>`}
           </div>
         </div>`).join('');
 
@@ -1841,6 +1887,8 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         try { variationRows[+f.dataset.vfile].file = await shrink(file, 1600); }
         catch (err) { whoops(err); }
       }));
+      $$('[data-vsave]', box).forEach((b) => b.addEventListener('click',
+        () => saveVariationRow(+b.dataset.vsave, b)));
       $$('[data-vremove]', box).forEach((b) => b.addEventListener('click', () => {
         variationRows.splice(+b.dataset.vremove, 1);
         if (!variationRows.length) {
@@ -1869,6 +1917,8 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         $('#f_brand').disabled = false;
         $('#f_cat').disabled = false;
         wrap.hidden = true;
+        $('#f_prices_wrap').hidden = false;
+        $('#f_save_wrap').hidden = false;
       } else {
         basedOn = productList.find((r) => r.sku === sel.value) || null;
         $('#f_name_new').style.display = 'none';
@@ -1884,11 +1934,16 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         $('#f_cat').value = basedOn?.category || '';
         $('#f_cat').disabled = true;
         wrap.hidden = false;
+        $('#f_prices_wrap').hidden = true;
+        // Each row saves itself, so there is nothing left for the button
+        // at the bottom of the form to do.
+        $('#f_save_wrap').hidden = true;
         variationRows = [{ unit: basedOn?.unit_type || 'PCS', variation: '',
           category: basedOn?.category || 'PRODUCT', file: null }];
         paintVariations();
       }
     });
+
   }
 
   // Five prices at a time, each under the name it is sold at. Two of the names
@@ -2254,28 +2309,8 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       .map((r, i) => ({ code: String(r.name).slice(5), price: Number(r.amount) || 0, position: i }));
 
     try {
-      if (isNew && basedOn) {
-        if (!variationRows.length) return notice('Add at least one row.', 'bad');
-        const taken = new Set(productList.map((r) => r.sku));
-        for (const row of variationRows) {
-          const sku = nextSkuAfter(basedOn.sku, taken);
-          taken.add(sku);
-          const name = row.variation.trim()
-            ? `${basedOn.name} — ${row.variation.trim()}` : basedOn.name;
-          await POST('/api/products', {
-            sku, name, brand: basedOn.brand, category: row.category,
-            unit_type: row.unit.trim() || 'PCS', ...ownPrices, srp_position: srpPosition,
-          });
-          await PUT(`/api/products/${encodeURIComponent(sku)}/prices`, { prices: listed });
-          if (pendingPic) await POST(`/api/products/${encodeURIComponent(sku)}/photo`, { dataUrl: pendingPic });
-          if (row.file) await POST(`/api/products/${encodeURIComponent(sku)}/files`, { dataUrl: row.file, label: null });
-        }
-        notice(`${count(variationRows.length)} product(s) added 🌸`, 'good');
-        closeDialog();
-        reload();
-        return;
-      }
-
+      // Each row under a picked name saves itself — this button is hidden
+      // whenever one is, so reaching here means it wasn't.
       const body = {
         name: isNew ? $('#f_name_new').value : $('#f_name').value,
         brand: $('#f_brand').value, category: $('#f_cat').value,
