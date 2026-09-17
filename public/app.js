@@ -2218,56 +2218,65 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
 
   dialog(`
     <h3>Receiving form${po ? ` <span class="dim">· against ${esc(po.po_no)}</span>` : ''}</h3>
-    <div class="dim">Counted the way it arrives: how many to a box, and how
+    <div class="dim">${useReceived
+      ? 'This delivery is already received — recording it here only writes up the paperwork, it does not add to stock again.'
+      : `Counted the way it arrives: how many to a box, and how
       many boxes. A product can have more than one packing — three boxes of
-      sixteen and one plastic of nine is one product and fifty-seven bottles.</div>
+      sixteen and one plastic of nine is one product and fifty-seven bottles.`}</div>
 
-    <div class="row mt">
-      ${po ? `<div style="flex:2"><label>Supplier</label>
-               <div class="fixed">${esc(po.supplier)}</div></div>`
-           : `<div style="flex:2"><label>Supplier</label>
-               <select id="rf_supplier">${suppliers.map((v) =>
-                 `<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></div>`}
-      <div><label>Date received</label><input id="rf_on" type="date"></div>
-      <div><label>Date and time on the gate</label>
-        <input id="rf_at" type="text" placeholder="e.g. 26/08 3:40 PM"></div>
-      ${branchPicker(shops, 'rf_branch', 'Arrived at')}
-    </div>
+    <div class="order-split">
+      <div class="co-side">
+        <div class="co-scale" id="rf_preview"></div>
+      </div>
+      <div class="edit-side">
+        <div class="row mt">
+          ${po ? `<div style="flex:2"><label>Supplier</label>
+                   <div class="fixed">${esc(po.supplier)}</div></div>`
+               : `<div style="flex:2"><label>Supplier</label>
+                   <select id="rf_supplier">${suppliers.map((v) =>
+                     `<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></div>`}
+          <div><label>Date received</label><input id="rf_on" type="date"></div>
+          <div><label>Date and time on the gate</label>
+            <input id="rf_at" type="text" placeholder="e.g. 26/08 3:40 PM"></div>
+          ${branchPicker(shops, 'rf_branch', 'Arrived at')}
+        </div>
 
-    <div class="row">
-      <div><label>Drivers name</label><input id="rf_driver" type="text"></div>
-      <div><label>Plate no.</label><input id="rf_plate" type="text"></div>
-      <div style="flex:2"><label>Address — pickup</label><input id="rf_pickup" type="text"></div>
-      <div><label>Contact #</label><input id="rf_contact" type="text"></div>
-    </div>
+        <div class="row">
+          <div><label>Drivers name</label><input id="rf_driver" type="text"></div>
+          <div><label>Plate no.</label><input id="rf_plate" type="text"></div>
+          <div style="flex:2"><label>Address — pickup</label><input id="rf_pickup" type="text"></div>
+          <div><label>Contact #</label><input id="rf_contact" type="text"></div>
+        </div>
 
-    <div class="row">
-      <div><label>Shipping fee</label>
-        <input id="rf_fee" type="number" step="0.01" min="0" placeholder="0.00"></div>
-      <div><label>MOP</label><input id="rf_mop" type="text" placeholder="cash, GCash…"></div>
-      <div><label>Total of boxes</label>
-        <input id="rf_boxes" type="number" min="0" placeholder="counted below"></div>
-      <div><label>Guard on duty</label><input id="rf_guard" type="text"></div>
-    </div>
+        <div class="row">
+          <div><label>Shipping fee</label>
+            <input id="rf_fee" type="number" step="0.01" min="0" placeholder="0.00"></div>
+          <div><label>MOP</label><input id="rf_mop" type="text" placeholder="cash, GCash…"></div>
+          <div><label>Total of boxes</label>
+            <input id="rf_boxes" type="number" min="0" placeholder="counted below"></div>
+          <div><label>Guard on duty</label><input id="rf_guard" type="text"></div>
+        </div>
 
-    <div class="row">
-      <div style="flex:2"><label>Add a product</label>
-        <input id="rf_add" type="text" list="rf_skus" placeholder="scan or type a code">
-        <datalist id="rf_skus"></datalist></div>
-      <div style="flex:0 0 auto" class="pushdown">
-        <button class="btn line" id="rf_addgo">＋ Add</button></div>
-    </div>
+        <div class="row">
+          <div style="flex:2"><label>Add a product</label>
+            <input id="rf_add" type="text" list="rf_skus" placeholder="scan or type a code">
+            <datalist id="rf_skus"></datalist></div>
+          <div style="flex:0 0 auto" class="pushdown">
+            <button class="btn line" id="rf_addgo">＋ Add</button></div>
+        </div>
 
-    <div id="rf_items" class="mt"></div>
+        <div id="rf_items" class="mt"></div>
 
-    <div class="row mt">
-      <div><label>Checked by</label><input id="rf_checked" type="text"></div>
-      <div><label>Approved by</label><input id="rf_approved" type="text"></div>
-      <div style="flex:2"><label>Others</label><input id="rf_others" type="text"></div>
-    </div>
-    <div class="mt right">
-      <b id="rf_sum" class="dim"></b>
-      <button class="btn" id="rf_go">Record the delivery</button></div>`, 'wide', over);
+        <div class="row mt">
+          <div><label>Checked by</label><input id="rf_checked" type="text"></div>
+          <div><label>Approved by</label><input id="rf_approved" type="text"></div>
+          <div style="flex:2"><label>Others</label><input id="rf_others" type="text"></div>
+        </div>
+        <div class="mt right">
+          <b id="rf_sum" class="dim"></b>
+          <button class="btn" id="rf_go">Record the delivery</button></div>
+      </div>
+    </div>`, 'wide rf-open', over);
 
   $('#rf_skus').innerHTML = catalogue.map((c) =>
     `<option value="${esc(c.sku)}">${esc(c.name)}</option>`).join('');
@@ -2294,8 +2303,39 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
   const totalOf = (it) => it.packs.reduce((n, k) => n + k.qty_per_box * k.boxes, 0);
   const boxesOf = (it) => it.packs.reduce((n, k) => n + k.boxes, 0);
 
+  // The left panel is the same green paper the finished form prints as, kept
+  // live rather than shown only once it's already filed — so a box typed on
+  // the right and never reflected on the left would be the two halves of
+  // this dialog disagreeing, the same reason the PO dialog's own doc redraws
+  // as it's typed into.
+  const renderPreview = () => {
+    const supplierName = po ? po.supplier
+      : suppliers.find((v) => String(v.id) === $('#rf_supplier')?.value)?.name;
+    const brandName = po ? po.brand_name
+      : suppliers.find((v) => String(v.id) === $('#rf_supplier')?.value)?.brand_name;
+    $('#rf_preview').innerHTML = receivingForm({
+      poNo: po?.po_no,
+      receivedOn: $('#rf_on')?.value,
+      receivedAt: $('#rf_at')?.value,
+      supplier: { supplier: supplierName, brand_name: brandName },
+      courier: {
+        driver_name: $('#rf_driver')?.value, plate_no: $('#rf_plate')?.value,
+        pickup: $('#rf_pickup')?.value, contact: $('#rf_contact')?.value,
+        shipping_fee: $('#rf_fee')?.value, shipping_mop: $('#rf_mop')?.value,
+      },
+      groups: items,
+      foot: {
+        others: $('#rf_others')?.value,
+        total_boxes: $('#rf_boxes')?.value || items.reduce((n, it) => n + boxesOf(it), 0),
+        guard_on_duty: $('#rf_guard')?.value,
+        checked_by: $('#rf_checked')?.value, approved_by: $('#rf_approved')?.value,
+      },
+    });
+  };
+
   const retally = () => {
     harvest();
+    renderPreview();
     const units = items.reduce((n, it) => n + totalOf(it), 0);
     const cartons = items.reduce((n, it) => n + boxesOf(it), 0);
     $$('[data-item]').forEach((box) => {
@@ -2386,6 +2426,11 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
     if (e.key === 'Enter') { e.preventDefault(); addProduct(); }
   });
 
+  ['rf_supplier', 'rf_on', 'rf_at', 'rf_driver', 'rf_plate', 'rf_pickup', 'rf_contact',
+   'rf_fee', 'rf_mop', 'rf_boxes', 'rf_guard', 'rf_checked', 'rf_approved', 'rf_others']
+    .forEach((id) => $(`#${id}`)?.addEventListener('input', renderPreview));
+  renderPreview();
+
   $('#rf_go').addEventListener('click', async () => {
     harvest();
     if (!items.length) return notice('Nothing on this delivery yet.', 'bad');
@@ -2395,6 +2440,7 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
         po_id: po?.id || null,
         supplier_id: po ? null : $('#rf_supplier')?.value || null,
         branch_id: branchOf(document, 'rf_branch'),
+        paperwork_only: useReceived,
         lines: items,
         courier: {
           driver_name: $('#rf_driver').value, plate_no: $('#rf_plate').value,
