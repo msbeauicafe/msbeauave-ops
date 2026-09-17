@@ -3549,6 +3549,16 @@ SCREENS.purchaseorders = async (page) => {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
 
       $('#po_transfer')?.addEventListener('click', async () => {
+        // The paperwork may already be on file — from an earlier transfer,
+        // or written up by hand — and pressing this again should show that,
+        // not offer to write it up a second time.
+        const already = await GET(`/api/receiving-forms?po_id=${po.id}`).catch(() => []);
+        if (already.length) {
+          document.querySelector('[data-tab="receive"]')?.click();
+          const full = await GET(`/api/receiving-forms/${already[0].id}`).catch(() => null);
+          if (full) showReceivingForm(full, true);
+          return;
+        }
         const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
         receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true });
       });
