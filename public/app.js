@@ -3708,16 +3708,42 @@ SCREENS.purchaseorders = async (page) => {
           if (full) showReceivingForm(full, true);
           return;
         }
-        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
         // Land on the Receive screen the moment this is pressed, not only
         // once it is saved — reflecting there is not conditional on having
         // recorded anything yet.
         document.querySelector('[data-tab="receive"]')?.click();
-        // An order nothing has arrived against yet has nothing to merely
-        // document — pressing this receives it as the order says it should
-        // be, in full, and writes the paperwork for that in the same step.
-        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload,
-          useReceived: po.status !== 'open' });
+
+        if (po.status === 'open') {
+          // An order nothing has arrived against yet has nothing to merely
+          // document — one press receives it in full and writes the
+          // paperwork for that, the same way the quick-receive Save button
+          // makes up a batch number and expiry when nobody is standing here
+          // reading them off a box, so there is no second button to press.
+          const lines = po.lines.filter((l) => l.qty - l.received > 0).map((l) => {
+            const exp = new Date();
+            exp.setMonth(exp.getMonth() + (Number(l.shelf_life_months) || 24));
+            return {
+              sku: l.sku, unit: l.unit || 'PCS', po_line_id: l.id,
+              batch_no: `${po.po_no}-${l.id}-${Date.now()}`,
+              expiry: exp.toISOString().slice(0, 10), unit_cost: '',
+              packs: [{ pack: 'BOX', qty_per_box: l.qty - l.received, boxes: 1 }],
+            };
+          });
+          try {
+            const out = await POST('/api/receiving-forms', {
+              po_id: po.id, branch_id: branchRemembered() || shops[0]?.id || null,
+              paperwork_only: false, lines, courier: {}, foot: {},
+            });
+            notice(`${esc(out.rf_no)} — ${count(out.units)} units in 🌸`, 'good');
+            reload();
+            const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
+            if (full) showReceivingForm(full, true);
+          } catch (e) { whoops(e); }
+          return;
+        }
+
+        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
+        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true });
       });
 
       // A batch number and an expiry date are the two things stock itself
