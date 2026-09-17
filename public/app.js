@@ -4032,7 +4032,8 @@ SCREENS.purchaseorders = async (page) => {
 SCREENS.inventory = async (page) => {
   page.innerHTML = `
     <div class="head"><h2>Inventory</h2>
-      <span class="hint">Everything that has moved, newest first</span></div>
+      <span class="hint">Everything that has moved, newest first</span>
+      <button class="btn" id="inv_new_product">＋ New product</button></div>
     <div class="panel"><h3>Deliveries you can still undo</h3>
       <div class="dim">A delivery entered wrongly should be unmade, not written
         off as damage — writing it off puts goods that never existed into the
@@ -4082,6 +4083,8 @@ SCREENS.inventory = async (page) => {
   await recent();
   await undoable().catch(() => {});
   repeat(recent, 15000);
+
+  $('#inv_new_product', page)?.addEventListener('click', () => editProduct(null, () => {}));
 };
 
 
