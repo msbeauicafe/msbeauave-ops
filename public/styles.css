@@ -1172,8 +1172,9 @@ label.inline input { width: auto; }
    with it. A row that is just the name repeated needs nothing typed at all. */
 .variation-rows { display: grid; gap: 8px; }
 .variation-row {
-  display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 8px;
-  align-items: center; background: var(--rose-blush); padding: 8px; border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: 8px; align-items: center; background: var(--rose-blush); padding: 8px; border-radius: 8px;
 }
 .variation-row input, .variation-row select { margin: 0; }
 .variation-head {
