@@ -1696,7 +1696,9 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       <div><label>Product code</label>
         <input id="f_sku" type="text" value="${esc(p?.sku || '')}" ${isNew ? '' : 'disabled'}></div>
       <div style="flex:2"><label>Name</label>
-        <input id="f_name" type="text" value="${esc(p?.name || '')}"></div>
+        ${isNew ? `<select id="f_name"><option value="__new">＋ Add a new product…</option></select>
+          <input id="f_name_new" type="text" placeholder="Product name" class="mt">`
+        : `<input id="f_name" type="text" value="${esc(p?.name || '')}">`}</div>
     </div>
     <div class="row">
       <div><label>Brand name</label>
@@ -1704,6 +1706,15 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       <div><label>Category</label>
         <select id="f_cat"><option value="">Pick a category…</option></select></div>
     </div>
+    ${isNew ? `
+    <div id="f_variations_wrap" class="mt" hidden>
+      <h3>Variations to add</h3>
+      <div class="dim">Each row becomes its own product under this name, brand
+        and category. Its product code is worked out from the one it comes
+        after.</div>
+      <div class="variation-rows mt" id="f_variations"></div>
+      <button class="btn quiet sm mt" id="f_addvariation">＋ Add a row</button>
+    </div>` : ''}
     <h3 class="mt">Price name</h3>
     <div class="dim">Seven at a time, each under the name it is sold at. A name
       not on the list yet is added from the bottom of the dropdown.</div>
@@ -1758,6 +1769,127 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       + brands.map((b) => `<option value="${esc(b)}"${
           b === mine ? ' selected' : ''}>${esc(b)}</option>`).join('');
   }).catch(() => {});
+
+  // Picking a name already on the catalogue turns this into new variations of
+  // it — its code, brand and category come from the product it is based on,
+  // and what is typed per row is only what makes that row different. Typing a
+  // name instead of picking one is a product nobody has filed here before.
+  let productList = [];
+  let basedOn = null;
+  let variationRows = [];
+
+  // The next code after the one this is based on — "MS-HEE001" is followed by
+  // "MS-HEE002" the same way the shop already numbers them by hand. Skipping
+  // past anything already taken, in this save as well as on file, keeps two
+  // rows in one save from landing on the same code.
+  const nextSkuAfter = (baseSku, taken) => {
+    const m = String(baseSku).match(/^(.*?)(\d+)$/);
+    if (!m) {
+      let n = 2;
+      while (taken.has(`${baseSku}-${n}`)) n += 1;
+      return `${baseSku}-${n}`;
+    }
+    const [, prefix, digits] = m;
+    let n = Number(digits) + 1;
+    let next;
+    do { next = prefix + String(n).padStart(digits.length, '0'); n += 1; }
+    while (taken.has(next));
+    return next;
+  };
+
+  const ensureOption = (sel, value) => {
+    if (sel && value && ![...sel.options].some((o) => o.value === value)) {
+      sel.add(new Option(value, value));
+    }
+  };
+
+  if (isNew) {
+    GET('/api/products?q=').then((rows) => {
+      productList = rows;
+      const sel = $('#f_name');
+      if (!sel) return;
+      sel.innerHTML = '<option value="__new">＋ Add a new product…</option>'
+        + rows.map((r) => `<option value="${esc(r.sku)}">${esc(r.name)}</option>`).join('');
+    }).catch(() => {});
+
+    const paintVariations = () => {
+      const box = $('#f_variations');
+      if (!box) return;
+      box.innerHTML = variationRows.map((r, n) => `
+        <div class="variation-row">
+          <input type="text" value="${esc(basedOn?.name || '')}" disabled>
+          <input type="text" placeholder="Unit" data-vunit="${n}" value="${esc(r.unit)}">
+          <input type="text" placeholder="What makes this one different — e.g. 100ml, Rose scent"
+            data-vname="${n}" value="${esc(r.variation)}">
+          <select data-vcat="${n}">${[...new Set(['PROMO', 'FREEBIES', 'PRODUCT', r.category].filter(Boolean))]
+            .map((c) => `<option value="${c}"${c === r.category ? ' selected' : ''}>${c}</option>`).join('')}</select>
+          <div style="display:flex; gap:6px; align-items:center">
+            <input type="file" data-vfile="${n}" accept="image/jpeg,image/png,image/webp" style="width:110px">
+            <button class="rowx" data-vremove="${n}" title="Remove this row">✕</button>
+          </div>
+        </div>`).join('');
+
+      $$('[data-vunit]', box).forEach((i) => i.addEventListener('input',
+        () => { variationRows[+i.dataset.vunit].unit = i.value; }));
+      $$('[data-vname]', box).forEach((i) => i.addEventListener('input',
+        () => { variationRows[+i.dataset.vname].variation = i.value; }));
+      $$('[data-vcat]', box).forEach((s) => s.addEventListener('change',
+        () => { variationRows[+s.dataset.vcat].category = s.value; }));
+      $$('[data-vfile]', box).forEach((f) => f.addEventListener('change', async (ev) => {
+        const file = ev.target.files[0];
+        if (!file) return;
+        try { variationRows[+f.dataset.vfile].file = await shrink(file, 1600); }
+        catch (err) { whoops(err); }
+      }));
+      $$('[data-vremove]', box).forEach((b) => b.addEventListener('click', () => {
+        variationRows.splice(+b.dataset.vremove, 1);
+        if (!variationRows.length) {
+          variationRows.push({ unit: basedOn?.unit_type || 'PCS', variation: '',
+            category: basedOn?.category || 'PRODUCT', file: null });
+        }
+        paintVariations();
+      }));
+    };
+
+    $('#f_addvariation')?.addEventListener('click', () => {
+      variationRows.push({ unit: basedOn?.unit_type || 'PCS', variation: '',
+        category: basedOn?.category || 'PRODUCT', file: null });
+      paintVariations();
+    });
+
+    $('#f_name')?.addEventListener('change', () => {
+      const sel = $('#f_name');
+      const wrap = $('#f_variations_wrap');
+      if (sel.value === '__new') {
+        basedOn = null;
+        $('#f_name_new').style.display = '';
+        $('#f_name_new').focus();
+        $('#f_sku').disabled = false;
+        $('#f_sku').value = '';
+        $('#f_brand').disabled = false;
+        $('#f_cat').disabled = false;
+        wrap.hidden = true;
+      } else {
+        basedOn = productList.find((r) => r.sku === sel.value) || null;
+        $('#f_name_new').style.display = 'none';
+        $('#f_sku').disabled = true;
+        $('#f_sku').value = basedOn ? `after ${basedOn.sku}` : '';
+        // A brand or category this product carries that is not on either
+        // dropdown's own list yet joins it as an option of its own, the same
+        // way editing an existing product keeps whatever it already has.
+        ensureOption($('#f_brand'), basedOn?.brand);
+        $('#f_brand').value = basedOn?.brand || '';
+        $('#f_brand').disabled = true;
+        ensureOption($('#f_cat'), basedOn?.category);
+        $('#f_cat').value = basedOn?.category || '';
+        $('#f_cat').disabled = true;
+        wrap.hidden = false;
+        variationRows = [{ unit: basedOn?.unit_type || 'PCS', variation: '',
+          category: basedOn?.category || 'PRODUCT', file: null }];
+        paintVariations();
+      }
+    });
+  }
 
   // Five prices at a time, each under the name it is sold at. Two of the names
   // are columns on the product itself — what it cost us and what the shop sells
@@ -2103,36 +2235,56 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
   // split all keep whatever the product already has; a new product takes the
   // house defaults — 24 months, 12, none, and 70 / 20 / 10.
   $('#f_save').addEventListener('click', async () => {
-    const body = {
-      name: $('#f_name').value, brand: $('#f_brand').value, category: $('#f_cat').value,
-      // The rows that name one of the product's own columns are written with
-      // the product; the rest go to the price list once it has a code to hang
-      // them on.
-      ...Object.fromEntries(priceRows
-        .filter((r) => OWN_PRICE[r.name] && r.amount !== '')
-        .map((r) => [OWN_PRICE[r.name].field, Number(r.amount) || 0])),
-      // Which box SRP was typed in, so it comes back to it. Nothing else on the
-      // form needs telling: every other price keeps its own position on the
-      // price list.
-      srp_position: priceRows.findIndex((r) => r.name === 'SRP'),
-    };
+    // The rows that name one of the product's own columns are written with
+    // the product; the rest go to the price list once it has a code to hang
+    // them on. Shared by every row in a batch of variations — one set of
+    // prices typed once, not once per row.
+    const ownPrices = Object.fromEntries(priceRows
+      .filter((r) => OWN_PRICE[r.name] && r.amount !== '')
+      .map((r) => [OWN_PRICE[r.name].field, Number(r.amount) || 0]));
+    const srpPosition = priceRows.findIndex((r) => r.name === 'SRP');
+    // The rows naming a price-list code, written once each product exists to
+    // hang them on. Sent whether or not there are any, and in the order the
+    // boxes are in: sending only what was filled meant a name changed from RD
+    // to BUSINESS LEADER left RD behind and the product came out priced at
+    // both, and the box a price is typed in is what makes it Tier 1 rather
+    // than Tier 7.
+    const listed = priceRows
+      .filter((r) => String(r.name).startsWith('CODE:') && r.amount !== '')
+      .map((r, i) => ({ code: String(r.name).slice(5), price: Number(r.amount) || 0, position: i }));
+
     try {
+      if (isNew && basedOn) {
+        if (!variationRows.length) return notice('Add at least one row.', 'bad');
+        const taken = new Set(productList.map((r) => r.sku));
+        for (const row of variationRows) {
+          const sku = nextSkuAfter(basedOn.sku, taken);
+          taken.add(sku);
+          const name = row.variation.trim()
+            ? `${basedOn.name} — ${row.variation.trim()}` : basedOn.name;
+          await POST('/api/products', {
+            sku, name, brand: basedOn.brand, category: row.category,
+            unit_type: row.unit.trim() || 'PCS', ...ownPrices, srp_position: srpPosition,
+          });
+          await PUT(`/api/products/${encodeURIComponent(sku)}/prices`, { prices: listed });
+          if (pendingPic) await POST(`/api/products/${encodeURIComponent(sku)}/photo`, { dataUrl: pendingPic });
+          if (row.file) await POST(`/api/products/${encodeURIComponent(sku)}/files`, { dataUrl: row.file, label: null });
+        }
+        notice(`${count(variationRows.length)} product(s) added 🌸`, 'good');
+        closeDialog();
+        reload();
+        return;
+      }
+
+      const body = {
+        name: isNew ? $('#f_name_new').value : $('#f_name').value,
+        brand: $('#f_brand').value, category: $('#f_cat').value,
+        ...ownPrices, srp_position: srpPosition,
+      };
       const sku = isNew ? $('#f_sku').value.trim() : p.sku;
       if (isNew) await POST('/api/products', { ...body, sku });
       else await PUT(`/api/products/${encodeURIComponent(p.sku)}`, body);
 
-      // The rows naming a price-list code, written once the product exists to
-      // hang them on. A new product is saved first for exactly this reason.
-      //
-      // Sent whether or not there are any, and in the order the boxes are in.
-      // Sending only what was filled meant a name changed from RD to BUSINESS
-      // LEADER left RD behind and the product came out priced at both; and the
-      // box a price is typed in is what makes it Tier 1 rather than Tier 7.
-      const listed = priceRows
-        .filter((r) => String(r.name).startsWith('CODE:') && r.amount !== '')
-        .map((r, i) => ({
-          code: String(r.name).slice(5), price: Number(r.amount) || 0, position: i,
-        }));
       await PUT(`/api/products/${encodeURIComponent(sku)}/prices`, { prices: listed });
       if (pendingPic) {
         await POST(`/api/products/${encodeURIComponent(sku)}/photo`, { dataUrl: pendingPic });
