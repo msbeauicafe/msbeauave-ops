@@ -316,6 +316,10 @@ textarea.sheet {
    standard wide dialog is not wide enough to hold an empty column and the
    full ledger without the ledger's last column running off the edge. */
 .dialog.wide.invoice-wide { max-width: 1150px; }
+/* The receiving form's own green preview sits beside the fields that build
+   it — the standard wide dialog leaves it too narrow to hold both without
+   the doc's own table running off its edge. */
+.dialog.wide.rf-open { max-width: 1150px; }
 /* Opening a pending order: the customer order form on the left at its full
    printed width (so it stays crisp), the working order on the right, both in
    one popup. Stacks to one column when the screen is too narrow to hold them. */
