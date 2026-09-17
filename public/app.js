@@ -3709,10 +3709,10 @@ SCREENS.purchaseorders = async (page) => {
           return;
         }
         const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
-        // Land on the Receive screen right away, not only once this is
-        // saved — the form is filled out there, not on the order it came
-        // from, which this closes as it opens.
-        document.querySelector('[data-tab="receive"]')?.click();
+        // Nothing to jump to yet — the paperwork is only on file once this
+        // is saved, so counting it out happens here, on the order it is
+        // against, the same as the other ways into receiving do.
+        //
         // An order nothing has arrived against yet has nothing to merely
         // document — pressing this receives it as the order says it should
         // be, in full, and writes the paperwork for that in the same step.
