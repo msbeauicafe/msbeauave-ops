@@ -1867,7 +1867,9 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
           <select data-vcat="${n}" ${r.saved ? 'disabled' : ''}>${[...new Set(['PROMO', 'FREEBIES', 'PRODUCT', r.category].filter(Boolean))]
             .map((c) => `<option value="${c}"${c === r.category ? ' selected' : ''}>${c}</option>`).join('')}</select>
           <div style="display:flex; gap:6px; align-items:center">
-            <input type="file" data-vfile="${n}" accept="image/jpeg,image/png,image/webp" style="width:110px" ${r.saved ? 'disabled' : ''}>
+            ${r.file ? `<img class="filethumb" src="${r.file}" alt="" data-zoom="${r.file}"
+              data-zoom-cap="Row ${n + 1}" style="width:28px;height:28px;object-fit:cover;border-radius:4px">` : ''}
+            <input type="file" data-vfile="${n}" accept="image/jpeg,image/png,image/webp" style="width:90px" ${r.saved ? 'disabled' : ''}>
             ${r.saved
               ? `<span class="dim">${esc(r.savedSku)} ✓</span>`
               : `<button class="btn sm" data-vsave="${n}">Save</button>
@@ -1884,7 +1886,10 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       $$('[data-vfile]', box).forEach((f) => f.addEventListener('change', async (ev) => {
         const file = ev.target.files[0];
         if (!file) return;
-        try { variationRows[+f.dataset.vfile].file = await shrink(file, 1600); }
+        try {
+          variationRows[+f.dataset.vfile].file = await shrink(file, 1600);
+          paintVariations();
+        }
         catch (err) { whoops(err); }
       }));
       $$('[data-vsave]', box).forEach((b) => b.addEventListener('click',
