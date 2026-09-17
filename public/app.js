@@ -6304,7 +6304,8 @@ function rfGroups(lines = []) {
   for (const l of lines) {
     const key = String(l.line_no);
     if (!by.has(key)) {
-      by.set(key, { sku: l.sku, name: l.name, unit: l.unit, packs: [] });
+      by.set(key, { lineNo: l.line_no, sku: l.sku, name: l.name, unit: l.unit,
+        batchNo: l.batch_no, expiry: l.expiry, packs: [] });
     }
     by.get(key).packs.push({
       pack: l.pack, qty_per_box: Number(l.qty_per_box), boxes: Number(l.boxes),
@@ -6313,18 +6314,133 @@ function rfGroups(lines = []) {
   return [...by.values()];
 }
 
+// The header is only ever what got written down, so it is freely corrected;
+// the batch number and expiry are the label on the batch itself, corrected
+// here rather than typed twice; how many arrived is left alone — undo the
+// delivery and receive it again if the count itself was wrong, since that
+// number may already be picked, reserved or sold against.
 function showReceivingForm(f, over = false) {
-  dialog(`${receivingForm({
-    rfNo: f.rf_no, poNo: f.po_no, receivedOn: f.received_on,
-    receivedAt: f.received_at, supplier: f, courier: f,
-    groups: f.groups || rfGroups(f.lines || []), foot: f,
-  })}
-    <div class="mt right">
-      <button class="btn quiet" id="rf_save">⬇ Download JPEG</button>
-      ${PRINT_BTN}
-      <button class="btn" id="rf_done">Done</button></div>`, 'wide', over);
+  const groups = rfGroups(f.lines || []);
+
+  const renderPreview = () => {
+    $('#rf_preview').innerHTML = receivingForm({
+      rfNo: f.rf_no, poNo: f.po_no, receivedOn: $('#rf_on')?.value,
+      receivedAt: $('#rf_at')?.value, supplier: f,
+      courier: {
+        driver_name: $('#rf_driver')?.value, plate_no: $('#rf_plate')?.value,
+        pickup: $('#rf_pickup')?.value, contact: $('#rf_contact')?.value,
+        shipping_fee: $('#rf_fee')?.value, shipping_mop: $('#rf_mop')?.value,
+      },
+      groups,
+      foot: {
+        total_boxes: $('#rf_boxes')?.value, guard_on_duty: $('#rf_guard')?.value,
+        checked_by: $('#rf_checked')?.value, approved_by: $('#rf_approved')?.value,
+        others: $('#rf_others')?.value,
+      },
+    });
+  };
+
+  dialog(`
+    <h3>${esc(f.rf_no)}${f.po_no ? ` <span class="dim">· against ${esc(f.po_no)}</span>` : ''}</h3>
+    <div class="order-split">
+      <div class="co-side"><div class="co-scale" id="rf_preview"></div></div>
+      <div class="edit-side">
+        <div class="row mt">
+          <div style="flex:2"><label>Supplier</label>
+            <div class="fixed">${esc(f.supplier)}</div></div>
+          <div><label>Date received</label>
+            <input id="rf_on" type="date" value="${esc(String(f.received_on || '').slice(0, 10))}"></div>
+          <div><label>Date and time on the gate</label>
+            <input id="rf_at" type="text" value="${esc(f.received_at || '')}"></div>
+        </div>
+        <div class="row">
+          <div><label>Drivers name</label><input id="rf_driver" type="text" value="${esc(f.driver_name || '')}"></div>
+          <div><label>Plate no.</label><input id="rf_plate" type="text" value="${esc(f.plate_no || '')}"></div>
+          <div style="flex:2"><label>Address — pickup</label>
+            <input id="rf_pickup" type="text" value="${esc(f.pickup || '')}"></div>
+          <div><label>Contact #</label><input id="rf_contact" type="text" value="${esc(f.contact || '')}"></div>
+        </div>
+        <div class="row">
+          <div><label>Shipping fee</label>
+            <input id="rf_fee" type="number" step="0.01" min="0" value="${esc(f.shipping_fee ?? '')}"></div>
+          <div><label>MOP</label><input id="rf_mop" type="text" value="${esc(f.shipping_mop || '')}"></div>
+          <div><label>Total of boxes</label>
+            <input id="rf_boxes" type="number" min="0" value="${esc(f.total_boxes ?? '')}"></div>
+          <div><label>Guard on duty</label><input id="rf_guard" type="text" value="${esc(f.guard_on_duty || '')}"></div>
+        </div>
+
+        <h3 class="mt">Products</h3>
+        <div class="dim">Batch number and expiry can be fixed here — the batch itself carries
+          the fix, everywhere it is read. How many arrived cannot: undo the delivery in
+          Inventory and receive it again if the count itself was wrong.</div>
+        <div class="variation-row variation-head mt">
+          <span>Product</span><span>Batch number</span><span>Expiry</span><span>Qty</span>
+        </div>
+        <div class="variation-rows" id="rf_lines">${groups.map((g, n) => `
+          <div class="variation-row">
+            <span>${esc(g.name)}</span>
+            <input type="text" data-lbatch="${n}" value="${esc(g.batchNo || '')}">
+            <input type="date" data-lexpiry="${n}"
+              value="${esc(String(g.expiry || '').slice(0, 10))}">
+            <span class="dim">${count(g.packs.reduce((s, p) => s + p.qty_per_box * p.boxes, 0))} ${esc(g.unit)}</span>
+          </div>`).join('')}</div>
+
+        <div class="row mt">
+          <div><label>Checked by</label><input id="rf_checked" type="text" value="${esc(f.checked_by || '')}"></div>
+          <div><label>Approved by</label><input id="rf_approved" type="text" value="${esc(f.approved_by || '')}"></div>
+          <div style="flex:2"><label>Others</label><input id="rf_others" type="text" value="${esc(f.others || '')}"></div>
+        </div>
+        <div class="mt right">
+          <button class="btn quiet" id="rf_save">⬇ Download JPEG</button>
+          ${PRINT_BTN}
+          <button class="btn quiet" id="rf_savechanges">Save changes</button>
+          <button class="btn" id="rf_done">Done</button>
+        </div>
+      </div>
+    </div>`, 'wide rf-open', over);
+
+  renderPreview();
+  ['rf_on', 'rf_at', 'rf_driver', 'rf_plate', 'rf_pickup', 'rf_contact',
+   'rf_fee', 'rf_mop', 'rf_boxes', 'rf_guard', 'rf_checked', 'rf_approved', 'rf_others']
+    .forEach((id) => $(`#${id}`)?.addEventListener('input', renderPreview));
+  $$('[data-lbatch]').forEach((i) => i.addEventListener('input', () => {
+    groups[+i.dataset.lbatch].batchNo = i.value; renderPreview();
+  }));
+  $$('[data-lexpiry]').forEach((i) => i.addEventListener('input', () => {
+    groups[+i.dataset.lexpiry].expiry = i.value; renderPreview();
+  }));
+
   wireSave('#rf_save', '.doc', `${f.rf_no}.jpg`);
   $('#rf_done').addEventListener('click', closeDialog);
+  $('#rf_savechanges').addEventListener('click', async () => {
+    const btn = $('#rf_savechanges');
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = 'Saving…';
+    try {
+      await PUT(`/api/receiving-forms/${f.id}`, {
+        courier: {
+          received_at: $('#rf_at').value, driver_name: $('#rf_driver').value,
+          plate_no: $('#rf_plate').value, pickup: $('#rf_pickup').value,
+          contact: $('#rf_contact').value, shipping_fee: $('#rf_fee').value,
+          shipping_mop: $('#rf_mop').value,
+        },
+        foot: {
+          received_on: $('#rf_on').value, total_boxes: $('#rf_boxes').value,
+          guard_on_duty: $('#rf_guard').value, checked_by: $('#rf_checked').value,
+          approved_by: $('#rf_approved').value, others: $('#rf_others').value,
+        },
+        lines: groups.map((g) => ({ line_no: g.lineNo, batch_no: g.batchNo, expiry: g.expiry })),
+      });
+      notice('Saved 🌸', 'good');
+      btn.disabled = false;
+      btn.textContent = label;
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = label;
+      whoops(e);
+    }
+  });
 }
 
 function showOR(r, reseller, paid = {}, over = false) {
