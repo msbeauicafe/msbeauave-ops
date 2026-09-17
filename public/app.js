@@ -2457,8 +2457,15 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       notice(`${esc(out.rf_no)} — ${count(out.units)} units in 🌸`, 'good');
       closeDialog();
       done();
-      const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
-      if (full) showReceivingForm(full, true);
+      if (useReceived) {
+        // The paperwork for an already-received order — the Receiving forms
+        // list is where it belongs on file, not another paper popped up on
+        // top of the one just closed.
+        document.querySelector('[data-tab="receive"]')?.click();
+      } else {
+        const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
+        if (full) showReceivingForm(full, true);
+      }
     } catch (e) { whoops(e); $('#rf_go').disabled = false; }
   });
 }
