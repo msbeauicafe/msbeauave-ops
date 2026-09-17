@@ -2199,16 +2199,21 @@ async function showBatches(sku) {
 // So it lives out here rather than inside either, and is told what it needs
 // rather than reaching for it.
 // ---------------------------------------------------------------------------
-function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = false }) {
+function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = false, useReceived = false }) {
   // A purchase order's outstanding lines are what you expect to be holding,
   // so they are what the form opens with — already counted, still editable,
   // because what a supplier sends and what was asked for are two things.
+  //
+  // useReceived flips that source to what has already landed rather than
+  // what is still short — an order with deliveries against it has nothing
+  // outstanding to prefill, but its own quick-received lines are exactly
+  // what a formal receiving form for that delivery should start from.
   const items = (po?.lines || [])
-    .filter((l) => l.qty - l.received > 0)
+    .filter((l) => useReceived ? Number(l.received) > 0 : l.qty - l.received > 0)
     .map((l) => ({
       sku: l.sku, name: l.name, unit: l.unit || 'PCS', po_line_id: l.id,
       batch_no: '', expiry: '', unit_cost: '',
-      packs: [{ pack: 'BOX', qty_per_box: l.qty - l.received, boxes: 1 }],
+      packs: [{ pack: 'BOX', qty_per_box: useReceived ? Number(l.received) : l.qty - l.received, boxes: 1 }],
     }));
 
   dialog(`
@@ -3366,7 +3371,9 @@ SCREENS.purchaseorders = async (page) => {
           <div class="co-side">
             <div class="co-scale" id="po_doc">${doc}</div>
             <div class="co-actions">
-              <button class="btn quiet" id="po_sheet">🧾 Print / download</button>
+              ${canEdit
+                ? '<button class="btn quiet" id="po_sheet">🧾 Print / download</button>'
+                : '<button class="btn quiet" id="po_transfer">🧾 Transfer to Receive</button>'}
             </div>
           </div>
           <div class="edit-side">
@@ -3484,6 +3491,11 @@ SCREENS.purchaseorders = async (page) => {
 
     function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
+
+      $('#po_transfer')?.addEventListener('click', async () => {
+        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
+        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true });
+      });
 
       // A batch number and an expiry date are the two things stock itself
       // cannot be received without, but nobody is standing at this screen
