@@ -2445,22 +2445,6 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
         </div>
 
         <div class="row">
-          <div><label>Drivers name</label><input id="rf_driver" type="text"></div>
-          <div><label>Plate no.</label><input id="rf_plate" type="text"></div>
-          <div style="flex:2"><label>Address — pickup</label><input id="rf_pickup" type="text"></div>
-          <div><label>Contact #</label><input id="rf_contact" type="text"></div>
-        </div>
-
-        <div class="row">
-          <div><label>Shipping fee</label>
-            <input id="rf_fee" type="number" step="0.01" min="0" placeholder="0.00"></div>
-          <div><label>MOP</label><input id="rf_mop" type="text" placeholder="cash, GCash…"></div>
-          <div><label>Total of boxes</label>
-            <input id="rf_boxes" type="number" min="0" placeholder="counted below"></div>
-          <div><label>Guard on duty</label><input id="rf_guard" type="text"></div>
-        </div>
-
-        <div class="row">
           <div style="flex:2"><label>Add a product</label>
             <input id="rf_add" type="text" list="rf_skus" placeholder="scan or type a code">
             <datalist id="rf_skus"></datalist></div>
@@ -2532,16 +2516,10 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       receivedOn: $('#rf_on')?.value,
       receivedAt: $('#rf_at')?.value,
       supplier: { supplier: supplierName, brand_name: brandName },
-      courier: {
-        driver_name: $('#rf_driver')?.value, plate_no: $('#rf_plate')?.value,
-        pickup: $('#rf_pickup')?.value, contact: $('#rf_contact')?.value,
-        shipping_fee: $('#rf_fee')?.value, shipping_mop: $('#rf_mop')?.value,
-      },
       groups: items,
       foot: {
         others: $('#rf_others')?.value,
-        total_boxes: $('#rf_boxes')?.value || items.reduce((n, it) => n + boxesOf(it), 0),
-        guard_on_duty: $('#rf_guard')?.value,
+        total_boxes: items.reduce((n, it) => n + boxesOf(it), 0),
         checked_by: $('#rf_checked')?.value, approved_by: $('#rf_approved')?.value,
       },
     });
@@ -2559,7 +2537,6 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
     $('#rf_sum').textContent = items.length
       ? `${count(units)} units in ${count(cartons)} boxes  `
       : '';
-    if (!$('#rf_boxes').value) $('#rf_boxes').placeholder = String(cartons || 0);
   };
 
   const drawItems = () => {
@@ -2643,8 +2620,7 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
     if (e.key === 'Enter') { e.preventDefault(); addProduct(); }
   });
 
-  ['rf_supplier', 'rf_on', 'rf_at', 'rf_driver', 'rf_plate', 'rf_pickup', 'rf_contact',
-   'rf_fee', 'rf_mop', 'rf_boxes', 'rf_guard', 'rf_checked', 'rf_approved', 'rf_others']
+  ['rf_supplier', 'rf_on', 'rf_at', 'rf_checked', 'rf_approved', 'rf_others']
     .forEach((id) => $(`#${id}`)?.addEventListener('input', renderPreview));
   renderPreview();
 
@@ -2659,15 +2635,10 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
         branch_id: branchOf(document, 'rf_branch'),
         paperwork_only: useReceived,
         lines: items,
-        courier: {
-          driver_name: $('#rf_driver').value, plate_no: $('#rf_plate').value,
-          pickup: $('#rf_pickup').value, contact: $('#rf_contact').value,
-          shipping_fee: $('#rf_fee').value, shipping_mop: $('#rf_mop').value,
-          received_at: $('#rf_at').value,
-        },
+        courier: { received_at: $('#rf_at').value },
         foot: {
-          received_on: $('#rf_on').value, total_boxes: $('#rf_boxes').value,
-          others: $('#rf_others').value, guard_on_duty: $('#rf_guard').value,
+          received_on: $('#rf_on').value,
+          others: $('#rf_others').value,
           checked_by: $('#rf_checked').value, approved_by: $('#rf_approved').value,
         },
       });
