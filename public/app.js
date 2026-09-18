@@ -3741,7 +3741,11 @@ SCREENS.purchaseorders = async (page) => {
                   <td>${onDay(f.received_on)}</td>
                   <td>${stateTag}</td>
                   <td><button class="btn sm quiet" data-rfopen="${f.id}">Open</button></td>
-                </tr>`).join('') : `<tr><td colspan="3" class="dim">Nothing received yet.</td></tr>`}</tbody>
+                </tr>`).join('') : po.receipts && po.receipts.length ? `<tr>
+                  <td>${onDay(po.receipts[0].received_at)}</td>
+                  <td>${stateTag}</td>
+                  <td><button class="btn sm quiet" id="po_quickopen">Open</button></td>
+                </tr>` : `<tr><td colspan="3" class="dim">Nothing received yet.</td></tr>`}</tbody>
               </table></div>` : ''}
             ${showStatus && po.receipts && po.receipts.length ? `
               <h3 class="mt">Receiving log</h3>
@@ -3794,6 +3798,23 @@ SCREENS.purchaseorders = async (page) => {
         try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rfopen}`), true); }
         catch (e) { whoops(e); }
       }));
+
+      // What quick-receiving actually left on file — no courier, no
+      // shipping fee, none of the green paperwork's own fields, because
+      // none of that was ever asked for at the time. Just what arrived.
+      $('#po_quickopen')?.addEventListener('click', () => dialog(`
+        <h3>${esc(po.po_no)} <span class="dim">· received</span></h3>
+        <div class="scroll"><table>
+          <thead><tr><th>Product</th><th class="n">Qty</th>
+            <th class="n">Lackings</th><th>Branch</th><th>Received</th></tr></thead>
+          <tbody>${po.receipts.map((r) => `<tr>
+            <td>${esc(r.name)}</td>
+            <td class="n">${count(r.qty_received)}</td>
+            <td class="n">${Number(r.lackings_after) > 0 ? count(r.lackings_after) : '—'}</td>
+            <td>${esc(r.branch || '—')}</td>
+            <td>${when(r.received_at)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`, '', true));
 
       $('#po_transfer')?.addEventListener('click', async () => {
         // The paperwork may already be on file — from an earlier transfer,
