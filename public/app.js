@@ -3606,6 +3606,7 @@ SCREENS.purchaseorders = async (page) => {
   async function openPO(poId, showPricing = false, hidePrice = false, showStatus = false,
     showRightPrice = true) {
     let po = await GET(`/api/purchase-orders/${poId}`);
+    let rfs = showStatus ? await GET(`/api/receiving-forms?po_id=${poId}`).catch(() => []) : [];
     const shops = showStatus ? await branches().catch(() => []) : [];
     const cat = !showPricing ? [] : catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
@@ -3621,6 +3622,7 @@ SCREENS.purchaseorders = async (page) => {
 
     const reload = async () => {
       po = await GET(`/api/purchase-orders/${poId}`);
+      if (showStatus) rfs = await GET(`/api/receiving-forms?po_id=${poId}`).catch(() => []);
       paint();
       drawPOs();
     };
@@ -3729,6 +3731,16 @@ SCREENS.purchaseorders = async (page) => {
             <div class="basket-sum">
               <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
             </div>`}
+            ${showStatus ? `
+              <h3 class="mt">Deliveries</h3>
+              <div class="scroll"><table>
+                <thead><tr><th>Date</th><th>Status</th><th></th></tr></thead>
+                <tbody>${rfs.length ? rfs.map((f) => `<tr>
+                  <td>${onDay(f.received_on)}</td>
+                  <td>${stateTag}</td>
+                  <td><button class="btn sm quiet" data-rfopen="${f.id}">Open</button></td>
+                </tr>`).join('') : `<tr><td colspan="3" class="dim">Nothing received yet.</td></tr>`}</tbody>
+              </table></div>` : ''}
             ${showStatus && po.receipts && po.receipts.length ? `
               <h3 class="mt">Receiving log</h3>
               <div class="scroll"><table>
@@ -3775,6 +3787,11 @@ SCREENS.purchaseorders = async (page) => {
 
     function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
+
+      $$('[data-rfopen]', $('#po_root')).forEach((b) => b.addEventListener('click', async () => {
+        try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rfopen}`), true); }
+        catch (e) { whoops(e); }
+      }));
 
       $('#po_transfer')?.addEventListener('click', async () => {
         // The paperwork may already be on file — from an earlier transfer,
