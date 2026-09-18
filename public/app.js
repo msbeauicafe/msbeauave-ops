@@ -1833,8 +1833,9 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       btn.textContent = 'Saving…';
       try {
         const sku = nextSkuAfter(basedOn.sku, takenSkus);
+        const baseName = (row.name || '').trim() || basedOn.name;
         const name = row.variation.trim()
-          ? `${basedOn.name} — ${row.variation.trim()}` : basedOn.name;
+          ? `${baseName} — ${row.variation.trim()}` : baseName;
         await POST('/api/products', {
           sku, name, brand: basedOn.brand, category: row.category,
           unit_type: row.unit.trim() || 'PCS',
@@ -1860,7 +1861,8 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       if (!box) return;
       box.innerHTML = variationRows.map((r, n) => `
         <div class="variation-row">
-          <input type="text" value="${esc(basedOn?.name || '')}" disabled>
+          <input type="text" placeholder="Product" data-vproduct="${n}"
+            value="${esc(r.name != null ? r.name : (basedOn?.name || ''))}" ${r.saved ? 'disabled' : ''}>
           <input type="text" placeholder="Unit" data-vunit="${n}" value="${esc(r.unit)}" ${r.saved ? 'disabled' : ''}>
           <input type="text" placeholder="What makes this one different — e.g. 100ml, Rose scent"
             data-vname="${n}" value="${esc(r.variation)}" ${r.saved ? 'disabled' : ''}>
@@ -1877,6 +1879,8 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
           </div>
         </div>`).join('');
 
+      $$('[data-vproduct]', box).forEach((i) => i.addEventListener('input',
+        () => { variationRows[+i.dataset.vproduct].name = i.value; }));
       $$('[data-vunit]', box).forEach((i) => i.addEventListener('input',
         () => { variationRows[+i.dataset.vunit].unit = i.value; }));
       $$('[data-vname]', box).forEach((i) => i.addEventListener('input',
@@ -1928,7 +1932,7 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
         basedOn = productList.find((r) => r.sku === sel.value) || null;
         $('#f_name_new').style.display = 'none';
         $('#f_sku').disabled = true;
-        $('#f_sku').value = basedOn ? `after ${basedOn.sku}` : '';
+        $('#f_sku').value = basedOn ? basedOn.sku : '';
         // A brand or category this product carries that is not on either
         // dropdown's own list yet joins it as an option of its own, the same
         // way editing an existing product keeps whatever it already has.
