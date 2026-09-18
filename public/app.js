@@ -2654,10 +2654,13 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       // there with the form itself already open — a no-op click if this was
       // opened from the Receive screen to begin with. Suppressed for the PO
       // dialog's own Transfer to Receive, which stays put and shows the
-      // result in place instead of moving the owner to another screen.
-      if (!noNav) document.querySelector('[data-tab="receive"]')?.click();
-      const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
-      if (full) showReceivingForm(full, true);
+      // result in the order itself instead of moving the owner anywhere or
+      // popping anything on top of it.
+      if (!noNav) {
+        document.querySelector('[data-tab="receive"]')?.click();
+        const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
+        if (full) showReceivingForm(full, true);
+      }
     } catch (e) { whoops(e); $('#rf_go').disabled = false; }
   });
 }
@@ -3740,14 +3743,10 @@ SCREENS.purchaseorders = async (page) => {
 
       $('#po_transfer')?.addEventListener('click', async () => {
         // The paperwork may already be on file — from an earlier transfer,
-        // or written up by hand — and pressing this again should show that,
+        // or written up by hand — and pressing this again should do nothing,
         // not offer to write it up a second time.
         const already = await GET(`/api/receiving-forms?po_id=${po.id}`).catch(() => []);
-        if (already.length) {
-          const full = await GET(`/api/receiving-forms/${already[0].id}`).catch(() => null);
-          if (full) showReceivingForm(full, true);
-          return;
-        }
+        if (already.length) return;
 
         if (po.status === 'open') {
           // An order nothing has arrived against yet has nothing to merely
@@ -3772,8 +3771,6 @@ SCREENS.purchaseorders = async (page) => {
             });
             notice(`${esc(out.rf_no)} — ${count(out.units)} units in 🌸`, 'good');
             reload();
-            const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
-            if (full) showReceivingForm(full, true);
           } catch (e) { whoops(e); }
           return;
         }
