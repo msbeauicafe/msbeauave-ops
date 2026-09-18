@@ -3665,6 +3665,7 @@ SCREENS.purchaseorders = async (page) => {
             </div>
           </div>
           <div class="edit-side">
+            ${po.status === 'open' || po.status === 'part' ? `
             <h3>Products on this order</h3>
             <div class="dim">${canEdit
               ? `Every box can be typed in. Change the product, how many, the unit${
@@ -3732,7 +3733,7 @@ SCREENS.purchaseorders = async (page) => {
             ${H ? '' : `
             <div class="basket-sum">
               <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
-            </div>`}
+            </div>`}` : ''}
             ${showStatus ? `
               <h3 class="mt">Deliveries</h3>
               <div class="scroll"><table>
@@ -3745,7 +3746,11 @@ SCREENS.purchaseorders = async (page) => {
                   <td>${onDay(po.receipts[0].received_at)}</td>
                   <td>${stateTag}</td>
                   <td><button class="btn sm quiet" id="po_quickopen">Open</button></td>
-                </tr>` : `<tr><td colspan="3" class="dim">Nothing received yet.</td></tr>`}</tbody>
+                </tr>` : `<tr>
+                  <td>${onDay(po.ordered_on)}</td>
+                  <td>${stateTag}</td>
+                  <td><button class="btn sm quiet" id="po_openreceive">Open</button></td>
+                </tr>`}</tbody>
               </table></div>` : ''}
             ${showStatus && po.receipts && po.receipts.length ? `
               <h3 class="mt">Receiving log</h3>
@@ -3798,6 +3803,16 @@ SCREENS.purchaseorders = async (page) => {
         try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rfopen}`), true); }
         catch (e) { whoops(e); }
       }));
+
+      // Not yet received still gets a row and a button, the same shape as
+      // every other state — pressing it opens the delivery form directly,
+      // prefilled from what's still outstanding on this order.
+      $('#po_openreceive')?.addEventListener('click', async () => {
+        closeDialog();
+        document.querySelector('[data-tab="receive"]')?.click();
+        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
+        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload });
+      });
 
       // What quick-receiving actually left on file — no courier, no
       // shipping fee, none of the green paperwork's own fields, because
