@@ -3622,7 +3622,8 @@ SCREENS.purchaseorders = async (page) => {
             <div class="co-scale" id="po_doc">${doc}</div>
             <div class="co-actions">
               ${canEdit ? '<button class="btn quiet" id="po_sheet">🧾 Print / download</button>' : ''}
-              <button class="btn quiet" id="po_transfer">🧾 Transfer to Receive</button>
+              ${po.receipts.length ? '' :
+                '<button class="btn quiet" id="po_transfer">🧾 Transfer to Receive</button>'}
             </div>
           </div>
           <div class="edit-side">
