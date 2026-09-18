@@ -105,6 +105,10 @@ function shrink(file, edge = 900, quality = 0.82) {
 let user = null;
 let tab = null;
 let refreshTimer = null;
+// A purchase order to open the instant Purchase order's own screen finishes
+// loading — set by another screen's "Open" button rather than opened
+// directly, since that dialog lives inside Purchase order's own closure.
+let openPOOnArrival = null;
 
 // ---------------------------------------------------------------------------
 // Talking to the server
@@ -2699,6 +2703,11 @@ SCREENS.receive = async (page) => {
       <div id="r_out" class="mt"></div>
     </div>
 
+    <div class="panel"><h3>Purchase orders not yet received</h3>
+      <div class="dim">Handed here from Purchase order — still nothing on
+        the books until a delivery is actually filled in and saved.</div>
+      <div id="po_pending_list" class="mt"></div></div>
+
     <div class="panel"><h3>Receiving forms</h3>
       <div class="dim">The paper the stockroom fills in while the delivery is
         still on the floor — counted in boxes, with the courier, the shipping
@@ -2740,6 +2749,21 @@ SCREENS.receive = async (page) => {
     () => deliveryDialog(GET('/api/products?q=').catch(() => []), () => {},
       branchOf(page, 'r_branch')));
 
+  const drawPendingOrders = async () => {
+    const rows = await GET('/api/purchase-orders?status=open').catch(() => []);
+    $('#po_pending_list', page).innerHTML = table(rows, [
+      { head: 'PO No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
+      { head: 'Date', cell: (o) => onDay(o.ordered_on) },
+      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${
+          o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-popending="${o.id}">Open</button>` },
+    ], 'Nothing waiting to be received.');
+    $$('[data-popending]', page).forEach((b) => b.addEventListener('click', () => {
+      openPOOnArrival = +b.dataset.popending;
+      document.querySelector('[data-tab="purchaseorders"]')?.click();
+    }));
+  };
+
   const drawRFs = async () => {
     const rows = await GET('/api/receiving-forms').catch(() => []);
     $('#rf_list', page).innerHTML = table(rows, [
@@ -2764,6 +2788,7 @@ SCREENS.receive = async (page) => {
   });
 
   suppliers = await GET('/api/suppliers').catch(() => []);
+  await drawPendingOrders();
   await drawRFs();
 };
 
@@ -3752,12 +3777,11 @@ SCREENS.purchaseorders = async (page) => {
         if (po.status === 'open') {
           // Pressing this is a handoff, not a delivery — nothing has
           // arrived yet as far as this order knows, so nothing is marked
-          // received here. It only moves the order to where receiving it
-          // actually happens.
+          // received here. It only moves you to where receiving it
+          // actually happens; filling it in from there is a separate,
+          // deliberate step, not something this button does for you.
           closeDialog();
           document.querySelector('[data-tab="receive"]')?.click();
-          const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
-          receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload });
           return;
         }
 
@@ -4239,6 +4263,15 @@ SCREENS.purchaseorders = async (page) => {
   drawProducts(catalogue).catch(whoops);
   if (pfSup) drawGoods();
   await supplierPick;
+
+  if (openPOOnArrival) {
+    const poId = openPOOnArrival;
+    openPOOnArrival = null;
+    $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'ord'));
+    $('#pt_sup', page).hidden = true;
+    $('#pt_ord', page).hidden = false;
+    openPO(poId, true, true, true, false).catch(whoops);
+  }
 };
 
 // ===========================================================================
