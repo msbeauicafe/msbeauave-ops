@@ -3743,16 +3743,11 @@ SCREENS.purchaseorders = async (page) => {
 
       $('#po_transfer')?.addEventListener('click', async () => {
         // The paperwork may already be on file — from an earlier transfer,
-        // or written up by hand — and pressing this again should not offer
-        // to write it up a second time. But sitting there doing visibly
-        // nothing reads as broken, so it opens what's already on file
-        // instead of a blank click.
+        // or written up by hand — and pressing this again should do
+        // nothing: no popup of any kind, green form or otherwise. Just
+        // this order's own dialog, unchanged.
         const already = await GET(`/api/receiving-forms?po_id=${po.id}`).catch(() => []);
-        if (already.length) {
-          const full = await GET(`/api/receiving-forms/${already[0].id}`).catch(() => null);
-          if (full) showReceivingForm(full, true);
-          return;
-        }
+        if (already.length) return;
 
         if (po.status === 'open') {
           // An order nothing has arrived against yet has nothing to merely
