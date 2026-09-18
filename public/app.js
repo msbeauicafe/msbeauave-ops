@@ -105,10 +105,6 @@ function shrink(file, edge = 900, quality = 0.82) {
 let user = null;
 let tab = null;
 let refreshTimer = null;
-// A purchase order to open the instant Purchase order's own screen finishes
-// loading — set by another screen's "Open" button rather than opened
-// directly, since that dialog lives inside Purchase order's own closure.
-let openPOOnArrival = null;
 
 // ---------------------------------------------------------------------------
 // Talking to the server
@@ -2768,9 +2764,15 @@ SCREENS.receive = async (page) => {
           o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-popending="${o.id}">Open</button>` },
     ], 'Nothing waiting to be received.');
-    $$('[data-popending]', page).forEach((b) => b.addEventListener('click', () => {
-      openPOOnArrival = +b.dataset.popending;
-      document.querySelector('[data-tab="purchaseorders"]')?.click();
+    $$('[data-popending]', page).forEach((b) => b.addEventListener('click', async () => {
+      // The order's own dialog, without leaving this screen for it: Purchase
+      // order's screen is run against a detached element nobody sees, just
+      // to get at the same openPO it already has — the dialog itself shows
+      // up over whatever's on screen regardless, same as any other.
+      try {
+        const { openPO } = await SCREENS.purchaseorders(document.createElement('div'));
+        openPO(+b.dataset.popending, true, true, true, false).catch(whoops);
+      } catch (e) { whoops(e); }
     }));
   };
 
@@ -4291,14 +4293,10 @@ SCREENS.purchaseorders = async (page) => {
   if (pfSup) drawGoods();
   await supplierPick;
 
-  if (openPOOnArrival) {
-    const poId = openPOOnArrival;
-    openPOOnArrival = null;
-    $$('[data-t]', page).forEach((x) => x.classList.toggle('on', x.dataset.t === 'ord'));
-    $('#pt_sup', page).hidden = true;
-    $('#pt_ord', page).hidden = false;
-    openPO(poId, true, true, true, false).catch(whoops);
-  }
+  // Handed out so another screen's own "Open" can show this same dialog
+  // without navigating here for it — the dialog itself shows up over
+  // whatever's on screen regardless of which page ran this.
+  return { openPO };
 };
 
 // ===========================================================================
