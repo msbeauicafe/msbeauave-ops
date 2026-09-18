@@ -2470,6 +2470,17 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
 
         <div id="rf_items" class="mt"></div>
 
+        ${po?.receipts?.length ? `
+          <h3 class="mt">Receiving log</h3>
+          <div class="scroll"><table>
+            <thead><tr><th>Product Name</th><th class="n">Qty Received</th><th>Status</th></tr></thead>
+            <tbody>${po.receipts.map((r) => `<tr>
+              <td>${esc(r.name)}</td>
+              <td class="n">${count(r.qty_received)}</td>
+              <td>${tag('Received', 'green')}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>` : ''}
+
         <div class="row mt">
           <div><label>Checked by</label><input id="rf_checked" type="text"></div>
           <div><label>Approved by</label><input id="rf_approved" type="text"></div>
@@ -2560,6 +2571,9 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
               <span class="dim">${esc(it.sku)}</span></div></div>
           <div style="flex:0 0 90px"><label>Unit</label>
             <input class="i-unit" type="text" value="${esc(it.unit || 'PCS')}"></div>
+          <div style="flex:0 0 auto"><label>Expected (PO)</label>
+            <div class="fixed dim">${po?.lines?.find((l) => l.sku === it.sku)
+              ? count(po.lines.find((l) => l.sku === it.sku).qty) : '—'}</div></div>
           <div><label>Batch number</label>
             <input class="i-batch" type="text" value="${esc(it.batch_no)}"></div>
           <div><label>Expiry date</label>
