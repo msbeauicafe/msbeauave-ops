@@ -1827,6 +1827,12 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
     const saveVariationRow = async (n, btn) => {
       const row = variationRows[n];
       if (row.saving || row.saved) return;
+      // Nothing typed in means nothing distinguishes this row from the
+      // product it's based on — there is no new product to make up a code
+      // for.
+      if (!row.variation.trim()) {
+        return notice('Type what makes this one different before saving it.', 'bad');
+      }
       row.saving = true;
       btn.disabled = true;
       const label = btn.textContent;
