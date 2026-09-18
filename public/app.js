@@ -2391,7 +2391,8 @@ async function showBatches(sku) {
 // So it lives out here rather than inside either, and is told what it needs
 // rather than reaching for it.
 // ---------------------------------------------------------------------------
-function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = false, useReceived = false }) {
+function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = false,
+  useReceived = false, noNav = false }) {
   // A purchase order's outstanding lines are what you expect to be holding,
   // so they are what the form opens with — already counted, still editable,
   // because what a supplier sends and what was asked for are two things.
@@ -2651,8 +2652,10 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       done();
       // The paperwork belongs on the Receive screen's own list, so land
       // there with the form itself already open — a no-op click if this was
-      // opened from the Receive screen to begin with.
-      document.querySelector('[data-tab="receive"]')?.click();
+      // opened from the Receive screen to begin with. Suppressed for the PO
+      // dialog's own Transfer to Receive, which stays put and shows the
+      // result in place instead of moving the owner to another screen.
+      if (!noNav) document.querySelector('[data-tab="receive"]')?.click();
       const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
       if (full) showReceivingForm(full, true);
     } catch (e) { whoops(e); $('#rf_go').disabled = false; }
@@ -3741,15 +3744,10 @@ SCREENS.purchaseorders = async (page) => {
         // not offer to write it up a second time.
         const already = await GET(`/api/receiving-forms?po_id=${po.id}`).catch(() => []);
         if (already.length) {
-          document.querySelector('[data-tab="receive"]')?.click();
           const full = await GET(`/api/receiving-forms/${already[0].id}`).catch(() => null);
           if (full) showReceivingForm(full, true);
           return;
         }
-        // Land on the Receive screen the moment this is pressed, not only
-        // once it is saved — reflecting there is not conditional on having
-        // recorded anything yet.
-        document.querySelector('[data-tab="receive"]')?.click();
 
         if (po.status === 'open') {
           // An order nothing has arrived against yet has nothing to merely
@@ -3781,7 +3779,7 @@ SCREENS.purchaseorders = async (page) => {
         }
 
         const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
-        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true });
+        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true, noNav: true });
       });
 
       // A batch number and an expiry date are the two things stock itself
