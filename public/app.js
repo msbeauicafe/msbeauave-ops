@@ -3725,19 +3725,19 @@ SCREENS.purchaseorders = async (page, headless = false) => {
         const already = await GET(`/api/receiving-forms?po_id=${po.id}`).catch(() => []);
         if (already.length) return;
 
-        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
-
         if (po.status === 'open') {
-          // Accepting hands the order to Receiving with its own delivery
-          // form already open and prefilled — nothing is marked received
-          // until that form is actually filled in and saved.
+          // Pressing this is a handoff, not a delivery — nothing has
+          // arrived yet as far as this order knows, so nothing is marked
+          // received here. It only moves you to where receiving it
+          // actually happens; filling it in from there is a separate,
+          // deliberate step, not something this button does for you.
           closeDialog();
           receiveOpenTab = 'receiving';
           document.querySelector('[data-tab="receive"]')?.click();
-          receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload });
           return;
         }
 
+        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
         receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true, noNav: true });
       });
 
