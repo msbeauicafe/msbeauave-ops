@@ -2403,20 +2403,23 @@ async function showBatches(sku) {
 // ---------------------------------------------------------------------------
 function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = false,
   useReceived = false, noNav = false }) {
-  // A purchase order's outstanding lines are what you expect to be holding,
-  // so they are what the form opens with — already counted, still editable,
-  // because what a supplier sends and what was asked for are two things.
+  // A purchase order's outstanding lines are what the form opens with, one
+  // row per product — but what a supplier sends and what was asked for are
+  // two things, so only the product itself is filled in. The count is
+  // whatever lands on the floor, typed in as it's counted, not assumed
+  // from the order; Expected (PO) sits beside it for comparing against.
   //
   // useReceived flips that source to what has already landed rather than
   // what is still short — an order with deliveries against it has nothing
   // outstanding to prefill, but its own quick-received lines are exactly
-  // what a formal receiving form for that delivery should start from.
+  // what a formal receiving form for that delivery should start from, count
+  // included, since that count already happened.
   const items = (po?.lines || [])
     .filter((l) => useReceived ? Number(l.received) > 0 : l.qty - l.received > 0)
     .map((l) => ({
       sku: l.sku, name: l.name, unit: l.unit || 'PCS', po_line_id: l.id,
       batch_no: '', expiry: '', unit_cost: '',
-      packs: [{ pack: 'BOX', qty_per_box: useReceived ? Number(l.received) : l.qty - l.received, boxes: 1 }],
+      packs: [{ pack: 'BOX', qty_per_box: useReceived ? Number(l.received) : 0, boxes: 1 }],
     }));
 
   dialog(`
@@ -2454,16 +2457,11 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
 
         <div id="rf_items" class="mt"></div>
 
-        ${po?.receipts?.length ? `
-          <h3 class="mt">Receiving log</h3>
-          <div class="scroll"><table>
-            <thead><tr><th>Product Name</th><th class="n">Qty Received</th><th>Status</th></tr></thead>
-            <tbody>${po.receipts.map((r) => `<tr>
-              <td>${esc(r.name)}</td>
-              <td class="n">${count(r.qty_received)}</td>
-              <td>${tag('Received', 'green')}</td>
-            </tr>`).join('')}</tbody>
-          </table></div>` : ''}
+        <h3 class="mt">Receiving log</h3>
+        <div class="scroll"><table>
+          <thead><tr><th>Product Name</th><th class="n">Qty Received</th><th>Status</th></tr></thead>
+          <tbody id="rf_log"></tbody>
+        </table></div>
 
         <div class="row mt">
           <div><label>Checked by</label><input id="rf_checked" type="text"></div>
@@ -2524,6 +2522,24 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
     });
   };
 
+  // What's already on file for this order sits above what's being typed
+  // right now — so the log reads as a running record rather than something
+  // that only shows up once this delivery is saved.
+  const renderLog = () => {
+    const onFile = (po?.receipts || []).map((r) => `<tr>
+      <td>${esc(r.name)}</td>
+      <td class="n">${count(r.qty_received)}</td>
+      <td>${tag('Received', 'green')}</td>
+    </tr>`).join('');
+    const pending = items.filter((it) => totalOf(it) > 0).map((it) => `<tr>
+      <td>${esc(it.name)}</td>
+      <td class="n">${count(totalOf(it))}</td>
+      <td>${tag('Not yet saved', 'amber')}</td>
+    </tr>`).join('');
+    $('#rf_log').innerHTML = onFile + pending
+      || '<tr><td colspan="3" class="dim">Nothing received yet.</td></tr>';
+  };
+
   const retally = () => {
     harvest();
     renderPreview();
@@ -2534,12 +2550,14 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       if (!it) return;
       $$('.packrow', box).forEach((row, j) => {
         const k = it.packs[j];
-        $('.i-total', row).textContent = k ? `${count(k.qty_per_box * k.boxes)} ${it.unit}` : '';
+        $('.i-total', row).textContent = k && k.qty_per_box && k.boxes
+          ? `${count(k.qty_per_box * k.boxes)} ${it.unit}` : '';
       });
     });
     $('#rf_sum').textContent = items.length
       ? `${count(units)} units in ${count(cartons)} boxes  `
       : '';
+    renderLog();
   };
 
   const drawItems = () => {
@@ -6050,18 +6068,21 @@ function receivingForm({ rfNo, poNo, receivedOn, receivedAt, supplier = {},
   const field = (label, value) => `
     <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
 
+  // A blank cell is a real box not yet counted, not a zero — writing "0"
+  // where nothing has been typed yet reads as a delivery of nothing rather
+  // than one still being counted.
   const body = groups.map((g) => {
     const total = g.packs.reduce((n, k) => n + k.qty_per_box * k.boxes, 0);
     const span = g.packs.length;
     return g.packs.map((k, i) => `<tr>
       ${i === 0 ? `
-        <td class="c" rowspan="${span}"><b>${count(total)}</b></td>
-        <td class="c" rowspan="${span}">${esc(g.unit || 'PCS')}</td>
+        <td class="c" rowspan="${span}"><b>${total ? count(total) : ''}</b></td>
+        <td class="c" rowspan="${span}">${total ? esc(g.unit || 'PCS') : ''}</td>
         <td rowspan="${span}">${esc(g.name || g.sku)}</td>` : ''}
-      <td class="c">${count(k.qty_per_box)}</td>
-      <td class="c">${count(k.boxes)}${k.pack && k.pack !== 'BOX'
+      <td class="c">${k.qty_per_box ? count(k.qty_per_box) : ''}</td>
+      <td class="c">${k.qty_per_box && k.boxes ? count(k.boxes) : ''}${k.qty_per_box && k.boxes && k.pack && k.pack !== 'BOX'
         ? ` <i>${esc(k.pack)}</i>` : ''}</td>
-      <td class="c">${count(k.qty_per_box * k.boxes)}</td>
+      <td class="c">${k.qty_per_box && k.boxes ? count(k.qty_per_box * k.boxes) : ''}</td>
     </tr>`).join('');
   }).join('');
 
