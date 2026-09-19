@@ -2725,6 +2725,12 @@ SCREENS.receive = async (page) => {
     </div>
 
     <div id="wt_receiving" ${openTab === 'receiving' ? '' : 'hidden'}>
+      <div class="panel"><h3>Purchase orders awaiting delivery</h3>
+        <div class="dim">Every order still open, so it stays findable here even if
+          nobody pressed Accept on it. Open goes straight to that order's own
+          delivery form, prefilled and ready to fill in.</div>
+        <div id="po_receiving_list" class="mt"></div></div>
+
       <div class="panel">
         <div class="head" style="margin:0"><h3 class="sr">Receive a delivery</h3>
           <span class="hint">Splits automatically between wholesale, shop and reserve</span></div>
@@ -2824,6 +2830,28 @@ SCREENS.receive = async (page) => {
     }));
   };
 
+  // The same open orders as Incoming delivery, but findable from Receiving
+  // too — an order sits here whether or not anybody ever pressed Accept on
+  // it, so whoever comes back to actually receive it does not have to have
+  // been the one who accepted it, or remember to go looking on another tab.
+  const drawReceivingOrders = async () => {
+    const rows = await GET('/api/purchase-orders?status=open').catch(() => []);
+    $('#po_receiving_list', page).innerHTML = table(rows, [
+      { head: 'PO No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
+      { head: 'Date', cell: (o) => onDay(o.ordered_on) },
+      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${
+          o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-poreceiving="${o.id}">Open</button>` },
+    ], 'Nothing waiting to be received.');
+    $$('[data-poreceiving]', page).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const po = await GET(`/api/purchase-orders/${b.dataset.poreceiving}`);
+        const catalogue = await GET('/api/products?q=').catch(() => []);
+        receiveDelivery({ po, catalogue, shops, suppliers, done: () => { drawReceivingOrders(); drawRFs(); } });
+      } catch (e) { whoops(e); }
+    }));
+  };
+
   const drawRFs = async () => {
     const rows = await GET('/api/receiving-forms').catch(() => []);
     $('#rf_list', page).innerHTML = table(rows, [
@@ -2849,6 +2877,7 @@ SCREENS.receive = async (page) => {
 
   suppliers = await GET('/api/suppliers').catch(() => []);
   await drawPendingOrders();
+  await drawReceivingOrders();
   await drawRFs();
 };
 
