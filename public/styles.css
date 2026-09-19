@@ -1830,10 +1830,6 @@ input.n { text-align: right; }
 .po-split-left #po_list td:nth-child(4) .dim { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .po-split-right { min-width: 0; border-left: 3px solid var(--rose-dust); padding-left: 22px; }
 
-/* The dialog is just the printed sheet now — sized to it, not to the wide
-   two-column layout this used to split with an editable table. */
-.dialog.po-open { max-width: 800px; }
-
 /* The order's Received/Price columns crowded against the printed sheet's
    fixed 900px column — give the sheet less room so the working table gets
    enough to lay out its columns without a horizontal scrollbar. */
