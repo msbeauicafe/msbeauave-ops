@@ -3596,13 +3596,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
     const shops = showStatus ? await branches().catch(() => []) : [];
     const cat = !showPricing ? [] : catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
-    const nameToSku = new Map(cat.map((p) => [p.name.trim().toLowerCase(), p.sku]));
-    po.lines.forEach((l) => {
-      const k = (l.name || '').trim().toLowerCase();
-      if (k && !nameToSku.has(k)) nameToSku.set(k, l.sku);
-    });
-    const datalist = `<datalist id="po_goods">${
-      cat.map((p) => `<option value="${esc(p.name)}"></option>`).join('')}</datalist>`;
 
     dialog('<div id="po_root"></div>', 'wide co-open po-open');
 
@@ -3619,15 +3612,7 @@ SCREENS.purchaseorders = async (page, headless = false) => {
       // one has already been closed — nothing left here to repaint.
       if (!$('#po_root')) return;
       const canEdit = showPricing && po.status === 'open';
-      const SPARE = canEdit ? 3 : 0;
       const live = po.status === 'open' || po.status === 'part';
-      // A cancelled order stops being billed for what it asked for and goes
-      // back to what actually showed up — the rest of the quantity is not
-      // coming, so it is not what the supplier gets paid for either.
-      const billQty = (l) => (po.status === 'cancelled'
-        ? Math.min(Number(l.qty), Number(l.received || 0)) : Number(l.qty));
-      const grandTotal = po.lines.reduce((s, l) =>
-        s + billQty(l) * (Number(l.price) || 0), 0);
       const stateTag = po.status === 'closed' ? tag('Received', 'green')
         : po.status === 'part' ? tag('Received w/ Lackings', 'amber')
         : po.status === 'cancelled' ? tag('Cancelled', 'grey') : tag('Not yet received', 'pink');
@@ -3635,7 +3620,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
         lines: po.lines, note: po.note, hidePrice,
       });
-      const H = showRightPrice ? '' : 'hidden';
       $('#po_root').innerHTML = showPricing ? `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
@@ -3649,75 +3633,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
             </div>
           </div>
           <div class="edit-side">
-            ${po.status === 'open' || po.status === 'part' ? `
-            <h3>Products on this order</h3>
-            <div class="dim">${canEdit
-              ? `Every box can be typed in. Change the product, how many, the unit${
-                  H ? '' : ' or the price'}; empty a quantity to take that product off.`
-              : 'This order has deliveries against it, so its lines are fixed.'}</div>
-            <div class="scroll"><table class="po-lines-table${
-              showStatus && shops.length > 1 ? ' has-branch-col' : ''}">
-              <thead><tr>
-                <th>Product</th><th class="n">Quantity</th><th>Unit</th>
-                ${showStatus ? '<th>Status</th><th class="n">Received</th>' : ''}
-                ${showStatus && shops.length > 1 ? '<th>Branch</th>' : ''}
-                <th class="n" ${H}>Price</th><th class="n" ${H}>Total</th><th></th>
-              </tr></thead>
-              <tbody>
-                ${po.lines.map((l) => `<tr data-row="${l.id}">
-                  <td>${canEdit
-                    ? `<input class="cellbox open" list="po_goods" data-name
-                         autocomplete="off" value="${esc(l.name)}">`
-                    : `<b>${esc(l.name)}</b><div class="dim">${esc(l.sku)}</div>`}</td>
-                  <td class="n">${canEdit
-                    ? `<input class="cellbox open n" data-qty inputmode="numeric" value="${Number(l.qty)}">`
-                    : count(billQty(l))}</td>
-                  <td>${canEdit
-                    ? `<input class="cellbox open" data-unit value="${esc(l.unit)}" style="width:70px">`
-                    : esc(l.unit)}</td>
-                  ${showStatus ? `<td>${Number(l.received) >= Number(l.qty) && Number(l.qty) > 0
-                      ? '<b>Received</b>'
-                      : Number(l.received) > 0
-                        ? '<b>Received w/ Lackings</b>'
-                        : '—'}</td>
-                    <td class="n"><span style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
-                        <input class="cellbox open n" data-received="${l.id}" inputmode="numeric"
-                          value="" title="${Number(l.received) || 0} received so far">
-                        <button class="btn sm" data-savereceived="${l.id}">Save</button>
-                      </span></td>` : ''}
-                  ${showStatus && shops.length > 1 ? `<td>
-                      <select class="cellbox open" data-branchpick="${l.id}" style="width:100%">
-                        <option value="">Which branch?</option>
-                        ${shops.filter((b) => b.active).map((b) =>
-                          `<option value="${b.id}">${esc(b.name)}</option>`).join('')}
-                      </select></td>` : ''}
-                  <td class="n" ${H}>${canEdit
-                    ? `<input class="cellbox open n" data-price inputmode="decimal"
-                         value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
-                    : (l.price != null ? peso(l.price) : '—')}</td>
-                  <td class="n" data-tot ${H}>${peso((Number(l.price) || 0) * billQty(l))}</td>
-                  <td class="n">${canEdit
-                    ? `<button class="btn sm stop" data-remove="${l.id}"
-                         title="Take off this order">✕</button>` : ''}</td>
-                </tr>`).join('')}
-                ${Array.from({ length: SPARE }, (_x, i) => `<tr data-spare="${i}">
-                  <td><input class="cellbox open" list="po_goods" data-addname
-                        autocomplete="off" placeholder="Add a product"></td>
-                  <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
-                  <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
-                  ${showStatus ? '<td></td><td></td>' : ''}
-                  ${showStatus && shops.length > 1 ? '<td></td>' : ''}
-                  <td class="n" ${H}><input class="cellbox open n" data-addprice inputmode="decimal"
-                        placeholder="—" style="width:80px"></td>
-                  <td class="n" data-tot ${H}>—</td>
-                  <td></td>
-                </tr>`).join('')}
-              </tbody>
-            </table></div>
-            ${H ? '' : `
-            <div class="basket-sum">
-              <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
-            </div>`}` : ''}
             ${showStatus ? `
               <h3 class="mt">Deliveries</h3>
               <div class="scroll"><table>
@@ -3759,8 +3674,7 @@ SCREENS.purchaseorders = async (page, headless = false) => {
               ${po.status === 'cancelled' ? '<button class="btn quiet" id="po_commit">Committed</button>' : ''}
             </div>
           </div>
-        </div>
-        ${datalist}` : `
+        </div>` : `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
           <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
@@ -3905,84 +3819,23 @@ SCREENS.purchaseorders = async (page, headless = false) => {
         }));
       }
 
-      // The line total and the grand total, read straight off the boxes as
-      // they are typed — the same figure Billing is about to be handed once
-      // the order is saved. A closed order's rows have no boxes to read: the
-      // total painted from its saved lines is the whole answer already.
-      //
-      // The printed sheet on the left redraws the same moment: it carries
-      // prices now, so a box typed on the right and never reflected on the
-      // left would be the two halves of this dialog disagreeing.
+      // The printed sheet on the left redraws as the note is typed, so a
+      // word typed on the right and never reflected on the left would be
+      // the two halves of this dialog disagreeing.
       if (canEdit) {
-        const previewLines = () => {
-          const out = [];
-          $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
-            const nameEl = $('[data-name]', tr) || $('[data-addname]', tr);
-            const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
-            const unitEl = $('[data-unit]', tr) || $('[data-addunit]', tr);
-            const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
-            const name = (nameEl?.value || '').trim();
-            const qty = Number(qtyEl?.value || 0);
-            if (!name || !(qty > 0)) return;
-            out.push({ name, qty, unit: (unitEl?.value || '').trim() || 'PCS',
-              price: priceEl?.value === '' || priceEl?.value == null ? null : Number(priceEl.value) });
-          });
-          return out;
-        };
-        const redrawDoc = () => {
+        $('#po_note_in')?.addEventListener('input', () => {
           const docBox = $('#po_doc');
           if (!docBox) return;
           docBox.innerHTML = purchaseOrder({
             poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
-            lines: previewLines(), note: $('#po_note_in')?.value ?? po.note, hidePrice,
+            lines: po.lines, note: $('#po_note_in').value, hidePrice,
           });
-        };
-        const retotal = () => {
-          let grand = 0;
-          $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
-            const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
-            const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
-            const cell = $('[data-tot]', tr);
-            const qty = Number(qtyEl?.value || 0);
-            const lineTotal = qty * (Number(priceEl?.value) || 0);
-            if (cell) cell.textContent = qty > 0 ? peso(lineTotal) : '—';
-            grand += lineTotal;
-          });
-          const g = $('#po_grand');
-          if (g) g.textContent = peso(grand);
-          redrawDoc();
-        };
-        $$('[data-name], [data-addname], [data-qty], [data-addqty],'
-          + ' [data-unit], [data-addunit], [data-price], [data-addprice]', $('#po_root'))
-          .forEach((i) => i.addEventListener('input', retotal));
-        $('#po_note_in')?.addEventListener('input', redrawDoc);
-
-        $$('[data-remove]', $('#po_root')).forEach((b) => b.addEventListener('click', () => {
-          const tr = b.closest('tr');
-          if (tr) tr.remove();
-          retotal();
-        }));
+        });
       }
 
       $('#po_keep')?.addEventListener('click', async () => {
-        const lines = [];
-        let unknown = '';
-        $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
-          const nameEl = $('[data-name]', tr) || $('[data-addname]', tr);
-          const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
-          const unitEl = $('[data-unit]', tr) || $('[data-addunit]', tr);
-          const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
-          if (!nameEl) return;
-          const name = (nameEl.value || '').trim();
-          const qty = Number(qtyEl?.value || 0);
-          if (!name || !(qty > 0)) return;
-          const sku = nameToSku.get(name.toLowerCase());
-          if (!sku) { unknown = unknown || name; return; }
-          lines.push({ sku, qty, unit: (unitEl?.value || 'PCS').trim() || 'PCS',
-            price: (priceEl?.value || '').trim() });
-        });
-        if (unknown) return notice(`“${unknown}” is not a product on the price list.`, 'bad');
-        if (!lines.length) return notice('A purchase order needs at least one line.', 'bad');
+        const lines = po.lines.map((l) => ({ sku: l.sku, qty: l.qty, unit: l.unit,
+          price: l.price != null ? String(l.price) : '' }));
         const total = lines.reduce((s, l) => s + Number(l.qty) * (Number(l.price) || 0), 0);
         try {
           await PUT(`/api/purchase-orders/${poId}`, { lines, note: $('#po_note_in').value });
