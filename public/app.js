@@ -948,6 +948,12 @@ SCREENS.products = async (page) => {
       || (r.category || '').trim().toLowerCase() === pcat)
       && (!brandFilter || (r.brand || '') === brandFilter));
     if (qtySort) rows.sort((a, b) => Number(b.total_on_hand) - Number(a.total_on_hand));
+    else rows.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    // Freebies are not what the shop sells, so they sink below everything
+    // that is — a stable sort keeps the rest in whatever order they were
+    // just put in, only the freebies moved down.
+    const isFreebie = (p) => (p.category || '').trim().toUpperCase() === 'FREEBIES';
+    rows.sort((a, b) => (isFreebie(a) ? 1 : 0) - (isFreebie(b) ? 1 : 0));
 
     // Worked out once per draw rather than once per cell.
     const rungs = new Map(rows.map((p) => [p.sku, ladder(p)]));
