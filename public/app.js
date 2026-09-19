@@ -2755,7 +2755,7 @@ SCREENS.receive = async (page) => {
       // to get at the same openPO it already has — the dialog itself shows
       // up over whatever's on screen regardless, same as any other.
       try {
-        const { openPO } = await SCREENS.purchaseorders(document.createElement('div'));
+        const { openPO } = await SCREENS.purchaseorders(document.createElement('div'), true);
         openPO(+b.dataset.popending, true, true, true, false).catch(whoops);
       } catch (e) { whoops(e); }
     }));
@@ -2792,7 +2792,7 @@ SCREENS.receive = async (page) => {
 // ===========================================================================
 // Purchase orders — the company buying
 // ===========================================================================
-SCREENS.purchaseorders = async (page) => {
+SCREENS.purchaseorders = async (page, headless = false) => {
   const shops = await branches();
   let suppliers = [];
   page.innerHTML = `
@@ -4298,6 +4298,14 @@ SCREENS.purchaseorders = async (page) => {
   $('#po_find', page).addEventListener('input', drawSupList);
   wireCatChips(page, 'cat_po', (c) => { poCat = c; drawSupList(); });
   $('#pl_find', page).addEventListener('input', () => drawProducts().catch(whoops));
+
+  // Headless means only openPO itself is wanted — another screen's own
+  // "Open" reusing this closure rather than the whole screen it lives in —
+  // so none of what fills the rest of this page is worth its own fetch.
+  // openPO already fetches its own catalogue and branches when it needs
+  // them, and drawPOs still runs later, inside openPO's own reload, the
+  // moment there's actually something on this order worth refreshing for.
+  if (headless) return { openPO };
 
   // Everything at once rather than one after another. These four used to be a
   // queue: the suppliers, then the orders, then a thousand products, then the
