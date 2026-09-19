@@ -2419,7 +2419,8 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
     .map((l) => ({
       sku: l.sku, name: l.name, unit: l.unit || 'PCS', po_line_id: l.id,
       batch_no: '', expiry: '', unit_cost: '',
-      packs: [{ pack: 'BOX', qty_per_box: useReceived ? Number(l.received) : 0, boxes: 1 }],
+      packs: [{ pack: 'BOX', qty_per_box: useReceived ? Number(l.received) : 0,
+        boxes: useReceived ? 1 : 0 }],
     }));
 
   dialog(`
@@ -2550,8 +2551,10 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       if (!it) return;
       $$('.packrow', box).forEach((row, j) => {
         const k = it.packs[j];
-        $('.i-total', row).textContent = k && k.qty_per_box && k.boxes
-          ? `${count(k.qty_per_box * k.boxes)} ${it.unit}` : '';
+        const totalEl = $('.i-total', row);
+        if (document.activeElement !== totalEl) {
+          totalEl.value = k && k.qty_per_box && k.boxes ? k.qty_per_box * k.boxes : '';
+        }
       });
     });
     $('#rf_sum').textContent = items.length
@@ -2586,7 +2589,7 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
             <div><label># of boxes</label>
               <input class="p-boxes" type="number" min="1" value="${k.boxes || ''}"></div>
             <div><label>Qty</label>
-              <div class="fixed dim i-total"></div></div>
+              <input class="i-total" type="number" min="1"></div>
             <div style="flex:0 0 auto" class="pushdown">
               ${it.packs.length > 1
                 ? `<button class="btn sm quiet" data-droppack="${i}:${j}">✕</button>` : ''}
@@ -2603,7 +2606,7 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
     }));
     $$('[data-addpack]').forEach((b) => b.addEventListener('click', () => {
       harvest();
-      items[+b.dataset.addpack].packs.push({ pack: 'BOX', qty_per_box: 0, boxes: 1 });
+      items[+b.dataset.addpack].packs.push({ pack: 'BOX', qty_per_box: 0, boxes: 0 });
       drawItems();
     }));
     $$('[data-droppack]').forEach((b) => b.addEventListener('click', () => {
@@ -2613,6 +2616,18 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       drawItems();
     }));
     $$('#rf_items input').forEach((el) => el.addEventListener('input', retally));
+    // Typing a flat count straight into Qty is the same delivery as one box
+    // of that many — it just skips being asked to break it into boxes first.
+    $$('.i-total').forEach((inp) => inp.addEventListener('input', () => {
+      const row = inp.closest('.packrow');
+      const box = inp.closest('[data-item]');
+      const val = +inp.value || 0;
+      items[+box.dataset.item].packs[+row.dataset.pack] =
+        { pack: 'BOX', qty_per_box: val, boxes: val ? 1 : 0 };
+      $('.p-per', row).value = val || '';
+      $('.p-boxes', row).value = val ? 1 : '';
+      retally();
+    }));
     retally();
   };
   drawItems();
@@ -2627,7 +2642,7 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       sku: found.sku, name: found.name, unit: found.unit_type || 'PCS',
       po_line_id: po?.lines?.find((l) => l.sku === found.sku)?.id || null,
       batch_no: '', expiry: '', unit_cost: '',
-      packs: [{ pack: 'BOX', qty_per_box: 0, boxes: 1 }],
+      packs: [{ pack: 'BOX', qty_per_box: 0, boxes: 0 }],
     });
     $('#rf_add').value = '';
     drawItems();
