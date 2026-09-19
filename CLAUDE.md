@@ -24,6 +24,12 @@ a question box.
   thing added to the edit form is wanted on the new-record form too.
 - **Fields the shop picks from, it should not be able to type into.** Free text
   is how `aaaaa` ends up in a dropdown.
+- **Edit only the one place asked, and check who else calls it first.** `openPO`
+  is one function opened from both the Purchase order menu and Warehouse
+  receiving; changes meant for one screen, made there, showed up on the other
+  too, and got reverted (PRs #531–#535) because of it. Before editing a shared
+  function, grep for its other callers. If a change is only wanted in one
+  place, give that place its own copy rather than branch the shared one.
 
 ## The shape of things
 
