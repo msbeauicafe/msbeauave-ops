@@ -2489,9 +2489,8 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       it.unit = $('.i-unit', box).value.trim().toUpperCase() || 'PCS';
       it.batch_no = $('.i-batch', box).value;
       it.expiry = $('.i-exp', box).value;
-      it.unit_cost = $('.i-cost', box).value;
       it.packs = $$('[data-pack]', box).map((row) => ({
-        pack: $('.p-pack', row).value.trim().toUpperCase() || 'BOX',
+        pack: 'BOX',
         qty_per_box: +$('.p-per', row).value || 0,
         boxes: +$('.p-boxes', row).value || 0,
       }));
@@ -2532,7 +2531,11 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
     const cartons = items.reduce((n, it) => n + boxesOf(it), 0);
     $$('[data-item]').forEach((box) => {
       const it = items[+box.dataset.item];
-      $('.i-total', box).textContent = it ? `${count(totalOf(it))} ${it.unit}` : '';
+      if (!it) return;
+      $$('.packrow', box).forEach((row, j) => {
+        const k = it.packs[j];
+        $('.i-total', row).textContent = k ? `${count(k.qty_per_box * k.boxes)} ${it.unit}` : '';
+      });
     });
     $('#rf_sum').textContent = items.length
       ? `${count(units)} units in ${count(cartons)} boxes  `
@@ -2555,20 +2558,17 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
             <input class="i-batch" type="text" value="${esc(it.batch_no)}"></div>
           <div><label>Expiry date</label>
             <input class="i-exp" type="date" value="${esc(it.expiry)}"></div>
-          <div><label>Cost each</label>
-            <input class="i-cost" type="number" step="0.01" min="0"
-                   placeholder="unchanged" value="${esc(it.unit_cost)}"></div>
           <div style="flex:0 0 auto" class="pushdown">
             <button class="btn sm line stop" data-drop="${i}">Remove</button></div>
         </div>
         ${it.packs.map((k, j) => `
           <div class="row packrow" data-pack="${j}">
-            <div><label>Packing</label>
-              <input class="p-pack" type="text" value="${esc(k.pack)}"></div>
-            <div><label>Qty per box</label>
+            <div><label>Quantity per box</label>
               <input class="p-per" type="number" min="1" value="${k.qty_per_box || ''}"></div>
-            <div><label>No. of boxes</label>
+            <div><label># of boxes</label>
               <input class="p-boxes" type="number" min="1" value="${k.boxes || ''}"></div>
+            <div><label>Qty</label>
+              <div class="fixed dim i-total"></div></div>
             <div style="flex:0 0 auto" class="pushdown">
               ${it.packs.length > 1
                 ? `<button class="btn sm quiet" data-droppack="${i}:${j}">✕</button>` : ''}
@@ -2576,7 +2576,6 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
           </div>`).join('')}
         <div class="row packfoot">
           <button class="btn sm quiet" data-addpack="${i}">＋ another packing</button>
-          <span class="dim">comes to <b class="i-total"></b></span>
         </div>
       </div>`).join('')
       : '<div class="dim">Nothing on this delivery yet.</div>';
