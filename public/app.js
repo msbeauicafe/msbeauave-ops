@@ -105,11 +105,6 @@ function shrink(file, edge = 900, quality = 0.82) {
 let user = null;
 let tab = null;
 let refreshTimer = null;
-// Which of Warehouse receiving's own subtabs to land on next time it opens —
-// Accepting an open order means going straight to Receiving, not back to
-// Incoming delivery's default. Read once and reset, so a plain sidebar click
-// still opens where it always has.
-let receiveOpenTab = 'incoming';
 
 // ---------------------------------------------------------------------------
 // Talking to the server
@@ -2695,7 +2690,6 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       // result in the order itself instead of moving the owner anywhere or
       // popping anything on top of it.
       if (!noNav) {
-        receiveOpenTab = 'receiving';
         document.querySelector('[data-tab="receive"]')?.click();
         const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
         if (full) showReceivingForm(full, true);
@@ -2707,24 +2701,22 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
 SCREENS.receive = async (page) => {
   const shops = await branches();
   let suppliers = [];
-  const openTab = receiveOpenTab;
-  receiveOpenTab = 'incoming';
   page.innerHTML = `
     <div class="head"><h2>Warehouse receiving</h2></div>
 
     <div class="subtabs">
-      <button data-wt="incoming" class="${openTab === 'incoming' ? 'on' : ''}">Incoming delivery</button>
-      <button data-wt="receiving" class="${openTab === 'receiving' ? 'on' : ''}">Receiving</button>
+      <button data-wt="incoming" class="on">Incoming delivery</button>
+      <button data-wt="receiving">Receiving</button>
     </div>
 
-    <div id="wt_incoming" ${openTab === 'incoming' ? '' : 'hidden'}>
+    <div id="wt_incoming">
       <div class="panel"><h3>Purchase orders not yet received</h3>
         <div class="dim">Handed here from Purchase order — still nothing on
           the books until a delivery is actually filled in and saved.</div>
         <div id="po_pending_list" class="mt"></div></div>
     </div>
 
-    <div id="wt_receiving" ${openTab === 'receiving' ? '' : 'hidden'}>
+    <div id="wt_receiving" hidden>
       <div class="panel">
         <div class="head" style="margin:0"><h3 class="sr">Receive a delivery</h3>
           <span class="hint">Splits automatically between wholesale, shop and reserve</span></div>
@@ -3732,7 +3724,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
           // actually happens; filling it in from there is a separate,
           // deliberate step, not something this button does for you.
           closeDialog();
-          receiveOpenTab = 'receiving';
           document.querySelector('[data-tab="receive"]')?.click();
           return;
         }
