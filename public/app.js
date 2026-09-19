@@ -3752,73 +3752,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
         receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true, noNav: true });
       });
 
-      // A batch number and an expiry date are the two things stock itself
-      // cannot be received without, but nobody is standing at this screen
-      // reading them off a box — so this screen makes them up: a batch
-      // number built from the order and the moment it was typed, an expiry
-      // read off the product's own shelf life. The receiving log below the
-      // table is what makes that a fair trade rather than a black box.
-      // Lackings is not a separate thing to record — it is just what is left
-      // of the order once what arrived is typed in, so it reads straight off
-      // qty and received rather than holding a status of its own, and is
-      // shown per receipt on the log rather than as a box on this table.
-      if (showStatus) {
-        // What's typed into the Received cell is how many just arrived —
-        // not the new running total, so nobody has to do the addition in
-        // their head or gets told a number they typed "isn't big enough."
-        // The box starts empty every time and shows the total on file as
-        // a placeholder, so it can't be mistaken for a total sitting there
-        // to resave by accident. The button is the only way it saves —
-        // leaving the box also blurs it, which would otherwise fire beside
-        // a click on the button and post the same delivery twice. The
-        // button is disabled the instant it's clicked, not just while the
-        // POST is in flight — reload() repainting the whole panel takes a
-        // beat, and a second click landing in that gap before the button
-        // itself is redrawn was posting the same delivery again.
-        let saving = false;
-        const saveReceived = async (inp, btn) => {
-          if (saving) return;
-          const line = po.lines.find((l) => String(l.id) === inp.dataset.received);
-          if (!line) return;
-          const qty = Number(inp.value);
-          if (!(qty > 0)) {
-            inp.value = '';
-            return notice('Type how many just arrived.', 'bad');
-          }
-          const branchSel = $(`[data-branchpick="${line.id}"]`, $('#po_root'));
-          if (branchSel && !branchSel.value) {
-            return notice('Which branch did this land at?', 'bad');
-          }
-          const batchNo = `${po.po_no}-${line.id}-${Date.now()}`;
-          const exp = new Date();
-          exp.setMonth(exp.getMonth() + (Number(line.shelf_life_months) || 24));
-          const expiry = exp.toISOString().slice(0, 10);
-          saving = true;
-          btn.disabled = true;
-          inp.disabled = true;
-          if (branchSel) branchSel.disabled = true;
-          const label = btn.textContent;
-          btn.textContent = 'Saving…';
-          try {
-            await POST(`/api/purchase-orders/lines/${line.id}/receive`,
-              { qty, batch_no: batchNo, expiry, branch_id: branchSel?.value || null });
-            notice(`${count(qty)} of ${esc(line.name)} received 🌸`, 'good');
-            await reload();
-          } catch (e) {
-            inp.value = '';
-            inp.disabled = false;
-            btn.disabled = false;
-            if (branchSel) branchSel.disabled = false;
-            btn.textContent = label;
-            whoops(e);
-          } finally { saving = false; }
-        };
-        $$('[data-savereceived]', $('#po_root')).forEach((btn) => btn.addEventListener('click', () => {
-          const inp = $(`[data-received="${btn.dataset.savereceived}"]`, $('#po_root'));
-          if (inp) saveReceived(inp, btn);
-        }));
-      }
-
       // The printed sheet on the left redraws as the note is typed, so a
       // word typed on the right and never reflected on the left would be
       // the two halves of this dialog disagreeing.
@@ -6304,6 +6237,16 @@ function showReceivingForm(f, over = false) {
               value="${esc(String(g.expiry || '').slice(0, 10))}">
             <span class="dim">${count(g.packs.reduce((s, p) => s + p.qty_per_box * p.boxes, 0))} ${esc(g.unit)}</span>
           </div>`).join('')}</div>
+
+        <h3 class="mt">Receiving log</h3>
+        <div class="scroll"><table>
+          <thead><tr><th>Product Name</th><th class="n">Qty Received</th><th>Status</th></tr></thead>
+          <tbody>${groups.map((g) => `<tr>
+            <td>${esc(g.name)}</td>
+            <td class="n">${count(g.packs.reduce((s, p) => s + p.qty_per_box * p.boxes, 0))}</td>
+            <td>${tag('Received', 'green')}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
 
         <div class="row mt">
           <div><label>Checked by</label><input id="rf_checked" type="text" value="${esc(f.checked_by || '')}"></div>
