@@ -479,7 +479,7 @@ const TABS = {
     // what turns up, then look at what came in. Each was a panel on Receive
     // and each is a different person's job.
     ['purchaseorders', '🧾', 'Purchase order'],
-    ['receive', '📦', 'Receive'],
+    ['receive', '📦', 'Warehouse receiving'],
     ['inventory', '📥', 'Inventory'],
     // Named after the document each one produces, in the order the work
     // happens: the customer orders, the warehouse packs it, the account is
@@ -497,7 +497,7 @@ const TABS = {
     ['workspace', '🗂️', 'Workspace'],
     ['orders', '📋', 'Pick & send'],
     ['purchaseorders', '🧾', 'Purchase order'],
-    ['receive', '📦', 'Receive'],
+    ['receive', '📦', 'Warehouse receiving'],
     ['inventory', '📥', 'Inventory'],
     ['stockroom', '🔀', 'Stockroom'],
     ['clock', '⏱️', 'Time clock'],
@@ -519,7 +519,7 @@ const TABS = {
   supervisor: [
     ['till', '🛍️', 'Till'],
     ['purchaseorders', '🧾', 'Purchase order'],
-    ['receive', '📦', 'Receive'],
+    ['receive', '📦', 'Warehouse receiving'],
     ['inventory', '📥', 'Inventory'],
     ['stockroom', '🔀', 'Stockroom'],
     ['orders', '📋', 'Pick & send'],
@@ -536,7 +536,7 @@ const TABS = {
   office: [
     ['till', '🛍️', 'Till'],
     ['purchaseorders', '🧾', 'Purchase order'],
-    ['receive', '📦', 'Receive'],
+    ['receive', '📦', 'Warehouse receiving'],
     ['inventory', '📥', 'Inventory'],
     ['stockroom', '🔀', 'Stockroom'],
     ['orders', '📋', 'Pick & send'],
@@ -556,7 +556,7 @@ const TABS = {
   datacoord: [
     ['products', '🧴', 'Product list/Brand list'],
     ['purchaseorders', '🧾', 'Purchase order'],
-    ['receive', '📦', 'Receive'],
+    ['receive', '📦', 'Warehouse receiving'],
     ['inventory', '📥', 'Inventory'],
     ['stockroom', '🔀', 'Stockroom'],
     ['reorder', '📈', 'Reordering'],
@@ -2702,50 +2702,67 @@ SCREENS.receive = async (page) => {
   const shops = await branches();
   let suppliers = [];
   page.innerHTML = `
-    <div class="head"><h2>Receive a delivery</h2>
-      <span class="hint">Splits automatically between wholesale, shop and reserve</span></div>
-    <div class="panel">
-      <div class="row">
-        <div style="flex:2"><label>Product code</label>
-          <input type="text" id="r_sku" list="skus" placeholder="scan or type"></div>
-        <div><label>Batch number</label><input type="text" id="r_batch"></div>
-        <div><label>Expiry date</label><input type="date" id="r_exp"></div>
-        <div><label>How many</label><input type="number" id="r_qty" min="1"></div>
-        <div><label>Cost each</label>
-          <input type="number" id="r_cost" step="0.01" min="0" placeholder="unchanged"></div>
-        <div><label>Paid by</label>
-          <select id="r_method">
-            <option value="bank">Bank transfer</option>
-            <option value="cash">Cash</option>
-            <option value="gcash">GCash</option>
-            <option value="card">Card</option>
-          </select></div>
-        ${branchPicker(shops, 'r_branch', 'Arrived at')}
-        <div style="flex:0 0 auto"><button class="btn" id="r_go">Receive</button></div>
-        <div style="flex:0 0 auto"><button class="btn line" id="r_note">📦 Whole delivery</button></div>
-      </div>
-      <div class="dim">What this delivery cost is recorded against the money going
-        out, and becomes the product's cost from now on. Leave it blank to keep
-        the cost you already have. What came in is on <b>Inventory</b>, where it
-        can still be undone.</div>
-      <datalist id="skus"></datalist>
-      <div id="r_out" class="mt"></div>
+    <div class="head"><h2>Warehouse receiving</h2></div>
+
+    <div class="subtabs">
+      <button data-wt="incoming" class="on">Incoming delivery</button>
+      <button data-wt="receiving">Receiving</button>
     </div>
 
-    <div class="panel"><h3>Purchase orders not yet received</h3>
-      <div class="dim">Handed here from Purchase order — still nothing on
-        the books until a delivery is actually filled in and saved.</div>
-      <div id="po_pending_list" class="mt"></div></div>
+    <div id="wt_incoming">
+      <div class="panel"><h3>Purchase orders not yet received</h3>
+        <div class="dim">Handed here from Purchase order — still nothing on
+          the books until a delivery is actually filled in and saved.</div>
+        <div id="po_pending_list" class="mt"></div></div>
+    </div>
 
-    <div class="panel"><h3>Receiving forms</h3>
-      <div class="dim">The paper the stockroom fills in while the delivery is
-        still on the floor — counted in boxes, with the courier, the shipping
-        and the guard on it. It receives the stock as it records itself, and
-        where it answers a purchase order it ticks that order off too.</div>
-      <div class="row mt">
-        <div style="flex:0 0 auto"><button class="btn" id="rf_new">＋ Record a delivery</button></div>
+    <div id="wt_receiving" hidden>
+      <div class="panel">
+        <div class="head" style="margin:0"><h3 class="sr">Receive a delivery</h3>
+          <span class="hint">Splits automatically between wholesale, shop and reserve</span></div>
+        <div class="row mt">
+          <div style="flex:2"><label>Product code</label>
+            <input type="text" id="r_sku" list="skus" placeholder="scan or type"></div>
+          <div><label>Batch number</label><input type="text" id="r_batch"></div>
+          <div><label>Expiry date</label><input type="date" id="r_exp"></div>
+          <div><label>How many</label><input type="number" id="r_qty" min="1"></div>
+          <div><label>Cost each</label>
+            <input type="number" id="r_cost" step="0.01" min="0" placeholder="unchanged"></div>
+          <div><label>Paid by</label>
+            <select id="r_method">
+              <option value="bank">Bank transfer</option>
+              <option value="cash">Cash</option>
+              <option value="gcash">GCash</option>
+              <option value="card">Card</option>
+            </select></div>
+          ${branchPicker(shops, 'r_branch', 'Arrived at')}
+          <div style="flex:0 0 auto"><button class="btn" id="r_go">Receive</button></div>
+          <div style="flex:0 0 auto"><button class="btn line" id="r_note">📦 Whole delivery</button></div>
+        </div>
+        <div class="dim">What this delivery cost is recorded against the money going
+          out, and becomes the product's cost from now on. Leave it blank to keep
+          the cost you already have. What came in is on <b>Inventory</b>, where it
+          can still be undone.</div>
+        <datalist id="skus"></datalist>
+        <div id="r_out" class="mt"></div>
       </div>
-      <div id="rf_list" class="mt"></div></div>`;
+
+      <div class="panel"><h3>Receiving forms</h3>
+        <div class="dim">The paper the stockroom fills in while the delivery is
+          still on the floor — counted in boxes, with the courier, the shipping
+          and the guard on it. It receives the stock as it records itself, and
+          where it answers a purchase order it ticks that order off too.</div>
+        <div class="row mt">
+          <div style="flex:0 0 auto"><button class="btn" id="rf_new">＋ Record a delivery</button></div>
+        </div>
+        <div id="rf_list" class="mt"></div></div>
+    </div>`;
+
+  $$('[data-wt]', page).forEach((b) => b.addEventListener('click', () => {
+    $$('[data-wt]', page).forEach((x) => x.classList.toggle('on', x === b));
+    $('#wt_incoming', page).hidden = b.dataset.wt !== 'incoming';
+    $('#wt_receiving', page).hidden = b.dataset.wt !== 'receiving';
+  }));
 
   GET('/api/products?q=').then((rows) => {
     $('#skus', page).innerHTML = rows.map((p) =>
