@@ -105,11 +105,6 @@ function shrink(file, edge = 900, quality = 0.82) {
 let user = null;
 let tab = null;
 let refreshTimer = null;
-// Which of Warehouse receiving's own subtabs to land on next time it opens —
-// Accepting an open order means going straight to Receiving, not back to
-// Incoming delivery's default. Read once and reset, so a plain sidebar click
-// still opens where it always has.
-let receiveOpenTab = 'incoming';
 
 // ---------------------------------------------------------------------------
 // Talking to the server
@@ -2695,7 +2690,6 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
       // result in the order itself instead of moving the owner anywhere or
       // popping anything on top of it.
       if (!noNav) {
-        receiveOpenTab = 'receiving';
         document.querySelector('[data-tab="receive"]')?.click();
         const full = await GET(`/api/receiving-forms/${out.id}`).catch(() => null);
         if (full) showReceivingForm(full, true);
@@ -2707,30 +2701,22 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
 SCREENS.receive = async (page) => {
   const shops = await branches();
   let suppliers = [];
-  const openTab = receiveOpenTab;
-  receiveOpenTab = 'incoming';
   page.innerHTML = `
     <div class="head"><h2>Warehouse receiving</h2></div>
 
     <div class="subtabs">
-      <button data-wt="incoming" class="${openTab === 'incoming' ? 'on' : ''}">Incoming delivery</button>
-      <button data-wt="receiving" class="${openTab === 'receiving' ? 'on' : ''}">Receiving</button>
+      <button data-wt="incoming" class="on">Incoming delivery</button>
+      <button data-wt="receiving">Receiving</button>
     </div>
 
-    <div id="wt_incoming" ${openTab === 'incoming' ? '' : 'hidden'}>
+    <div id="wt_incoming">
       <div class="panel"><h3>Purchase orders not yet received</h3>
         <div class="dim">Handed here from Purchase order — still nothing on
           the books until a delivery is actually filled in and saved.</div>
         <div id="po_pending_list" class="mt"></div></div>
     </div>
 
-    <div id="wt_receiving" ${openTab === 'receiving' ? '' : 'hidden'}>
-      <div class="panel"><h3>Purchase orders awaiting delivery</h3>
-        <div class="dim">Every order still open, so it stays findable here even if
-          nobody pressed Accept on it. Open goes straight to that order's own
-          delivery form, prefilled and ready to fill in.</div>
-        <div id="po_receiving_list" class="mt"></div></div>
-
+    <div id="wt_receiving" hidden>
       <div class="panel">
         <div class="head" style="margin:0"><h3 class="sr">Receive a delivery</h3>
           <span class="hint">Splits automatically between wholesale, shop and reserve</span></div>
@@ -2830,28 +2816,6 @@ SCREENS.receive = async (page) => {
     }));
   };
 
-  // The same open orders as Incoming delivery, but findable from Receiving
-  // too — an order sits here whether or not anybody ever pressed Accept on
-  // it, so whoever comes back to actually receive it does not have to have
-  // been the one who accepted it, or remember to go looking on another tab.
-  const drawReceivingOrders = async () => {
-    const rows = await GET('/api/purchase-orders?status=open').catch(() => []);
-    $('#po_receiving_list', page).innerHTML = table(rows, [
-      { head: 'PO No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
-      { head: 'Date', cell: (o) => onDay(o.ordered_on) },
-      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${
-          o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
-      { head: '', cell: (o) => `<button class="btn sm quiet" data-poreceiving="${o.id}">Open</button>` },
-    ], 'Nothing waiting to be received.');
-    $$('[data-poreceiving]', page).forEach((b) => b.addEventListener('click', async () => {
-      try {
-        const po = await GET(`/api/purchase-orders/${b.dataset.poreceiving}`);
-        const catalogue = await GET('/api/products?q=').catch(() => []);
-        receiveDelivery({ po, catalogue, shops, suppliers, done: () => { drawReceivingOrders(); drawRFs(); } });
-      } catch (e) { whoops(e); }
-    }));
-  };
-
   const drawRFs = async () => {
     const rows = await GET('/api/receiving-forms').catch(() => []);
     $('#rf_list', page).innerHTML = table(rows, [
@@ -2877,7 +2841,6 @@ SCREENS.receive = async (page) => {
 
   suppliers = await GET('/api/suppliers').catch(() => []);
   await drawPendingOrders();
-  await drawReceivingOrders();
   await drawRFs();
 };
 
@@ -3685,14 +3648,23 @@ SCREENS.purchaseorders = async (page, headless = false) => {
   async function openPO(poId, showPricing = false, hidePrice = false, showStatus = false,
     showRightPrice = true) {
     let po = await GET(`/api/purchase-orders/${poId}`);
+    let rfs = showStatus ? await GET(`/api/receiving-forms?po_id=${poId}`).catch(() => []) : [];
     const shops = showStatus ? await branches().catch(() => []) : [];
     const cat = !showPricing ? [] : catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
+    const nameToSku = new Map(cat.map((p) => [p.name.trim().toLowerCase(), p.sku]));
+    po.lines.forEach((l) => {
+      const k = (l.name || '').trim().toLowerCase();
+      if (k && !nameToSku.has(k)) nameToSku.set(k, l.sku);
+    });
+    const datalist = `<datalist id="po_goods">${
+      cat.map((p) => `<option value="${esc(p.name)}"></option>`).join('')}</datalist>`;
 
-    dialog('<div id="po_root"></div>', 'po-open');
+    dialog('<div id="po_root"></div>', 'wide co-open po-open');
 
     const reload = async () => {
       po = await GET(`/api/purchase-orders/${poId}`);
+      if (showStatus) rfs = await GET(`/api/receiving-forms?po_id=${poId}`).catch(() => []);
       paint();
       drawPOs();
     };
@@ -3703,7 +3675,15 @@ SCREENS.purchaseorders = async (page, headless = false) => {
       // one has already been closed — nothing left here to repaint.
       if (!$('#po_root')) return;
       const canEdit = showPricing && po.status === 'open';
+      const SPARE = canEdit ? 3 : 0;
       const live = po.status === 'open' || po.status === 'part';
+      // A cancelled order stops being billed for what it asked for and goes
+      // back to what actually showed up — the rest of the quantity is not
+      // coming, so it is not what the supplier gets paid for either.
+      const billQty = (l) => (po.status === 'cancelled'
+        ? Math.min(Number(l.qty), Number(l.received || 0)) : Number(l.qty));
+      const grandTotal = po.lines.reduce((s, l) =>
+        s + billQty(l) * (Number(l.price) || 0), 0);
       const stateTag = po.status === 'closed' ? tag('Received', 'green')
         : po.status === 'part' ? tag('Received w/ Lackings', 'amber')
         : po.status === 'cancelled' ? tag('Cancelled', 'grey') : tag('Not yet received', 'pink');
@@ -3711,6 +3691,7 @@ SCREENS.purchaseorders = async (page, headless = false) => {
         poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
         lines: po.lines, note: po.note, hidePrice,
       });
+      const H = showRightPrice ? '' : 'hidden';
       $('#po_root').innerHTML = showPricing ? `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
@@ -3720,10 +3701,122 @@ SCREENS.purchaseorders = async (page, headless = false) => {
             <div class="co-scale" id="po_doc">${doc}</div>
             <div class="co-actions">
               ${canEdit ? '<button class="btn quiet" id="po_sheet">🧾 Print / download</button>' : ''}
-              <button class="btn quiet" id="po_transfer">🧾 Accept</button>
+              <button class="btn quiet" id="po_transfer">🧾 Transfer to Receive</button>
             </div>
           </div>
-        </div>` : `
+          <div class="edit-side">
+            ${po.status === 'open' || po.status === 'part' ? `
+            <h3>Products on this order</h3>
+            <div class="dim">${canEdit
+              ? `Every box can be typed in. Change the product, how many, the unit${
+                  H ? '' : ' or the price'}; empty a quantity to take that product off.`
+              : 'This order has deliveries against it, so its lines are fixed.'}</div>
+            <div class="scroll"><table class="po-lines-table${
+              showStatus && shops.length > 1 ? ' has-branch-col' : ''}">
+              <thead><tr>
+                <th>Product</th><th class="n">Quantity</th><th>Unit</th>
+                ${showStatus ? '<th>Status</th><th class="n">Received</th>' : ''}
+                ${showStatus && shops.length > 1 ? '<th>Branch</th>' : ''}
+                <th class="n" ${H}>Price</th><th class="n" ${H}>Total</th><th></th>
+              </tr></thead>
+              <tbody>
+                ${po.lines.map((l) => `<tr data-row="${l.id}">
+                  <td>${canEdit
+                    ? `<input class="cellbox open" list="po_goods" data-name
+                         autocomplete="off" value="${esc(l.name)}">`
+                    : `<b>${esc(l.name)}</b><div class="dim">${esc(l.sku)}</div>`}</td>
+                  <td class="n">${canEdit
+                    ? `<input class="cellbox open n" data-qty inputmode="numeric" value="${Number(l.qty)}">`
+                    : count(billQty(l))}</td>
+                  <td>${canEdit
+                    ? `<input class="cellbox open" data-unit value="${esc(l.unit)}" style="width:70px">`
+                    : esc(l.unit)}</td>
+                  ${showStatus ? `<td>${Number(l.received) >= Number(l.qty) && Number(l.qty) > 0
+                      ? '<b>Received</b>'
+                      : Number(l.received) > 0
+                        ? '<b>Received w/ Lackings</b>'
+                        : '—'}</td>
+                    <td class="n"><span style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
+                        <input class="cellbox open n" data-received="${l.id}" inputmode="numeric"
+                          value="" title="${Number(l.received) || 0} received so far">
+                        <button class="btn sm" data-savereceived="${l.id}">Save</button>
+                      </span></td>` : ''}
+                  ${showStatus && shops.length > 1 ? `<td>
+                      <select class="cellbox open" data-branchpick="${l.id}" style="width:100%">
+                        <option value="">Which branch?</option>
+                        ${shops.filter((b) => b.active).map((b) =>
+                          `<option value="${b.id}">${esc(b.name)}</option>`).join('')}
+                      </select></td>` : ''}
+                  <td class="n" ${H}>${canEdit
+                    ? `<input class="cellbox open n" data-price inputmode="decimal"
+                         value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
+                    : (l.price != null ? peso(l.price) : '—')}</td>
+                  <td class="n" data-tot ${H}>${peso((Number(l.price) || 0) * billQty(l))}</td>
+                  <td class="n">${canEdit
+                    ? `<button class="btn sm stop" data-remove="${l.id}"
+                         title="Take off this order">✕</button>` : ''}</td>
+                </tr>`).join('')}
+                ${Array.from({ length: SPARE }, (_x, i) => `<tr data-spare="${i}">
+                  <td><input class="cellbox open" list="po_goods" data-addname
+                        autocomplete="off" placeholder="Add a product"></td>
+                  <td class="n"><input class="cellbox open n" data-addqty inputmode="numeric"></td>
+                  <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
+                  ${showStatus ? '<td></td><td></td>' : ''}
+                  ${showStatus && shops.length > 1 ? '<td></td>' : ''}
+                  <td class="n" ${H}><input class="cellbox open n" data-addprice inputmode="decimal"
+                        placeholder="—" style="width:80px"></td>
+                  <td class="n" data-tot ${H}>—</td>
+                  <td></td>
+                </tr>`).join('')}
+              </tbody>
+            </table></div>
+            ${H ? '' : `
+            <div class="basket-sum">
+              <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
+            </div>`}` : ''}
+            ${showStatus ? `
+              <h3 class="mt">Deliveries</h3>
+              <div class="scroll"><table>
+                <thead><tr><th>Date</th><th>Status</th><th></th></tr></thead>
+                <tbody>${rfs.length ? rfs.map((f) => `<tr>
+                  <td>${onDay(f.received_on)}</td>
+                  <td>${stateTag}</td>
+                  <td><button class="btn sm quiet" data-rfopen="${f.id}">Open</button></td>
+                </tr>`).join('') : po.receipts && po.receipts.length ? `<tr>
+                  <td>${onDay(po.receipts[0].received_at)}</td>
+                  <td>${stateTag}</td>
+                  <td><button class="btn sm quiet" id="po_quickopen">Open</button></td>
+                </tr>` : `<tr>
+                  <td>${onDay(po.ordered_on)}</td>
+                  <td>${stateTag}</td>
+                  <td><button class="btn sm quiet" id="po_openreceive">Open</button></td>
+                </tr>`}</tbody>
+              </table></div>` : ''}
+            ${showStatus && po.receipts && po.receipts.length ? `
+              <h3 class="mt">Receiving log</h3>
+              <div class="scroll"><table>
+                <thead><tr><th>Product</th><th class="n">Qty</th>
+                  <th class="n">Lackings</th><th>Branch</th><th>Received</th></tr></thead>
+                <tbody>${po.receipts.map((r) => `<tr>
+                  <td>${esc(r.name)}</td>
+                  <td class="n">${count(r.qty_received)}</td>
+                  <td class="n">${Number(r.lackings_after) > 0 ? count(r.lackings_after) : '—'}</td>
+                  <td>${esc(r.branch || '—')}</td>
+                  <td>${when(r.received_at)}</td>
+                </tr>`).join('')}</tbody>
+              </table></div>` : ''}
+            ${canEdit ? `
+              <div class="mt"><label for="po_note_in">Comments or special instructions</label>
+                <input id="po_note_in" type="text" value="${esc(po.note || '')}"></div>
+              <div class="right mt">
+                <button class="btn" id="po_keep">Save the changes</button></div>` : ''}
+            <div class="mt right">
+              ${live ? '<button class="btn stop" id="po_cancel">Cancel this order</button>' : ''}
+              ${po.status === 'cancelled' ? '<button class="btn quiet" id="po_commit">Committed</button>' : ''}
+            </div>
+          </div>
+        </div>
+        ${datalist}` : `
         <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
         <div class="tags">${stateTag}
           <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
@@ -3746,6 +3839,38 @@ SCREENS.purchaseorders = async (page, headless = false) => {
     function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
 
+      $$('[data-rfopen]', $('#po_root')).forEach((b) => b.addEventListener('click', async () => {
+        try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rfopen}`), true); }
+        catch (e) { whoops(e); }
+      }));
+
+      // Not yet received still gets a row and a button, the same shape as
+      // every other state — pressing it opens the delivery form directly,
+      // prefilled from what's still outstanding on this order.
+      $('#po_openreceive')?.addEventListener('click', async () => {
+        closeDialog();
+        document.querySelector('[data-tab="receive"]')?.click();
+        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
+        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload });
+      });
+
+      // What quick-receiving actually left on file — no courier, no
+      // shipping fee, none of the green paperwork's own fields, because
+      // none of that was ever asked for at the time. Just what arrived.
+      $('#po_quickopen')?.addEventListener('click', () => dialog(`
+        <h3>${esc(po.po_no)} <span class="dim">· received</span></h3>
+        <div class="scroll"><table>
+          <thead><tr><th>Product</th><th class="n">Qty</th>
+            <th class="n">Lackings</th><th>Branch</th><th>Received</th></tr></thead>
+          <tbody>${po.receipts.map((r) => `<tr>
+            <td>${esc(r.name)}</td>
+            <td class="n">${count(r.qty_received)}</td>
+            <td class="n">${Number(r.lackings_after) > 0 ? count(r.lackings_after) : '—'}</td>
+            <td>${esc(r.branch || '—')}</td>
+            <td>${when(r.received_at)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`, '', true));
+
       $('#po_transfer')?.addEventListener('click', async () => {
         // The paperwork may already be on file — from an earlier transfer,
         // or written up by hand — and pressing this again should do
@@ -3754,20 +3879,187 @@ SCREENS.purchaseorders = async (page, headless = false) => {
         const already = await GET(`/api/receiving-forms?po_id=${po.id}`).catch(() => []);
         if (already.length) return;
 
-        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
-
         if (po.status === 'open') {
-          // Accepting hands the order to Receiving with its own delivery
-          // form already open and prefilled — nothing is marked received
-          // until that form is actually filled in and saved.
+          // Pressing this is a handoff, not a delivery — nothing has
+          // arrived yet as far as this order knows, so nothing is marked
+          // received here. It only moves you to where receiving it
+          // actually happens; filling it in from there is a separate,
+          // deliberate step, not something this button does for you.
           closeDialog();
-          receiveOpenTab = 'receiving';
           document.querySelector('[data-tab="receive"]')?.click();
-          receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload });
           return;
         }
 
+        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
         receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true, noNav: true });
+      });
+
+      // A batch number and an expiry date are the two things stock itself
+      // cannot be received without, but nobody is standing at this screen
+      // reading them off a box — so this screen makes them up: a batch
+      // number built from the order and the moment it was typed, an expiry
+      // read off the product's own shelf life. The receiving log below the
+      // table is what makes that a fair trade rather than a black box.
+      // Lackings is not a separate thing to record — it is just what is left
+      // of the order once what arrived is typed in, so it reads straight off
+      // qty and received rather than holding a status of its own, and is
+      // shown per receipt on the log rather than as a box on this table.
+      if (showStatus) {
+        // What's typed into the Received cell is how many just arrived —
+        // not the new running total, so nobody has to do the addition in
+        // their head or gets told a number they typed "isn't big enough."
+        // The box starts empty every time and shows the total on file as
+        // a placeholder, so it can't be mistaken for a total sitting there
+        // to resave by accident. The button is the only way it saves —
+        // leaving the box also blurs it, which would otherwise fire beside
+        // a click on the button and post the same delivery twice. The
+        // button is disabled the instant it's clicked, not just while the
+        // POST is in flight — reload() repainting the whole panel takes a
+        // beat, and a second click landing in that gap before the button
+        // itself is redrawn was posting the same delivery again.
+        let saving = false;
+        const saveReceived = async (inp, btn) => {
+          if (saving) return;
+          const line = po.lines.find((l) => String(l.id) === inp.dataset.received);
+          if (!line) return;
+          const qty = Number(inp.value);
+          if (!(qty > 0)) {
+            inp.value = '';
+            return notice('Type how many just arrived.', 'bad');
+          }
+          const branchSel = $(`[data-branchpick="${line.id}"]`, $('#po_root'));
+          if (branchSel && !branchSel.value) {
+            return notice('Which branch did this land at?', 'bad');
+          }
+          const batchNo = `${po.po_no}-${line.id}-${Date.now()}`;
+          const exp = new Date();
+          exp.setMonth(exp.getMonth() + (Number(line.shelf_life_months) || 24));
+          const expiry = exp.toISOString().slice(0, 10);
+          saving = true;
+          btn.disabled = true;
+          inp.disabled = true;
+          if (branchSel) branchSel.disabled = true;
+          const label = btn.textContent;
+          btn.textContent = 'Saving…';
+          try {
+            await POST(`/api/purchase-orders/lines/${line.id}/receive`,
+              { qty, batch_no: batchNo, expiry, branch_id: branchSel?.value || null });
+            notice(`${count(qty)} of ${esc(line.name)} received 🌸`, 'good');
+            await reload();
+          } catch (e) {
+            inp.value = '';
+            inp.disabled = false;
+            btn.disabled = false;
+            if (branchSel) branchSel.disabled = false;
+            btn.textContent = label;
+            whoops(e);
+          } finally { saving = false; }
+        };
+        $$('[data-savereceived]', $('#po_root')).forEach((btn) => btn.addEventListener('click', () => {
+          const inp = $(`[data-received="${btn.dataset.savereceived}"]`, $('#po_root'));
+          if (inp) saveReceived(inp, btn);
+        }));
+      }
+
+      // The line total and the grand total, read straight off the boxes as
+      // they are typed — the same figure Billing is about to be handed once
+      // the order is saved. A closed order's rows have no boxes to read: the
+      // total painted from its saved lines is the whole answer already.
+      //
+      // The printed sheet on the left redraws the same moment: it carries
+      // prices now, so a box typed on the right and never reflected on the
+      // left would be the two halves of this dialog disagreeing.
+      if (canEdit) {
+        const previewLines = () => {
+          const out = [];
+          $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
+            const nameEl = $('[data-name]', tr) || $('[data-addname]', tr);
+            const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
+            const unitEl = $('[data-unit]', tr) || $('[data-addunit]', tr);
+            const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
+            const name = (nameEl?.value || '').trim();
+            const qty = Number(qtyEl?.value || 0);
+            if (!name || !(qty > 0)) return;
+            out.push({ name, qty, unit: (unitEl?.value || '').trim() || 'PCS',
+              price: priceEl?.value === '' || priceEl?.value == null ? null : Number(priceEl.value) });
+          });
+          return out;
+        };
+        const redrawDoc = () => {
+          const docBox = $('#po_doc');
+          if (!docBox) return;
+          docBox.innerHTML = purchaseOrder({
+            poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
+            lines: previewLines(), note: $('#po_note_in')?.value ?? po.note, hidePrice,
+          });
+        };
+        const retotal = () => {
+          let grand = 0;
+          $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
+            const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
+            const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
+            const cell = $('[data-tot]', tr);
+            const qty = Number(qtyEl?.value || 0);
+            const lineTotal = qty * (Number(priceEl?.value) || 0);
+            if (cell) cell.textContent = qty > 0 ? peso(lineTotal) : '—';
+            grand += lineTotal;
+          });
+          const g = $('#po_grand');
+          if (g) g.textContent = peso(grand);
+          redrawDoc();
+        };
+        $$('[data-name], [data-addname], [data-qty], [data-addqty],'
+          + ' [data-unit], [data-addunit], [data-price], [data-addprice]', $('#po_root'))
+          .forEach((i) => i.addEventListener('input', retotal));
+        $('#po_note_in')?.addEventListener('input', redrawDoc);
+
+        $$('[data-remove]', $('#po_root')).forEach((b) => b.addEventListener('click', () => {
+          const tr = b.closest('tr');
+          if (tr) tr.remove();
+          retotal();
+        }));
+      }
+
+      $('#po_keep')?.addEventListener('click', async () => {
+        const lines = [];
+        let unknown = '';
+        $$('#po_root tr[data-row], #po_root tr[data-spare]').forEach((tr) => {
+          const nameEl = $('[data-name]', tr) || $('[data-addname]', tr);
+          const qtyEl = $('[data-qty]', tr) || $('[data-addqty]', tr);
+          const unitEl = $('[data-unit]', tr) || $('[data-addunit]', tr);
+          const priceEl = $('[data-price]', tr) || $('[data-addprice]', tr);
+          if (!nameEl) return;
+          const name = (nameEl.value || '').trim();
+          const qty = Number(qtyEl?.value || 0);
+          if (!name || !(qty > 0)) return;
+          const sku = nameToSku.get(name.toLowerCase());
+          if (!sku) { unknown = unknown || name; return; }
+          lines.push({ sku, qty, unit: (unitEl?.value || 'PCS').trim() || 'PCS',
+            price: (priceEl?.value || '').trim() });
+        });
+        if (unknown) return notice(`“${unknown}” is not a product on the price list.`, 'bad');
+        if (!lines.length) return notice('A purchase order needs at least one line.', 'bad');
+        const total = lines.reduce((s, l) => s + Number(l.qty) * (Number(l.price) || 0), 0);
+        try {
+          await PUT(`/api/purchase-orders/${poId}`, { lines, note: $('#po_note_in').value });
+          notice('Purchase order saved 🌸', 'good');
+          await reload();
+          // Raise the bill against it right here — with what it comes to
+          // already on it, not a second errand for the office — as long as
+          // one is not on file for this order yet. One already billed is
+          // left alone: it may carry payments the total can no longer
+          // rewrite out from under.
+          if (total > 0) {
+            const bills = await GET('/api/purchase-order-bills').catch(() => []);
+            if (!bills.some((b) => String(b.po_id) === String(poId))) {
+              await POST('/api/purchase-order-bills', { po_id: poId, amount: total }).catch(() => {});
+            }
+          }
+          closeDialog();
+          // Straight to the Billing tab — not a dialog stacked on top of the
+          // order, the tab itself.
+          $('[data-t="bill"]', page)?.click();
+        } catch (e) { whoops(e); }
       });
 
       $$('#po_cancel, #po_cancel2').forEach((b) => b.addEventListener('click', async () => {
