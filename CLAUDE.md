@@ -30,6 +30,11 @@ a question box.
   too, and got reverted (PRs #531–#535) because of it. Before editing a shared
   function, grep for its other callers. If a change is only wanted in one
   place, give that place its own copy rather than branch the shared one.
+- **Warehouse receiving stands apart; Purchase order and Internal Inventory
+  Report do not.** Warehouse receiving is its own screen — a request scoped
+  to it must not reach into, or visibly change, either of the other two.
+  Purchase order and Internal Inventory Report may connect to each other;
+  it's only Warehouse receiving that stays out of it.
 
 ## The shape of things
 
