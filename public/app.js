@@ -472,20 +472,13 @@ const TABS = {
     ['clock', '⏱️', 'Time clock'],
     ['branches', '🏬', 'Branches'],
     ['customers', '💗', 'Customers'],
+    ['products', '🧴', 'Product list/Brand list'],
+    ['inventory', '📥', 'Internal Inventory Report'],
+    ['purchaseorders', '🧾', 'Purchase order'],
+    ['customerorder', '💬', 'Customer order'],
     ['finance', '💰', 'Finance'],
     ['pricelists', '💵', 'Pricelists'],
-    ['products', '🧴', 'Product list/Brand list'],
-    // The buying half, in the order the work happens: ask a supplier, receive
-    // what turns up, then look at what came in. Each was a panel on Receive
-    // and each is a different person's job.
-    ['purchaseorders', '🧾', 'Purchase order'],
     ['receive', '📦', 'Warehouse receiving'],
-    ['inventory', '📥', 'Inventory'],
-    // Named after the document each one produces, in the order the work
-    // happens: the customer orders, the warehouse packs it, the account is
-    // invoiced. Staff look for the paper they are trying to produce, not for
-    // the part of the system it lives in.
-    ['customerorder', '💬', 'Customer order'],
     ['returns', '↩️', 'Returns'],
     ['reorder', '📈', 'Reordering'],
     ['reports', '📊', 'Reports'],
