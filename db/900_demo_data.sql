@@ -112,6 +112,21 @@ begin
       (current_date + make_interval(months => extra.months))::date, extra.qty);
   end loop;
 
+  -- Receiving no longer splits stock automatically — everything above landed
+  -- whole in shop. The wholesale history below needs stock already sitting
+  -- in the pools it assumes, so move it there explicitly, in the shape the
+  -- house default used to apply on its own.
+  for shelf_row in select s.batch_id, s.on_hand from stock s where s.pool = 'shop' loop
+    move_qty := floor(shelf_row.on_hand * 0.7)::int;
+    if move_qty > 0 then
+      perform move_stock(shelf_row.batch_id, 'shop', 'b2b', move_qty, 'rebalanced');
+    end if;
+    move_qty := floor(shelf_row.on_hand * 0.1)::int;
+    if move_qty > 0 then
+      perform move_stock(shelf_row.batch_id, 'shop', 'reserve', move_qty, 'rebalanced');
+    end if;
+  end loop;
+
   -- -------------------------------------------------------------------------
   -- Reseller accounts
   -- -------------------------------------------------------------------------

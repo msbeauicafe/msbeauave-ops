@@ -76,8 +76,10 @@ async function stocked(admin, store, qty = 60, price = 250) {
     sku, name: `Test ${sku}`, brand: 'Beau Glow', category: 'Serums',
     unit_cost: 100, wholesale_price: price, srp: 400, retail_price: 450,
     shelf_life_months: 24 });
-  await POST(store, '/api/receive',
+  // Receiving lands in shop now; these are wholesale orders, so move it on.
+  const r = await POST(store, '/api/receive',
     { sku, batch_no: unique('B'), expiry: monthsOut(24), qty });
+  await POST(store, '/api/move', { batchId: r.data.batchId, from: 'shop', to: 'b2b', qty });
   return sku;
 }
 
