@@ -2691,102 +2691,51 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
   });
 }
 
-// Warehouse receiving's own view of an order it is waiting on — its own
-// copy of the doc and the two buttons under it, not a branch of the
-// Purchase order menu's openPO. A change asked for here must never leak
-// onto that other screen, so this is a separate dialog entirely rather
-// than a flag threaded through the shared one.
-async function openIncomingPO(poId) {
-  const po = await GET(`/api/purchase-orders/${poId}`);
-  const stateTag = po.status === 'closed' ? tag('Received', 'green')
-    : po.status === 'part' ? tag('Received w/ Lackings', 'amber')
-    : po.status === 'cancelled' ? tag('Cancelled', 'grey') : tag('Not yet received', 'pink');
-  const doc = purchaseOrder({
-    poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
-    lines: po.lines, note: po.note, hidePrice: true,
-  });
-  dialog(`
-    <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
-    <div class="tags">${stateTag}
-      <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
-    <div class="co-scale">${doc}</div>
-    <div class="co-actions">
-      <button class="btn quiet" id="ip_print">🧾 Print</button>
-      <button class="btn quiet" id="ip_accept">🧾 Accept</button>
-    </div>`, 'po-open');
-
-  $('#ip_print').addEventListener('click', () => showPurchaseOrder(po, true, true));
-  $('#ip_accept').addEventListener('click', () => {
-    closeDialog();
-    document.querySelector('[data-tab="receive"]')?.click();
-  });
-}
-
 SCREENS.receive = async (page) => {
   const shops = await branches();
   let suppliers = [];
   page.innerHTML = `
     <div class="head"><h2>Warehouse receiving</h2></div>
 
-    <div class="subtabs">
-      <button data-wt="incoming" class="on">Incoming delivery</button>
-      <button data-wt="receiving">Receiving</button>
-    </div>
-
-    <div id="wt_incoming">
-      <div class="panel"><h3>Purchase orders not yet received</h3>
-        <div class="dim">Handed here from Purchase order — still nothing on
-          the books until a delivery is actually filled in and saved.</div>
-        <div id="po_pending_list" class="mt"></div></div>
-    </div>
-
-    <div id="wt_receiving" hidden>
-      <div class="panel">
-        <div class="head" style="margin:0"><h3 class="sr">Receive a delivery</h3>
-          <span class="hint">Splits automatically between wholesale, shop and reserve</span></div>
-        <div class="row mt">
-          <div style="flex:2"><label>Product code</label>
-            <input type="text" id="r_sku" list="skus" placeholder="scan or type"></div>
-          <div><label>Batch number</label><input type="text" id="r_batch"></div>
-          <div><label>Expiry date</label><input type="date" id="r_exp"></div>
-          <div><label>How many</label><input type="number" id="r_qty" min="1"></div>
-          <div><label>Cost each</label>
-            <input type="number" id="r_cost" step="0.01" min="0" placeholder="unchanged"></div>
-          <div><label>Paid by</label>
-            <select id="r_method">
-              <option value="bank">Bank transfer</option>
-              <option value="cash">Cash</option>
-              <option value="gcash">GCash</option>
-              <option value="card">Card</option>
-            </select></div>
-          ${branchPicker(shops, 'r_branch', 'Arrived at')}
-          <div style="flex:0 0 auto"><button class="btn" id="r_go">Receive</button></div>
-          <div style="flex:0 0 auto"><button class="btn line" id="r_note">📦 Whole delivery</button></div>
-        </div>
-        <div class="dim">What this delivery cost is recorded against the money going
-          out, and becomes the product's cost from now on. Leave it blank to keep
-          the cost you already have. What came in is on <b>Inventory</b>, where it
-          can still be undone.</div>
-        <datalist id="skus"></datalist>
-        <div id="r_out" class="mt"></div>
+    <div class="panel">
+      <div class="head" style="margin:0"><h3 class="sr">Receive a delivery</h3>
+        <span class="hint">Splits automatically between wholesale, shop and reserve</span></div>
+      <div class="row mt">
+        <div style="flex:2"><label>Product code</label>
+          <input type="text" id="r_sku" list="skus" placeholder="scan or type"></div>
+        <div><label>Batch number</label><input type="text" id="r_batch"></div>
+        <div><label>Expiry date</label><input type="date" id="r_exp"></div>
+        <div><label>How many</label><input type="number" id="r_qty" min="1"></div>
+        <div><label>Cost each</label>
+          <input type="number" id="r_cost" step="0.01" min="0" placeholder="unchanged"></div>
+        <div><label>Paid by</label>
+          <select id="r_method">
+            <option value="bank">Bank transfer</option>
+            <option value="cash">Cash</option>
+            <option value="gcash">GCash</option>
+            <option value="card">Card</option>
+          </select></div>
+        ${branchPicker(shops, 'r_branch', 'Arrived at')}
+        <div style="flex:0 0 auto"><button class="btn" id="r_go">Receive</button></div>
+        <div style="flex:0 0 auto"><button class="btn line" id="r_note">📦 Whole delivery</button></div>
       </div>
+      <div class="dim">What this delivery cost is recorded against the money going
+        out, and becomes the product's cost from now on. Leave it blank to keep
+        the cost you already have. What came in is on <b>Inventory</b>, where it
+        can still be undone.</div>
+      <datalist id="skus"></datalist>
+      <div id="r_out" class="mt"></div>
+    </div>
 
-      <div class="panel"><h3>Receiving forms</h3>
-        <div class="dim">The paper the stockroom fills in while the delivery is
-          still on the floor — counted in boxes, with the courier, the shipping
-          and the guard on it. It receives the stock as it records itself, and
-          where it answers a purchase order it ticks that order off too.</div>
-        <div class="row mt">
-          <div style="flex:0 0 auto"><button class="btn" id="rf_new">＋ Record a delivery</button></div>
-        </div>
-        <div id="rf_list" class="mt"></div></div>
-    </div>`;
-
-  $$('[data-wt]', page).forEach((b) => b.addEventListener('click', () => {
-    $$('[data-wt]', page).forEach((x) => x.classList.toggle('on', x === b));
-    $('#wt_incoming', page).hidden = b.dataset.wt !== 'incoming';
-    $('#wt_receiving', page).hidden = b.dataset.wt !== 'receiving';
-  }));
+    <div class="panel"><h3>Receiving forms</h3>
+      <div class="dim">The paper the stockroom fills in while the delivery is
+        still on the floor — counted in boxes, with the courier, the shipping
+        and the guard on it. It receives the stock as it records itself, and
+        where it answers a purchase order it ticks that order off too.</div>
+      <div class="row mt">
+        <div style="flex:0 0 auto"><button class="btn" id="rf_new">＋ Record a delivery</button></div>
+      </div>
+      <div id="rf_list" class="mt"></div></div>`;
 
   GET('/api/products?q=').then((rows) => {
     $('#skus', page).innerHTML = rows.map((p) =>
@@ -2819,20 +2768,6 @@ SCREENS.receive = async (page) => {
     () => deliveryDialog(GET('/api/products?q=').catch(() => []), () => {},
       branchOf(page, 'r_branch')));
 
-  const drawPendingOrders = async () => {
-    const rows = await GET('/api/purchase-orders?status=open').catch(() => []);
-    $('#po_pending_list', page).innerHTML = table(rows, [
-      { head: 'PO No.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
-      { head: 'Date', cell: (o) => onDay(o.ordered_on) },
-      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${
-          o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
-      { head: '', cell: (o) => `<button class="btn sm quiet" data-popending="${o.id}">Open</button>` },
-    ], 'Nothing waiting to be received.');
-    $$('[data-popending]', page).forEach((b) => b.addEventListener('click', () => {
-      openIncomingPO(+b.dataset.popending).catch(whoops);
-    }));
-  };
-
   const drawRFs = async () => {
     const rows = await GET('/api/receiving-forms').catch(() => []);
     $('#rf_list', page).innerHTML = table(rows, [
@@ -2857,7 +2792,6 @@ SCREENS.receive = async (page) => {
   });
 
   suppliers = await GET('/api/suppliers').catch(() => []);
-  await drawPendingOrders();
   await drawRFs();
 };
 
