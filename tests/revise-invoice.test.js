@@ -75,10 +75,8 @@ async function anOrder(admin, store, qty = 4) {
     shelf_life_months: 24,
   });
   assert.equal(made.status, 200, JSON.stringify(made.data));
-  // Receiving lands in shop now; this is a wholesale order, so move it on.
-  const r = await POST(store, '/api/receive',
+  await POST(store, '/api/receive',
     { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 100 });
-  await POST(store, '/api/move', { batchId: r.data.batchId, from: 'shop', to: 'b2b', qty: 100 });
 
   const { data: seller } = await POST(admin, '/api/resellers',
     { name: unique('Reseller'), email: 'buyer@example.ph', tier: 2,
