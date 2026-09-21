@@ -69,8 +69,10 @@ async function anOrder(admin, store) {
     sku, name: `Catalogue name ${sku}`, brand: 'Beau Glow', category: 'Sets',
     unit_cost: 100, wholesale_price: 250, srp: 400, retail_price: 450,
     shelf_life_months: 24 });
-  await POST(store, '/api/receive',
+  // Receiving lands in shop now; this is a wholesale order, so move it on.
+  const r = await POST(store, '/api/receive',
     { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 40 });
+  await POST(store, '/api/move', { batchId: r.data.batchId, from: 'shop', to: 'b2b', qty: 40 });
   const { data } = await POST(admin, '/api/resellers',
     { name: unique('Reseller'), email: 'b@example.ph', tier: 2,
       credit_limit: 1_000_000, terms_days: 15 });

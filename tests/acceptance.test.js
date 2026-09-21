@@ -100,31 +100,30 @@ async function newReseller(admin, { tier = 2, credit_limit = 1_000_000, terms_da
 const receive = (who, sku, months, qty) =>
   POST(who, '/api/receive', { sku, batch_no: unique('B'), expiry: monthsOut(months), qty });
 
+// Receiving lands everything in shop now — a test that needs wholesale or
+// reserve stock moves it there itself, on purpose, the same way a person
+// would from Stockroom's "Move stock between pools".
+const moveTo = (who, batchId, to, qty) =>
+  POST(who, '/api/move', { batchId, from: 'shop', to, qty });
+
 // ===========================================================================
-// A delivery is split across the three pools, and the owner sets the split
+// Receiving lands whole in shop; a product's own split no longer applies
+// there — it is moved on purpose afterwards, with move_stock, not divided
+// automatically by a percentage at the counter.
 // ===========================================================================
-test('a delivery of 100 splits 70 wholesale / 20 shop / 10 reserve, and the split is editable',
+test('a delivery of 100 lands whole in shop, whatever the product split says',
   async () => {
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
-    const sku = await newProduct(admin);
+    const sku = await newProduct(admin, { alloc_b2b: 0.5, alloc_shop: 0.4, alloc_reserve: 0.1 });
 
     const first = await receive(store, sku, 24, 100);
     assert.equal(first.status, 200, JSON.stringify(first.data));
     assert.deepEqual(
       Object.fromEntries(first.data.allocation.map((a) => [a.pool, a.on_hand])),
-      { b2b: 70, shop: 20, reserve: 10 });
+      { shop: 100 });
 
-    const changed = await PUT(admin, `/api/products/${sku}`,
-      { alloc_b2b: 0.5, alloc_shop: 0.4, alloc_reserve: 0.1 });
-    assert.equal(changed.status, 200, JSON.stringify(changed.data));
-
-    const second = await receive(store, sku, 24, 100);
-    assert.deepEqual(
-      Object.fromEntries(second.data.allocation.map((a) => [a.pool, a.on_hand])),
-      { b2b: 50, shop: 40, reserve: 10 });
-
-    // An awkward number must not lose or invent a unit.
+    // An awkward number must not lose or invent a unit either.
     const odd = await receive(store, sku, 24, 7);
     assert.equal(odd.data.allocation.reduce((sum, a) => sum + a.on_hand, 0), 7);
   });
@@ -145,8 +144,9 @@ test('the till cannot reach stock set aside for resellers', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const till = await signIn('cashier');
-  const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-  await receive(store, sku, 24, 50);
+  const sku = await newProduct(admin);
+  const r = await receive(store, sku, 24, 50);
+  await moveTo(store, r.data.batchId, 'b2b', 50);
 
   const sale = await POST(till, '/api/till/sell',
     { lines: [{ sku, qty: 1 }], method: 'cash', tendered: 1000 });
@@ -158,8 +158,9 @@ test('the till cannot reach stock set aside for resellers', async () => {
 test('two resellers going for the last units at the same moment: exactly one wins', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
-  const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-  await receive(store, sku, 24, 5);
+  const sku = await newProduct(admin);
+  const r = await receive(store, sku, 24, 5);
+  await moveTo(store, r.data.batchId, 'b2b', 5);
 
   const one = await signIn('reseller', await newReseller(admin));
   const two = await signIn('reseller', await newReseller(admin));
@@ -188,14 +189,19 @@ test('picking takes the soonest to expire, and skips what a reseller would refus
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const till = await signIn('cashier');
-  const sku = await newProduct(admin, { alloc_b2b: 0.5, alloc_shop: 0.5, alloc_reserve: 0 });
+  const sku = await newProduct(admin);
 
   const short = unique('SHORT');    // 6 months — under the reseller floor
   const mid = unique('MID');        // 18 months — usable, expires first
   const far = unique('FAR');        // 30 months — usable, expires later
-  await POST(store, '/api/receive', { sku, batch_no: short, expiry: monthsOut(6), qty: 40 });
-  await POST(store, '/api/receive', { sku, batch_no: far, expiry: monthsOut(30), qty: 40 });
-  await POST(store, '/api/receive', { sku, batch_no: mid, expiry: monthsOut(18), qty: 40 });
+  const rShort = await POST(store, '/api/receive', { sku, batch_no: short, expiry: monthsOut(6), qty: 40 });
+  const rFar = await POST(store, '/api/receive', { sku, batch_no: far, expiry: monthsOut(30), qty: 40 });
+  const rMid = await POST(store, '/api/receive', { sku, batch_no: mid, expiry: monthsOut(18), qty: 40 });
+  // Half of each batch to wholesale, half stays in shop — reproduces the old
+  // 50/50 house split so the picking amounts below still land the same way.
+  await moveTo(store, rShort.data.batchId, 'b2b', 20);
+  await moveTo(store, rFar.data.batchId, 'b2b', 20);
+  await moveTo(store, rMid.data.batchId, 'b2b', 20);
 
   const buyer = await signIn('reseller', await newReseller(admin));
   const catalogue = await GET(buyer, '/api/portal/catalog');
@@ -265,7 +271,8 @@ test('a new account cannot have goods dispatched until the invoice is paid', asy
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-  await receive(store, sku, 24, 20);
+  const r = await receive(store, sku, 24, 20);
+  await moveTo(store, r.data.batchId, 'b2b', 20);
 
   const buyer = await signIn('reseller',
     await newReseller(admin, { tier: 1, credit_limit: 0, terms_days: 0 }));
@@ -289,7 +296,8 @@ test('a past-due account can still order — the debt is shown, not enforced',
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
     const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-    await receive(store, sku, 24, 100);
+    const r = await receive(store, sku, 24, 100);
+    await moveTo(store, r.data.batchId, 'b2b', 100);
 
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
     const buyer = await signIn('reseller', id);
@@ -316,7 +324,8 @@ test('an order beyond the old credit limit goes through — nothing is refused',
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-  await receive(store, sku, 24, 100);
+  const r = await receive(store, sku, 24, 100);
+  await moveTo(store, r.data.batchId, 'b2b', 100);
 
   const buyer = await signIn('reseller',
     await newReseller(admin, { tier: 2, credit_limit: 1000, terms_days: 30 }));
@@ -329,7 +338,8 @@ test('paying a 30-day invoice within ten days takes 2% off by itself', async () 
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-  await receive(store, sku, 24, 50);
+  const r = await receive(store, sku, 24, 50);
+  await moveTo(store, r.data.batchId, 'b2b', 50);
 
   const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
   const buyer = await signIn('reseller', id);
@@ -350,7 +360,8 @@ test('a past-due account orders freely before and after it pays up', async () =>
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-  await receive(store, sku, 24, 100);
+  const r = await receive(store, sku, 24, 100);
+  await moveTo(store, r.data.batchId, 'b2b', 100);
 
   const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
   const buyer = await signIn('reseller', id);
@@ -382,7 +393,8 @@ test('one payment against the account settles what is open, oldest invoice first
     // 45-day terms so the 30-day early-settlement discount never applies —
     // this test is about which invoice the money goes to, not how much of it.
     const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-    await receive(store, sku, 24, 40);
+    const r = await receive(store, sku, 24, 40);
+    await moveTo(store, r.data.batchId, 'b2b', 40);
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
     const buyer = await signIn('reseller', id);
 
@@ -418,7 +430,8 @@ test('a payment left over once every invoice is closed is credit, not a discrepa
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
     const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-    await receive(store, sku, 24, 10);
+    const r = await receive(store, sku, 24, 10);
+    await moveTo(store, r.data.batchId, 'b2b', 10);
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
     const buyer = await signIn('reseller', id);
     const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });  // ₱2,500
@@ -454,7 +467,8 @@ test('an order placed on a reseller\'s behalf raises the same invoice their own 
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
     const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-    await receive(store, sku, 24, 10);
+    const r = await receive(store, sku, 24, 10);
+    await moveTo(store, r.data.batchId, 'b2b', 10);
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
 
     const order = await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 4 }] }); // ₱1,000
@@ -479,7 +493,8 @@ test('only admin may place an order on a reseller\'s behalf', async () => {
   const store = await signIn('warehouse');
   const till = await signIn('cashier');
   const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-  await receive(store, sku, 24, 10);
+  const r = await receive(store, sku, 24, 10);
+  await moveTo(store, r.data.batchId, 'b2b', 10);
   const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
 
   assert.equal((await POST(store, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 1 }] })).status, 403);
@@ -491,7 +506,8 @@ test('confirming a bank payment through chat orders stamps an OR, in the till\'s
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
     const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-    await receive(store, sku, 24, 10);
+    const r = await receive(store, sku, 24, 10);
+    await moveTo(store, r.data.batchId, 'b2b', 10);
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
     const buyer = await signIn('reseller', id);
     const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] }); // ₱2,500
@@ -548,7 +564,8 @@ test('credit on the account is drawn down the moment the next invoice exists, un
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
     const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-    await receive(store, sku, 24, 20);
+    const r = await receive(store, sku, 24, 20);
+    await moveTo(store, r.data.batchId, 'b2b', 20);
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
     const buyer = await signIn('reseller', id);
 
@@ -748,7 +765,8 @@ test('a warehouse picker sees who an order is for, and whether it is paid, but n
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
     const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-    await receive(store, sku, 24, 20);
+    const r = await receive(store, sku, 24, 20);
+    await moveTo(store, r.data.batchId, 'b2b', 20);
     const buyer = await signIn('reseller',
       await newReseller(admin, { tier: 1, credit_limit: 0, terms_days: 0 }));
     const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 3 }] });
@@ -783,7 +801,8 @@ test('cancelling an order that has not shipped puts the stock back on sale', asy
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-  await receive(store, sku, 24, 10);
+  const r = await receive(store, sku, 24, 10);
+  await moveTo(store, r.data.batchId, 'b2b', 10);
   const buyer = await signIn('reseller', await newReseller(admin));
 
   const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });
@@ -866,7 +885,8 @@ test('marking an order delivered does not take it out of the books', async () =>
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 });
-  await receive(store, sku, 24, 40);
+  const r = await receive(store, sku, 24, 40);
+  await moveTo(store, r.data.batchId, 'b2b', 40);
   const buyer = await signIn('reseller', await newReseller(admin));
 
   const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });
@@ -909,6 +929,7 @@ test('the reserve can only be released by the owner', async () => {
   const sku = await newProduct(admin);
   const received = await receive(store, sku, 24, 100);
   const batchId = received.data.batchId;
+  await moveTo(store, batchId, 'reserve', 10);
 
   const refused = await POST(store, '/api/move',
     { batchId, from: 'reserve', to: 'shop', qty: 5 });
@@ -1144,7 +1165,8 @@ test('a promotion never moves a wholesale price', async () => {
   const store = await signIn('warehouse');
   const sku = await newProduct(admin,
     { unit_cost: 50, wholesale_price: 100, srp: 150, retail_price: 200 });
-  await receive(store, sku, 24, 200);
+  const r = await receive(store, sku, 24, 200);
+  await moveTo(store, r.data.batchId, 'b2b', 200);
   await POST(admin, '/api/promos', { sku, headline: 'Sale', percent: 20, ends: monthsOut(1) });
 
   const resellerId = await newReseller(admin);
@@ -1566,7 +1588,8 @@ test('counter takings and wholesale invoices are never added together', async ()
   const store = await signIn('warehouse');
   const sku = await newProduct(admin,
     { unit_cost: 100, wholesale_price: 150, srp: 180, retail_price: 200 });
-  await receive(store, sku, 24, 200);
+  const r = await receive(store, sku, 24, 200);
+  await moveTo(store, r.data.batchId, 'b2b', 200);
 
   const resellerId = await newReseller(admin);
   const buyer = await signIn('reseller', resellerId);
@@ -1664,7 +1687,8 @@ test('a price code sets the line price, and one without a price refuses the orde
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { wholesale_price: 250 });
-  await receive(store, sku, 24, 60);
+  const r = await receive(store, sku, 24, 60);
+  await moveTo(store, r.data.batchId, 'b2b', 60);
   const reseller = await newReseller(admin);
 
   // Nothing priced yet: naming a code is refused rather than guessed at.
@@ -1724,7 +1748,8 @@ test("a reseller's tax details reach the order they are printed from", async () 
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin);
-  await receive(store, sku, 24, 20);
+  const r = await receive(store, sku, 24, 20);
+  await moveTo(store, r.data.batchId, 'b2b', 20);
   const id = await newReseller(admin);
 
   const saved = await POST(admin, `/api/resellers/${id}/tax`, {
@@ -1814,7 +1839,8 @@ test('four transfers are confirmed separately and receipted once', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { wholesale_price: 250 });
-  await receive(store, sku, 24, 40);
+  const r = await receive(store, sku, 24, 40);
+  await moveTo(store, r.data.batchId, 'b2b', 40);
   const id = await newReseller(admin);
 
   const order = await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 4 }] });
@@ -2048,7 +2074,8 @@ test('one invoice takes its payment in pieces, each with the bank it came throug
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
     const sku = await newProduct(admin, { wholesale_price: 500 });
-    await receive(store, sku, 24, 40);
+    const r = await receive(store, sku, 24, 40);
+    await moveTo(store, r.data.batchId, 'b2b', 40);
     // Fifteen-day terms, so the 2% early-settlement discount — which is a
     // thirty-day rule — stays out of the arithmetic being checked here.
     const id = await newReseller(admin, { terms_days: 15 });
@@ -2100,7 +2127,8 @@ test('more than one invoice owes is refused whole, not half applied', async () =
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin, { wholesale_price: 500 });
-  await receive(store, sku, 24, 40);
+  const r = await receive(store, sku, 24, 40);
+  await moveTo(store, r.data.batchId, 'b2b', 40);
   const id = await newReseller(admin, { terms_days: 15 });
   const placed = await POST(admin, `/api/resellers/${id}/orders`, {
     lines: [{ sku, qty: 20 }],                                      // ₱10,000

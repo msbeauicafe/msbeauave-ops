@@ -245,7 +245,7 @@ test('erasing clears the trading, keeps the people and the catalogue, and restar
 
 const priced = (admin, items) => load(admin, items);
 
-test('a delivery note goes in as one thing, split across the pools line by line',
+test('a delivery note goes in as one thing, landing whole on the shelf line by line',
   async () => {
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
@@ -270,9 +270,9 @@ test('a delivery note goes in as one thing, split across the pools line by line'
 
     const rows = (await GET(admin, '/api/products')).data;
     const first = rows.find((p) => p.sku === 'DEL-01');
-    assert.equal(Number(first.free_b2b), 70, 'the house split still applies per line');
-    assert.equal(Number(first.free_shop), 20);
-    assert.equal(Number(first.free_reserve), 10);
+    assert.equal(Number(first.free_shop), 100, 'receiving lands whole on the shelf, unsplit');
+    assert.equal(Number(first.free_b2b), 0);
+    assert.equal(Number(first.free_reserve), 0);
     assert.equal(Number(first.unit_cost), 50, 'a cost on the note becomes the cost');
   });
 
@@ -345,23 +345,23 @@ test('the counter cannot book stock in', async () => {
 });
 
 // ===========================================================================
-// A shop with no resellers yet
+// Receiving lands on the shelf, whatever a product's own split says
 //
-// The house split holds 70% of every delivery back for wholesale. A shop that
-// has no resellers wants none of that, and the case that catches people out is
-// the small one: under 70/20/10 a delivery of a single unit puts nothing on
-// the shelf at all, because 20% of one rounds down to none.
+// A product's alloc_b2b/alloc_shop/alloc_reserve still exist and still show
+// on the Product list, but receiving no longer reads them — a delivery is no
+// longer the moment stock gets divided between wholesale, shop and reserve.
+// Everything a delivery brings in lands whole in the shop pool; moving part
+// of it on to wholesale or reserve afterwards is a deliberate move_stock
+// call, not something a percentage decides at the counter.
 // ===========================================================================
 
-test('with the split set to shop-only, even one unit reaches the shelf', async () => {
+test('even a product set up for wholesale lands on the shelf when received', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
 
   await load(admin, [{ sku: 'SHOPONLY-01', name: 'Shop Only', category: 'Soaps',
-    unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100 }]);
-  const set = await request(admin, 'PUT', '/api/products/SHOPONLY-01',
-    { alloc_b2b: 0, alloc_shop: 1, alloc_reserve: 0 });
-  assert.equal(set.status, 200, JSON.stringify(set.data));
+    unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100,
+    alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 }]);
 
   for (const qty of [1, 3, 100]) {
     const r = await POST(store, '/api/deliveries', {
@@ -369,29 +369,14 @@ test('with the split set to shop-only, even one unit reaches the shelf', async (
     });
     assert.equal(r.status, 200, JSON.stringify(r.data));
     assert.deepEqual(r.data.received[0].split, { shop: qty },
-      `a delivery of ${qty} should land entirely on the shelf`);
+      `a delivery of ${qty} should land entirely on the shelf, split or no split`);
   }
 
   const p = (await GET(admin, '/api/products')).data.find((x) => x.sku === 'SHOPONLY-01');
   assert.equal(Number(p.free_shop), 104);
-  assert.equal(Number(p.free_b2b), 0, 'nothing is held back for resellers who do not exist');
+  assert.equal(Number(p.free_b2b), 0, 'receiving does not hold anything back for wholesale');
   assert.equal(Number(p.free_reserve), 0);
 });
-
-test('under the house split a delivery of one unit reaches nobody, which is why the above matters',
-  async () => {
-    const admin = await signIn('admin');
-    const store = await signIn('warehouse');
-
-    await load(admin, [{ sku: 'HOUSE-01', name: 'House Split', category: 'Soaps',
-      unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100 }]);
-
-    const r = await POST(store, '/api/deliveries', {
-      lines: [{ sku: 'HOUSE-01', batch_no: unique('H'), expiry: monthsOut(24), qty: 1 }],
-    });
-    assert.deepEqual(r.data.received[0].split, { b2b: 1 },
-      'the single unit goes to wholesale, and the shop still reads as sold out');
-  });
 
 // ===========================================================================
 // The split, set from the price list
@@ -399,24 +384,17 @@ test('under the house split a delivery of one unit reaches nobody, which is why 
 
 test('a price list can set the split, and leaving it off keeps what is there', async () => {
   const admin = await signIn('admin');
-  const store = await signIn('warehouse');
 
   await load(admin, [{ sku: 'SPLIT-01', name: 'Split From List', category: 'Soaps',
     unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100,
     alloc_b2b: 0, alloc_shop: 1, alloc_reserve: 0 }]);
-
-  let r = await POST(store, '/api/deliveries', {
-    lines: [{ sku: 'SPLIT-01', batch_no: unique('S'), expiry: monthsOut(24), qty: 10 }],
-  });
-  assert.deepEqual(r.data.received[0].split, { shop: 10 },
-    'the split came from the list, not the house default');
+  let p = (await GET(admin, '/api/products')).data.find((x) => x.sku === 'SPLIT-01');
+  assert.equal(Number(p.alloc_shop), 1, 'the split came from the list');
 
   // Loaded again with no split column: the product keeps what it has.
   await load(admin, [{ sku: 'SPLIT-01', name: 'Split From List', retail_price: 120 }]);
-  r = await POST(store, '/api/deliveries', {
-    lines: [{ sku: 'SPLIT-01', batch_no: unique('S'), expiry: monthsOut(24), qty: 10 }],
-  });
-  assert.deepEqual(r.data.received[0].split, { shop: 10 },
+  p = (await GET(admin, '/api/products')).data.find((x) => x.sku === 'SPLIT-01');
+  assert.equal(Number(p.alloc_shop), 1,
     'a list without a split column must not quietly reset it to 70/20/10');
 });
 
@@ -437,16 +415,17 @@ test('two thirds of a split is a typo, not a split', async () => {
   assert.match(r.data.error, /all three/);
 });
 
-test('a new product with no split on the list takes the house 70/20/10', async () => {
-  const admin = await signIn('admin');
-  const store = await signIn('warehouse');
-  await load(admin, [{ sku: 'SPLIT-04', name: 'No Split Given', category: 'Soaps',
-    unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100 }]);
-  const r = await POST(store, '/api/deliveries', {
-    lines: [{ sku: 'SPLIT-04', batch_no: unique('S'), expiry: monthsOut(24), qty: 100 }],
+test('a new product with no split on the list still lands whole in the shop on receiving',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    await load(admin, [{ sku: 'SPLIT-04', name: 'No Split Given', category: 'Soaps',
+      unit_cost: 10, wholesale_price: 60, srp: 90, retail_price: 100 }]);
+    const r = await POST(store, '/api/deliveries', {
+      lines: [{ sku: 'SPLIT-04', batch_no: unique('S'), expiry: monthsOut(24), qty: 100 }],
+    });
+    assert.deepEqual(r.data.received[0].split, { shop: 100 });
   });
-  assert.deepEqual(r.data.received[0].split, { b2b: 70, shop: 20, reserve: 10 });
-});
 
 // ===========================================================================
 // Removing a sign-in
@@ -1389,26 +1368,30 @@ async function signInAsReseller() {
   return Object.assign(raw.split(';')[0], { username });
 }
 
-test('a delivery promised to an order cannot be undone', async () => {
-  const admin = await signIn('admin');
-  const store = await signIn('warehouse');
-  const sku = 'RV-HELD';
-  await load(admin, [{ sku, name: 'Reverse Held', category: 'Soaps', unit_cost: 40,
-    wholesale_price: 60, srp: 80, retail_price: 100,
-    alloc_b2b: 1, alloc_shop: 0, alloc_reserve: 0 }]);
+test('a delivery already sent on to wholesale and promised to an order cannot be undone',
+  async () => {
+    const admin = await signIn('admin');
+    const store = await signIn('warehouse');
+    const sku = 'RV-HELD';
+    await load(admin, [{ sku, name: 'Reverse Held', category: 'Soaps', unit_cost: 40,
+      wholesale_price: 60, srp: 80, retail_price: 100 }]);
 
-  const got = await POST(store, '/api/receive',
-    { sku, batch_no: unique('H'), expiry: monthsOut(24), qty: 40 });
-  const batch = Number(got.data.batchId);
+    const got = await POST(store, '/api/receive',
+      { sku, batch_no: unique('H'), expiry: monthsOut(24), qty: 40 });
+    const batch = Number(got.data.batchId);
+    // Received stock lands in shop; reaching a reseller needs an explicit
+    // move first, and that move is itself already enough reason to refuse
+    // an undo — the batch is no longer exactly what arrived.
+    await POST(store, '/api/move', { batchId: batch, from: 'shop', to: 'b2b', qty: 40 });
 
-  const buyer = await signInAsReseller();
-  const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 5 }] });
-  assert.equal(order.status, 200, JSON.stringify(order.data));
+    const buyer = await signInAsReseller();
+    const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 5 }] });
+    assert.equal(order.status, 200, JSON.stringify(order.data));
 
-  const nope = await POST(admin, `/api/receipts/${batch}/undo`, { why: 'wrong quantity' });
-  assert.equal(nope.status, 400);
-  assert.match(nope.data.error, /promised to an order|already on an order/);
-});
+    const nope = await POST(admin, `/api/receipts/${batch}/undo`, { why: 'wrong quantity' });
+    assert.equal(nope.status, 400);
+    assert.match(nope.data.error, /touched since it arrived|promised to an order|already on an order/);
+  });
 
 test('the warehouse can receive a delivery but not unmake one', async () => {
   const admin = await signIn('admin');

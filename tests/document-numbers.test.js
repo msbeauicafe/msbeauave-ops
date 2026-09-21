@@ -88,6 +88,15 @@ async function newReseller(admin) {
   return data.id;
 }
 
+// Receiving lands everything in shop now; a reseller order needs it in
+// wholesale, so tests that place one move it there themselves first.
+async function receiveForResale(who, sku, months, qty) {
+  const r = await POST(who, '/api/receive',
+    { sku, batch_no: unique('B'), expiry: monthsOut(months), qty });
+  await POST(who, '/api/move', { batchId: r.data.batchId, from: 'shop', to: 'b2b', qty });
+  return r;
+}
+
 // The month a number belongs to is Manila's, which is what the trigger uses.
 const stamp = () => {
   const now = new Date().toLocaleDateString('en-CA',
@@ -105,8 +114,7 @@ test('a reseller order is stamped with all three document numbers', async () => 
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin);
-  await POST(store, '/api/receive',
-    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 50 });
+  await receiveForResale(store, sku, 24, 50);
   const seller = await newReseller(admin);
 
   const order = await POST(admin, `/api/resellers/${seller}/orders`, { lines: [{ sku, qty: 2 }] });
@@ -127,8 +135,7 @@ test('the count goes up, and each document counts for itself', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin);
-  await POST(store, '/api/receive',
-    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 80 });
+  await receiveForResale(store, sku, 24, 80);
   const seller = await newReseller(admin);
 
   const first = await POST(admin, `/api/resellers/${seller}/orders`, { lines: [{ sku, qty: 1 }] });
@@ -166,8 +173,7 @@ test('two orders raised at once cannot take the same number', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin);
-  await POST(store, '/api/receive',
-    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 200 });
+  await receiveForResale(store, sku, 24, 200);
   const seller = await newReseller(admin);
 
   // The advisory lock is what makes this safe; the unique index is only the
@@ -195,8 +201,7 @@ test('two orders raised at once cannot take the same number', async () => {
 // ---------------------------------------------------------------------------
 async function anOrder(admin, store) {
   const sku = await newProduct(admin);
-  await POST(store, '/api/receive',
-    { sku, batch_no: unique('B'), expiry: monthsOut(24), qty: 50 });
+  await receiveForResale(store, sku, 24, 50);
   const seller = await newReseller(admin);
   const order = await POST(admin, `/api/resellers/${seller}/orders`, { lines: [{ sku, qty: 1 }] });
   assert.equal(order.status, 200, JSON.stringify(order.data));
