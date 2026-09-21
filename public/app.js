@@ -2698,6 +2698,37 @@ function receiveDelivery({ po, catalogue, shops, suppliers = [], done, over = fa
   });
 }
 
+// Warehouse receiving's own view of an order it is waiting on — its own
+// copy of the doc and the two buttons under it, not a branch of the
+// Purchase order menu's openPO. A change asked for here must never leak
+// onto that other screen, so this is a separate dialog entirely rather
+// than a flag threaded through the shared one.
+async function openIncomingPO(poId) {
+  const po = await GET(`/api/purchase-orders/${poId}`);
+  const stateTag = po.status === 'closed' ? tag('Received', 'green')
+    : po.status === 'part' ? tag('Received w/ Lackings', 'amber')
+    : po.status === 'cancelled' ? tag('Cancelled', 'grey') : tag('Not yet received', 'pink');
+  const doc = purchaseOrder({
+    poNo: po.po_no, orderedOn: po.ordered_on, supplier: po,
+    lines: po.lines, note: po.note, hidePrice: true,
+  });
+  dialog(`
+    <h3>${esc(po.po_no)} <span class="dim">· ${esc(po.supplier)}</span> ${chatBadge(po.chat_link)}</h3>
+    <div class="tags">${stateTag}
+      <span class="dim">Raised ${onDay(po.ordered_on)} by ${esc(po.raised_by)}</span></div>
+    <div class="co-scale">${doc}</div>
+    <div class="co-actions">
+      <button class="btn quiet" id="ip_print">🧾 Print</button>
+      <button class="btn quiet" id="ip_accept">🧾 Accept</button>
+    </div>`, 'po-open');
+
+  $('#ip_print').addEventListener('click', () => showPurchaseOrder(po, true, true));
+  $('#ip_accept').addEventListener('click', () => {
+    closeDialog();
+    document.querySelector('[data-tab="receive"]')?.click();
+  });
+}
+
 SCREENS.receive = async (page) => {
   const shops = await branches();
   let suppliers = [];
@@ -2804,15 +2835,8 @@ SCREENS.receive = async (page) => {
           o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-popending="${o.id}">Open</button>` },
     ], 'Nothing waiting to be received.');
-    $$('[data-popending]', page).forEach((b) => b.addEventListener('click', async () => {
-      // The order's own dialog, without leaving this screen for it: Purchase
-      // order's screen is run against a detached element nobody sees, just
-      // to get at the same openPO it already has — the dialog itself shows
-      // up over whatever's on screen regardless, same as any other.
-      try {
-        const { openPO } = await SCREENS.purchaseorders(document.createElement('div'), true);
-        openPO(+b.dataset.popending, true, true, true, false).catch(whoops);
-      } catch (e) { whoops(e); }
+    $$('[data-popending]', page).forEach((b) => b.addEventListener('click', () => {
+      openIncomingPO(+b.dataset.popending).catch(whoops);
     }));
   };
 
