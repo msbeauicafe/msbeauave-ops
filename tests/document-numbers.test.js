@@ -88,12 +88,12 @@ async function newReseller(admin) {
   return data.id;
 }
 
-// Receiving lands everything in shop now; a reseller order needs it in
-// wholesale, so tests that place one move it there themselves first.
+// Shop and wholesale sell off the same shelf, so a plain receipt is enough
+// to place a reseller order — kept as its own name for what these tests use
+// it for.
 async function receiveForResale(who, sku, months, qty) {
   const r = await POST(who, '/api/receive',
     { sku, batch_no: unique('B'), expiry: monthsOut(months), qty });
-  await POST(who, '/api/move', { batchId: r.data.batchId, from: 'shop', to: 'b2b', qty });
   return r;
 }
 

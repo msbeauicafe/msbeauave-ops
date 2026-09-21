@@ -1368,8 +1368,7 @@ async function signInAsReseller() {
   return Object.assign(raw.split(';')[0], { username });
 }
 
-test('a delivery already sent on to wholesale and promised to an order cannot be undone',
-  async () => {
+test('a delivery promised to an order cannot be undone', async () => {
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
     const sku = 'RV-HELD';
@@ -1379,11 +1378,9 @@ test('a delivery already sent on to wholesale and promised to an order cannot be
     const got = await POST(store, '/api/receive',
       { sku, batch_no: unique('H'), expiry: monthsOut(24), qty: 40 });
     const batch = Number(got.data.batchId);
-    // Received stock lands in shop; reaching a reseller needs an explicit
-    // move first, and that move is itself already enough reason to refuse
-    // an undo — the batch is no longer exactly what arrived.
-    await POST(store, '/api/move', { batchId: batch, from: 'shop', to: 'b2b', qty: 40 });
 
+    // Shop and wholesale sell off the same shelf, so a freshly received
+    // batch is already orderable — no move needed to reach a reseller.
     const buyer = await signInAsReseller();
     const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 5 }] });
     assert.equal(order.status, 200, JSON.stringify(order.data));
