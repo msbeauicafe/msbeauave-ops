@@ -3672,7 +3672,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
   async function openPO(poId, showPricing = false, hidePrice = false, showStatus = false,
     showRightPrice = true) {
     let po = await GET(`/api/purchase-orders/${poId}`);
-    let rfs = showStatus ? await GET(`/api/receiving-forms?po_id=${poId}`).catch(() => []) : [];
     const shops = showStatus ? await branches().catch(() => []) : [];
     const cat = !showPricing ? [] : catalogue.length ? catalogue
       : await GET('/api/products?q=').catch(() => []);
@@ -3688,7 +3687,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
 
     const reload = async () => {
       po = await GET(`/api/purchase-orders/${poId}`);
-      if (showStatus) rfs = await GET(`/api/receiving-forms?po_id=${poId}`).catch(() => []);
       paint();
       drawPOs();
     };
@@ -3725,7 +3723,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
             <div class="co-scale" id="po_doc">${doc}</div>
             <div class="co-actions">
               ${canEdit ? '<button class="btn quiet" id="po_sheet">🧾 Print / download</button>' : ''}
-              <button class="btn quiet" id="po_transfer">🧾 Transfer to Receive</button>
             </div>
           </div>
           <div class="edit-side">
@@ -3798,24 +3795,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
             <div class="basket-sum">
               <div class="sumrow grand"><span>Total</span><span id="po_grand">${peso(grandTotal)}</span></div>
             </div>`}` : ''}
-            ${showStatus ? `
-              <h3 class="mt">Deliveries</h3>
-              <div class="scroll"><table>
-                <thead><tr><th>Date</th><th>Status</th><th></th></tr></thead>
-                <tbody>${rfs.length ? rfs.map((f) => `<tr>
-                  <td>${onDay(f.received_on)}</td>
-                  <td>${stateTag}</td>
-                  <td><button class="btn sm quiet" data-rfopen="${f.id}">Open</button></td>
-                </tr>`).join('') : po.receipts && po.receipts.length ? `<tr>
-                  <td>${onDay(po.receipts[0].received_at)}</td>
-                  <td>${stateTag}</td>
-                  <td><button class="btn sm quiet" id="po_quickopen">Open</button></td>
-                </tr>` : `<tr>
-                  <td>${onDay(po.ordered_on)}</td>
-                  <td>${stateTag}</td>
-                  <td><button class="btn sm quiet" id="po_openreceive">Open</button></td>
-                </tr>`}</tbody>
-              </table></div>` : ''}
             ${showStatus && po.receipts && po.receipts.length ? `
               <h3 class="mt">Receiving log</h3>
               <div class="scroll"><table>
@@ -3862,61 +3841,6 @@ SCREENS.purchaseorders = async (page, headless = false) => {
 
     function wire(canEdit) {
       $('#po_sheet')?.addEventListener('click', () => showPurchaseOrder(po, true, hidePrice));
-
-      $$('[data-rfopen]', $('#po_root')).forEach((b) => b.addEventListener('click', async () => {
-        try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rfopen}`), true); }
-        catch (e) { whoops(e); }
-      }));
-
-      // Not yet received still gets a row and a button, the same shape as
-      // every other state — pressing it opens the delivery form directly,
-      // prefilled from what's still outstanding on this order.
-      $('#po_openreceive')?.addEventListener('click', async () => {
-        closeDialog();
-        document.querySelector('[data-tab="receive"]')?.click();
-        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
-        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload });
-      });
-
-      // What quick-receiving actually left on file — no courier, no
-      // shipping fee, none of the green paperwork's own fields, because
-      // none of that was ever asked for at the time. Just what arrived.
-      $('#po_quickopen')?.addEventListener('click', () => dialog(`
-        <h3>${esc(po.po_no)} <span class="dim">· received</span></h3>
-        <div class="scroll"><table>
-          <thead><tr><th>Product</th><th class="n">Qty</th>
-            <th class="n">Lackings</th><th>Branch</th><th>Received</th></tr></thead>
-          <tbody>${po.receipts.map((r) => `<tr>
-            <td>${esc(r.name)}</td>
-            <td class="n">${count(r.qty_received)}</td>
-            <td class="n">${Number(r.lackings_after) > 0 ? count(r.lackings_after) : '—'}</td>
-            <td>${esc(r.branch || '—')}</td>
-            <td>${when(r.received_at)}</td>
-          </tr>`).join('')}</tbody>
-        </table></div>`, '', true));
-
-      $('#po_transfer')?.addEventListener('click', async () => {
-        // The paperwork may already be on file — from an earlier transfer,
-        // or written up by hand — and pressing this again should do
-        // nothing: no popup of any kind, green form or otherwise. Just
-        // this order's own dialog, unchanged.
-        const already = await GET(`/api/receiving-forms?po_id=${po.id}`).catch(() => []);
-        if (already.length) return;
-
-        if (po.status === 'open') {
-          // Pressing this is a handoff, not a delivery — nothing has
-          // arrived yet as far as this order knows, so nothing is marked
-          // received here. It only moves you to where receiving it
-          // actually happens; filling it in from there is a separate,
-          // deliberate step, not something this button does for you.
-          closeDialog();
-          document.querySelector('[data-tab="receive"]')?.click();
-          return;
-        }
-
-        const goods = cat.length ? cat : await GET('/api/products?q=').catch(() => []);
-        receiveDelivery({ po, catalogue: goods, shops, suppliers, done: reload, useReceived: true, noNav: true });
-      });
 
       // A batch number and an expiry date are the two things stock itself
       // cannot be received without, but nobody is standing at this screen
