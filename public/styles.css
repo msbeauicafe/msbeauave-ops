@@ -1834,15 +1834,32 @@ input.n { text-align: right; }
    fixed 900px column — give the sheet less room so the working table gets
    enough to lay out its columns without a horizontal scrollbar. */
 .dialog.po-open .order-split .co-side { max-width: 740px; }
+/* Product, Quantity, Unit, Status, Received (input + Save) and sometimes
+   Branch, plus the delete button — this table has more columns than the
+   generic edit-side floor (380px) was ever sized for, so below full HD the
+   two sides were staying side by side per the general rule and squeezing
+   the table into ellipsized fragments instead. Give it a floor wide enough
+   to lay out on its own, so flex-wrap drops it to its own full-width row
+   once the screen genuinely can't fit both comfortably. */
+.dialog.po-open .order-split .edit-side { flex-basis: 620px; min-width: 620px; }
+@media (max-width: 680px) {
+  .dialog.po-open .order-split .edit-side { min-width: 0; }
+}
 .dialog.po-open .order-split .edit-side .po-lines-table { table-layout: fixed; }
 .dialog.po-open .order-split .edit-side .po-lines-table th,
 .dialog.po-open .order-split .edit-side .po-lines-table td {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Price/Total are left out of the markup entirely on this table when a
+   caller doesn't want them (see openPO's H), rather than rendered and
+   hidden — a hidden cell still claimed a column's width under
+   table-layout:fixed, which was the dead gap this table used to have
+   between the last real column and the delete button. So column 6 (or 7,
+   with Branch) is always the delete button now, never a phantom column. */
 .dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(1),
-.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) { width: 27%; }
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) { width: 26%; }
 .dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(2),
-.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(2) { width: 9%; }
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(2) { width: 8%; }
 .dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(3),
 .dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(3) { width: 7%; }
 .dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(4),
@@ -1850,33 +1867,35 @@ input.n { text-align: right; }
   width: 13%; overflow: visible; white-space: normal; text-overflow: clip;
 }
 .dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(5),
-.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(5) { width: 16%; overflow: visible; }
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(5) { width: 32%; overflow: visible; }
 .dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(6),
-.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(6) { width: 9%; }
-.dialog.po-open .order-split .edit-side .po-lines-table th:nth-child(7),
-.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(7) { width: 11%; }
+.dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(6) { width: 8%; }
+/* The Received box itself is capped at 84px by the generic .cellbox.n rule
+   everywhere else it's used (Quantity, Price); this is the one place that
+   box needs real room for the Save button beside it. */
+.dialog.po-open .order-split .edit-side .po-lines-table [data-received] {
+  max-width: none; width: 100%;
+}
 
 /* Only when a second branch makes the Branch column real — otherwise the
    columns above already add up to a whole table and this would just steal
    room nobody asked to give up. */
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(1),
-.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(1) { width: 21%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(1) { width: 20%; }
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(2),
-.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(2) { width: 10%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(2) { width: 7%; }
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(3),
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(3) { width: 6%; }
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(4),
-.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(4) { width: 12%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(4) { width: 11%; }
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(5),
-.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(5) { width: 15%; }
+.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(5) { width: 27%; overflow: visible; }
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(6),
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(6) {
   width: 15%; overflow: visible;
 }
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(7),
 .dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(7) { width: 8%; }
-.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col th:nth-child(8),
-.dialog.po-open .order-split .edit-side .po-lines-table.has-branch-col td:nth-child(8) { width: 9%; }
 .dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) b,
 .dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) .dim {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
