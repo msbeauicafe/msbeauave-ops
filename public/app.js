@@ -3662,10 +3662,10 @@ SCREENS.purchaseorders = async (page, headless = false) => {
             <div class="scroll"><table class="po-lines-table${
               showStatus && shops.length > 1 ? ' has-branch-col' : ''}">
               <thead><tr>
-                <th>Product</th><th class="n">Quantity</th><th>Unit</th>
+                <th>Product</th><th class="n">Qty</th><th>Unit</th>
                 ${showStatus ? '<th>Status</th><th class="n">Received</th>' : ''}
                 ${showStatus && shops.length > 1 ? '<th>Branch</th>' : ''}
-                <th class="n" ${H}>Price</th><th class="n" ${H}>Total</th><th></th>
+                ${H ? '' : '<th class="n">Price</th><th class="n">Total</th>'}<th></th>
               </tr></thead>
               <tbody>
                 ${po.lines.map((l) => `<tr data-row="${l.id}">
@@ -3695,11 +3695,11 @@ SCREENS.purchaseorders = async (page, headless = false) => {
                         ${shops.filter((b) => b.active).map((b) =>
                           `<option value="${b.id}">${esc(b.name)}</option>`).join('')}
                       </select></td>` : ''}
-                  <td class="n" ${H}>${canEdit
+                  ${H ? '' : `<td class="n">${canEdit
                     ? `<input class="cellbox open n" data-price inputmode="decimal"
                          value="${l.price != null ? l.price : ''}" placeholder="—" style="width:80px">`
                     : (l.price != null ? peso(l.price) : '—')}</td>
-                  <td class="n" data-tot ${H}>${peso((Number(l.price) || 0) * billQty(l))}</td>
+                  <td class="n" data-tot>${peso((Number(l.price) || 0) * billQty(l))}</td>`}
                   <td class="n">${canEdit
                     ? `<button class="btn sm stop" data-remove="${l.id}"
                          title="Take off this order">✕</button>` : ''}</td>
@@ -3711,9 +3711,9 @@ SCREENS.purchaseorders = async (page, headless = false) => {
                   <td><input class="cellbox open" data-addunit placeholder="PCS" style="width:70px"></td>
                   ${showStatus ? '<td></td><td></td>' : ''}
                   ${showStatus && shops.length > 1 ? '<td></td>' : ''}
-                  <td class="n" ${H}><input class="cellbox open n" data-addprice inputmode="decimal"
+                  ${H ? '' : `<td class="n"><input class="cellbox open n" data-addprice inputmode="decimal"
                         placeholder="—" style="width:80px"></td>
-                  <td class="n" data-tot ${H}>—</td>
+                  <td class="n" data-tot>—</td>`}
                   <td></td>
                 </tr>`).join('')}
               </tbody>
