@@ -49,7 +49,7 @@ test('the panels are the four documents, in the order the work happens', () => {
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
-  assert.deepEqual(panels, ['chatorders', 'draftorders', 'pendingorders', 'coinvoices', 'orders'],
+  assert.deepEqual(panels, ['chatorders', 'draftorders', 'pendingorders', 'coinvoices', 'copacking'],
     'somebody messages, it is taken (or set aside), the account is invoiced, the bench packs it');
 
   assert.match(screen, /SCREENS\[orderPanel\]/,
@@ -264,17 +264,35 @@ test('Record payment has a Packing list button beside Done, and it only opens th
   assert.ok(doneAt > 0 && packAt > 0 && Math.abs(packAt - doneAt) < 120,
     'Packing list sits right beside Done, not off elsewhere in the dialog');
 
-  assert.match(fn, /\$\('\[data-panel="orders"\]'\)\?\.click\(\)/,
+  assert.match(fn, /\$\('\[data-panel="copacking"\]'\)\?\.click\(\)/,
     'clicking it switches to the Packing list tab');
   assert.doesNotMatch(fn, /showPackingList\(/,
     'it does not open the document itself — that is opened by hand from the tab');
 });
 
 test('the packing list screen leads with its own number, not a database id', () => {
-  const at = app.indexOf('SCREENS.orders = async');
+  const at = app.indexOf('SCREENS.copacking = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
   assert.match(screen, /head: 'Packing list', cell: \(o\) => `<b>\$\{esc\(o\.pl_no/,
     'the bench is holding a sheet with PL26_08_004 on it, not #41');
+});
+
+// The tab shows only what has cleared payment. The warehouse's own Pick &
+// send, and the observer's Wholesale, still need every committed order
+// whether or not it is paid — so this is its own screen, not a filter bolted
+// onto the shared one, the same lesson PRs #531-535 already paid for once.
+test('the tab is its own screen, paid orders only — the shared board stays untouched', () => {
+  const at = app.indexOf('SCREENS.copacking = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /\.filter\(\(o\) => o\.invoice_status === 'paid'\)/,
+    'only invoices marked fully paid show here');
+  assert.doesNotMatch(screen, /user\.role === 'warehouse'/,
+    'this copy never speaks for Pick & send — it does not know that heading exists');
+
+  const shared = app.slice(app.indexOf('SCREENS.orders = async'),
+                            app.indexOf('/**\n * One order, opened.'));
+  assert.doesNotMatch(shared, /\.filter\(\(o\) => o\.invoice_status === 'paid'\)/,
+    'Pick & send and Wholesale still show every committed order, paid or not');
 });
 
 test('the panel tabs are plainly subordinate to the menu', () => {
