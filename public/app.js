@@ -7750,6 +7750,7 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
     <div id="ci_log"><div class="dim">Loading…</div></div>
 
     <div class="mt right">
+      <button class="btn quiet" id="ci_pack">🖨 Packing list</button>
       <button class="btn quiet" id="ci_done">Done</button>
       <button class="btn" id="ci_go">Save</button>
     </div>`, 'wide');
@@ -7885,6 +7886,14 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
   });
 
   $('#ci_done').addEventListener('click', closeDialog);
+
+  // Not a shortcut that opens anything itself — just the door to where this
+  // order already sits, on the Packing list tab, for the bench to open on
+  // their own once they are there.
+  $('#ci_pack').addEventListener('click', () => {
+    closeDialog();
+    $('[data-panel="orders"]')?.click();
+  });
 }
 
 /**

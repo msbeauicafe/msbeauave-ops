@@ -253,6 +253,23 @@ test('Record payment shows the whole account\'s invoice log, below Pending payme
   assert.ok(pendingAt > 0 && logAt > pendingAt, 'the log sits below Pending payment');
 });
 
+// The button is a door, not a shortcut — it lands on the tab where the
+// order already sits and leaves opening it to whoever gets there.
+test('Record payment has a Packing list button beside Done, and it only opens the tab', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  const doneAt = fn.indexOf('id="ci_done"');
+  const packAt = fn.indexOf('id="ci_pack"');
+  assert.ok(doneAt > 0 && packAt > 0 && Math.abs(packAt - doneAt) < 120,
+    'Packing list sits right beside Done, not off elsewhere in the dialog');
+
+  assert.match(fn, /\$\('\[data-panel="orders"\]'\)\?\.click\(\)/,
+    'clicking it switches to the Packing list tab');
+  assert.doesNotMatch(fn, /showPackingList\(/,
+    'it does not open the document itself — that is opened by hand from the tab');
+});
+
 test('the packing list screen leads with its own number, not a database id', () => {
   const at = app.indexOf('SCREENS.orders = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
