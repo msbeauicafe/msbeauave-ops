@@ -236,6 +236,21 @@ test('Record payment is its own duplicated form, not the reseller account\'s or 
     'the promise is this invoice\'s own, not a purchase order bill\'s');
 });
 
+// One reseller's invoices land wherever their own dates put them on the
+// main list, next to nobody else's — this is where they are gathered.
+test('Record payment shows the whole account\'s invoice log, below Pending payment', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn, /Invoice log/);
+  assert.match(fn, /GET\(`\/api\/resellers\/\$\{resellerId\}`\)/,
+    'the whole account, not just this one invoice');
+
+  const pendingAt = fn.indexOf('Pending payment');
+  const logAt = fn.indexOf('Invoice log');
+  assert.ok(pendingAt > 0 && logAt > pendingAt, 'the log sits below Pending payment');
+});
+
 test('the packing list screen leads with its own number, not a database id', () => {
   const at = app.indexOf('SCREENS.orders = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
