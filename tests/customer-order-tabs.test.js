@@ -209,10 +209,12 @@ test('the three invoice-row buttons do their own three things', () => {
   assert.match(screen, /showInvoiceDoc\(/, 'Billing statement prints the invoice');
   assert.match(screen, /openOrder\(b\.dataset\.invco, load\)/, 'Customer order opens the order');
 
-  // Record payment only where there is something to pay — a paid or void
-  // invoice has nothing to record against.
-  assert.match(screen, /o\.invoice_status === 'open' \? `<button/,
-    'the button is there only while the invoice is still open');
+  // Record payment shows on every row, paid or void included — the owner
+  // asked for it there regardless, not only while something is still owed.
+  assert.doesNotMatch(screen, /invoice_status === 'open' \? `<button/,
+    'the button no longer waits on the invoice still being open');
+  assert.match(screen, /data-invpay="\$\{o\.invoice_id\}"/,
+    'and is on the row unconditionally');
 });
 
 test('Record payment is its own duplicated form, not the reseller account\'s or a bill\'s', () => {
