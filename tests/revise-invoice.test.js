@@ -197,6 +197,47 @@ test('a cashier cannot revise an invoice', async () => {
   assert.equal(Number((await invoiceOf(orderId)).amount), 1000);
 });
 
+test('a pending payment is a promise, not a transaction', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const { orderId } = await anOrder(admin, store);
+  const invoiceId = (await db.query(
+    'select id from invoices where order_id = $1', [orderId])).rows[0].id;
+  const before = await invoiceOf(orderId);
+
+  const made = await POST(admin, `/api/invoices/${invoiceId}/pending-payments`,
+    { amount: 500, expected_on: '2026-10-15' });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+
+  const list = await GET(admin, `/api/invoices/${invoiceId}/pending-payments`);
+  assert.equal(list.status, 200);
+  assert.equal(list.data.length, 1);
+  assert.equal(Number(list.data[0].amount), 500);
+
+  // It never touches what is actually owed or paid.
+  const after = await invoiceOf(orderId);
+  assert.equal(Number(after.amount), Number(before.amount));
+  assert.equal(Number(after.paid), Number(before.paid));
+
+  const removed = await request(admin, 'DELETE', `/api/invoice-pending-payments/${list.data[0].id}`);
+  assert.equal(removed.status, 200, JSON.stringify(removed.data));
+  assert.equal((await GET(admin, `/api/invoices/${invoiceId}/pending-payments`)).data.length, 0);
+});
+
+test('a cashier cannot promise a payment either', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const { orderId } = await anOrder(admin, store);
+  const invoiceId = (await db.query(
+    'select id from invoices where order_id = $1', [orderId])).rows[0].id;
+
+  const nope = await POST(till, `/api/invoices/${invoiceId}/pending-payments`,
+    { amount: 500, expected_on: '2026-10-15' });
+  assert.ok(nope.status === 403 || nope.status === 401,
+    `a cashier got ${nope.status} rather than being turned away`);
+});
+
 // A sheet that says "SALES ORDER NO. 57" is quoting a number the system made
 // up for itself. The reseller is holding SI26_08_006.
 test('the invoice sheet is headed by its own number', () => {

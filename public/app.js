@@ -7693,46 +7693,171 @@ SCREENS.draftorders = async (page) => {
   await load();
 };
 
-// A duplicate of the reseller account's own payment form, kept apart so a
-// change meant for this row cannot alter what Customers shows. Five blank
-// rows because a reseller settles in instalments — BDO, then GCash, then
-// BPI is three rows, not one.
-async function recordInvoicePayment(invoiceId, siNo, owed, done) {
+// A duplicate of the reseller account's own payment form and of a purchase
+// order bill's own (billPaymentForm), kept apart so a change meant for this
+// row cannot alter either. Five blank rows because a reseller settles in
+// instalments — BDO, then GCash, then BPI is three rows, not one. Pending
+// payment is the same idea as a bill's own (135_pending_bill_payment.sql):
+// what the reseller said and when, kept beside the ledger without ever
+// touching it — this invoice's own copy of that table, not a share of it.
+// A proof photo is filed under the reseller's own gallery (the same place
+// Customers shows it), since a payment here has nowhere of its own to keep one.
+async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, done) {
   dialog(`
     <h3>Record payment — ${esc(siNo || `#${invoiceId}`)}</h3>
-    <div class="dim"><b>${peso(owed)}</b> still on it. Fill in as many rows as
+    <div class="dim"><b id="ci_owed">${peso(owed)}</b> still on it. Fill in as many rows as
       actually landed.</div>
-    ${[0, 1, 2, 3, 4].map((n) => `
+
+    <h3 class="mt">Payments on file</h3>
+    <div class="filegrid" id="ci_prior"><div class="dim">Loading…</div></div>
+
+    <div class="dim mt">Up to five payments at once — fill in as many rows
+      as have actually landed.</div>
+    <div id="ci_rows">${[0, 1, 2, 3, 4].map((n) => `
       <div class="row payrow">
-        <div><label${n ? ' class="sr"' : ''}>Amount received</label>
+        <div><label${n ? ' class="sr"' : ''}>Amount paid</label>
           <input class="ci_amt" type="text" inputmode="decimal"
             placeholder="${n ? '' : '0.00'}"${n ? ''
               : ` value="${Number(owed).toLocaleString('en-US')}"`}></div>
-        <div><label${n ? ' class="sr"' : ''}>Received on</label>
+        <div><label${n ? ' class="sr"' : ''}>Date</label>
           <input class="ci_on" type="date" value="${localDay()}"></div>
-        <div><label${n ? ' class="sr"' : ''}>Through (MOP)</label>
-          <input class="ci_mop" type="text" list="ci_banks" placeholder="BANCO DE ORO (BDO)"></div>
+        <div><label${n ? ' class="sr"' : ''}>Mode of payment</label>
+          <select class="ci_mop">${MOP_OPTIONS.map((m) =>
+            `<option value="${esc(m)}">${esc(m)}</option>`).join('')}</select></div>
         <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
-          <input class="ci_ref" type="text" placeholder="the bank's own reference"></div>
-      </div>`).join('')}
-    ${mopList('ci_banks')}
-    <div class="mt right"><button class="btn" id="ci_save">Record</button></div>`);
+          <input class="ci_ref" type="text"></div>
+        <div><label${n ? ' class="sr"' : ''}>Attachment</label>
+          <input class="ci_file" type="file" accept="image/*"></div>
+      </div>`).join('')}</div>
 
-  $('#ci_save').addEventListener('click', async () => {
-    const rows = $$('.payrow').map((row) => ({
-      amount: row.querySelector('.ci_amt').value,
-      paid_on: row.querySelector('.ci_on').value || null,
-      method: row.querySelector('.ci_mop').value || null,
-      reference_no: row.querySelector('.ci_ref').value || null,
-    })).filter((r) => Number(r.amount) > 0);
-    if (!rows.length) { notice('Fill in at least one row.', 'bad'); return; }
+    <h3 class="mt">Pending payment</h3>
+    <div class="dim">Not a payment yet — what the reseller said and when, so
+      it doesn't get forgotten. Doesn't touch Paid so far or Still owed;
+      record it as an actual payment above once it lands.</div>
+    <div id="ci_pending"><div class="dim">Loading…</div></div>
+    <div class="row pendrow mt">
+      <div><label>Amount paid</label>
+        <input id="cip_amt" type="text" inputmode="decimal" placeholder="0.00"></div>
+      <div><label>Date</label>
+        <input id="cip_on" type="date" value="${localDay()}"></div>
+      <div style="flex:0 0 auto;align-self:flex-end">
+        <button class="btn sm" id="cip_go">Save</button></div>
+    </div>
+
+    <div class="mt right">
+      <button class="btn quiet" id="ci_done">Done</button>
+      <button class="btn" id="ci_go">Save</button>
+    </div>`, 'wide');
+
+  const paintPrior = async () => {
+    const grid = $('#ci_prior');
+    if (!grid) return;
+    const prior = await GET(`/api/resellers/${resellerId}/payments?order_id=${orderId}`).catch(() => []);
+    grid.innerHTML = prior.length ? prior.map((p) => `
+      <figure class="filecard">
+        <span class="filethumb none-photo" style="width:132px;height:96px;
+          display:flex;align-items:center;justify-content:center;
+          border-radius:8px;background:var(--rose-blush);
+          border:1px solid var(--rose-soft)">🧾</span>
+        <figcaption><b>${esc(peso(p.amount))}</b><br>
+          <span class="dim">${onDay(p.paid_on)}${p.method ? ` · ${esc(p.method)}` : ''}${
+            p.reference_no ? ` · ${esc(p.reference_no)}` : ''}</span>
+        </figcaption>
+      </figure>`).join('') : '<div class="dim">None recorded yet.</div>';
+  };
+  await paintPrior();
+
+  const paintPending = async () => {
+    const box = $('#ci_pending');
+    if (!box) return;
+    const pending = await GET(`/api/invoices/${invoiceId}/pending-payments`).catch(() => []);
+    box.innerHTML = pending.length ? pending.map((p) => `
+      <div class="row payrow">
+        <div><b>${esc(peso(p.amount))}</b>
+          <span class="dim">expected ${onDay(p.expected_on)}</span></div>
+        <div style="flex:0 0 auto">
+          <button class="linkbtn del-pending" data-pending="${p.id}">remove</button></div>
+      </div>`).join('') : '<div class="dim">None on file.</div>';
+
+    $$('.del-pending', box).forEach((btn) => btn.addEventListener('click', async () => {
+      if (!await askFirst('Remove this pending payment?')) return;
+      try {
+        await DELETE(`/api/invoice-pending-payments/${btn.dataset.pending}`);
+        await paintPending();
+      } catch (e) { whoops(e); }
+    }));
+  };
+  await paintPending();
+  $('#cip_amt').addEventListener('input', () => comma($('#cip_amt')));
+
+  $('#cip_go').addEventListener('click', async () => {
+    const amount = num($('#cip_amt').value);
+    const expected_on = $('#cip_on').value;
+    if (!(amount > 0)) return whoops(new Error('How much is expected?'));
+    $('#cip_go').disabled = true;
     try {
-      await POST(`/api/invoices/${invoiceId}/payments`, { payments: rows });
-      notice('Payment recorded 🌸', 'good');
-      closeDialog();
-      done();
+      await POST(`/api/invoices/${invoiceId}/pending-payments`, { amount, expected_on });
+      $('#cip_amt').value = '';
+      $('#cip_on').value = localDay();
+      await paintPending();
+      notice('Saved 🌸', 'good');
     } catch (e) { whoops(e); }
+    $('#cip_go').disabled = false;
   });
+
+  $$('.ci_amt', $('#ci_rows')).forEach((el) => el.addEventListener('input', () => comma(el)));
+
+  // The rows reset rather than the dialog closing — recording a payment does
+  // not mean somebody is finished with this invoice, the same way saving a
+  // purchase order bill's payment leaves that dialog open too. Done is its
+  // own button.
+  const resetRows = () => {
+    $$('.payrow', $('#ci_rows')).forEach((row, n) => {
+      $('.ci_amt', row).value = n === 0 && owed > 0 ? Number(owed).toLocaleString('en-US') : '';
+      $('.ci_on', row).value = localDay();
+      $('.ci_mop', row).selectedIndex = 0;
+      $('.ci_ref', row).value = '';
+      $('.ci_file', row).value = '';
+    });
+  };
+
+  $('#ci_go').addEventListener('click', async () => {
+    const rows = $$('.payrow', $('#ci_rows')).map((row) => ({
+      amount: num($('.ci_amt', row).value),
+      paid_on: $('.ci_on', row).value || null,
+      method: $('.ci_mop', row).value || null,
+      reference_no: $('.ci_ref', row).value || null,
+      file: $('.ci_file', row).files[0] || null,
+    })).filter((r) => r.amount > 0);
+    if (!rows.length) { notice('Fill in at least one row.', 'bad'); return; }
+
+    $('#ci_go').disabled = true;
+    try {
+      await POST(`/api/invoices/${invoiceId}/payments`, { payments: rows.map(
+        ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
+      for (const r of rows) {
+        if (r.file) {
+          await POST(`/api/resellers/${resellerId}/files`,
+            { dataUrl: await shrink(r.file, 1600), category: 'payment_proof' });
+        }
+      }
+      // The owed figure the dialog shows should be the one the server just
+      // worked out, not a copy of it done here a second time.
+      await done();
+      const refreshed = (await GET('/api/orders?status=').catch(() => []))
+        .find((o) => String(o.invoice_id) === String(invoiceId));
+      if (refreshed) {
+        owed = Number(refreshed.balance || 0);
+        $('#ci_owed').textContent = peso(owed);
+      }
+      resetRows();
+      await paintPrior();
+      notice('Payment recorded 🌸', 'good');
+    } catch (e) { whoops(e); }
+    $('#ci_go').disabled = false;
+  });
+
+  $('#ci_done').addEventListener('click', closeDialog);
 }
 
 /**
@@ -7768,7 +7893,8 @@ SCREENS.coinvoices = async (page) => {
           <div class="inv-actions">
             ${o.invoice_status === 'open' ? `<button class="btn sm"
                 data-invpay="${o.invoice_id}" data-owed="${o.balance || 0}"
-                data-sino="${esc(o.si_no || '')}">Record payment</button>` : ''}
+                data-sino="${esc(o.si_no || '')}" data-reseller="${o.reseller_id}"
+                data-orderid="${o.id}">Record payment</button>` : ''}
             <button class="btn sm quiet" data-invbill="${o.id}">🖨 Billing statement</button>
             <button class="btn sm quiet" data-invco="${o.id}">🖨 Customer order</button>
           </div>` },
@@ -7777,7 +7903,8 @@ SCREENS.coinvoices = async (page) => {
     const find = (id) => rows.find((o) => String(o.id) === id);
 
     $$('[data-invpay]', page).forEach((b) => b.addEventListener('click',
-      () => recordInvoicePayment(b.dataset.invpay, b.dataset.sino, Number(b.dataset.owed), load)));
+      () => recordInvoicePayment(b.dataset.invpay, b.dataset.sino, Number(b.dataset.owed),
+        b.dataset.reseller, b.dataset.orderid, load)));
 
     $$('[data-invbill]', page).forEach((b) => b.addEventListener('click', async () => {
       const o = find(b.dataset.invbill);

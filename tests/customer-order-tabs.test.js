@@ -215,7 +215,7 @@ test('the three invoice-row buttons do their own three things', () => {
     'the button is there only while the invoice is still open');
 });
 
-test('Record payment is its own duplicated form, not the reseller account\'s', () => {
+test('Record payment is its own duplicated form, not the reseller account\'s or a bill\'s', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   assert.ok(at > 0, 'there is a payment form of its own');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
@@ -223,6 +223,17 @@ test('Record payment is its own duplicated form, not the reseller account\'s', (
     'it posts to the same invoice-payments endpoint the account dialog uses');
   assert.doesNotMatch(fn, /openReseller|\br\.name\b/,
     'built apart from the reseller dialog, not a branch of it');
+  assert.doesNotMatch(fn, /purchase-order-bill/,
+    'built apart from the bill payment form too, not a branch of it');
+
+  // Same shape as the Purchase order Billing statement's own dialog: what
+  // has already landed, five rows to record more, and a promise of what
+  // hasn't landed yet.
+  assert.match(fn, /Payments on file/);
+  assert.match(fn, /class="ci_file" type="file"/, 'each row can carry a proof photo');
+  assert.match(fn, /Pending payment/);
+  assert.match(fn, /\/api\/invoices\/\$\{invoiceId\}\/pending-payments/,
+    'the promise is this invoice\'s own, not a purchase order bill\'s');
 });
 
 test('the packing list screen leads with its own number, not a database id', () => {
