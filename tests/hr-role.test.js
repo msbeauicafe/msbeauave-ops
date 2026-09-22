@@ -164,6 +164,63 @@ test('they can hire somebody, set their pay and run a cutoff', async () => {
     'and they can close it, which used to be the owner only');
 });
 
+// A cutoff no longer waits on somebody clicking Take it off — every running
+// loan or cash advance takes its own per-cutoff amount the moment the
+// cutoff opens, the same arithmetic, run for everyone at once.
+test('a running loan takes itself off automatically when a cutoff opens', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('AutoLoan'), branch?.id ?? null])).rows[0];
+
+  const advance = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'ca', principal: 5000, per_cutoff: 1200,
+      started_on: '2026-01-01', note: 'test' });
+  assert.equal(advance.status, 200, JSON.stringify(advance.data));
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-01-01', ends_on: '2030-01-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const line = (await db.query(
+    'select loans from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+  assert.equal(Number(line.loans), 1200, 'the per-cutoff amount was taken by itself');
+
+  const ledger = (await db.query(
+    'select balance from advance_balances where id = $1', [advance.data.id])).rows[0];
+  assert.equal(Number(ledger.balance), 3800, 'and the ledger agrees with the cutoff');
+});
+
+test('a loan down to less than a cutoff\'s worth only takes what is left', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('AutoLoanSmall'), branch?.id ?? null])).rows[0];
+
+  const advance = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'ca', principal: 500, per_cutoff: 1200,
+      started_on: '2026-01-01', note: 'test' });
+  assert.equal(advance.status, 200, JSON.stringify(advance.data));
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-02-01', ends_on: '2030-02-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const line = (await db.query(
+    'select loans from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+  assert.equal(Number(line.loans), 500, 'capped at what is actually still owed');
+
+  const ledger = (await db.query(
+    'select balance from advance_balances where id = $1', [advance.data.id])).rows[0];
+  assert.equal(Number(ledger.balance), 0, 'and the loan is now settled');
+});
+
 // ---------------------------------------------------------------------------
 // Everything else
 // ---------------------------------------------------------------------------
