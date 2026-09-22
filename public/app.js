@@ -6900,6 +6900,7 @@ SCREENS.birthdays = async (page) => {
 SCREENS.customerorder = async (page) => {
   const PANELS = [
     ['chatorders', 'Chat order'],
+    ['draftorders', 'Draft'],
     ['pendingorders', 'Pending customer order'],
     ['resellers', 'Invoice'],
     ['orders', 'Packing list'],
@@ -6935,10 +6936,15 @@ SCREENS.customerorder = async (page) => {
  * never "how is order 41 doing". It is "what happened to CO26_08_004", and the
  * answer is on the same row as the invoice it became.
  */
+// Two days on the pending list without moving is long enough to be worth
+// flagging — not wrong, just stalled, and worth setting aside on its own tab
+// rather than left crowding the list that is worked from daily.
+const PENDING_STALE_MS = 2 * 24 * 60 * 60 * 1000;
+
 SCREENS.pendingorders = async (page) => {
   const load = async () => {
     const rows = (await GET('/api/orders?status='))
-      .filter((o) => o.status === 'placed' || o.status === 'picking')
+      .filter((o) => (o.status === 'placed' || o.status === 'picking') && !o.parked_at)
       // By customer order number, latest first — the newest CO at the top and
       // the earliest at the bottom. The numbers are fixed-width (CO26_09_011),
       // so ordering the text descending orders them by number; an order not yet
@@ -6946,16 +6952,14 @@ SCREENS.pendingorders = async (page) => {
       .sort((a, b) => (b.co_no || '').localeCompare(a.co_no || ''));
     $('#pending', page).innerHTML = table(rows, [
       { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
+      { head: 'Placed', cell: (o) => `${when(o.placed_at)} `
+          + (o.placed_at && Date.now() - new Date(o.placed_at).getTime() > PENDING_STALE_MS
+            ? `${tag('2+ days', 'amber')}
+               <button class="btn sm quiet" data-park="${o.id}">Draft</button>` : '') },
       { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
           + (o.tier ? tierTag(o.tier) : '') },
       { head: 'Stage', cell: (o) => orderTag(o) },
-      { head: 'Invoice', cell: (o) => o.si_no
-          ? `${esc(o.si_no)}<br><span class="dim">${o.invoice_status === 'open'
-              ? `due ${onDay(o.due_on)}` : esc(o.invoice_status || '')}</span>`
-          : '<span class="dim">not raised</span>' },
-      { head: 'Packing list', cell: (o) => esc(o.pl_no || '—') },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
-      { head: 'Placed', cell: (o) => when(o.placed_at) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>` },
     ], 'Nothing is waiting — every order taken has gone out.');
 
@@ -6969,6 +6973,10 @@ SCREENS.pendingorders = async (page) => {
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openOrder(b.dataset.open, load).catch(whoops)));
+    $$('[data-park]', page).forEach((b) => b.addEventListener('click', async () => {
+      try { await POST(`/api/orders/${b.dataset.park}/park`); notice('Set aside on Draft 🌸', 'good'); await load(); }
+      catch (e) { whoops(e); }
+    }));
   };
 
   page.innerHTML = `
@@ -7643,6 +7651,47 @@ SCREENS.resellers = resellerList('money');
 SCREENS.reselleraccounts = resellerList('account', 1);
 SCREENS.distributoraccounts = resellerList('account', 2);
 SCREENS.retaileraccounts = resellerList('account', 3);
+
+/**
+ * Orders set aside off the Pending customer order list — stalled, not wrong.
+ * Restore puts one straight back; nothing about the order itself changes
+ * while it sits here.
+ */
+SCREENS.draftorders = async (page) => {
+  const load = async () => {
+    const rows = (await GET('/api/orders?status='))
+      .filter((o) => (o.status === 'placed' || o.status === 'picking') && o.parked_at)
+      .sort((a, b) => (b.co_no || '').localeCompare(a.co_no || ''));
+    $('#draft', page).innerHTML = table(rows, [
+      { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
+      { head: 'Placed', cell: (o) => when(o.placed_at) },
+      { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
+          + (o.tier ? tierTag(o.tier) : '') },
+      { head: 'Stage', cell: (o) => orderTag(o) },
+      { head: 'Total', n: true, cell: (o) => peso(o.total) },
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-restore="${o.id}">Restore</button>
+          <button class="btn sm quiet" data-open="${o.id}">Open</button>` },
+    ], 'Nothing set aside.');
+
+    $('#draft_count', page).textContent = rows.length ? `${count(rows.length)} on Draft` : '';
+
+    $$('[data-open]', page).forEach((b) => b.addEventListener('click',
+      () => openOrder(b.dataset.open, load).catch(whoops)));
+    $$('[data-restore]', page).forEach((b) => b.addEventListener('click', async () => {
+      try { await POST(`/api/orders/${b.dataset.restore}/unpark`);
+        notice('Back on Pending customer order 🌸', 'good'); await load(); }
+      catch (e) { whoops(e); }
+    }));
+  };
+
+  page.innerHTML = `
+    <div class="head"><h2>Draft</h2>
+      <span class="hint">Set aside off Pending customer order. Restore brings
+        one back; nothing about the order changes while it waits here</span>
+      <span class="hint" id="draft_count"></span></div>
+    <div id="draft"></div>`;
+  await load();
+};
 
 // Papers (BIR, permits) and bank-transfer proofs on an account: thumbnails that
 // open the full image, each captioned with who put it there and when.
