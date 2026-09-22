@@ -7918,10 +7918,10 @@ SCREENS.coinvoices = async (page) => {
           ? '<span class="dim">—</span>' : peso(o.balance) },
       { head: '', cell: (o) => `
           <div class="inv-actions">
-            ${o.invoice_status === 'open' ? `<button class="btn sm"
+            <button class="btn sm"
                 data-invpay="${o.invoice_id}" data-owed="${o.balance || 0}"
                 data-sino="${esc(o.si_no || '')}" data-reseller="${o.reseller_id}"
-                data-orderid="${o.id}">Record payment</button>` : ''}
+                data-orderid="${o.id}">Record payment</button>
             <button class="btn sm quiet" data-invbill="${o.id}">🖨 Billing statement</button>
             <button class="btn sm quiet" data-invco="${o.id}">🖨 Customer order</button>
           </div>` },
