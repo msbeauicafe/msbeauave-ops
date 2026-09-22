@@ -7744,10 +7744,36 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
         <button class="btn sm" id="cip_go">Save</button></div>
     </div>
 
+    <h3 class="mt">Invoice log — <span id="ci_logwho"></span></h3>
+    <div class="dim">Every invoice on this account, gathered in one place
+      rather than scattered down the list outside.</div>
+    <div id="ci_log"><div class="dim">Loading…</div></div>
+
     <div class="mt right">
       <button class="btn quiet" id="ci_done">Done</button>
       <button class="btn" id="ci_go">Save</button>
     </div>`, 'wide');
+
+  // Gathered here rather than left to be pieced together off the main list,
+  // where the same account's invoices fall wherever their own dates land
+  // them, next to nobody else's.
+  const paintLog = async () => {
+    const box = $('#ci_log');
+    if (!box) return;
+    const acct = await GET(`/api/resellers/${resellerId}`).catch(() => null);
+    if (!acct) { box.innerHTML = '<div class="dim">Could not load.</div>'; return; }
+    $('#ci_logwho').textContent = acct.name;
+    box.innerHTML = table(acct.invoices, [
+      { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no || '—')}</b>` },
+      { head: 'Issued', cell: (i) => onDay(i.issued_on) },
+      { head: 'Standing', cell: (i) => i.status === 'paid' ? tag('paid', 'green')
+          : i.status === 'void' ? tag('void', 'grey')
+          : i.overdue ? tag('past due', 'red') : tag('open', 'amber') },
+      { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
+      { head: 'Bal', n: true, cell: (i) => peso(i.balance) },
+    ], 'No invoices yet.');
+  };
+  await paintLog();
 
   const paintPrior = async () => {
     const grid = $('#ci_prior');
@@ -7852,6 +7878,7 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
       }
       resetRows();
       await paintPrior();
+      await paintLog();
       notice('Payment recorded 🌸', 'good');
     } catch (e) { whoops(e); }
     $('#ci_go').disabled = false;
