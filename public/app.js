@@ -4536,6 +4536,53 @@ async function deliveryDialog(knownPromise, reload, branchId = null) {
 }
 
 // ===========================================================================
+// Packing list — the Customer order tab's own copy, paid orders only. Kept
+// apart from SCREENS.orders below: that one is the warehouse's Pick & send
+// and the same board an observer reads as Wholesale, and both of those need
+// every committed order, paid or not, to actually do the picking. This tab
+// answers a narrower question — what has cleared enough to be packed for —
+// so it is its own screen rather than a branch through the shared one.
+// ===========================================================================
+SCREENS.copacking = async (page) => {
+  let status = '';
+  const load = async () => {
+    const rows = (await GET(`/api/orders?status=${status}`))
+      .filter((o) => o.invoice_status === 'paid');
+    $('#board', page).innerHTML = table(rows, [
+      // The number on the sheet the bench is holding, not the database's own.
+      { head: 'Packing list', cell: (o) => `<b>${esc(o.pl_no || o.id)}</b>` },
+      { head: 'Reseller', cell: (o) => `<b>${esc(o.reseller || '')}</b> `
+          + (o.tier ? tierTag(o.tier) : '') },
+      { head: 'Stage', cell: (o) => orderTag(o) },
+      { head: 'Invoice', cell: (o) => tag(o.invoice_status, 'green') },
+      { head: 'Total', n: true, cell: (o) => peso(o.total) },
+      { head: 'Placed', cell: (o) => when(o.placed_at) },
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>` },
+    ], 'No paid orders here yet.');
+
+    $$('[data-open]', page).forEach((b) => b.addEventListener('click',
+      () => openOrder(b.dataset.open, load, { readOnly: true }).catch(whoops)));
+  };
+
+  page.innerHTML = `
+    <div class="head"><h2>Wholesale orders</h2>
+      <span class="hint">Only what is paid shows here — Pick &amp; send still has everything</span></div>
+    <div class="tools"><select id="stage">
+      <option value="">Every stage</option>
+      <option value="placed">Committed</option>
+      <option value="picking">Being picked</option>
+      <option value="fulfilled">Dispatched</option>
+      <option value="delivered">Delivered</option>
+      <option value="cancelled">Cancelled</option>
+    </select></div>
+    <div class="panel" id="board"></div>`;
+
+  $('#stage', page).addEventListener('change', (e) => { status = e.target.value; load().catch(whoops); });
+  await load();
+  repeat(load);
+};
+
+// ===========================================================================
 // Wholesale orders / picking
 // ===========================================================================
 SCREENS.orders = async (page) => {
@@ -6903,7 +6950,7 @@ SCREENS.customerorder = async (page) => {
     ['draftorders', 'Draft'],
     ['pendingorders', 'Pending customer order'],
     ['coinvoices', 'Invoice'],
-    ['orders', 'Packing list'],
+    ['copacking', 'Packing list'],
   ];
   if (!PANELS.some(([id]) => id === orderPanel)) orderPanel = 'chatorders';
 
@@ -7892,7 +7939,7 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
   // their own once they are there.
   $('#ci_pack').addEventListener('click', () => {
     closeDialog();
-    $('[data-panel="orders"]')?.click();
+    $('[data-panel="copacking"]')?.click();
   });
 }
 
