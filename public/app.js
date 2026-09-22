@@ -12506,6 +12506,9 @@ SCREENS.payroll = async (page) => {
 
   const money = (v) => peso(Number(v || 0));
   const numOr = (v) => (v == null || v === '' ? 0 : Number(v));
+  // The shop's own convention for turning a salary into a day, named once so
+  // both the cutoff table and the pay dialog work out the same number.
+  const MONTH_DAYS = 26;
 
   page.innerHTML = `
     <div class="head"><h2>Payroll</h2>
@@ -12633,6 +12636,13 @@ SCREENS.payroll = async (page) => {
       ? `<input class="cellbox n" type="number" step="${step}" min="0"
            value="${Number(r[field] || 0)}" data-line="${r.id}" data-f="${field}">`
       : count(Number(r[field] || 0));
+    // Same box, a peso figure rather than a count — what somebody is paid on,
+    // corrected here without a trip to Team, and frozen the same as everything
+    // else the moment the cutoff closes.
+    const moneyBox = (r, field) => open
+      ? `<input class="cellbox n" type="number" step="0.01" min="0"
+           value="${Number(r[field] || 0)}" data-line="${r.id}" data-f="${field}">`
+      : money(r[field]);
 
     $('#pr_list', page).innerHTML = table(rows, [
       { head: 'Name', cell: (r) => `<button class="nameopen" data-person="${r.employee_id}"
@@ -12643,13 +12653,13 @@ SCREENS.payroll = async (page) => {
       { head: 'Paid', c: true, cell: (r) => (r.pay_basis === 'monthly'
           ? tag('monthly', 'pink') : tag('daily', 'grey')) },
       { head: 'Salary/month', n: true, cell: (r) => (r.pay_basis === 'monthly'
-          ? money(r.monthly_rate) : '<span class="dim">—</span>') },
+          ? moneyBox(r, 'monthly_rate') : '<span class="dim">—</span>') },
       // Empty for a monthly person. There is a figure behind it — the month
       // over 26 — but it is a reckoning the payslip uses for overtime and
       // lateness, not a rate anybody is paid, and a number in a column headed
       // Rate/day is read as a rate however faintly it is printed.
       { head: 'Rate/day', n: true, cell: (r) => (r.pay_basis === 'monthly'
-          ? '<span class="dim">—</span>' : money(r.daily_rate)) },
+          ? '<span class="dim">—</span>' : moneyBox(r, 'daily_rate')) },
       // The days are still counted for a monthly person — they are worth
       // knowing, and lateness and overtime still come off — but they do not
       // move the basic figure.
@@ -12702,8 +12712,12 @@ SCREENS.payroll = async (page) => {
   // before the round trip. The database stays the authority: what it returns on
   // the next load replaces this.
   const recompute = (r) => {
-    const d = Number(r.daily_rate || 0);
-    r.basic = d * Number(r.days_present || 0);
+    const monthly = r.pay_basis === 'monthly';
+    const d = monthly ? Number(r.monthly_rate || 0) / MONTH_DAYS : Number(r.daily_rate || 0);
+    // Basic for a monthly person is half the month, whatever the clock
+    // counted — that is what monthly means, and it is the one figure days
+    // present does not move.
+    r.basic = monthly ? Number(r.monthly_rate || 0) / 2 : d * Number(r.days_present || 0);
     r.nsd = d / 8 * 0.10 * Number(r.nsd_hours || 0);
     r.overtime = d / 8 * 1.25 * Number(r.ot_hours || 0);
     r.holiday = d * Number(r.holidays || 0);
@@ -12731,12 +12745,16 @@ SCREENS.payroll = async (page) => {
       if (!r) return;
       const cells = $$('td', tr);
       const set = (i, v) => { if (cells[i]) cells[i].innerHTML = v; };
-      set(3, money(r.basic));
-      set(6, money(r.overtime));
-      set(12, `<b>${money(r.total_earnings)}</b>`);
-      set(14, money(r.late_charge));
-      set(19, money(r.total_deductions));
-      set(20, `<b>${money(r.net_pay)}</b>`);
+      // Indices into the column list above — Name, Paid, Salary/month,
+      // Rate/day, Days, Basic, NSD hrs, OT hrs, OT pay, Hol, Spe hol, Leave,
+      // Allow., Adj., Earnings, Late min, Late, SSS, PhilHealth, Pag-IBIG,
+      // Loan/CA, Deductions, Net pay. Move a column there, move it here.
+      set(5, money(r.basic));
+      set(8, money(r.overtime));
+      set(14, `<b>${money(r.total_earnings)}</b>`);
+      set(16, money(r.late_charge));
+      set(21, money(r.total_deductions));
+      set(22, `<b>${money(r.net_pay)}</b>`);
     });
   };
 
@@ -12797,11 +12815,10 @@ SCREENS.payroll = async (page) => {
           this person's Loan/CA on the cutoff, so the two can never disagree.</div>`
         : '<div class="dim">Nothing owed — no cash advance and no loan running.</div>'}`);
 
-    // A month has no hour in it, so one is worked out — the month over the 26
-    // days the shop counts in one — and it prices overtime, night hours and
-    // lateness only. Basic for a monthly person is half the month whatever the
-    // clock counted, which is what monthly means.
-    const MONTH_DAYS = 26;
+    // A month has no hour in it, so one is worked out — the month over the
+    // MONTH_DAYS the shop counts in one — and it prices overtime, night hours
+    // and lateness only. Basic for a monthly person is half the month whatever
+    // the clock counted, which is what monthly means.
     const basis = () => $('#pp_basis')?.value || 'daily';
     const showRates = () => {
       const typed = Number($('#pp_daily')?.value || 0);
