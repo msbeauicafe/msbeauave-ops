@@ -178,6 +178,36 @@ test('an order desk can put a line on at no charge', async () => {
   assert.equal(Number(after.data.total), 0);
 });
 
+test('an order desk can set a stalled order aside and bring it back', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const desk = await signIn('orderdesk');
+  const sku = await stocked(admin, store);
+  const id = await anAccount(admin);
+
+  const placed = await POST(desk, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 2 }] });
+  const order = placed.data.orderId;
+
+  const parked = await POST(desk, `/api/orders/${order}/park`);
+  assert.equal(parked.status, 200, JSON.stringify(parked.data));
+  assert.ok((await GET(desk, `/api/orders?status=`))
+    .data.find((o) => Number(o.id) === Number(order)).parked_at,
+    'the order carries when it was set aside');
+
+  // Parking again, or unparking one that never was, is refused — the flag
+  // only ever moves one way at a time.
+  assert.equal((await POST(desk, `/api/orders/${order}/park`)).status, 400,
+    'already on Draft — parking it twice is not the same as parking it once');
+
+  const restored = await POST(desk, `/api/orders/${order}/unpark`);
+  assert.equal(restored.status, 200, JSON.stringify(restored.data));
+  assert.equal((await GET(desk, `/api/orders?status=`))
+    .data.find((o) => Number(o.id) === Number(order)).parked_at, null, 'and Restore clears it');
+
+  assert.equal((await POST(desk, `/api/orders/${order}/unpark`)).status, 400,
+    'not on Draft — nothing to clear a second time');
+});
+
 // ---------------------------------------------------------------------------
 // The refusals — at the door
 // ---------------------------------------------------------------------------

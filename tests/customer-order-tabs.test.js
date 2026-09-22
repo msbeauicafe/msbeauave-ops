@@ -49,8 +49,8 @@ test('the panels are the four documents, in the order the work happens', () => {
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
-  assert.deepEqual(panels, ['chatorders', 'pendingorders', 'resellers', 'orders'],
-    'somebody messages, it is taken, the account is invoiced, the bench packs it');
+  assert.deepEqual(panels, ['chatorders', 'draftorders', 'pendingorders', 'resellers', 'orders'],
+    'somebody messages, it is taken (or set aside), the account is invoiced, the bench packs it');
 
   assert.match(screen, /SCREENS\[orderPanel\]/,
     'the panel is drawn by the screen it names, not by a copy of it');
@@ -146,16 +146,40 @@ test('the pending list is what is waiting, not everything ever ordered', () => {
   assert.match(screen, /data-open="\$\{o\.id\}"/, 'every row opens');
 });
 
-test('every row carries all three numbers', () => {
+// Invoice and packing-list numbers moved off this row — they are one Open
+// away, on the order itself, and are not why somebody opens this list.
+test('the pending row is the number, when it was placed, who it is for, and what it is worth', () => {
   const at = app.indexOf('SCREENS.pendingorders = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
-  for (const [field, why] of [
-    ['co_no', 'the customer order number is what a reseller quotes'],
-    ['si_no', 'the invoice it became is on the same row'],
-    ['pl_no', 'and the sheet the bench is holding'],
-  ]) {
-    assert.ok(screen.includes(`o.${field}`), `${field} is missing — ${why}`);
+
+  const heads = [...screen.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['Customer order', 'Placed', 'Reseller', 'Stage', 'Total', ''],
+    'in the order the owner asked for');
+  assert.ok(screen.includes('o.co_no'), 'the customer order number is what a reseller quotes');
+  for (const gone of ['si_no', 'pl_no']) {
+    assert.ok(!screen.includes(`o.${gone}`),
+      `${gone} is a panel away now, not a column of this list`);
   }
+});
+
+// A row sitting on Pending for more than two days is not wrong, only stalled
+// — the Draft button next to Placed is the way it is set aside, and it only
+// shows once it has actually been sitting that long.
+test('a stale row offers Draft; a fresh one does not', () => {
+  const at = app.indexOf('SCREENS.pendingorders = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /PENDING_STALE_MS/, 'the two-day threshold is named, not a bare number');
+  assert.match(screen, /data-park="\$\{o\.id\}"/, 'the button parks this row');
+  assert.match(screen, /!o\.parked_at/, 'a parked order drops off Pending by itself');
+});
+
+test('Draft is its own tab, and Restore is the only way back', () => {
+  const at = app.indexOf('SCREENS.draftorders = async');
+  assert.ok(at > 0, 'there is a Draft screen');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /o\.parked_at/, 'Draft shows only what was set aside');
+  assert.match(screen, /data-restore="\$\{o\.id\}"/, 'and can be brought back');
+  assert.match(screen, /\/unpark/, 'by clearing the very thing that put it here');
 });
 
 test('the packing list screen leads with its own number, not a database id', () => {
