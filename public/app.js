@@ -6902,7 +6902,7 @@ SCREENS.customerorder = async (page) => {
     ['chatorders', 'Chat order'],
     ['draftorders', 'Draft'],
     ['pendingorders', 'Pending customer order'],
-    ['resellers', 'Invoice'],
+    ['coinvoices', 'Invoice'],
     ['orders', 'Packing list'],
   ];
   if (!PANELS.some(([id]) => id === orderPanel)) orderPanel = 'chatorders';
@@ -7690,6 +7690,121 @@ SCREENS.draftorders = async (page) => {
         one back; nothing about the order changes while it waits here</span>
       <span class="hint" id="draft_count"></span></div>
     <div id="draft"></div>`;
+  await load();
+};
+
+// A duplicate of the reseller account's own payment form, kept apart so a
+// change meant for this row cannot alter what Customers shows. Five blank
+// rows because a reseller settles in instalments — BDO, then GCash, then
+// BPI is three rows, not one.
+async function recordInvoicePayment(invoiceId, siNo, owed, done) {
+  dialog(`
+    <h3>Record payment — ${esc(siNo || `#${invoiceId}`)}</h3>
+    <div class="dim"><b>${peso(owed)}</b> still on it. Fill in as many rows as
+      actually landed.</div>
+    ${[0, 1, 2, 3, 4].map((n) => `
+      <div class="row payrow">
+        <div><label${n ? ' class="sr"' : ''}>Amount received</label>
+          <input class="ci_amt" type="text" inputmode="decimal"
+            placeholder="${n ? '' : '0.00'}"${n ? ''
+              : ` value="${Number(owed).toLocaleString('en-US')}"`}></div>
+        <div><label${n ? ' class="sr"' : ''}>Received on</label>
+          <input class="ci_on" type="date" value="${localDay()}"></div>
+        <div><label${n ? ' class="sr"' : ''}>Through (MOP)</label>
+          <input class="ci_mop" type="text" list="ci_banks" placeholder="BANCO DE ORO (BDO)"></div>
+        <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
+          <input class="ci_ref" type="text" placeholder="the bank's own reference"></div>
+      </div>`).join('')}
+    ${mopList('ci_banks')}
+    <div class="mt right"><button class="btn" id="ci_save">Record</button></div>`);
+
+  $('#ci_save').addEventListener('click', async () => {
+    const rows = $$('.payrow').map((row) => ({
+      amount: row.querySelector('.ci_amt').value,
+      paid_on: row.querySelector('.ci_on').value || null,
+      method: row.querySelector('.ci_mop').value || null,
+      reference_no: row.querySelector('.ci_ref').value || null,
+    })).filter((r) => Number(r.amount) > 0);
+    if (!rows.length) { notice('Fill in at least one row.', 'bad'); return; }
+    try {
+      await POST(`/api/invoices/${invoiceId}/payments`, { payments: rows });
+      notice('Payment recorded 🌸', 'good');
+      closeDialog();
+      done();
+    } catch (e) { whoops(e); }
+  });
+}
+
+/**
+ * One row per invoice raised — Customers already shows a reseller's whole
+ * account via resellerList('money'), so this is built fresh rather than
+ * branched off it: a row here, and the three papers behind it, without
+ * reaching into what that shared list draws.
+ */
+SCREENS.coinvoices = async (page) => {
+  const standing = (o) => o.invoice_status === 'paid' ? tag('paid', 'green')
+    : o.invoice_status === 'void' ? tag('void', 'grey')
+    : o.invoice_overdue ? tag('past due', 'red') : tag('open', 'amber');
+
+  const load = async () => {
+    const rows = (await GET('/api/orders?status='))
+      .filter((o) => o.invoice_id)
+      // Most recently invoiced first, the same way Pending customer order
+      // reads newest to oldest.
+      .sort((a, b) => new Date(b.invoice_issued_on || b.placed_at)
+        - new Date(a.invoice_issued_on || a.placed_at));
+
+    $('#coinv_list', page).innerHTML = table(rows, [
+      { head: 'Customer order no.', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
+      { head: 'Invoice no.', cell: (o) => esc(o.si_no || '—') },
+      { head: 'Reseller', cell: (o) => esc(o.reseller || '') },
+      { head: 'Tier', cell: (o) => o.tier ? tierTag(o.tier) : '' },
+      { head: 'Issued', cell: (o) => onDay(o.invoice_issued_on || o.placed_at) },
+      { head: 'Standing', cell: standing },
+      { head: 'Amount', n: true, cell: (o) => peso(o.invoice_amount ?? o.total) },
+      { head: 'Bal', n: true, cell: (o) => o.balance == null
+          ? '<span class="dim">—</span>' : peso(o.balance) },
+      { head: '', cell: (o) => `
+          <div class="inv-actions">
+            ${o.invoice_status === 'open' ? `<button class="btn sm"
+                data-invpay="${o.invoice_id}" data-owed="${o.balance || 0}"
+                data-sino="${esc(o.si_no || '')}">Record payment</button>` : ''}
+            <button class="btn sm quiet" data-invbill="${o.id}">🖨 Billing statement</button>
+            <button class="btn sm quiet" data-invco="${o.id}">🖨 Customer order</button>
+          </div>` },
+    ], 'No invoices raised yet.');
+
+    const find = (id) => rows.find((o) => String(o.id) === id);
+
+    $$('[data-invpay]', page).forEach((b) => b.addEventListener('click',
+      () => recordInvoicePayment(b.dataset.invpay, b.dataset.sino, Number(b.dataset.owed), load)));
+
+    $$('[data-invbill]', page).forEach((b) => b.addEventListener('click', async () => {
+      const o = find(b.dataset.invbill);
+      try {
+        const [full, payments] = await Promise.all([
+          GET(`/api/orders/${o.id}`),
+          GET(`/api/resellers/${o.reseller_id}/payments?order_id=${o.id}`).catch(() => []),
+        ]);
+        showInvoiceDoc({
+          over: true, orderId: full.id, issuedOn: full.placed_at, resellerName: full.reseller,
+          payments, who: full, invoiceNo: full.si_no,
+          shipping: Number(full.shipping || 0), others: Number(full.others || 0),
+          lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
+            price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+        });
+      } catch (e) { whoops(e); }
+    }));
+
+    $$('[data-invco]', page).forEach((b) => b.addEventListener('click',
+      () => openOrder(b.dataset.invco, load).catch(whoops)));
+  };
+
+  page.innerHTML = `
+    <div class="head"><h2>Invoice</h2>
+      <span class="hint">One row per invoice raised. Open it to record a
+        payment, print the statement, or the customer order it is for</span></div>
+    <div id="coinv_list"></div>`;
   await load();
 };
 

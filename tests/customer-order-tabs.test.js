@@ -49,7 +49,7 @@ test('the panels are the four documents, in the order the work happens', () => {
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   const panels = [...screen.matchAll(/\['([a-z]+)',\s*'([^']+)'\]/g)].map((m) => m[1]);
-  assert.deepEqual(panels, ['chatorders', 'draftorders', 'pendingorders', 'resellers', 'orders'],
+  assert.deepEqual(panels, ['chatorders', 'draftorders', 'pendingorders', 'coinvoices', 'orders'],
     'somebody messages, it is taken (or set aside), the account is invoiced, the bench packs it');
 
   assert.match(screen, /SCREENS\[orderPanel\]/,
@@ -180,6 +180,49 @@ test('Draft is its own tab, and Restore is the only way back', () => {
   assert.match(screen, /o\.parked_at/, 'Draft shows only what was set aside');
   assert.match(screen, /data-restore="\$\{o\.id\}"/, 'and can be brought back');
   assert.match(screen, /\/unpark/, 'by clearing the very thing that put it here');
+});
+
+// One row per invoice, not one row per reseller — that account-level list
+// stays exactly where it was, resellerList('money'), untouched and unbranched.
+test('the Invoice tab is its own screen, eight columns, built apart from the reseller account list', () => {
+  const at = app.indexOf('SCREENS.coinvoices = async');
+  assert.ok(at > 0, 'there is an Invoice screen of its own');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  const heads = [...screen.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['Customer order no.', 'Invoice no.', 'Reseller', 'Tier',
+    'Issued', 'Standing', 'Amount', 'Bal', ''], 'in the order the owner asked for');
+
+  assert.doesNotMatch(screen, /resellerList/,
+    'built fresh rather than branched off the shared account list');
+
+  for (const btn of [/data-invpay=/, /data-invbill=/, /data-invco=/]) {
+    assert.match(screen, btn, `${btn} is one of the row's three buttons`);
+  }
+});
+
+test('the three invoice-row buttons do their own three things', () => {
+  const at = app.indexOf('SCREENS.coinvoices = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  assert.match(screen, /recordInvoicePayment\(/, 'Record payment opens its own form');
+  assert.match(screen, /showInvoiceDoc\(/, 'Billing statement prints the invoice');
+  assert.match(screen, /openOrder\(b\.dataset\.invco, load\)/, 'Customer order opens the order');
+
+  // Record payment only where there is something to pay — a paid or void
+  // invoice has nothing to record against.
+  assert.match(screen, /o\.invoice_status === 'open' \? `<button/,
+    'the button is there only while the invoice is still open');
+});
+
+test('Record payment is its own duplicated form, not the reseller account\'s', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  assert.ok(at > 0, 'there is a payment form of its own');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  assert.match(fn, /\/api\/invoices\/\$\{invoiceId\}\/payments/,
+    'it posts to the same invoice-payments endpoint the account dialog uses');
+  assert.doesNotMatch(fn, /openReseller|\br\.name\b/,
+    'built apart from the reseller dialog, not a branch of it');
 });
 
 test('the packing list screen leads with its own number, not a database id', () => {
