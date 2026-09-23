@@ -266,9 +266,11 @@ test('the invoice log totals its own Amount and Bal columns', () => {
   assert.match(log, /sum\('balance'\)/, 'the Bal column is summed too');
 
   assert.match(fn, /id="ci_accttotal"/,
-    'the account-wide total also sits up top, beside this invoice\'s own balance');
-  assert.match(log, /\$\('#ci_accttotal'\)/,
-    'and paintLog is what fills it in, the same figures as the table below');
+    'the account-wide total is the one figure at the top of the dialog');
+  assert.doesNotMatch(fn, /id="ci_owed"/,
+    'this one invoice\'s own balance is not what heads the dialog');
+  assert.match(log, /totalBox\.textContent = acct\.invoices\.length \? peso\(sum\('amount'\)\) : ''/,
+    'just the figure, bold and big — no other words in the header');
 });
 
 // The button is a door, not a shortcut — it lands on the tab where the
