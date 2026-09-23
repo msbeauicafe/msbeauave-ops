@@ -12999,6 +12999,10 @@ SCREENS.payroll = async (page) => {
       // Rate/day is read as a rate however faintly it is printed.
       { head: 'Rate/day', n: true, cell: (r) => (r.pay_basis === 'monthly'
           ? '<span class="dim">—</span>' : moneyBox(r, 'daily_rate')) },
+      // What somebody is worth an hour, kept for the office to read back —
+      // not a third way of being paid. Basic never reads this column; daily
+      // and monthly are computed exactly as they always were.
+      { head: 'Rate/hour', n: true, cell: (r) => moneyBox(r, 'hourly_rate') },
       // The days are still counted for a monthly person — they are worth
       // knowing, and lateness and overtime still come off — but they do not
       // move the basic figure.
@@ -13085,15 +13089,16 @@ SCREENS.payroll = async (page) => {
       const cells = $$('td', tr);
       const set = (i, v) => { if (cells[i]) cells[i].innerHTML = v; };
       // Indices into the column list above — Name, Paid, Salary/month,
-      // Rate/day, Days, Basic, NSD hrs, OT hrs, OT pay, Hol, Spe hol, Leave,
-      // Allow., Adj., Earnings, Late min, Late, SSS, PhilHealth, Pag-IBIG,
-      // Loan/CA, Deductions, Net pay. Move a column there, move it here.
-      set(5, money(r.basic));
-      set(8, money(r.overtime));
-      set(14, `<b>${money(r.total_earnings)}</b>`);
-      set(16, money(r.late_charge));
-      set(21, money(r.total_deductions));
-      set(22, `<b>${money(r.net_pay)}</b>`);
+      // Rate/day, Rate/hour, Days, Basic, NSD hrs, OT hrs, OT pay, Hol,
+      // Spe hol, Leave, Allow., Adj., Earnings, Late min, Late, SSS,
+      // PhilHealth, Pag-IBIG, Loan/CA, Deductions, Net pay.
+      // Move a column there, move it here.
+      set(6, money(r.basic));
+      set(9, money(r.overtime));
+      set(15, `<b>${money(r.total_earnings)}</b>`);
+      set(17, money(r.late_charge));
+      set(22, money(r.total_deductions));
+      set(23, `<b>${money(r.net_pay)}</b>`);
     });
   };
 

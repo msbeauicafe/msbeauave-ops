@@ -1402,6 +1402,16 @@ input.n { text-align: right; }
 .scrollx td, .scrollx th { white-space: nowrap; }
 .scrollx td:nth-child(2) { white-space: normal; min-width: 240px; }
 
+/* The payroll cutoff table: two dozen figures wide, and every one of them was
+   being crushed to fit the screen rather than left to scroll for it. table()
+   already wraps every table in .scroll, so this reaches into that rather
+   than adding a second one — and it is its own rule rather than .scrollx,
+   because the column carrying a name and a position underneath it is the
+   first one here, not the second. */
+#pr_list table { min-width: 100%; }
+#pr_list td, #pr_list th { white-space: nowrap; }
+#pr_list td:first-child { white-space: normal; min-width: 180px; }
+
 @media print { .dialog-x { display: none !important; } }
 
 /* ---------- the purchase billing sheet ----------
