@@ -7895,7 +7895,10 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
     });
   };
 
-  $('#ci_go').addEventListener('click', async () => {
+  // Gathers whatever rows actually have an amount in them and saves those as
+  // real payments. Returns false, having done nothing, when the form is
+  // empty — that is not an error, it just means there was nothing to save.
+  const save = async () => {
     const rows = $$('.payrow', $('#ci_rows')).map((row) => ({
       amount: num($('.ci_amt', row).value),
       paid_on: $('.ci_on', row).value || null,
@@ -7903,43 +7906,54 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
       reference_no: $('.ci_ref', row).value || null,
       file: $('.ci_file', row).files[0] || null,
     })).filter((r) => r.amount > 0);
-    if (!rows.length) { notice('Fill in at least one row.', 'bad'); return; }
+    if (!rows.length) return false;
 
+    await POST(`/api/invoices/${invoiceId}/payments`, { payments: rows.map(
+      ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
+    for (const r of rows) {
+      if (r.file) {
+        await POST(`/api/resellers/${resellerId}/files`,
+          { dataUrl: await shrink(r.file, 1600), category: 'payment_proof' });
+      }
+    }
+    // The owed figure the dialog shows should be the one the server just
+    // worked out, not a copy of it done here a second time.
+    await done();
+    const refreshed = (await GET('/api/orders?status=').catch(() => []))
+      .find((o) => String(o.invoice_id) === String(invoiceId));
+    if (refreshed) {
+      owed = Number(refreshed.balance || 0);
+      $('#ci_owed').textContent = peso(owed);
+    }
+    resetRows();
+    await paintPrior();
+    await paintLog();
+    return true;
+  };
+
+  $('#ci_go').addEventListener('click', async () => {
     $('#ci_go').disabled = true;
     try {
-      await POST(`/api/invoices/${invoiceId}/payments`, { payments: rows.map(
-        ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
-      for (const r of rows) {
-        if (r.file) {
-          await POST(`/api/resellers/${resellerId}/files`,
-            { dataUrl: await shrink(r.file, 1600), category: 'payment_proof' });
-        }
-      }
-      // The owed figure the dialog shows should be the one the server just
-      // worked out, not a copy of it done here a second time.
-      await done();
-      const refreshed = (await GET('/api/orders?status=').catch(() => []))
-        .find((o) => String(o.invoice_id) === String(invoiceId));
-      if (refreshed) {
-        owed = Number(refreshed.balance || 0);
-        $('#ci_owed').textContent = peso(owed);
-      }
-      resetRows();
-      await paintPrior();
-      await paintLog();
-      notice('Payment recorded 🌸', 'good');
+      if (await save()) notice('Payment recorded 🌸', 'good');
+      else notice('Fill in at least one row.', 'bad');
     } catch (e) { whoops(e); }
     $('#ci_go').disabled = false;
   });
 
   $('#ci_done').addEventListener('click', closeDialog);
 
-  // Not a shortcut that opens anything itself — just the door to where this
-  // order already sits, on the Packing list tab, for the bench to open on
-  // their own once they are there.
-  $('#ci_pack').addEventListener('click', () => {
-    closeDialog();
-    $('[data-panel="copacking"]')?.click();
+  // The door to where this order already sits, on the Packing list tab, for
+  // the bench to open on their own once they are there — but if a payment
+  // was actually typed into the form first, that is saved on the way out
+  // rather than left behind, since Packing list only shows what is paid.
+  $('#ci_pack').addEventListener('click', async () => {
+    $('#ci_pack').disabled = true;
+    try {
+      await save();
+      closeDialog();
+      $('[data-panel="copacking"]')?.click();
+    } catch (e) { whoops(e); }
+    $('#ci_pack').disabled = false;
   });
 }
 
