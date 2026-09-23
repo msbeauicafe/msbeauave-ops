@@ -253,6 +253,24 @@ test('Record payment shows the whole account\'s invoice log, below Pending payme
   assert.ok(pendingAt > 0 && logAt > pendingAt, 'the log sits below Pending payment');
 });
 
+// The account's invoices, added up, so the total is read here rather than
+// worked out by hand off the rows above.
+test('the invoice log totals its own Amount and Bal columns', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const logAt = fn.indexOf('const paintLog');
+  const log = fn.slice(logAt, fn.indexOf('await paintLog();', logAt));
+
+  assert.match(log, /reduce\(\(s, i\) => s \+ Number\(i\[f\]/, 'the rows are added up');
+  assert.match(log, /sum\('amount'\)/, 'the Amount column is summed');
+  assert.match(log, /sum\('balance'\)/, 'the Bal column is summed too');
+
+  assert.match(fn, /id="ci_accttotal"/,
+    'the account-wide total also sits up top, beside this invoice\'s own balance');
+  assert.match(log, /\$\('#ci_accttotal'\)/,
+    'and paintLog is what fills it in, the same figures as the table below');
+});
+
 // The button is a door, not a shortcut — it lands on the tab where the
 // order already sits and leaves opening it to whoever gets there. But
 // Packing list only shows what is paid, so a payment typed into the form
