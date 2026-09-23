@@ -306,8 +306,8 @@ test('the order is worked on from one screen and read from the other', () => {
 
   const pending = app.slice(app.indexOf('SCREENS.pendingorders = async'),
                             app.indexOf('SCREENS.chatorders = async'));
-  assert.match(pending, /openOrder\(b\.dataset\.open, load\)/,
-    'and the office screen opens it to work on');
+  assert.match(pending, /openPendingOrder\(b\.dataset\.open, load, page\)/,
+    'and the office screen opens its own dialog to work on');
   assert.doesNotMatch(pending, /readOnly/,
     'silence rather than false, so the working side cannot be shut by a typo');
 
