@@ -13481,16 +13481,16 @@ SCREENS.payroll = async (page) => {
       { head: 'Paid', c: true, cell: (r) => (r.pay_basis === 'monthly'
           ? tag('monthly', 'pink') : r.pay_basis === 'hourly'
           ? tag('hourly', 'amber') : tag('daily', 'grey')) },
-      { head: 'Salary/month', n: true, cell: (r) => (r.pay_basis === 'monthly'
+      { head: 'Salary/ month', n: true, cell: (r) => (r.pay_basis === 'monthly'
           ? moneyBox(r, 'monthly_rate') : '<span class="dim">—</span>') },
       // Empty for anybody who is not paid daily. There is a figure behind
       // it either way — the month over 26, or the hourly rate times an
       // eight-hour day — but it is a reckoning the payslip uses for
       // overtime and lateness, not a rate anybody is paid, and a number in
       // a column headed Rate/day is read as a rate however faintly printed.
-      { head: 'Rate/day', n: true, cell: (r) => (r.pay_basis === 'daily'
+      { head: 'Rate/ day', n: true, cell: (r) => (r.pay_basis === 'daily'
           ? moneyBox(r, 'daily_rate') : '<span class="dim">—</span>') },
-      { head: 'Rate/hour', n: true, cell: (r) => (r.pay_basis === 'hourly'
+      { head: 'Rate/ hour', n: true, cell: (r) => (r.pay_basis === 'hourly'
           ? moneyBox(r, 'hourly_rate') : '<span class="dim">—</span>') },
       // The days are still counted for a monthly or hourly person — they
       // are worth knowing, and lateness and overtime still come off — but
@@ -13509,14 +13509,14 @@ SCREENS.payroll = async (page) => {
       { head: 'Leave', n: true, cell: (r) => box(r, 'leave_days', '0.5') },
       { head: 'Allow.', n: true, cell: (r) => box(r, 'allowance', '0.01') },
       { head: 'Adj.', n: true, cell: (r) => box(r, 'adjustment', '0.01') },
-      { head: 'Earnings', n: true, cell: (r) => `<b>${money(r.total_earnings)}</b>` },
+      { head: 'Earn.', n: true, cell: (r) => `<b>${money(r.total_earnings)}</b>` },
       { head: 'Late min', n: true, cell: (r) => box(r, 'late_minutes', '1') },
       { head: 'Late', n: true, cell: (r) => money(r.late_charge) },
       { head: 'SSS', n: true, cell: (r) => box(r, 'sss', '0.01') },
-      { head: 'PhilHealth', n: true, cell: (r) => box(r, 'philhealth', '0.01') },
+      { head: 'Phil Health', n: true, cell: (r) => box(r, 'philhealth', '0.01') },
       { head: 'Pag-IBIG', n: true, cell: (r) => box(r, 'pagibig', '0.01') },
-      { head: 'Loan/CA', n: true, cell: (r) => box(r, 'loans', '0.01') },
-      { head: 'Deductions', n: true, cell: (r) => money(r.total_deductions) },
+      { head: 'Loan/ CA', n: true, cell: (r) => box(r, 'loans', '0.01') },
+      { head: 'Deduct.', n: true, cell: (r) => money(r.total_deductions) },
       { head: 'Net pay', n: true, cell: (r) => `<b>${money(r.net_pay)}</b>` },
     ], picked ? 'Nobody is on this cutoff.' : 'Open a cutoff to start.');
 
