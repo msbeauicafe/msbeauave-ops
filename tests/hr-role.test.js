@@ -221,6 +221,51 @@ test('a loan down to less than a cutoff\'s worth only takes what is left', async
   assert.equal(Number(ledger.balance), 0, 'and the loan is now settled');
 });
 
+// Hourly is a real third way of being paid, not daily wearing a different
+// label — basic comes from the hours the clock actually counted, not a
+// borrowed daily rate.
+test('an hourly person is paid from the hours the clock counted, not a day', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company)
+     values ($1, 'Live Seller Host', $2, 'MS BEAU') returning id`,
+    [unique('Hourly'), branch?.id ?? null])).rows[0];
+
+  const pay = await POST(admin, `/api/team/${emp.id}/pay`,
+    { company: 'MS BEAU', pay_basis: 'hourly', hourly_rate: 100 });
+  assert.equal(pay.status, 200, JSON.stringify(pay.data));
+
+  const checkBasis = (await db.query(
+    'select pay_basis, hourly_rate, daily_rate from employees where id = $1', [emp.id])).rows[0];
+  assert.equal(checkBasis.pay_basis, 'hourly');
+  assert.equal(Number(checkBasis.hourly_rate), 100);
+  assert.equal(Number(checkBasis.daily_rate), 0, 'the rate that is not theirs is cleared');
+
+  // Five hours on the clock, inside the cutoff about to open.
+  await db.query(
+    `insert into shifts (employee_id, business_date, started_at, ended_at)
+     values ($1, '2030-04-05', '2030-04-05 09:00:00+00', '2030-04-05 14:00:00+00')`,
+    [emp.id]);
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-04-01', ends_on: '2030-04-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const line = (await db.query(
+    'select hours_present, days_present from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+  assert.equal(Number(line.hours_present), 5, 'the hours between clocking in and out');
+  assert.equal(Number(line.days_present), 1, 'the day is still counted too');
+
+  const summary = (await db.query(
+    'select basic, daily_rate from payroll_summary where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+  assert.equal(Number(summary.basic), 500, '5 hours at ₱100/hour, not 1 day at anything');
+  assert.equal(Number(summary.daily_rate), 800,
+    'the day-equivalent used for overtime and lateness is the hourly rate times 8');
+});
+
 // A loan whose own Since date has not arrived yet is not this cutoff's
 // business — caught only after five loans across three people were taken
 // off before their agreed start, on 2026-09-23.
