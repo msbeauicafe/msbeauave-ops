@@ -7754,6 +7754,7 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
     <h3>Record payment — ${esc(siNo || `#${invoiceId}`)}</h3>
     <div class="dim"><b id="ci_owed">${peso(owed)}</b> still on it. Fill in as many rows as
       actually landed.</div>
+    <div class="dim" id="ci_accttotal"></div>
 
     <h3 class="mt">Payments on file</h3>
     <div class="filegrid" id="ci_prior"><div class="dim">Loading…</div></div>
@@ -7820,6 +7821,21 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
       { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
       { head: 'Bal', n: true, cell: (i) => peso(i.balance) },
     ], 'No invoices yet.');
+    // Every invoice's own amount added up, so the account's total is read
+    // here rather than added up by hand off the rows above — and again at
+    // the top of the dialog, beside this one invoice's own balance, since
+    // that is the figure asked for where the payment is actually typed in.
+    const sum = (f) => acct.invoices.reduce((s, i) => s + Number(i[f] || 0), 0);
+    if (acct.invoices.length) {
+      box.insertAdjacentHTML('beforeend', `<div class="dim mt" style="text-align:right">
+        Total — Amount <b>${peso(sum('amount'))}</b> · Bal <b>${peso(sum('balance'))}</b></div>`);
+    }
+    const totalBox = $('#ci_accttotal');
+    if (totalBox) {
+      totalBox.textContent = acct.invoices.length
+        ? `${peso(sum('amount'))} across every invoice on this account`
+        : '';
+    }
   };
   await paintLog();
 
