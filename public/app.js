@@ -7376,9 +7376,16 @@ SCREENS.customerorder = async (page) => {
  * answer is on the same row as the invoice it became.
  */
 // Two days on the pending list without moving is long enough to be worth
-// flagging — not wrong, just stalled. Display only: the Draft button that
-// acts on it sits next to Open now, on every row, not only a stale one.
+// flagging — not wrong, just stalled, and the exact count is what tells
+// somebody how stalled: a 2-day order and a 9-day order both used to read
+// "2+ days" alike.
 const PENDING_STALE_MS = 2 * 24 * 60 * 60 * 1000;
+
+// The office still owes for this one — Committed and everything past it has
+// already been paid for or is past worrying about payment, so Draft, which
+// sets it aside unfinished, only belongs on the row still waiting to be paid.
+const pendingAwaitingPayment = (o) =>
+  o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open';
 
 SCREENS.pendingorders = async (page) => {
   const load = async () => {
@@ -7391,15 +7398,20 @@ SCREENS.pendingorders = async (page) => {
       .sort((a, b) => (b.co_no || '').localeCompare(a.co_no || ''));
     $('#pending', page).innerHTML = table(rows, [
       { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
-      { head: 'Placed', cell: (o) => `${when(o.placed_at)} `
-          + (o.placed_at && Date.now() - new Date(o.placed_at).getTime() > PENDING_STALE_MS
-            ? tag('2+ days', 'amber') : '') },
+      { head: 'Placed', cell: (o) => {
+          const days = o.placed_at
+            ? Math.floor((Date.now() - new Date(o.placed_at).getTime()) / (24 * 60 * 60 * 1000))
+            : 0;
+          return `${when(o.placed_at)} ${o.placed_at && Date.now() - new Date(o.placed_at).getTime() > PENDING_STALE_MS
+            ? tag(`${count(days)} days`, 'amber') : ''}`;
+        } },
       { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
           + (o.tier ? tierTag(o.tier) : '') },
       { head: 'Stage', cell: (o) => orderTag(o) },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>
-          <button class="btn sm quiet" data-park="${o.id}">Draft</button>` },
+          ${pendingAwaitingPayment(o)
+            ? `<button class="btn sm quiet" data-park="${o.id}">Draft</button>` : ''}` },
     ], 'Nothing is waiting — every order taken has gone out.');
 
     $('#pending_count', page).textContent = rows.length
