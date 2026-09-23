@@ -1489,6 +1489,19 @@ input.n { text-align: right; }
 .doc.po.rf table.lines td { border-color: #cfe4d7; }
 .doc.po.rf table.lines td i { font-style: normal; color: #2e7d4f; font-weight: 700; }
 .doc.po.rf .notes { border-color: #cfe4d7; width: auto; }
+
+/* The Invoice tab's own billing statement wears the same bones again, the
+   same blue as the INVOICE document it sits beside on that screen — a
+   supplier's bill to MS Beau Ave is orange; a reseller's own account is
+   this blue, the same colour that names it everywhere else on this tab. */
+.doc.po.civbill .rule { border-top-color: #2f5fa8; }
+.doc.po.civbill .po-title h2 { color: #2f5fa8; }
+.doc.po.civbill .barhd { background: #2f5fa8; }
+.doc.po.civbill table.lines th { background: #2f5fa8; border-color: #2f5fa8; }
+.doc.po.civbill table.lines td { border-color: #c3d6ef; }
+.doc.po.civbill table.lines tfoot td { background: #dbe6f7; border-color: #2f5fa8; }
+.doc.po.civbill .notes { border-color: #c3d6ef; }
+.doc.po.civbill .notes .wrote { border-bottom-color: #c3d6ef; }
 .doc.po.rf .notes .wrote { border-bottom-color: #cfe4d7; }
 .doc.po .po-parties.four {
   grid-template-rows: auto auto; row-gap: 10px;
