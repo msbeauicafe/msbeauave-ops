@@ -221,6 +221,36 @@ test('a loan down to less than a cutoff\'s worth only takes what is left', async
   assert.equal(Number(ledger.balance), 0, 'and the loan is now settled');
 });
 
+// A loan whose own Since date has not arrived yet is not this cutoff's
+// business — caught only after five loans across three people were taken
+// off before their agreed start, on 2026-09-23.
+test('a loan is left alone until its own start date arrives', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('NotYetLoan'), branch?.id ?? null])).rows[0];
+
+  const advance = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'sss', loan_type: 'salary', principal: 5000, per_cutoff: 1200,
+      started_on: '2031-01-01', note: 'starts later' });
+  assert.equal(advance.status, 200, JSON.stringify(advance.data));
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-03-01', ends_on: '2030-03-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const line = (await db.query(
+    'select loans from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+  assert.equal(Number(line.loans), 0, 'nothing taken — the cutoff is paid before Since');
+
+  const ledger = (await db.query(
+    'select balance from advance_balances where id = $1', [advance.data.id])).rows[0];
+  assert.equal(Number(ledger.balance), 5000, 'and the ledger has not moved');
+});
+
 // ---------------------------------------------------------------------------
 // Everything else
 // ---------------------------------------------------------------------------

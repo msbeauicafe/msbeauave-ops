@@ -254,8 +254,11 @@ test('Record payment shows the whole account\'s invoice log, below Pending payme
 });
 
 // The button is a door, not a shortcut — it lands on the tab where the
-// order already sits and leaves opening it to whoever gets there.
-test('Record payment has a Packing list button beside Done, and it only opens the tab', () => {
+// order already sits and leaves opening it to whoever gets there. But
+// Packing list only shows what is paid, so a payment typed into the form
+// and left unsaved would make the order look like it never happened —
+// the button saves that on the way out rather than stranding it.
+test('Record payment has a Packing list button beside Done, and it saves on the way out', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
@@ -264,7 +267,10 @@ test('Record payment has a Packing list button beside Done, and it only opens th
   assert.ok(doneAt > 0 && packAt > 0 && Math.abs(packAt - doneAt) < 120,
     'Packing list sits right beside Done, not off elsewhere in the dialog');
 
-  assert.match(fn, /\$\('\[data-panel="copacking"\]'\)\?\.click\(\)/,
+  const packHandler = fn.slice(fn.indexOf("$('#ci_pack').addEventListener"));
+  assert.match(packHandler, /await save\(\);/,
+    'a payment left filled in the form is saved before leaving');
+  assert.match(packHandler, /\$\('\[data-panel="copacking"\]'\)\?\.click\(\)/,
     'clicking it switches to the Packing list tab');
   assert.doesNotMatch(fn, /showPackingList\(/,
     'it does not open the document itself — that is opened by hand from the tab');
