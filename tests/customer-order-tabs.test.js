@@ -182,6 +182,24 @@ test('Draft is its own tab, and Restore is the only way back', () => {
   assert.match(screen, /\/unpark/, 'by clearing the very thing that put it here');
 });
 
+// Chat order's own saved baskets are a different kind of draft — never
+// placed at all, rather than placed and set aside — but they sit on the
+// same list, since that is what was actually asked for: see those people
+// here. Its own read of order_drafts either way, not a share of Chat
+// order's own Drafts dialog.
+test('Draft also lists what Chat order has saved, without reaching into it', () => {
+  const at = app.indexOf('SCREENS.draftorders = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  assert.match(screen, /GET\('\/api\/order-drafts'\)/, 'its own fetch of the same data');
+  assert.match(screen, /\[\.\.\.parked, \.\.\.chatDrafts\]/, 'the two kinds sit on one list');
+  assert.match(screen, /data-dropchat="\$\{o\.id\}"/, 'its own Discard button');
+  assert.match(screen, /DELETE\(`\/api\/order-drafts\/\$\{b\.dataset\.dropchat\}`\)/,
+    'and its own delete call');
+  assert.doesNotMatch(screen, /openDraftsList|reopenDraft/,
+    'Chat order\'s own dialog and basket-reopening logic are untouched');
+});
+
 // One row per invoice, not one row per reseller — that account-level list
 // stays exactly where it was, resellerList('money'), untouched and unbranched.
 test('the Invoice tab is its own screen, eight columns, built apart from the reseller account list', () => {

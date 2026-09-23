@@ -7706,21 +7706,32 @@ SCREENS.retaileraccounts = resellerList('account', 3);
  */
 SCREENS.draftorders = async (page) => {
   const load = async () => {
-    const rows = (await GET('/api/orders?status='))
+    const parked = (await GET('/api/orders?status='))
       .filter((o) => (o.status === 'placed' || o.status === 'picking') && o.parked_at)
       .sort((a, b) => (b.co_no || '').localeCompare(a.co_no || ''));
-    $('#draft', page).innerHTML = table(rows, [
-      { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
-      { head: 'Placed', cell: (o) => when(o.placed_at) },
+    // Chat order's own saved baskets — never placed at all, so there is no
+    // CO number, stage or total to show, only who they are and how many
+    // items are on the shelf. Its own read of order_drafts, not a share of
+    // Chat order's own Drafts dialog.
+    let chatDrafts = [];
+    try { chatDrafts = await GET('/api/order-drafts'); } catch (e) { whoops(e); }
+
+    $('#draft', page).innerHTML = table([...parked, ...chatDrafts], [
+      { head: 'Customer order', cell: (o) => o.co_no
+          ? `<b>${esc(o.co_no)}</b>` : '<span class="dim">—</span>' },
+      { head: 'Placed', cell: (o) => o.placed_at ? when(o.placed_at) : '<span class="dim">—</span>' },
       { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
           + (o.tier ? tierTag(o.tier) : '') },
-      { head: 'Stage', cell: (o) => orderTag(o) },
-      { head: 'Total', n: true, cell: (o) => peso(o.total) },
-      { head: '', cell: (o) => `<button class="btn sm quiet" data-restore="${o.id}">Place order</button>
-          <button class="btn sm quiet" data-open="${o.id}">Open</button>` },
+      { head: 'Stage', cell: (o) => o.co_no ? orderTag(o) : tag(`${count(o.items)} items`, 'grey') },
+      { head: 'Total', n: true, cell: (o) => o.co_no ? peso(o.total) : '<span class="dim">—</span>' },
+      { head: '', cell: (o) => o.co_no
+          ? `<button class="btn sm quiet" data-restore="${o.id}">Place order</button>
+             <button class="btn sm quiet" data-open="${o.id}">Open</button>`
+          : `<button class="btn sm quiet" data-dropchat="${o.id}">Discard</button>` },
     ], 'Nothing set aside.');
 
-    $('#draft_count', page).textContent = rows.length ? `${count(rows.length)} on Draft` : '';
+    $('#draft_count', page).textContent = (parked.length + chatDrafts.length)
+      ? `${count(parked.length + chatDrafts.length)} on Draft` : '';
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openOrder(b.dataset.open, load).catch(whoops)));
@@ -7729,12 +7740,18 @@ SCREENS.draftorders = async (page) => {
         notice('Back on Pending customer order 🌸', 'good'); await load(); }
       catch (e) { whoops(e); }
     }));
+    $$('[data-dropchat]', page).forEach((b) => b.addEventListener('click', async () => {
+      try { await DELETE(`/api/order-drafts/${b.dataset.dropchat}`);
+        notice('Discarded', 'good'); await load(); }
+      catch (e) { whoops(e); }
+    }));
   };
 
   page.innerHTML = `
     <div class="head"><h2>Draft</h2>
-      <span class="hint">Set aside off Pending customer order. Place order brings
-        one back; nothing about the order changes while it waits here</span>
+      <span class="hint">Set aside off Pending customer order, or saved from
+        Chat order and never placed. Place order brings one back; Discard
+        drops a saved basket for good</span>
       <span class="hint" id="draft_count"></span></div>
     <div id="draft"></div>`;
   await load();
