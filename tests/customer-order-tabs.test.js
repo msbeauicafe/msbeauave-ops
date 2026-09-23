@@ -226,7 +226,8 @@ test('the three invoice-row buttons do their own three things', () => {
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   assert.match(screen, /recordInvoicePayment\(/, 'Record payment opens its own form');
-  assert.match(screen, /showInvoiceDoc\(/, 'Billing statement prints the invoice');
+  assert.match(screen, /showInvoiceBillingStatement\(/, 'Billing statement prints the yellow ledger, not the blue invoice');
+  assert.doesNotMatch(screen, /showInvoiceDoc\(/, 'not the blue INVOICE document');
   assert.match(screen, /openOrder\(b\.dataset\.invco, load\)/, 'Customer order opens the order');
 
   // Record payment shows on every row, paid or void included — the owner
@@ -235,6 +236,38 @@ test('the three invoice-row buttons do their own three things', () => {
     'the button no longer waits on the invoice still being open');
   assert.match(screen, /data-invpay="\$\{o\.invoice_id\}"/,
     'and is on the row unconditionally');
+});
+
+// The same bones as the yellow sheet (.doc.po) a purchase order bill
+// prints, in blue instead — its own colour class, not the shared orange,
+// and built fresh rather than calling Purchase order's own function: the
+// bill's version bills MS Beau Ave; this one bills the reseller, so
+// BILLED TO has to read the other way round.
+test('the billing statement is its own function, blue, billing the reseller not MS Beau Ave', () => {
+  const at = app.indexOf('function showInvoiceBillingStatement');
+  assert.ok(at > 0, 'there is a billing statement of its own for the Invoice tab');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn, /doc po invoice-doc civbill/, 'the same sheet bones, its own colour class');
+  assert.doesNotMatch(fn, /billInvoiceDoc\(|showBillInvoice\(/,
+    'Purchase order\'s own billing-statement function is not called from here');
+  assert.match(fn, /BILLED TO/, 'billed to');
+  assert.match(fn, /field\('RESELLER:', order\.reseller\)/,
+    'the reseller is who is billed, not MS Beau Ave');
+  assert.doesNotMatch(fn, /MS BEAU AVE/, 'MS Beau Ave is not printed as the one being billed');
+});
+
+test('civbill is blue, not the shared orange, and does not touch the purchase order colours', () => {
+  const at = css.indexOf('.doc.po.civbill');
+  assert.ok(at > 0, 'the Invoice tab\'s billing statement has its own colour rules');
+  const block = css.slice(at, css.indexOf('\n\n', at));
+  assert.match(block, /#2f5fa8/, 'blue, the same shade the INVOICE title already uses');
+  assert.doesNotMatch(block, /#f5a623|#2e7d4f/,
+    'not the orange purchase-order colour, and not the green receiving-form one either');
+
+  const rfBlock = css.slice(css.indexOf('.doc.po.rf'), css.indexOf('.doc.po.civbill'));
+  assert.doesNotMatch(rfBlock, /#2f5fa8/,
+    'the receiving form\'s own green rules are untouched by this addition');
 });
 
 test('Record payment is its own duplicated form, not the reseller account\'s or a bill\'s', () => {

@@ -5910,6 +5910,90 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
   $('#ivd_done').addEventListener('click', closeDialog);
 }
 
+// The Invoice tab's own Billing statement — the same yellow ledger sheet
+// (.doc.po) Purchase order's bills print, built fresh here rather than
+// called there: that sheet is a supplier billing MS Beau Ave, running the
+// other way round from a reseller's account with MS Beau Ave, so BILLED TO
+// is the reseller here, not "MS BEAU AVE", and the reference number is the
+// customer order, not a purchase order. The blue INVOICE document above
+// this one is a different paper for a different question and stays as it is.
+function showInvoiceBillingStatement(order, payments = []) {
+  const field = (label, value) => `
+    <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
+
+  const amount = Number(order.invoice_amount ?? order.total ?? 0);
+  let running = amount;
+  const charge = `<tr>
+      <td>${onDay(order.invoice_issued_on || order.placed_at)}</td>
+      <td>INVOICE</td>
+      <td class="refno">${esc(order.si_no || order.co_no || '—')}</td>
+      <td class="c">${peso(amount)}</td><td class="c"></td>
+      <td class="c">${peso(running)}</td>
+    </tr>`;
+  const credits = payments.map((p) => {
+    running -= Number(p.amount);
+    return `<tr>
+        <td>${onDay(p.paid_on)}</td>
+        <td>${esc(p.method ? `${p.method} PAYMENT` : 'PAYMENT')}</td>
+        <td class="refno">${esc(p.note || p.reference_no || '')}</td>
+        <td class="c"></td><td class="c">${peso(p.amount)}</td>
+        <td class="c">${peso(running)}</td>
+      </tr>`;
+  }).join('');
+  // 7 rows total — data rows plus just enough blanks to round it out, not
+  // a wall of empty boxes trying to fill a printed page.
+  const BLANKS = Math.max(0, 7 - (1 + payments.length));
+
+  const ledger = `
+      <table class="lines ledger-split">
+        <thead><tr>
+          <th>DATE</th><th>DESCRIPTION</th><th class="refnoh">REFERENCE NO.</th>
+          <th class="moneyh">CHARGES</th><th class="moneyh">CREDITS</th>
+          <th class="moneyh">ACCOUNT BALANCE</th>
+        </tr></thead>
+        <tbody>${charge}${credits}
+          ${Array.from({ length: BLANKS },
+            () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
+        </tbody>
+        <tfoot><tr>
+          <td colspan="5">CURRENT BAL:</td><td class="c">${peso(running)}</td>
+        </tr></tfoot>
+      </table>`;
+
+  const doc = `
+    <div class="doc po invoice-doc civbill">
+      <div class="rule"></div>
+      <div class="po-head logo-right">
+        <div class="po-title">
+          <h2>BILLING STATEMENT</h2>
+          <div class="po-nums">
+            ${field('INVOICE NO.', order.si_no || '—')}
+            ${field('ISSUED', onDay(order.invoice_issued_on || order.placed_at))}
+            ${order.due_on ? field('DUE', onDay(order.due_on)) : ''}
+            ${field('CUSTOMER ORDER', order.co_no)}
+          </div>
+        </div>
+        <img src="/logo.png" alt="MS Beau Ave">
+      </div>
+      <div class="po-parties one">
+        <div>
+          <div class="barhd">BILLED TO</div>
+          ${field('RESELLER:', order.reseller)}
+          ${TAX_LINES.map(([label, key]) => field(label, order[key])).join('')}
+        </div>
+      </div>
+      ${ledger}
+    </div>`;
+
+  dialog(`${doc}
+    <div class="mt right">
+      <button class="btn quiet" id="civd_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
+      <button class="btn" id="civd_done">Done</button></div>`, 'wide invoice-wide');
+  wireSave('#civd_save', '.doc', `${order.si_no || order.co_no}-billing-statement.jpg`);
+  $('#civd_done').addEventListener('click', closeDialog);
+}
+
 /**
  * The warehouse's sheet: what to pick, and a box to tick beside each line.
  *
@@ -8037,13 +8121,7 @@ SCREENS.coinvoices = async (page) => {
           GET(`/api/orders/${o.id}`),
           GET(`/api/resellers/${o.reseller_id}/payments?order_id=${o.id}`).catch(() => []),
         ]);
-        showInvoiceDoc({
-          over: true, orderId: full.id, issuedOn: full.placed_at, resellerName: full.reseller,
-          payments, who: full, invoiceNo: full.si_no,
-          shipping: Number(full.shipping || 0), others: Number(full.others || 0),
-          lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
-            price: l.unit_price, code: l.price_code, unit: l.unit_type })),
-        });
+        showInvoiceBillingStatement(full, payments);
       } catch (e) { whoops(e); }
     }));
 
