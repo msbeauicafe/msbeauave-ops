@@ -4798,6 +4798,22 @@ async function openPendingOrder(id, reload, page) {
     $('#pl_sub').textContent = peso(sub);
     $('#pl_total').textContent = peso(sub + ship + oth);
 
+    // The printed sheet on the left is read off this same working list, so a
+    // product swapped, a price corrected or a line dropped shows there as it
+    // happens rather than waiting for Save the changes to catch it up.
+    const scaleBox = $('#dialog .co-scale');
+    if (scaleBox) {
+      scaleBox.innerHTML = customerOrderForm({
+        orderId: o.id, orderNo: o.co_no, issuedOn: o.placed_at || o.issued_on || new Date(),
+        amount: sub + ship + oth, resellerName: o.reseller,
+        lines: rows.filter((l) => l.qty > 0).map((l) => ({
+          sku: l.sku, name: l.name, qty: l.qty, price: l.price,
+          code: l.typed ? '' : l.code, unit: l.unit })),
+        who: o, shipping: ship, others: oth,
+      });
+      scaleCoForm();
+    }
+
     if (!canEdit) return;
 
     const empty = !rows.some((l) => l.qty > 0);
@@ -4922,7 +4938,13 @@ async function openPendingOrder(id, reload, page) {
   // Not a document to open over this one — the Invoice tab is where this
   // order's invoice is recorded against and printed from, so the button
   // takes the whole screen there rather than popping a second dialog.
-  $('#pl_invoice')?.addEventListener('click', () => {
+  // Pushing it also says the office has raised the invoice and moved this
+  // order along — Pending's own Stage reads Committed for it from here on,
+  // whatever payment alone would still call it.
+  $('#pl_invoice')?.addEventListener('click', async () => {
+    try {
+      await POST(`/api/orders/${id}/commit`);
+    } catch (e) { whoops(e); return; }
     closeDialog();
     orderPanel = 'coinvoices';
     const outer = page.parentElement;
@@ -7382,10 +7404,30 @@ SCREENS.customerorder = async (page) => {
 const PENDING_STALE_MS = 2 * 24 * 60 * 60 * 1000;
 
 // The office still owes for this one — Committed and everything past it has
-// already been paid for or is past worrying about payment, so Draft, which
-// sets it aside unfinished, only belongs on the row still waiting to be paid.
+// already been paid for, or has otherwise been moved along by Invoice, so
+// Draft, which sets it aside unfinished, only belongs on the row still
+// waiting to be paid.
 const pendingAwaitingPayment = (o) =>
-  o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open';
+  !o.committed_at && o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open';
+
+// This tab's own reading of Stage — the same one orderTag draws, except once
+// the office has pushed Invoice on an order (committed_at set) it reads
+// Committed from then on, regardless of what tier or payment alone would
+// still call it. orderTag itself is untouched: every other screen that
+// shows a stage still reads payment status straight, and committed_at is
+// only ever set or read here.
+const pendingStageTag = (o) => {
+  if (o.delivered_at) return tag('Delivered', 'green');
+  if (!o.committed_at && o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open') {
+    return tag('Awaiting payment', 'amber');
+  }
+  return {
+    placed: tag('Committed', 'pink'),
+    picking: tag('Picking', 'amber'),
+    fulfilled: tag('Dispatched', 'green'),
+    cancelled: tag('Cancelled', 'grey'),
+  }[o.status] ?? tag(o.status, 'grey');
+};
 
 SCREENS.pendingorders = async (page) => {
   const load = async () => {
@@ -7407,7 +7449,7 @@ SCREENS.pendingorders = async (page) => {
         } },
       { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
           + (o.tier ? tierTag(o.tier) : '') },
-      { head: 'Stage', cell: (o) => orderTag(o) },
+      { head: 'Stage', cell: (o) => pendingStageTag(o) },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>
           ${pendingAwaitingPayment(o)
