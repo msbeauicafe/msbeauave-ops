@@ -162,16 +162,26 @@ test('the pending row is the number, when it was placed, who it is for, and what
   }
 });
 
-// Every row offers Draft now, not only one sitting stalled for two days —
-// beside Open, not tucked under the Placed date. The 2+ days tag itself
-// stays, as a flag rather than the only way to the button.
-test('every row offers Draft, beside Open; the 2+ days tag is display only now', () => {
+// Draft sits beside Open, but only on a row still awaiting payment — an
+// order already Committed or further along is not somebody's to set aside
+// unfinished any more. The stale flag names the actual day count now, not
+// a flat "2+ days" that read the same at day 2 and day 9.
+test('Draft only offers on a row still awaiting payment; the stale tag names the day', () => {
+  const before = app.slice(0, app.indexOf('SCREENS.pendingorders = async'));
+  assert.match(before, /const pendingAwaitingPayment = \(o\) =>/,
+    "Pending customer order's own check, not a branch of the shared orderTag");
+  assert.match(before, /o\.status === 'placed' && o\.tier === 1 && o\.invoice_status === 'open'/,
+    'the same reading "Awaiting payment" is drawn from, kept in step by hand');
+
   const at = app.indexOf('SCREENS.pendingorders = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
   assert.match(screen, /PENDING_STALE_MS/, 'the two-day threshold is still named, not a bare number');
-  assert.match(screen, /tag\('2\+ days', 'amber'\)/, 'and the tag itself still shows on a stale row');
-  assert.match(screen, /data-open="\$\{o\.id\}"[\s\S]{0,80}data-park="\$\{o\.id\}"/,
-    'Draft sits right beside Open, in the same row and same column');
+  assert.doesNotMatch(screen, /tag\('2\+ days', 'amber'\)/,
+    'the flat "2+ days" wording is gone');
+  assert.match(screen, /tag\(`\$\{count\(days\)\} days`, 'amber'\)/,
+    'a row past the threshold says how many days, not just that it is stale');
+  assert.match(screen, /data-open="\$\{o\.id\}"[\s\S]{0,120}pendingAwaitingPayment\(o\)[\s\S]{0,80}data-park="\$\{o\.id\}"/,
+    'Draft sits beside Open, but only for a row awaiting payment');
   assert.match(screen, /!o\.parked_at/, 'a parked order drops off Pending by itself');
 });
 
