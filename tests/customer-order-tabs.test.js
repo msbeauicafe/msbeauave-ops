@@ -162,14 +162,16 @@ test('the pending row is the number, when it was placed, who it is for, and what
   }
 });
 
-// A row sitting on Pending for more than two days is not wrong, only stalled
-// — the Draft button next to Placed is the way it is set aside, and it only
-// shows once it has actually been sitting that long.
-test('a stale row offers Draft; a fresh one does not', () => {
+// Every row offers Draft now, not only one sitting stalled for two days —
+// beside Open, not tucked under the Placed date. The 2+ days tag itself
+// stays, as a flag rather than the only way to the button.
+test('every row offers Draft, beside Open; the 2+ days tag is display only now', () => {
   const at = app.indexOf('SCREENS.pendingorders = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
-  assert.match(screen, /PENDING_STALE_MS/, 'the two-day threshold is named, not a bare number');
-  assert.match(screen, /data-park="\$\{o\.id\}"/, 'the button parks this row');
+  assert.match(screen, /PENDING_STALE_MS/, 'the two-day threshold is still named, not a bare number');
+  assert.match(screen, /tag\('2\+ days', 'amber'\)/, 'and the tag itself still shows on a stale row');
+  assert.match(screen, /data-open="\$\{o\.id\}"[\s\S]{0,80}data-park="\$\{o\.id\}"/,
+    'Draft sits right beside Open, in the same row and same column');
   assert.match(screen, /!o\.parked_at/, 'a parked order drops off Pending by itself');
 });
 
