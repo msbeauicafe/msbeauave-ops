@@ -1402,15 +1402,19 @@ input.n { text-align: right; }
 .scrollx td, .scrollx th { white-space: nowrap; }
 .scrollx td:nth-child(2) { white-space: normal; min-width: 240px; }
 
-/* The payroll cutoff table: two dozen figures wide, and every one of them was
-   being crushed to fit the screen rather than left to scroll for it. table()
-   already wraps every table in .scroll, so this reaches into that rather
-   than adding a second one — and it is its own rule rather than .scrollx,
-   because the column carrying a name and a position underneath it is the
-   first one here, not the second. */
-#pr_list table { min-width: 100%; }
-#pr_list td, #pr_list th { white-space: nowrap; }
-#pr_list td:first-child { white-space: normal; min-width: 180px; }
+/* The payroll cutoff table: two dozen figures wide. Scrolling for them
+   sideways was tried and asked back out of — the owner wants the whole
+   table in view at once, so every column gives up its own width instead
+   and takes a fixed, even share of the screen, however tight. Fixed table
+   layout is what makes that a guarantee rather than a hope: it sizes
+   columns from the CSS alone, never from what a figure needs to fit. */
+#pr_list table { table-layout: fixed; min-width: 0; font-size: .72rem; }
+#pr_list th, #pr_list td {
+  white-space: normal; padding: 4px 3px;
+  overflow-wrap: break-word; hyphens: auto;
+}
+#pr_list td:first-child, #pr_list th:first-child { white-space: normal; width: 12%; min-width: 0; }
+#pr_list .cellbox.n { min-width: 0; max-width: none; padding: 2px 2px; font-size: .72rem; }
 
 @media print { .dialog-x { display: none !important; } }
 
