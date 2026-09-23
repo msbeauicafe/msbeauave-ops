@@ -6984,8 +6984,8 @@ SCREENS.customerorder = async (page) => {
  * answer is on the same row as the invoice it became.
  */
 // Two days on the pending list without moving is long enough to be worth
-// flagging — not wrong, just stalled, and worth setting aside on its own tab
-// rather than left crowding the list that is worked from daily.
+// flagging — not wrong, just stalled. Display only: the Draft button that
+// acts on it sits next to Open now, on every row, not only a stale one.
 const PENDING_STALE_MS = 2 * 24 * 60 * 60 * 1000;
 
 SCREENS.pendingorders = async (page) => {
@@ -7001,13 +7001,13 @@ SCREENS.pendingorders = async (page) => {
       { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
       { head: 'Placed', cell: (o) => `${when(o.placed_at)} `
           + (o.placed_at && Date.now() - new Date(o.placed_at).getTime() > PENDING_STALE_MS
-            ? `${tag('2+ days', 'amber')}
-               <button class="btn sm quiet" data-park="${o.id}">Draft</button>` : '') },
+            ? tag('2+ days', 'amber') : '') },
       { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
           + (o.tier ? tierTag(o.tier) : '') },
       { head: 'Stage', cell: (o) => orderTag(o) },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
-      { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>` },
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>
+          <button class="btn sm quiet" data-park="${o.id}">Draft</button>` },
     ], 'Nothing is waiting — every order taken has gone out.');
 
     $('#pending_count', page).textContent = rows.length
