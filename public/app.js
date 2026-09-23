@@ -4915,16 +4915,36 @@ async function openPendingOrder(id, reload, page) {
         let out = moved
           ? await POST(`/api/orders/${id}/lines`, { lines: now })
           : { total: null };
+
+        // Nothing has ever written a PCODE back onto an order line after it
+        // was first placed — this is that write. An unmoved line keeps its
+        // own id, so it is corrected straight; a re-picked one has a fresh
+        // id, matched back by sku the same way an added line's hand-typed
+        // price already is, below.
+        if (!moved) {
+          const recode = existing.map((l) => ({ id: l.id, code: l.typed ? '' : (l.code || '') }));
+          if (recode.length) await POST(`/api/orders/${id}/line-codes`, { lines: recode });
+        }
+
         const handed = new Map();
         [...lines.values()].filter((l) => l.kind === 'added' && l.qty > 0)
           .forEach((l) => { if (l.price !== Number(l.listed)) handed.set(l.sku, l.price); });
-        if (handed.size) {
+        if (handed.size || moved) {
           const fresh = await GET(`/api/orders/${id}`);
-          const reprice = (fresh.lines || []).filter((l) => handed.has(l.sku))
-            .map((l) => ({ id: l.id, price: handed.get(l.sku) }));
-          if (reprice.length) {
-            await POST(`/api/orders/${id}/invoice`, { lines: reprice });
-            out = await GET(`/api/orders/${id}`);
+          if (handed.size) {
+            const reprice = (fresh.lines || []).filter((l) => handed.has(l.sku))
+              .map((l) => ({ id: l.id, price: handed.get(l.sku) }));
+            if (reprice.length) {
+              await POST(`/api/orders/${id}/invoice`, { lines: reprice });
+              out = await GET(`/api/orders/${id}`);
+            }
+          }
+          if (moved) {
+            const bySku = new Map([...lines.values()].filter((l) => l.qty > 0)
+              .map((l) => [l.sku, l.typed ? '' : (l.code || '')]));
+            const recode = (fresh.lines || []).filter((l) => bySku.has(l.sku))
+              .map((l) => ({ id: l.id, code: bySku.get(l.sku) }));
+            if (recode.length) await POST(`/api/orders/${id}/line-codes`, { lines: recode });
           }
         }
         notice(`This order now comes to ${

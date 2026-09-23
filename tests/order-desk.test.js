@@ -248,6 +248,52 @@ test('committing an order carries even while it is still Awaiting payment', asyn
     'committing twice does not move the timestamp again');
 });
 
+// Pending customer order's own list of orders put a PCODE picker on an
+// already-placed line — something the shared order dialog never offered,
+// so nothing ever wrote price_code back onto order_lines after the order
+// was first placed. This is that write, on its own, touching no price.
+test("a PCODE picked on an already-placed line saves onto it, and clears the same way", async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const desk = await signIn('orderdesk');
+  const sku = await stocked(admin, store);
+  const id = await anAccount(admin);
+
+  // Short — the price list column it lands in is capped at 24 characters,
+  // and unique()'s own pid-and-timestamp tag alone reaches that.
+  const code = `PC${Date.now() % 1_000_000}`;
+  const created = await POST(admin, '/api/price-codes', { code });
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+
+  const placed = await POST(desk, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 3 }] });
+  const order = placed.data.orderId;
+  const lineId = (await GET(desk, `/api/orders/${order}`)).data.lines[0].id;
+
+  // A PCODE is a pricing correction — the same door revise_invoice keeps,
+  // not the wider one the order desk works picking and dispatch through.
+  assert.equal((await POST(desk, `/api/orders/${order}/line-codes`,
+    { lines: [{ id: lineId, code }] })).status, 403,
+    'the order desk cannot correct a PCODE, only admin or office can');
+
+  const saved = await POST(admin, `/api/orders/${order}/line-codes`,
+    { lines: [{ id: lineId, code }] });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.equal((await GET(desk, `/api/orders/${order}`)).data.lines[0].price_code, code,
+    'the code is on the line now');
+
+  // Cleared back to no code — an empty string, taken as none rather than
+  // left as whatever it last was.
+  assert.equal((await POST(admin, `/api/orders/${order}/line-codes`,
+    { lines: [{ id: lineId, code: '' }] })).status, 200);
+  assert.equal((await GET(desk, `/api/orders/${order}`)).data.lines[0].price_code, null,
+    'and cleared back to none');
+
+  // A code that was never agreed at all is refused, not silently taken.
+  const bogus = await POST(admin, `/api/orders/${order}/line-codes`,
+    { lines: [{ id: lineId, code: 'NOT-A-REAL-CODE' }] });
+  assert.equal(bogus.status, 400, JSON.stringify(bogus.data));
+});
+
 // ---------------------------------------------------------------------------
 // The refusals — at the door
 // ---------------------------------------------------------------------------
