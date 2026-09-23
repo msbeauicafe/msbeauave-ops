@@ -588,6 +588,21 @@ test("Pending customer order's Invoice button commits the order before it naviga
     'and only then does it hand off to the Invoice tab');
 });
 
+// A PCODE picked on the list of orders has to actually reach the line it
+// was picked for — Save the changes used to send only the price, so the
+// code chosen was gone again the next time the order was opened.
+test("Pending customer order's Save the changes sends the PCODE picked, not only the price", () => {
+  const fn = app.slice(app.indexOf('async function openPendingOrder'),
+                       app.indexOf('/**\n * One order, opened.'));
+  const handler = fn.slice(fn.indexOf("$('#pl_place').addEventListener"));
+  assert.match(handler, /\/api\/orders\/\$\{id\}\/line-codes/,
+    "its own endpoint — nothing else has ever written price_code back onto an order line");
+  assert.match(handler, /l\.typed \? '' : \(l\.code \|\| ''\)/,
+    'a hand-typed price clears the code rather than leaving a stale one behind');
+  assert.doesNotMatch(app.slice(0, app.indexOf('async function openPendingOrder')),
+    /line-codes/, "the shared openOrder above it is not touched by this");
+});
+
 // The invoice and the packing list are the same order seen from two sides.
 // Correcting one and not the other would mean walking to a different screen
 // depending on which number was wrong, and two sheets that could disagree.
