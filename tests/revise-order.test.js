@@ -560,6 +560,34 @@ test('the boxes in the order dialog look like boxes', () => {
     `every one of them announces itself: ${boxes.filter((c) => !c.includes('open'))}`);
 });
 
+// The printed sheet on the left is read off the working list on the right —
+// a swapped product, a corrected price or a dropped line has to show there
+// as it happens, not only once Save the changes has already gone through.
+test("Pending customer order's printed sheet redraws as the list is edited", () => {
+  const fn = app.slice(app.indexOf('async function openPendingOrder'),
+                       app.indexOf('/**\n * One order, opened.'));
+  const draw = fn.slice(fn.indexOf('const drawList = () => {'));
+  assert.match(draw, /\$\('#dialog \.co-scale'\)/,
+    'the sheet is found and redrawn from inside the same redraw that updates the list');
+  assert.match(draw, /customerOrderForm\(\{/,
+    'rebuilt with the same builder the sheet was first drawn with');
+  assert.match(draw, /scaleCoForm\(\)/,
+    'and rescaled after, the same as the first draw');
+});
+
+// Invoice does not only send the office to the Invoice tab — pushing it says
+// the order has been moved along, which is worth recording even for a
+// tier-1 account still reading Awaiting payment on payment status alone.
+test("Pending customer order's Invoice button commits the order before it navigates", () => {
+  const fn = app.slice(app.indexOf('async function openPendingOrder'),
+                       app.indexOf('/**\n * One order, opened.'));
+  const handler = fn.slice(fn.indexOf("$('#pl_invoice')"));
+  assert.match(handler, /POST\(`\/api\/orders\/\$\{id\}\/commit`\)/,
+    'commit is called before the screen moves away');
+  assert.match(handler, /closeDialog\(\);\s*\n\s*orderPanel = 'coinvoices'/,
+    'and only then does it hand off to the Invoice tab');
+});
+
 // The invoice and the packing list are the same order seen from two sides.
 // Correcting one and not the other would mean walking to a different screen
 // depending on which number was wrong, and two sheets that could disagree.

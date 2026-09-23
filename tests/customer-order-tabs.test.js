@@ -185,6 +185,33 @@ test('Draft only offers on a row still awaiting payment; the stale tag names the
   assert.match(screen, /!o\.parked_at/, 'a parked order drops off Pending by itself');
 });
 
+// Pending customer order's own Invoice button commits an order — it can say
+// Committed from then on even while orderTag, reading payment alone, would
+// still call a tier-1 order Awaiting payment. Every other screen that shows
+// a stage still calls orderTag straight, unmoved by anything in this file.
+test("Pending customer order's own Stage tells Committed once Invoice has been pushed", () => {
+  const before = app.slice(0, app.indexOf('SCREENS.pendingorders = async'));
+  assert.match(before, /const pendingStageTag = \(o\) => \{/,
+    "its own reading of Stage, not a branch of the shared orderTag");
+  assert.match(before, /if \(!o\.committed_at && o\.status === 'placed' && o\.tier === 1[\s\S]{0,40}\)/,
+    'Awaiting payment only holds while nothing has committed the order yet');
+  assert.match(before, /placed: tag\('Committed', 'pink'\)/,
+    'falling through to Committed the same way orderTag does for every other placed order');
+
+  const at = app.indexOf('SCREENS.pendingorders = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /head: 'Stage', cell: \(o\) => pendingStageTag\(o\)/,
+    'the Stage column reads its own tag, not the shared one');
+  assert.doesNotMatch(screen, /cell: \(o\) => orderTag\(o\)/,
+    'orderTag itself is not called from this screen any more');
+
+  // orderTag is untouched — every other screen that shows a stage still
+  // reads payment status straight.
+  const shared = app.slice(app.indexOf('function orderTag'), app.indexOf('function table('));
+  assert.doesNotMatch(shared, /committed_at/,
+    'the shared tag does not know about committed_at at all');
+});
+
 test('Draft is its own tab, and Restore is the only way back', () => {
   const at = app.indexOf('SCREENS.draftorders = async');
   assert.ok(at > 0, 'there is a Draft screen');

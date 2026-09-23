@@ -208,6 +208,46 @@ test('an order desk can set a stalled order aside and bring it back', async () =
     'not on Draft — nothing to clear a second time');
 });
 
+// Pending customer order's own Invoice button says the office has raised
+// the invoice and moved the order along — worth recording even for a
+// tier-1 account, the floor that pays before dispatch and so reads Awaiting
+// payment on the board the moment it is placed.
+test('committing an order carries even while it is still Awaiting payment', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const desk = await signIn('orderdesk');
+  const sku = await stocked(admin, store);
+
+  // Tier defaults to 1, credit_limit and terms_days to 0 — the floor.
+  const acct = await POST(admin, '/api/resellers', { name: unique('Reseller'), email: 'b@example.ph' });
+  await POST(admin, `/api/resellers/${acct.data.id}/approve`);
+
+  const placed = await POST(desk, `/api/resellers/${acct.data.id}/orders`, { lines: [{ sku, qty: 2 }] });
+  const order = placed.data.orderId;
+
+  const before = (await GET(desk, '/api/orders?status='))
+    .data.find((o) => Number(o.id) === Number(order));
+  assert.equal(before.tier, 1, 'placed against a tier-1 account');
+  assert.equal(before.invoice_status, 'open', 'an invoice already raised, unpaid');
+  assert.equal(before.committed_at, null, 'not committed yet');
+
+  const committed = await POST(desk, `/api/orders/${order}/commit`);
+  assert.equal(committed.status, 200, JSON.stringify(committed.data));
+
+  const after = (await GET(desk, '/api/orders?status='))
+    .data.find((o) => Number(o.id) === Number(order));
+  assert.ok(after.committed_at, 'the order now carries when it was committed');
+
+  // Pushing Invoice again leaves the timestamp as it was rather than
+  // erroring — the same idempotency park_order and unpark_order carry.
+  const again = await POST(desk, `/api/orders/${order}/commit`);
+  assert.equal(again.status, 200, JSON.stringify(again.data));
+  const still = (await GET(desk, '/api/orders?status='))
+    .data.find((o) => Number(o.id) === Number(order));
+  assert.equal(still.committed_at, after.committed_at,
+    'committing twice does not move the timestamp again');
+});
+
 // ---------------------------------------------------------------------------
 // The refusals — at the door
 // ---------------------------------------------------------------------------
