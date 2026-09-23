@@ -7752,9 +7752,8 @@ SCREENS.draftorders = async (page) => {
 async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, done) {
   dialog(`
     <h3>Record payment — ${esc(siNo || `#${invoiceId}`)}</h3>
-    <div class="dim"><b id="ci_owed">${peso(owed)}</b> still on it. Fill in as many rows as
-      actually landed.</div>
-    <div class="dim" id="ci_accttotal"></div>
+    <div id="ci_accttotal" style="font-size:1.6rem;font-weight:700;color:var(--rose-deep);
+      font-variant-numeric:tabular-nums"></div>
 
     <h3 class="mt">Payments on file</h3>
     <div class="filegrid" id="ci_prior"><div class="dim">Loading…</div></div>
@@ -7832,9 +7831,7 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
     }
     const totalBox = $('#ci_accttotal');
     if (totalBox) {
-      totalBox.textContent = acct.invoices.length
-        ? `${peso(sum('amount'))} across every invoice on this account`
-        : '';
+      totalBox.textContent = acct.invoices.length ? peso(sum('amount')) : '';
     }
   };
   await paintLog();
@@ -7932,15 +7929,12 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
           { dataUrl: await shrink(r.file, 1600), category: 'payment_proof' });
       }
     }
-    // The owed figure the dialog shows should be the one the server just
-    // worked out, not a copy of it done here a second time.
+    // The owed figure the next row is prefilled with should be the one the
+    // server just worked out, not a copy of it done here a second time.
     await done();
     const refreshed = (await GET('/api/orders?status=').catch(() => []))
       .find((o) => String(o.invoice_id) === String(invoiceId));
-    if (refreshed) {
-      owed = Number(refreshed.balance || 0);
-      $('#ci_owed').textContent = peso(owed);
-    }
+    if (refreshed) owed = Number(refreshed.balance || 0);
     resetRows();
     await paintPrior();
     await paintLog();
