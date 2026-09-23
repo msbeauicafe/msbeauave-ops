@@ -7716,7 +7716,7 @@ SCREENS.draftorders = async (page) => {
           + (o.tier ? tierTag(o.tier) : '') },
       { head: 'Stage', cell: (o) => orderTag(o) },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
-      { head: '', cell: (o) => `<button class="btn sm quiet" data-restore="${o.id}">Restore</button>
+      { head: '', cell: (o) => `<button class="btn sm quiet" data-restore="${o.id}">Place order</button>
           <button class="btn sm quiet" data-open="${o.id}">Open</button>` },
     ], 'Nothing set aside.');
 
@@ -7733,7 +7733,7 @@ SCREENS.draftorders = async (page) => {
 
   page.innerHTML = `
     <div class="head"><h2>Draft</h2>
-      <span class="hint">Set aside off Pending customer order. Restore brings
+      <span class="hint">Set aside off Pending customer order. Place order brings
         one back; nothing about the order changes while it waits here</span>
       <span class="hint" id="draft_count"></span></div>
     <div id="draft"></div>`;
@@ -12987,26 +12987,32 @@ SCREENS.payroll = async (page) => {
       { head: 'Name', cell: (r) => `<button class="nameopen" data-person="${r.employee_id}"
           ><b>${esc(r.name)}</b></button><div class="dim">${esc(r.position || '')}</div>` },
       // How somebody is paid, said rather than left to be worked out from a
-      // rate of nothing. A monthly person's rate per day is a reckoning for
-      // overtime and lateness, not what they are paid, so it is dimmed.
+      // rate of nothing. The rate columns that are not theirs are dimmed —
+      // a monthly person's rate per day, an hourly person's rate per day and
+      // salary, and so on — each one a reckoning the payslip may still use,
+      // not what they are actually paid.
       { head: 'Paid', c: true, cell: (r) => (r.pay_basis === 'monthly'
-          ? tag('monthly', 'pink') : tag('daily', 'grey')) },
+          ? tag('monthly', 'pink') : r.pay_basis === 'hourly'
+          ? tag('hourly', 'amber') : tag('daily', 'grey')) },
       { head: 'Salary/month', n: true, cell: (r) => (r.pay_basis === 'monthly'
           ? moneyBox(r, 'monthly_rate') : '<span class="dim">—</span>') },
-      // Empty for a monthly person. There is a figure behind it — the month
-      // over 26 — but it is a reckoning the payslip uses for overtime and
-      // lateness, not a rate anybody is paid, and a number in a column headed
-      // Rate/day is read as a rate however faintly it is printed.
-      { head: 'Rate/day', n: true, cell: (r) => (r.pay_basis === 'monthly'
-          ? '<span class="dim">—</span>' : moneyBox(r, 'daily_rate')) },
-      // What somebody is worth an hour, kept for the office to read back —
-      // not a third way of being paid. Basic never reads this column; daily
-      // and monthly are computed exactly as they always were.
-      { head: 'Rate/hour', n: true, cell: (r) => moneyBox(r, 'hourly_rate') },
-      // The days are still counted for a monthly person — they are worth
-      // knowing, and lateness and overtime still come off — but they do not
-      // move the basic figure.
+      // Empty for anybody who is not paid daily. There is a figure behind
+      // it either way — the month over 26, or the hourly rate times an
+      // eight-hour day — but it is a reckoning the payslip uses for
+      // overtime and lateness, not a rate anybody is paid, and a number in
+      // a column headed Rate/day is read as a rate however faintly printed.
+      { head: 'Rate/day', n: true, cell: (r) => (r.pay_basis === 'daily'
+          ? moneyBox(r, 'daily_rate') : '<span class="dim">—</span>') },
+      { head: 'Rate/hour', n: true, cell: (r) => (r.pay_basis === 'hourly'
+          ? moneyBox(r, 'hourly_rate') : '<span class="dim">—</span>') },
+      // The days are still counted for a monthly or hourly person — they
+      // are worth knowing, and lateness and overtime still come off — but
+      // they do not move the basic figure for either.
       { head: 'Days', n: true, cell: (r) => box(r, 'days_present', '0.5') },
+      // The hours the clock counted this cutoff, for an hourly person only —
+      // this is what Basic is actually worked out from for them.
+      { head: 'Hours', n: true, cell: (r) => (r.pay_basis === 'hourly'
+          ? box(r, 'hours_present', '0.25') : '<span class="dim">—</span>') },
       { head: 'Basic', n: true, cell: (r) => money(r.basic) },
       { head: 'NSD hrs', n: true, cell: (r) => box(r, 'nsd_hours', '0.25') },
       { head: 'OT hrs', n: true, cell: (r) => box(r, 'ot_hours', '0.25') },
@@ -13056,11 +13062,20 @@ SCREENS.payroll = async (page) => {
   // the next load replaces this.
   const recompute = (r) => {
     const monthly = r.pay_basis === 'monthly';
-    const d = monthly ? Number(r.monthly_rate || 0) / MONTH_DAYS : Number(r.daily_rate || 0);
+    const hourly = r.pay_basis === 'hourly';
+    // An hourly person has no daily rate of their own, so one is worked out
+    // for the same reason a monthly salary is — overtime, night hours,
+    // lateness and holiday pay are all reckoned from a day, and an eight-hour
+    // day is what the shop counts a day as.
+    const d = monthly ? Number(r.monthly_rate || 0) / MONTH_DAYS
+      : hourly ? Number(r.hourly_rate || 0) * 8 : Number(r.daily_rate || 0);
     // Basic for a monthly person is half the month, whatever the clock
     // counted — that is what monthly means, and it is the one figure days
-    // present does not move.
-    r.basic = monthly ? Number(r.monthly_rate || 0) / 2 : d * Number(r.days_present || 0);
+    // present does not move. An hourly person's basic is the hours the
+    // clock actually counted, times what they are worth an hour.
+    r.basic = monthly ? Number(r.monthly_rate || 0) / 2
+      : hourly ? Number(r.hourly_rate || 0) * Number(r.hours_present || 0)
+      : d * Number(r.days_present || 0);
     r.nsd = d / 8 * 0.10 * Number(r.nsd_hours || 0);
     r.overtime = d / 8 * 1.25 * Number(r.ot_hours || 0);
     r.holiday = d * Number(r.holidays || 0);
@@ -13089,16 +13104,16 @@ SCREENS.payroll = async (page) => {
       const cells = $$('td', tr);
       const set = (i, v) => { if (cells[i]) cells[i].innerHTML = v; };
       // Indices into the column list above — Name, Paid, Salary/month,
-      // Rate/day, Rate/hour, Days, Basic, NSD hrs, OT hrs, OT pay, Hol,
-      // Spe hol, Leave, Allow., Adj., Earnings, Late min, Late, SSS,
+      // Rate/day, Rate/hour, Days, Hours, Basic, NSD hrs, OT hrs, OT pay,
+      // Hol, Spe hol, Leave, Allow., Adj., Earnings, Late min, Late, SSS,
       // PhilHealth, Pag-IBIG, Loan/CA, Deductions, Net pay.
       // Move a column there, move it here.
-      set(6, money(r.basic));
-      set(9, money(r.overtime));
-      set(15, `<b>${money(r.total_earnings)}</b>`);
-      set(17, money(r.late_charge));
-      set(22, money(r.total_deductions));
-      set(23, `<b>${money(r.net_pay)}</b>`);
+      set(7, money(r.basic));
+      set(10, money(r.overtime));
+      set(16, `<b>${money(r.total_earnings)}</b>`);
+      set(18, money(r.late_charge));
+      set(23, money(r.total_deductions));
+      set(24, `<b>${money(r.net_pay)}</b>`);
     });
   };
 
@@ -13121,13 +13136,14 @@ SCREENS.payroll = async (page) => {
       <div class="row">
         <div><label>Paid</label>
           <select id="pp_basis">
-            <option value="daily"${line.pay_basis === 'monthly' ? '' : ' selected'}>By the day</option>
+            <option value="daily"${line.pay_basis === 'daily' ? ' selected' : ''}>By the day</option>
             <option value="monthly"${line.pay_basis === 'monthly' ? ' selected' : ''}>Monthly</option>
+            <option value="hourly"${line.pay_basis === 'hourly' ? ' selected' : ''}>By the hour</option>
           </select></div>
         <div id="pp_ratebox"><label id="pp_ratelabel">Rate per day</label>
           <input id="pp_daily" type="number" step="0.01" min="0"
-            value="${Number(line.pay_basis === 'monthly'
-              ? line.monthly_rate || 0 : line.daily_rate || 0)}"></div>
+            value="${Number(line.pay_basis === 'monthly' ? line.monthly_rate || 0
+              : line.pay_basis === 'hourly' ? line.hourly_rate || 0 : line.daily_rate || 0)}"></div>
         <div><label>SSS</label><input id="pp_sss" type="number" step="0.01" min="0"
           value="${Number(line.sss || 0)}"></div>
         <div><label>PhilHealth</label><input id="pp_phic" type="number" step="0.01" min="0"
@@ -13167,13 +13183,16 @@ SCREENS.payroll = async (page) => {
     const showRates = () => {
       const typed = Number($('#pp_daily')?.value || 0);
       const monthly = basis() === 'monthly';
-      $('#pp_ratelabel').textContent = monthly ? 'Salary a month' : 'Rate per day';
-      const d = monthly ? typed / MONTH_DAYS : typed;
+      const hourly = basis() === 'hourly';
+      $('#pp_ratelabel').textContent = monthly ? 'Salary a month' : hourly ? 'Rate per hour' : 'Rate per day';
+      const d = monthly ? typed / MONTH_DAYS : hourly ? typed * 8 : typed;
       const box = $('#pp_rates');
       if (!box) return;
       box.innerHTML = typed > 0
         ? `${monthly ? `half a month is <b>${peso(typed / 2)}</b> a cutoff, whatever
              the clock counted · a day works out at ${peso(d)} (month ÷ ${MONTH_DAYS})
+             for the figures below · ` : hourly ? `basic is the hours the clock
+             counted times ${peso(typed)} · a day works out at ${peso(d)} (× 8)
              for the figures below · ` : ''}overtime ${peso(d / 8 * 1.25)}/hour ·
            night ${peso(d / 8 * 0.10)}/hour · late ${peso(d / 480)}/minute ·
            holiday ${peso(d)} · special holiday ${peso(d * 0.30)}`
@@ -13186,12 +13205,14 @@ SCREENS.payroll = async (page) => {
     $('#pp_save').addEventListener('click', async () => {
       try {
         const monthly = basis() === 'monthly';
+        const hourly = basis() === 'hourly';
         const typed = +$('#pp_daily').value;
         await POST(`/api/team/${line.employee_id}/pay`, {
           company: picked?.company || 'MS BEAU',
           pay_basis: basis(),
-          daily_rate: monthly ? 0 : typed,
+          daily_rate: monthly || hourly ? 0 : typed,
           monthly_rate: monthly ? typed : 0,
+          hourly_rate: hourly ? typed : 0,
           sss: +$('#pp_sss').value,
           philhealth: +$('#pp_phic').value,
           pagibig: +$('#pp_hdmf').value,
@@ -13201,8 +13222,9 @@ SCREENS.payroll = async (page) => {
         if (picked?.status !== 'closed') {
           await PUT(`/api/payroll-lines/${line.id}`, {
             pay_basis: basis(),
-            daily_rate: monthly ? 0 : typed,
+            daily_rate: monthly || hourly ? 0 : typed,
             monthly_rate: monthly ? typed : 0,
+            hourly_rate: hourly ? typed : 0,
             sss: +$('#pp_sss').value,
             philhealth: +$('#pp_phic').value,
             pagibig: +$('#pp_hdmf').value,
@@ -13736,6 +13758,8 @@ function payslip(period, r) {
       </thead><tbody>
         ${r.pay_basis === 'monthly'
           ? line('Basic Pay', 'half a month', r.basic)
+          : r.pay_basis === 'hourly'
+          ? line('Basic Pay', hrs(r.hours_present), r.basic)
           : line('Basic Pay', days(r.days_present), r.basic)}
         ${line('Leave with Pay', days(r.leave_days), r.leave_pay)}
         ${line('Overtime', hrs(r.ot_hours), r.overtime)}
@@ -13749,7 +13773,9 @@ function payslip(period, r) {
       </tfoot></table>
       <div class="rate">${r.pay_basis === 'monthly'
         ? `Salary ${money(r.monthly_rate)} a month · half a month a cutoff · a day
-           reckoned at ` : 'Rate per day '}${money(r.daily_rate)} · hourly ${
+           reckoned at ` : r.pay_basis === 'hourly'
+        ? `Rate ${money(r.hourly_rate)} an hour · a day reckoned at `
+        : 'Rate per day '}${money(r.daily_rate)} · hourly ${
         money(Number(r.daily_rate || 0) / 8)} · overtime ${
         money(Number(r.daily_rate || 0) / 8 * 1.25)}/hr · night ${
         money(Number(r.daily_rate || 0) / 8 * 0.10)}/hr · special holiday ${
@@ -13785,6 +13811,9 @@ function payslip(period, r) {
         ? `Half of a monthly salary of ${money(r.monthly_rate)}, whatever the days
            worked. A day is reckoned at ${money(r.daily_rate)} for the figures
            below only.`
+        : r.pay_basis === 'hourly'
+        ? `Computed from ${hrs(r.hours_present)} at ${money(r.hourly_rate)} an hour.
+           A day is reckoned at ${money(r.daily_rate)} for the figures below only.`
         : `Computed from ${days(r.days_present)} at ${money(r.daily_rate)}.`}
         Overtime at 125% of the hourly rate, night
         differential at 10%, special holiday at 30%, late at
