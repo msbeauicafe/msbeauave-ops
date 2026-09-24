@@ -7454,15 +7454,15 @@ const pendingStageTag = (o) => {
 };
 
 SCREENS.pendingorders = async (page) => {
-  const load = async () => {
-    const rows = (await GET('/api/orders?status='))
-      .filter((o) => (o.status === 'placed' || o.status === 'picking') && !o.parked_at)
-      // By customer order number, latest first — the newest CO at the top and
-      // the earliest at the bottom. The numbers are fixed-width (CO26_09_011),
-      // so ordering the text descending orders them by number; an order not yet
-      // numbered sits last.
-      .sort((a, b) => (b.co_no || '').localeCompare(a.co_no || ''));
-    $('#pending', page).innerHTML = table(rows, [
+  let rows = [];
+  // null while no product search is active — the whole list shows. Once set,
+  // a Set of the ids /api/pending-orders/by-product answered with, kept as
+  // strings the way a bigint id already arrives off Postgres.
+  let matchedIds = null;
+
+  const draw = () => {
+    const shown = matchedIds ? rows.filter((o) => matchedIds.has(String(o.id))) : rows;
+    $('#pending', page).innerHTML = table(shown, [
       { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
       { head: 'Placed', cell: (o) => {
           const days = o.placed_at
@@ -7478,15 +7478,8 @@ SCREENS.pendingorders = async (page) => {
       { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>
           ${pendingAwaitingPayment(o)
             ? `<button class="btn sm quiet" data-park="${o.id}">Draft</button>` : ''}` },
-    ], 'Nothing is waiting — every order taken has gone out.');
-
-    $('#pending_count', page).textContent = rows.length
-      ? `${count(rows.length)} waiting · ${peso(rows.reduce((t, o) => t + Number(o.total), 0))}`
-      : '';
-
-    // Warm the catalogue in the background while the list is being read, so the
-    // first Open does not wait on it. Order-desk hands only — nobody else edits.
-    if (['admin', 'office'].includes(user?.role)) wholesaleCatalog();
+    ], matchedIds ? 'No waiting order has that product on it.'
+      : 'Nothing is waiting — every order taken has gone out.');
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openPendingOrder(b.dataset.open, load, page).catch(whoops)));
@@ -7496,12 +7489,54 @@ SCREENS.pendingorders = async (page) => {
     }));
   };
 
+  const load = async () => {
+    rows = (await GET('/api/orders?status='))
+      .filter((o) => (o.status === 'placed' || o.status === 'picking') && !o.parked_at)
+      // By customer order number, latest first — the newest CO at the top and
+      // the earliest at the bottom. The numbers are fixed-width (CO26_09_011),
+      // so ordering the text descending orders them by number; an order not yet
+      // numbered sits last.
+      .sort((a, b) => (b.co_no || '').localeCompare(a.co_no || ''));
+
+    $('#pending_count', page).textContent = rows.length
+      ? `${count(rows.length)} waiting · ${peso(rows.reduce((t, o) => t + Number(o.total), 0))}`
+      : '';
+
+    // Warm the catalogue in the background while the list is being read, so the
+    // first Open does not wait on it. Order-desk hands only — nobody else edits.
+    if (['admin', 'office'].includes(user?.role)) wholesaleCatalog();
+
+    draw();
+  };
+
   page.innerHTML = `
     <div class="head"><h2>Pending customer orders</h2>
       <span class="hint">Taken and not yet out of the door. Open one to change
         it, invoice it, or send the paperwork again</span>
       <span class="hint" id="pending_count"></span></div>
+    <div class="tools">
+      <input type="search" id="pending_product" placeholder="Search by product…">
+    </div>
     <div id="pending"></div>`;
+
+  // Which resellers also have this product waiting — typed, not picked, since
+  // a product list here would be the whole catalogue. A search against the
+  // orders this screen already shows, not a general product search, so it
+  // only ever turns up what this screen would show anyway.
+  let searchTimer;
+  $('#pending_product', page).addEventListener('input', (e) => {
+    const term = e.target.value.trim();
+    clearTimeout(searchTimer);
+    if (!term) { matchedIds = null; draw(); return; }
+    searchTimer = setTimeout(async () => {
+      try {
+        const ids = await GET(`/api/pending-orders/by-product?q=${encodeURIComponent(term)}`);
+        matchedIds = new Set(ids.map(String));
+        draw();
+      } catch (err) { whoops(err); }
+    }, 250);
+  });
+
   await load();
 };
 

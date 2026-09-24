@@ -146,6 +146,25 @@ test('the pending list is what is waiting, not everything ever ordered', () => {
   assert.match(screen, /data-open="\$\{o\.id\}"/, 'every row opens');
 });
 
+// Which resellers also have a given product on a waiting order — its own
+// search against its own endpoint, placed right after the header the owner
+// pointed at, not a filter borrowed from anywhere else on the list.
+test('a product search sits after the header and finds it through its own endpoint', () => {
+  const at = app.indexOf('SCREENS.pendingorders = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  const headEnd = screen.indexOf('id="pending_count"></span></div>');
+  const inputAt = screen.indexOf('id="pending_product"');
+  assert.ok(headEnd > 0 && inputAt > headEnd, 'the search box comes after the header block');
+
+  assert.match(screen, /GET\(`\/api\/pending-orders\/by-product\?q=\$\{encodeURIComponent\(term\)\}`\)/,
+    'its own dedicated endpoint, not a new filter on the shared /api/orders list');
+  assert.match(screen, /matchedIds = new Set\(ids\.map\(String\)\)/,
+    'ids kept as strings, the way a bigint id already arrives off Postgres');
+  assert.match(screen, /rows\.filter\(\(o\) => matchedIds\.has\(String\(o\.id\)\)\)/,
+    'the table itself narrows to what matched');
+});
+
 // Invoice and packing-list numbers moved off this row — they are one Open
 // away, on the order itself, and are not why somebody opens this list.
 test('the pending row is the number, when it was placed, who it is for, and what it is worth', () => {
