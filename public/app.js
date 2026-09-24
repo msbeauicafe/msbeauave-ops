@@ -8461,9 +8461,16 @@ SCREENS.coinvoices = async (page) => {
     : o.invoice_status === 'void' ? tag('void', 'grey')
     : o.invoice_overdue ? tag('past due', 'red') : tag('open', 'amber');
 
+  // Every b2b order gets an invoice row the moment it is placed — that is
+  // bookkeeping, not the office invoicing anybody. A tier-1 order still
+  // reading Awaiting payment on Pending customer order has not been
+  // committed yet, so it has no business showing up here until it is.
+  const notYetCommitted = (o) => !o.committed_at
+    && o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open';
+
   const load = async () => {
     const rows = (await GET('/api/orders?status='))
-      .filter((o) => o.invoice_id)
+      .filter((o) => o.invoice_id && !notYetCommitted(o))
       // Most recently invoiced first, the same way Pending customer order
       // reads newest to oldest.
       .sort((a, b) => new Date(b.invoice_issued_on || b.placed_at)

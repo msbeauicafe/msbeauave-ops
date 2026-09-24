@@ -275,6 +275,23 @@ test('the three invoice-row buttons do their own three things', () => {
     'and is on the row unconditionally');
 });
 
+// Every b2b order gets an invoice row the moment it is placed — bookkeeping,
+// not the office invoicing anybody. A tier-1 order still reading Awaiting
+// payment on Pending customer order has not been committed yet and has no
+// business showing up here until it is.
+test('a tier-1 order still Awaiting payment does not show on the Invoice tab', () => {
+  const at = app.indexOf('SCREENS.coinvoices = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  assert.match(screen, /const notYetCommitted = \(o\) => !o\.committed_at/,
+    "the Invoice tab's own check, not a branch of Pending's pendingAwaitingPayment");
+  assert.match(screen,
+    /o\.status === 'placed' && o\.tier === 1 && o\.invoice_status === 'open'/,
+    'the same reading "Awaiting payment" is drawn from, kept in step by hand');
+  assert.match(screen, /\.filter\(\(o\) => o\.invoice_id && !notYetCommitted\(o\)\)/,
+    'a row needs an invoice and to no longer be Awaiting payment');
+});
+
 // The same bones as the yellow sheet (.doc.po) a purchase order bill
 // prints, in blue instead — its own colour class, not the shared orange,
 // and built fresh rather than calling Purchase order's own function: the
