@@ -7692,7 +7692,7 @@ SCREENS.chatorders = async (page) => {
     }
     box.innerHTML = table(rows, [
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b> <span class="dim">${esc(p.brand || '')}</span>` },
-      { head: 'Price', n: true, cell: (p) => peso(p.wholesale_price) },
+      { head: 'RS Price', n: true, cell: (p) => peso(p.wholesale_price) },
       { head: 'Have', n: true, cell: (p) => count(p.available) },
       { head: '', cell: (p) => `<button class="btn sm quiet" data-add="${esc(p.sku)}"
           ${p.available <= 0 ? 'disabled' : ''}>Add</button>` },
