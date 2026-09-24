@@ -14116,6 +14116,7 @@ SCREENS.payroll = async (page) => {
       { head: 'Phil Health', n: true, cell: (r) => box(r, 'philhealth', '0.01') },
       { head: 'Pag-IBIG', n: true, cell: (r) => box(r, 'pagibig', '0.01') },
       { head: 'Loan/ CA', n: true, cell: (r) => box(r, 'loans', '0.01') },
+      { head: 'Oth. chg.', n: true, cell: (r) => box(r, 'other_charges', '0.01') },
       { head: 'Deduct.', n: true, cell: (r) => money(r.total_deductions) },
       { head: 'Net pay', n: true, cell: (r) => `<b>${money(r.net_pay)}</b>` },
     ], picked ? 'Nobody is on this cutoff.' : 'Open a cutoff to start.');
@@ -14172,7 +14173,8 @@ SCREENS.payroll = async (page) => {
     r.total_earnings = r.basic + r.nsd + r.overtime + r.holiday + r.spe_holiday
       + r.leave_pay + Number(r.allowance || 0) + Number(r.adjustment || 0);
     r.total_deductions = r.late_charge + Number(r.sss || 0)
-      + Number(r.philhealth || 0) + Number(r.pagibig || 0) + Number(r.loans || 0);
+      + Number(r.philhealth || 0) + Number(r.pagibig || 0) + Number(r.loans || 0)
+      + Number(r.other_charges || 0);
     r.net_pay = r.total_earnings - r.total_deductions;
   };
 
@@ -14193,14 +14195,14 @@ SCREENS.payroll = async (page) => {
       // Indices into the column list above — Name, Paid, Salary/month,
       // Rate/day, Rate/hour, Days, Hours, Basic, NSD hrs, OT hrs, OT pay,
       // Hol, Spe hol, Leave, Allow., Adj., Earnings, Late min, Late, SSS,
-      // PhilHealth, Pag-IBIG, Loan/CA, Deductions, Net pay.
+      // PhilHealth, Pag-IBIG, Loan/CA, Other charges, Deductions, Net pay.
       // Move a column there, move it here.
       set(7, money(r.basic));
       set(10, money(r.overtime));
       set(16, `<b>${money(r.total_earnings)}</b>`);
       set(18, money(r.late_charge));
-      set(23, money(r.total_deductions));
-      set(24, `<b>${money(r.net_pay)}</b>`);
+      set(24, money(r.total_deductions));
+      set(25, `<b>${money(r.net_pay)}</b>`);
     });
   };
 
@@ -14881,6 +14883,7 @@ function payslip(period, r) {
           line(label, null, r[field])).join('')}
         ${line('Cash Advance', null, r.ca_taken)}
         ${line('Other Loan / Charges', null, otherLoan)}
+        ${line('Other Charges', null, r.other_charges)}
       </tbody><tfoot>
         <tr><td>Total Deductions</td><td></td>
             <td class="n">${money(r.total_deductions)}</td></tr>

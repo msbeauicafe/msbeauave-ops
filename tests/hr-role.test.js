@@ -88,6 +88,23 @@ test('the menu is those four screens and nothing else', () => {
   assert.deepEqual(ids, ['team', 'hr', 'payroll', 'attendance', 'me']);
 });
 
+test('the Payroll table has an Other charges column, after Loan/CA', () => {
+  const at = app.indexOf('SCREENS.payroll = async');
+  const screen = app.slice(at, app.indexOf('\nconst LOAN_LINES', at));
+  const heads = [...screen.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
+  const loan = heads.indexOf('Loan/ CA');
+  const other = heads.indexOf('Oth. chg.');
+  assert.ok(loan > 0 && other === loan + 1, 'right after Loan/CA, not somewhere else');
+  assert.match(screen, /box\(r, 'other_charges', '0\.01'\)/, 'typed straight into the line, like Loan/CA');
+
+  // The payslip's own Deductions table reads total_deductions off the same
+  // line, so its itemised rows have to add up to the same figure or the
+  // printed slip stops reconciling with its own total.
+  const slip = app.slice(app.indexOf('function payslip('));
+  assert.match(slip, /line\('Other Charges', null, r\.other_charges\)/,
+    'the payslip has its own line for it, so Total Deductions still adds up');
+});
+
 test('the role picker offers it, and the badge has a name for it', () => {
   const at = app.indexOf('const ROLES = [');
   const list = app.slice(at, app.indexOf('];', at));
@@ -264,6 +281,41 @@ test('an hourly person is paid from the hours the clock counted, not a day', asy
   assert.equal(Number(summary.basic), 500, '5 hours at ₱100/hour, not 1 day at anything');
   assert.equal(Number(summary.daily_rate), 800,
     'the day-equivalent used for overtime and lateness is the hourly rate times 8');
+});
+
+// A charge that is neither a government contribution nor a loan off a
+// ledger — typed straight into its own column, the same way Loan/CA is, and
+// it comes off Net pay the same way everything else in Deductions does.
+test('Other charges is its own deduction, on top of Loan/CA', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('OtherCharges'), branch?.id ?? null])).rows[0];
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-05-01', ends_on: '2030-05-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const line = (await db.query(
+    'select id from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+
+  const before = (await db.query(
+    'select total_deductions, net_pay from payroll_summary where id = $1', [line.id])).rows[0];
+
+  const saved = await PUT(admin, `/api/payroll-lines/${line.id}`, { other_charges: 150 });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+
+  const after = (await db.query(
+    'select other_charges, total_deductions, net_pay from payroll_summary where id = $1',
+    [line.id])).rows[0];
+  assert.equal(Number(after.other_charges), 150);
+  assert.equal(Number(after.total_deductions), Number(before.total_deductions) + 150,
+    'it adds to Deductions like everything else there');
+  assert.equal(Number(after.net_pay), Number(before.net_pay) - 150,
+    'and comes off Net pay the same way');
 });
 
 // A loan whose own Since date has not arrived yet is not this cutoff's
