@@ -603,6 +603,44 @@ test("Pending customer order's Save the changes sends the PCODE picked, not only
     /line-codes/, "the shared openOrder above it is not touched by this");
 });
 
+// A product typed into Pending customer order's own search — which of the
+// resellers still waiting also ordered it. Its own dedicated endpoint, not a
+// filter bolted onto the shared /api/orders list, so it only ever answers
+// for the rows that screen already shows.
+test("Pending customer order's product search finds the order that carries it, not one that doesn't", async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const wanted = await stocked(admin, store, 60, 300);
+  const other = await stocked(admin, store, 60, 150);
+  const id1 = await anAccount(admin);
+  const id2 = await anAccount(admin);
+
+  const { data: hasIt } = await POST(admin, `/api/resellers/${id1}/orders`,
+    { lines: [{ sku: wanted, qty: 1 }] });
+  const { data: doesNot } = await POST(admin, `/api/resellers/${id2}/orders`,
+    { lines: [{ sku: other, qty: 1 }] });
+
+  const found = await GET(admin, `/api/pending-orders/by-product?q=${encodeURIComponent(wanted)}`);
+  assert.equal(found.status, 200, JSON.stringify(found.data));
+  const ids = found.data.map(String);
+  assert.ok(ids.includes(String(hasIt.orderId)), 'the order carrying it is found');
+  assert.ok(!ids.includes(String(doesNot.orderId)), 'an order without it is not');
+});
+
+test("Pending customer order's product search stays off a parked order", async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await stocked(admin, store, 60, 300);
+  const id = await anAccount(admin);
+  const { data: o } = await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 1 }] });
+  await POST(admin, `/api/orders/${o.orderId}/park`);
+
+  const found = await GET(admin, `/api/pending-orders/by-product?q=${encodeURIComponent(sku)}`);
+  assert.equal(found.status, 200, JSON.stringify(found.data));
+  assert.ok(!found.data.map(String).includes(String(o.orderId)),
+    'set aside on Draft, so it is not something Pending customer order would show anyway');
+});
+
 // The invoice and the packing list are the same order seen from two sides.
 // Correcting one and not the other would mean walking to a different screen
 // depending on which number was wrong, and two sheets that could disagree.
