@@ -6979,6 +6979,10 @@ function showOR(r, reseller, paid = {}, over = false) {
 // the first tab every time is how somebody loses their place.
 let orderPanel = 'chatorders';
 let customerPanel = 'reselleraccounts';
+// Draft tab's own way of handing a saved-but-never-placed basket back to
+// Chat order: set the draft's id, switch the panel, and Chat order itself
+// picks it up and clears this the moment it opens.
+let reopenChatDraftId = null;
 
 /**
  * The price list, whole.
@@ -8013,9 +8017,19 @@ SCREENS.chatorders = async (page) => {
   findBox.addEventListener('input', drawHits);
   resellers = (await GET('/api/resellers'))
     .sort((a, b) => a.name.localeCompare(b.name));
-  // Drawn once the accounts are in hand: the grid is the screen now, not
-  // something a search produces.
-  drawHits();
+  // Draft tab's own "Place order" hands a saved basket straight back here
+  // rather than through this screen's own Drafts dialog — reopen it the
+  // same way that dialog's Preview does, and skip the grid nobody asked for.
+  if (reopenChatDraftId) {
+    const id = reopenChatDraftId;
+    reopenChatDraftId = null;
+    try { reopenDraft(await GET(`/api/order-drafts/${id}`)); }
+    catch (e) { whoops(e); drawHits(); }
+  } else {
+    // Drawn once the accounts are in hand: the grid is the screen now, not
+    // something a search produces.
+    drawHits();
+  }
 };
 
 // ===========================================================================
@@ -8165,6 +8179,201 @@ SCREENS.reselleraccounts = resellerList('account', 1);
 SCREENS.distributoraccounts = resellerList('account', 2);
 SCREENS.retaileraccounts = resellerList('account', 3);
 
+// A saved-but-never-placed basket has no order to open, so this is not
+// openOrder's view of a real one — its own dialog, reading and writing
+// order_drafts directly. The right-hand list of orders mirrors Chat order's
+// own basket editor exactly, since that is what built this basket in the
+// first place; Place order, on the row, still hands it to Chat order itself
+// to actually place — this is for viewing and correcting it in the meantime.
+async function openChatDraft(draftId, reload) {
+  const d = await GET(`/api/order-drafts/${draftId}`);
+  const who = await GET(`/api/resellers/${d.reseller_id}`).catch(() => ({}));
+  const goods = (await wholesaleCatalog()) || [];
+  const codes = await GET('/api/price-codes').catch(() => []);
+
+  const lines = new Map((d.lines || []).filter((l) => l && l.sku).map((l) => {
+    const g = goods.find((x) => x.sku === l.sku);
+    return [l.sku, { sku: l.sku, name: l.name || g?.name || l.sku,
+      price: Number(l.price || 0), listed: Number(g?.wholesale_price ?? l.price ?? 0),
+      unit: l.unit || g?.unit_type || 'PCS', code: l.code || '', typed: !!l.typed,
+      prices: g?.prices || l.prices || {}, qty: Number(l.qty) || 1 }];
+  }));
+
+  dialog(`
+    <h3>${esc(d.reseller || '')} — saved basket</h3>
+    <div class="order-split">
+      <div class="co-side">
+        <div class="co-scale" id="cd_form"></div>
+        <div class="co-actions">
+          <button class="btn quiet" id="cd_jpeg">⬇ Download JPEG</button>
+          ${PRINT_BTN}
+        </div>
+      </div>
+      <div class="edit-side">
+    <div class="panel">
+      <h3>List of orders</h3>
+      <div id="cd_basket"></div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:2"><label for="cd_add">Add a product</label>
+          <input id="cd_add" type="text" autocomplete="off" list="doc_goods"
+            placeholder="Type a product name"></div>
+        <div style="flex:0 0 auto;align-self:flex-end">
+          <button class="btn sm quiet" id="cd_add_go">Add</button></div>
+      </div>${goodsList(goods)}
+      <div class="basket-sum">
+        <div class="sumrow"><span>Subtotal</span><span id="cd_sub">₱0.00</span></div>
+        <div class="sumrow grand"><span>Total</span><span id="cd_total">₱0.00</span></div>
+      </div>
+      <div id="cd_nocode"></div>
+      <div class="mt right">
+        <button class="btn" id="cd_save">Save the changes</button>
+        <button class="btn quiet" id="cd_done">Done</button>
+      </div>
+    </div>
+      </div>
+    </div>`, 'wide co-open');
+
+  wireSave('#cd_jpeg', '.co-side .doc', `${d.reseller || 'draft'}-basket.jpg`);
+
+  const scaleCoForm = () => {
+    const coDoc = $('#dialog .co-scale .doc.cof');
+    if (!coDoc) return;
+    const scaleBox = coDoc.parentElement;
+    const room = scaleBox.clientWidth || 900;
+    coDoc.style.width = '900px';
+    coDoc.style.transformOrigin = 'top left';
+    const scale = Math.min(1, room / 900);
+    coDoc.style.transform = `scale(${scale})`;
+    scaleBox.style.height = `${coDoc.scrollHeight * scale}px`;
+  };
+
+  const plain = (v) => peso(v).replace('₱', '');
+
+  const refreshForm = (sub) => {
+    const box = $('#cd_form');
+    if (!box) return;
+    box.innerHTML = customerOrderForm({
+      orderId: d.id, issuedOn: d.updated_at || new Date(),
+      amount: sub, resellerName: d.reseller,
+      lines: [...lines.values()].filter((l) => l.qty > 0).map((l) => ({
+        sku: l.sku, name: l.name, qty: l.qty, price: l.price,
+        code: l.typed ? '' : l.code, unit: l.unit })),
+      who,
+    });
+    scaleCoForm();
+  };
+
+  const drawList = () => {
+    const box = $('#cd_basket');
+    if (!box) return;
+    const rows = [...lines.values()];
+    box.innerHTML = rows.length ? rows.map((l) => `
+      <div class="pick">
+        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${
+          l.price === 0 ? 'FREE' : l.typed ? 'typed price' : l.code ? esc(l.code) : 'no PCODE'
+          }${l.unit ? ' · ' + esc(l.unit) : ''} · ${l.price === 0 ? 'no charge'
+            : peso(l.price * l.qty)} for ${count(l.qty)}</span></span>
+        <select class="pcode" data-code="${esc(l.sku)}"
+          title="Which agreed price this line is charged at">
+          <option value="">${l.price === 0 ? 'free of charge'
+            : l.typed ? 'typed price' : `no PCODE — ${plain(l.listed ?? l.price)}`}</option>
+          ${(codes || []).filter((c) => (l.prices || {})[c.code] != null)
+            .map((c) => `<option value="${esc(c.code)}"
+              ${!l.typed && c.code === l.code ? 'selected' : ''}>${esc(c.code)} — ${
+              plain(l.prices[c.code])}</option>`).join('')}
+        </select>
+        <input class="unit" type="text" inputmode="decimal" data-price="${esc(l.sku)}"
+          value="${plain(l.price)}" title="The unit price charged on this line">
+        <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
+        <b class="linetot">${l.price === 0 ? 'FREE' : peso(l.price * l.qty)}</b>
+        <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
+      </div>`).join('') : '<div class="none">Nothing on this basket.</div>';
+
+    const sub = rows.reduce((s, l) => s + l.price * l.qty, 0);
+    $('#cd_sub').textContent = peso(sub);
+    $('#cd_total').textContent = peso(sub);
+    refreshForm(sub);
+
+    const save = $('#cd_save');
+    if (save) save.disabled = !rows.some((l) => l.qty > 0);
+
+    const warn = $('#cd_nocode');
+    if (warn) {
+      const bare = rows.filter((l) => !l.code && !l.typed && Object.keys(l.prices || {}).length);
+      warn.innerHTML = bare.length ? `<div class="banner warn">
+        <b>${count(bare.length)} line${bare.length > 1 ? 's have' : ' has'} no PCODE.</b>
+        ${bare.map((l) => `${esc(l.name)} — ${peso(l.price)}, against ${
+          peso(Math.min(...Object.values(l.prices).map(Number)))} at its cheapest code`)
+          .join('<br>')}</div>` : '';
+    }
+
+    $$('[data-qty]', box).forEach((i) => i.addEventListener('change', () => {
+      const l = lines.get(i.dataset.qty);
+      if (l) l.qty = Math.max(1, +i.value || 1);
+      drawList();
+    }));
+    $$('[data-drop]', box).forEach((b) => b.addEventListener('click', () => {
+      lines.delete(b.dataset.drop);
+      drawList();
+    }));
+    $$('[data-code]', box).forEach((sel) => sel.addEventListener('change', () => {
+      const l = lines.get(sel.dataset.code);
+      if (!l) return;
+      l.code = sel.value;
+      l.typed = false;
+      const priced = (l.prices || {})[l.code];
+      l.price = priced != null ? Number(priced) : Number(l.listed ?? l.price);
+      drawList();
+    }));
+    $$('[data-price]', box).forEach((i) => i.addEventListener('change', () => {
+      const l = lines.get(i.dataset.price);
+      if (!l) return;
+      const said = String(i.value).replace(/[^0-9.]/g, '');
+      const asked = Number(said);
+      if (said === '' || !Number.isFinite(asked) || asked < 0) { drawList(); return; }
+      const listed = Number(l.listed ?? l.price);
+      const coded = Object.entries(l.prices || {}).find(([, v]) => Number(v) === asked);
+      l.price = asked;
+      if (asked === 0) { l.code = ''; l.typed = true; }
+      else if (coded) { l.code = coded[0]; l.typed = false; }
+      else if (asked === listed) { l.code = ''; l.typed = false; }
+      else { l.code = ''; l.typed = true; }
+      drawList();
+    }));
+  };
+  drawList();
+
+  $('#cd_add_go')?.addEventListener('click', () => {
+    const input = $('#cd_add');
+    const said = (input.value || '').trim();
+    if (!said) return;
+    const g = goods.find((x) => x.name === said) || goods.find((x) => x.sku === said.toUpperCase());
+    if (!g) return notice('Not a product this catalogue has.', 'bad');
+    if (lines.has(g.sku)) { lines.get(g.sku).qty += 1; }
+    else {
+      lines.set(g.sku, { sku: g.sku, name: g.name, price: Number(g.wholesale_price),
+        listed: Number(g.wholesale_price), unit: g.unit_type || 'PCS', code: '', typed: false,
+        prices: g.prices || {}, qty: 1 });
+    }
+    input.value = '';
+    drawList();
+  });
+
+  $('#cd_save').addEventListener('click', async () => {
+    const rows = [...lines.values()].filter((l) => l.qty > 0);
+    if (!rows.length) return notice('A draft needs at least one line.', 'bad');
+    const button = $('#cd_save');
+    button.disabled = true;
+    try {
+      await PUT(`/api/order-drafts/${draftId}`, { lines: rows });
+      notice('Draft saved 🌸', 'good');
+      closeDialog();
+      reload?.();
+    } catch (e) { whoops(e); button.disabled = false; }
+  });
+  $('#cd_done')?.addEventListener('click', closeDialog);
+}
+
 /**
  * Orders set aside off the Pending customer order list — stalled, not wrong.
  * Restore puts one straight back; nothing about the order itself changes
@@ -8176,9 +8385,9 @@ SCREENS.draftorders = async (page) => {
       .filter((o) => (o.status === 'placed' || o.status === 'picking') && o.parked_at)
       .sort((a, b) => (b.co_no || '').localeCompare(a.co_no || ''));
     // Chat order's own saved baskets — never placed at all, so there is no
-    // CO number, stage or total to show, only who they are and how many
-    // items are on the shelf. Its own read of order_drafts, not a share of
-    // Chat order's own Drafts dialog.
+    // CO number or placed date to show, but the basket's own total is real
+    // and worth showing rather than left blank. Its own read of order_drafts,
+    // not a share of Chat order's own Drafts dialog.
     let chatDrafts = [];
     try { chatDrafts = await GET('/api/order-drafts'); } catch (e) { whoops(e); }
 
@@ -8189,11 +8398,12 @@ SCREENS.draftorders = async (page) => {
       { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
           + (o.tier ? tierTag(o.tier) : '') },
       { head: 'Stage', cell: (o) => o.co_no ? orderTag(o) : tag(`${count(o.items)} items`, 'grey') },
-      { head: 'Total', n: true, cell: (o) => o.co_no ? peso(o.total) : '<span class="dim">—</span>' },
+      { head: 'Total', n: true, cell: (o) => peso(o.total) },
       { head: '', cell: (o) => o.co_no
           ? `<button class="btn sm quiet" data-restore="${o.id}">Place order</button>
              <button class="btn sm quiet" data-open="${o.id}">Open</button>`
-          : `<button class="btn sm quiet" data-dropchat="${o.id}">Discard</button>` },
+          : `<button class="btn sm quiet" data-placechat="${o.id}">Place order</button>
+             <button class="btn sm quiet" data-openchat="${o.id}">Open</button>` },
     ], 'Nothing set aside.');
 
     $('#draft_count', page).textContent = (parked.length + chatDrafts.length)
@@ -8201,14 +8411,17 @@ SCREENS.draftorders = async (page) => {
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openOrder(b.dataset.open, load).catch(whoops)));
+    $$('[data-openchat]', page).forEach((b) => b.addEventListener('click',
+      () => openChatDraft(b.dataset.openchat, load).catch(whoops)));
+    $$('[data-placechat]', page).forEach((b) => b.addEventListener('click', () => {
+      reopenChatDraftId = b.dataset.placechat;
+      orderPanel = 'chatorders';
+      const outer = page.parentElement;
+      if (outer) SCREENS.customerorder(outer).catch(whoops);
+    }));
     $$('[data-restore]', page).forEach((b) => b.addEventListener('click', async () => {
       try { await POST(`/api/orders/${b.dataset.restore}/unpark`);
         notice('Back on Pending customer order 🌸', 'good'); await load(); }
-      catch (e) { whoops(e); }
-    }));
-    $$('[data-dropchat]', page).forEach((b) => b.addEventListener('click', async () => {
-      try { await DELETE(`/api/order-drafts/${b.dataset.dropchat}`);
-        notice('Discarded', 'good'); await load(); }
       catch (e) { whoops(e); }
     }));
   };
@@ -8216,8 +8429,8 @@ SCREENS.draftorders = async (page) => {
   page.innerHTML = `
     <div class="head"><h2>Draft</h2>
       <span class="hint">Set aside off Pending customer order, or saved from
-        Chat order and never placed. Place order brings one back; Discard
-        drops a saved basket for good</span>
+        Chat order and never placed. Place order brings one back; Open
+        previews what is on it</span>
       <span class="hint" id="draft_count"></span></div>
     <div id="draft"></div>`;
   await load();
