@@ -7670,6 +7670,12 @@ SCREENS.chatorders = async (page) => {
     drawBasket();
   };
 
+  // The RS price code, product by product, off the same Pricelists figures —
+  // not the product's own standing wholesale_price, which is a separate
+  // number and drifts from Pricelists' RS column over time. Falls back to
+  // wholesale_price only for a product that has never had an RS code set.
+  const rsPrice = (p) => Number(p.prices?.RS ?? p.wholesale_price);
+
   const drawGoods = () => {
     const box = $('#ch_goods', workingBox);
     if (!box) return;
@@ -7692,7 +7698,7 @@ SCREENS.chatorders = async (page) => {
     }
     box.innerHTML = table(rows, [
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b> <span class="dim">${esc(p.brand || '')}</span>` },
-      { head: 'RS Price', n: true, cell: (p) => peso(p.wholesale_price) },
+      { head: 'RS Price', n: true, cell: (p) => peso(rsPrice(p)) },
       { head: 'Have', n: true, cell: (p) => count(p.available) },
       { head: '', cell: (p) => `<button class="btn sm quiet" data-add="${esc(p.sku)}"
           ${p.available <= 0 ? 'disabled' : ''}>Add</button>` },
@@ -7700,8 +7706,8 @@ SCREENS.chatorders = async (page) => {
     $$('[data-add]', box).forEach((b) => b.addEventListener('click', () => {
       const p = catalog.find((x) => x.sku === b.dataset.add);
       const line = basket.get(p.sku)
-        ?? { sku: p.sku, name: p.name, price: Number(p.wholesale_price),
-             listed: Number(p.wholesale_price),
+        ?? { sku: p.sku, name: p.name, price: rsPrice(p),
+             listed: rsPrice(p),
              unit: p.unit_type || 'PCS', code: '', prices: p.prices || {}, qty: 0 };
       line.qty += 1;
       basket.set(p.sku, line);

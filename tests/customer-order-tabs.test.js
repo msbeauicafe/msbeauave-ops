@@ -270,6 +270,23 @@ test('Draft hands a saved basket back to Chat order to place; there is no discar
     'reopened the same way Preview in its own Drafts dialog already does');
 });
 
+// wholesale_price and the RS price code are two separate figures that can
+// drift apart — 146 products' worth of drift, found once the owner noticed
+// this screen's own RS Price column did not match Pricelists' RS column for
+// one product. The RS code is the one Pricelists means by RS, so that is what
+// this screen reads now, falling back to wholesale_price only for a product
+// that has never had an RS code set.
+test('the RS Price column reads the RS price code, not wholesale_price', () => {
+  const chatScreen = app.slice(app.indexOf('SCREENS.chatorders = async'),
+    app.indexOf('\n};', app.indexOf('SCREENS.chatorders = async')));
+  assert.match(chatScreen, /const rsPrice = \(p\) => Number\(p\.prices\?\.RS \?\? p\.wholesale_price\)/,
+    'its own helper, falling back to wholesale_price only when a product has no RS code');
+  assert.match(chatScreen, /head: 'RS Price', n: true, cell: \(p\) => peso\(rsPrice\(p\)\)/,
+    'the column itself reads off it');
+  assert.match(chatScreen, /price: rsPrice\(p\),\s*\n\s*listed: rsPrice\(p\),/,
+    'and so does the price a freshly added line starts at');
+});
+
 // The basket's own total was real and simply never read — items and who it
 // is for already showed, so a blank Total column was the odd one out.
 test('a saved basket shows its own total, not a blank column', () => {
