@@ -340,7 +340,8 @@ test('the three invoice-row buttons do their own three things', () => {
   assert.match(screen, /recordInvoicePayment\(/, 'Record payment opens its own form');
   assert.match(screen, /showInvoiceBillingStatement\(/, 'Billing statement prints the yellow ledger, not the blue invoice');
   assert.doesNotMatch(screen, /showInvoiceDoc\(/, 'not the blue INVOICE document');
-  assert.match(screen, /openOrder\(b\.dataset\.invco, load\)/, 'Customer order opens the order');
+  assert.match(screen, /openInvoiceOrder\(b\.dataset\.invco, load\)/,
+    'Customer order opens Invoice tab\'s own dialog, not the shared openOrder');
 
   // Record payment shows on every row, paid or void included — the owner
   // asked for it there regardless, not only while something is still owed.
@@ -348,6 +349,28 @@ test('the three invoice-row buttons do their own three things', () => {
     'the button no longer waits on the invoice still being open');
   assert.match(screen, /data-invpay="\$\{o\.invoice_id\}"/,
     'and is on the row unconditionally');
+});
+
+// Invoice tab's own dialog, not a branch of the shared openOrder — correcting
+// the CO/PL/SI series is Draft tab's job, where an order is still being
+// worked on, not something Invoice tab should offer at all.
+test('Invoice tab\'s Customer order dialog has no numbers-on-the-paperwork panel', () => {
+  const before = app.slice(0, app.indexOf('SCREENS.coinvoices = async'));
+  assert.match(before, /async function openInvoiceOrder\(id, reload\)/,
+    'its own function, not openOrder');
+  const fn = before.slice(before.indexOf('async function openInvoiceOrder'));
+  assert.match(fn, /customerOrderForm\(\{/, 'the same form builder, not a share of openOrder');
+  assert.doesNotMatch(fn, /The numbers on the paperwork/,
+    'the panel the owner asked removed from this screen');
+  assert.doesNotMatch(fn, /on_keep|on_co|on_pl|on_si/,
+    'and none of its wiring left behind either');
+
+  // The shared dialog itself, and every other screen still calling it, is
+  // untouched — this panel stays exactly where it was for them.
+  const openOrderFn = app.slice(app.indexOf('async function openOrder'),
+    app.indexOf('async function openInvoiceOrder'));
+  assert.match(openOrderFn, /The numbers on the paperwork/,
+    'openOrder itself still has it, for Draft tab');
 });
 
 // Every b2b order gets an invoice row the moment it is placed — bookkeeping,

@@ -8664,6 +8664,386 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
 }
 
 /**
+ * One order, opened from Invoice tab's own 🖨 Customer order button.
+ *
+ * Invoice tab's own copy of openOrder's dialog, not a reuse of it — Invoice
+ * tab never wants "The numbers on the paperwork" (correcting the CO/PL/SI
+ * series belongs to Draft tab, where an order is still being worked on), so
+ * that panel is left out here rather than branched off inside the shared
+ * function.
+ */
+async function openInvoiceOrder(id, reload) {
+  const o = await GET(`/api/orders/${id}`);
+  // Correctable while the goods are still in the building, and only then: once
+  // an order is fulfilled the stock has left, and a screen cannot call it back.
+  const canEdit = ['admin', 'office'].includes(user?.role)
+    && o.channel === 'b2b' && ['placed', 'picking'].includes(o.status);
+  // The catalogue comes along so a blank row can offer what the warehouse
+  // actually holds. Fetched rather than assumed: if it does not arrive the
+  // dialog still opens, still corrects what is on the order, and simply has
+  // nothing to offer for adding something new.
+  const catalog = canEdit ? await wholesaleCatalog() : null;
+  const goods = catalog || [];
+  const SPARE = canEdit && goods.length ? 3 : 0;
+
+  // The customer order form itself, drawn full size on the left of the working
+  // order — one view, both things: the paper to read, print, download and send,
+  // beside the order it is drawn from. It carries the account's tax block and
+  // chat link off order_board, so the Send button knows where the paper goes.
+  const coForm = customerOrderForm({
+    orderId: o.id, orderNo: o.co_no, issuedOn: o.placed_at || o.issued_on || new Date(),
+    amount: o.total, resellerName: o.reseller,
+    lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
+      price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+    who: o, shipping: o.shipping || 0, others: o.others || 0,
+  });
+  const chat = (o.chat_link || '').trim();
+  dialog(`
+    <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
+    <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
+      ${o.invoice_id ? tag(`Invoice ${o.invoice_status} · due ${onDay(o.due_on)}`,
+          o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
+    <div class="chatbar">
+      ${['admin', 'office'].includes(user?.role) ? `
+        <input id="io_chat" type="url" placeholder="Paste their FB / group-chat link"
+          value="${esc(chat)}">
+        <button class="btn quiet" id="io_chat_save">Save link</button>` : ''}
+      <a class="btn go" id="io_send" href="${chat ? esc(chat) : '#'}" target="_blank"
+        rel="noopener noreferrer" ${chat ? '' : 'hidden'}>💬 Open chat</a>
+    </div>
+    <div class="order-split">
+      <div class="co-side">
+        <div class="co-scale">${coForm}</div>
+        <div class="co-actions">
+          <button class="btn quiet" id="io_jpeg">⬇ Download JPEG</button>
+          ${PRINT_BTN}
+        </div>
+      </div>
+      <div class="edit-side">
+    <h3>Pick in this order</h3>
+    <div class="dim">Soonest to expire first — that is what leaves the building.${canEdit
+      ? ` Every box on this table can be typed in. Change the product, how
+          many, or what it costs, and the stock, the packing list and the
+          invoice all move with it. Emptying a quantity takes that product off
+          the order; a product swapped or added takes its batch the same way,
+          soonest to expire first, and arrives on its standing price.`
+      : ''}</div>
+    <div id="io_box">
+    ${o.lines.length || SPARE ? `
+      <div class="scroll"><table>
+        <thead><tr>
+          <th>Product</th><th>Batch</th><th>Expires</th>
+          <th class="n">Qty</th><th class="n">Price</th><th class="n">Total</th>
+          ${canEdit ? '<th></th>' : ''}
+        </tr></thead>
+        <tbody>
+          ${o.lines.map((l) => `<tr>
+            <td>${canEdit && goods.length
+              ? `<input class="cellbox open" list="doc_goods" data-swap="${esc(String(l.id))}"
+                   data-was="${esc(l.sku)}" data-wasname="${esc(l.name)}"
+                   autocomplete="off" title="${esc(l.name)}" value="${esc(l.name)}">`
+              : esc(l.name)}</td>
+            <td><b>${esc(l.batch_no)}</b></td>
+            <td>${onDay(l.expiry)}</td>
+            <td class="n">${canEdit
+              ? `<input class="cellbox open n" inputmode="numeric" data-sku="${esc(l.sku)}"
+                   data-qtyfor="${esc(String(l.id))}" value="${Number(l.qty)}">`
+              : count(l.qty)}</td>
+            <td class="n">${canEdit
+              ? `<input class="cellbox open n" inputmode="decimal" data-line="${esc(String(l.id))}"
+                   value="${Number(l.unit_price).toFixed(2)}">`
+              : peso(l.unit_price)}</td>
+            <td class="n" data-linetotal="${esc(String(l.id))}">${peso(l.unit_price * l.qty)}</td>
+            ${canEdit ? `<td class="n"><button class="btn sm stop" data-remove="${esc(String(l.id))}"
+                 title="Take ${esc(l.name)} off this order">✕</button></td>` : ''}
+          </tr>`).join('')}
+          ${Array.from({ length: SPARE }, (_x, i) => `<tr>
+            <td><input class="cellbox open" list="doc_goods" data-add="${i}"
+                  autocomplete="off" placeholder="Add a product"></td>
+            <td></td>
+            <td></td>
+            <td class="n"><input class="cellbox open n" data-addqty="${i}"
+                  inputmode="numeric" disabled></td>
+            <td class="n"><input class="cellbox open n" data-addprice="${i}"
+                  inputmode="decimal" disabled></td>
+            <td class="n" data-addtotal="${i}"></td>
+            ${canEdit ? `<td class="n"><button class="btn sm stop" data-clear="${i}"
+                 title="Clear this row">✕</button></td>` : ''}
+          </tr>`).join('')}
+        </tbody>
+      </table></div>${goodsList(goods)}`
+      : '<div class="none">No lines on this order.</div>'}
+    </div>
+    ${canEdit ? `
+      <div class="row" style="justify-content:flex-end;align-items:flex-end;gap:14px">
+        <div style="flex:0 0 150px"><label for="io_ship">Shipping/Delivery Fee</label>
+          <input id="io_ship" type="text" class="n" inputmode="decimal"
+            value="${Number(o.shipping || 0).toFixed(2)}"></div>
+        <div style="flex:0 0 150px"><label for="io_oth">Others</label>
+          <input id="io_oth" type="text" class="n" inputmode="decimal"
+            value="${Number(o.others || 0).toFixed(2)}"></div>
+      </div>` : ''}
+    <div class="right mt"><b>Total <span id="io_total">${peso(o.total)}</span></b></div>
+    ${canEdit ? `<div class="right"><span class="dim" id="io_state"></span>
+      <button class="btn sm" id="io_keep">Save the changes</button></div>` : ''}
+    <div class="mt right">
+      ${['placed', 'picking'].includes(o.status)
+        ? '<button class="btn stop" id="io_cancel">Cancel</button>' : ''}
+      ${o.status === 'fulfilled' && !o.delivered_at
+        ? '<button class="btn go" id="io_delivered">Mark delivered</button>' : ''}
+    </div>
+      </div>
+    </div>`, 'wide co-open');
+
+  // The form's own picture, straight off the sheet drawn on the left.
+  wireSave('#io_jpeg', '.co-side .doc', `${o.co_no || o.id}.jpg`);
+
+  // The chat link where this account's paperwork is sent. Typed here, it turns
+  // the Open chat button live at once, and Save keeps it on the account so it
+  // is already there the next time — set once, clickable from every order.
+  const chatIn = $('#io_chat');
+  const chatOpen = $('#io_send');
+  const syncChat = () => {
+    const v = (chatIn?.value || '').trim();
+    if (chatOpen) { if (v) { chatOpen.href = v; chatOpen.hidden = false; } else chatOpen.hidden = true; }
+  };
+  chatIn?.addEventListener('input', syncChat);
+  $('#io_chat_save')?.addEventListener('click', async () => {
+    const v = (chatIn?.value || '').trim();
+    try {
+      // The account's own name, contact and email travel back untouched, so
+      // saving the link is not also blanking the rest of the details.
+      const r = await GET(`/api/resellers/${o.reseller_id}`);
+      await POST(`/api/resellers/${o.reseller_id}/details`, {
+        name: r.name, contact: r.contact, email: r.email, chat_link: v });
+      notice('Chat link saved 🌸 — it is on the account now', 'good');
+      syncChat();
+    } catch (e) { whoops(e); }
+  });
+  // Drawn at its printed 900px and fitted to the column it sits in. With the
+  // wide layout the column is a full 900, so the sheet is 1:1 and crisp; only a
+  // screen too narrow to hold it side by side scales it down at all.
+  const scaleCoForm = () => {
+    const coDoc = $('#dialog .co-scale .doc.cof');
+    if (!coDoc) return;
+    const scaleBox = coDoc.parentElement;
+    const room = scaleBox.clientWidth || 900;
+    coDoc.style.width = '900px';
+    coDoc.style.transformOrigin = 'top left';
+    const scale = Math.min(1, room / 900);
+    coDoc.style.transform = `scale(${scale})`;
+    scaleBox.style.height = `${coDoc.scrollHeight * scale}px`;
+  };
+  scaleCoForm();
+
+  const act = (sel, path) => $(sel)?.addEventListener('click', async () => {
+    try {
+      const r = await POST(`/api/orders/${id}/${path}`);
+      notice(r.message || 'Done', 'good');
+      closeDialog();
+      reload();
+    } catch (e) { whoops(e); }
+  });
+
+  // The lines themselves. Same two calls the invoice makes and in the same
+  // order — prices before quantities, because both are judged against what has
+  // already been settled and the usual correction is a price going up while a
+  // quantity comes down.
+  if (canEdit) {
+    const box = $('#io_box');
+    const each = sheetBoxes(box, goods, () => retotal());
+    const money = (el) => {
+      const n = Number(String(el?.value ?? '').replace(/[^0-9.]/g, ''));
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+    const asPlaced = [...o.lines.reduce((by, l) =>
+      by.set(l.sku, (by.get(l.sku) || 0) + Number(l.qty)), new Map())]
+      .map(([sku, qty]) => ({ sku, qty }));
+    const paid = Number(o.total || 0) - Number(o.balance ?? o.total ?? 0);
+
+    function retotal() {
+      let running = 0;
+      for (const price of $$('[data-line]', box)) {
+        const qty = wholeUnits($(`[data-qtyfor="${price.dataset.line}"]`, box));
+        const line = money(price) * qty;
+        running += line;
+        const cell = $(`[data-linetotal="${price.dataset.line}"]`, box);
+        if (cell) cell.textContent = peso(line);
+      }
+      // Something added here has no price of its own until it is saved: it
+      // takes the standing wholesale price, and the office corrects it after
+      // like any other line. Showing that now keeps the total honest.
+      each.added().forEach((g, i) => {
+        // The price box opens the moment a product is on the row and is seeded
+        // with its standing wholesale price; typed over, that hand price is what
+        // the line comes to and, below, what it is saved at.
+        const price = $(`[data-addprice="${i}"]`, box);
+        if (price) {
+          price.disabled = false;
+          if (price.value.trim() === '') price.value = Number(g.wholesale_price || 0).toFixed(2);
+        }
+        const line = money(price) * g.qty;
+        running += line;
+        const total = $(`[data-addtotal="${i}"]`, box);
+        if (total) total.textContent = peso(line);
+      });
+      const whole = running + money($('#io_ship')) + money($('#io_oth'));
+      $('#io_total').textContent = peso(whole);
+      const empty = !each.picture().some((l) => l.qty > 0);
+      const short = paid > 0 && whole < paid;
+      $('#io_state').innerHTML = empty
+        ? `<span class="over">An order with nothing on it is a cancellation —
+           use Cancel if that is what this is</span>`
+        : short
+          ? `<span class="over">${peso(paid)} has already been settled against
+             this order — it cannot come to less</span>` : '';
+      $('#io_keep').disabled = empty || short;
+      refreshForm();
+    }
+
+    // The sheet on the left redrawn from the working order as it stands right
+    // now — a product added, a quantity changed, a line struck off all show on
+    // the customer order form as they happen, so what will be sent is read off
+    // the same figures that will be saved.
+    const currentFormLines = () => {
+      const out = [];
+      for (const l of o.lines) {
+        const q = $(`[data-qtyfor="${l.id}"]`, box);
+        const p = $(`[data-line="${l.id}"]`, box);
+        const nm = $(`[data-swap="${l.id}"]`, box);
+        if (!q || wholeUnits(q) <= 0 || p?.dataset.removed) continue;
+        out.push({ sku: l.sku, name: nm ? nm.value : l.name, qty: wholeUnits(q),
+          price: money(p), code: p?.dataset.swapped ? '' : (l.price_code || ''),
+          unit: l.unit_type });
+      }
+      each.added().forEach((g, i) => {
+        const pr = $(`[data-addprice="${i}"]`, box);
+        out.push({ sku: g.sku, name: g.name, qty: g.qty,
+          price: pr && pr.value.trim() !== '' ? money(pr) : Number(g.wholesale_price || 0),
+          code: '', unit: g.unit_type });
+      });
+      return out;
+    };
+    function refreshForm() {
+      const scaleBox = $('#dialog .co-scale');
+      if (!scaleBox) return;
+      const lines = currentFormLines();
+      const ship = money($('#io_ship'));
+      const oth = money($('#io_oth'));
+      const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+      scaleBox.innerHTML = customerOrderForm({
+        orderId: o.id, orderNo: o.co_no,
+        issuedOn: o.placed_at || o.issued_on || new Date(),
+        amount: sub + ship + oth, resellerName: o.reseller, lines,
+        who: o, shipping: ship, others: oth,
+      });
+      scaleCoForm();
+    }
+
+    // Clearing an added row empties its picker and quantity — row-scoped so a
+    // freshly grown row clears the same way — and the totals settle back.
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-clear]');
+      if (!b) return;
+      const row = b.closest('tr');
+      const pick = $('[data-add]', row);
+      const qty = $('[data-addqty]', row);
+      const price = $('[data-addprice]', row);
+      if (pick) { pick.value = ''; pick.classList.remove('named'); }
+      if (qty) { qty.value = ''; qty.disabled = true; }
+      if (price) { price.value = ''; price.disabled = true; }
+      const tot = $('[data-addtotal]', row); if (tot) tot.textContent = '';
+      retotal();
+    });
+    // A hand price typed into an added row recomputes the line and the sheet —
+    // delegated, so a freshly grown row's price box counts the same way.
+    box.addEventListener('input', (e) => {
+      if (e.target.matches('[data-addprice]')) retotal();
+    });
+
+    // The delivery fee and whatever else the order carried used to be typed on
+    // the invoice. The invoice is a document now, so they are here, beside the
+    // figures they are added to — and they go up in the same call the prices
+    // do, because they are the same correction to the same money.
+    $$('[data-line], #io_ship, #io_oth').forEach((el) => {
+      el.addEventListener('input', retotal);
+      el.addEventListener('change', () => { el.value = money(el).toFixed(2); retotal(); });
+    });
+    // The ✕ takes a line off the order: its quantity goes to nought — which is
+    // how a line leaves when the picture is saved — its price is held back so a
+    // line about to be deleted is not repriced first, and the row is struck out
+    // so it reads as gone while still on screen to bring back if it was a slip.
+    $$('[data-remove]', box).forEach((b) => b.addEventListener('click', () => {
+      const line = b.dataset.remove;
+      const qty = $(`[data-qtyfor="${line}"]`, box);
+      const price = $(`[data-line="${line}"]`, box);
+      const gone = b.closest('tr').classList.toggle('struck');
+      if (gone) {
+        if (qty) { qty.dataset.was = qty.value; qty.value = '0'; qty.disabled = true; }
+        if (price) price.dataset.removed = '1';
+        b.textContent = '↺';
+      } else {
+        if (qty) { qty.value = qty.dataset.was ?? '1'; qty.disabled = false; }
+        if (price) delete price.dataset.removed;
+        b.textContent = '✕';
+      }
+      retotal();
+    }));
+    retotal();
+
+    $('#io_keep').addEventListener('click', async () => {
+      const button = $('#io_keep');
+      button.disabled = true;
+      try {
+        await POST(`/api/orders/${id}/invoice`, {
+          // A line whose product was swapped is about to be replaced, so its
+          // price box is showing the new product's standing figure rather than
+          // anything anybody agreed to. Sending it would price the old line a
+          // moment before it is deleted.
+          lines: $$('[data-line]', box)
+            .filter((el) => !el.dataset.swapped && !el.dataset.removed)
+            .map((el) => ({ id: el.dataset.line, price: money(el) })),
+          shipping: money($('#io_ship')),
+          others: money($('#io_oth')),
+        });
+        // A hand price typed against an added product, kept by its sku: the
+        // revise below brings the line in at its standing price, and this is
+        // what it is corrected to once it exists — the same as a placed order.
+        const handed = new Map();
+        each.added().forEach((g, i) => {
+          const pr = $(`[data-addprice="${i}"]`, box);
+          if (pr && pr.value.trim() !== '' && money(pr) !== Number(g.wholesale_price || 0)) {
+            handed.set(g.sku, money(pr));
+          }
+        });
+        const now = each.picture().filter((l) => l.qty > 0);
+        const moved = now.length !== asPlaced.length || now.some(({ sku, qty }) =>
+          qty !== asPlaced.find((l) => l.sku === sku)?.qty);
+        let out = moved
+          ? await POST(`/api/orders/${id}/lines`, { lines: now })
+          : { total: null };
+        if (handed.size) {
+          const fresh = await GET(`/api/orders/${id}`);
+          const reprice = (fresh.lines || []).filter((l) => handed.has(l.sku))
+            .map((l) => ({ id: l.id, price: handed.get(l.sku) }));
+          if (reprice.length) {
+            await POST(`/api/orders/${id}/invoice`, { lines: reprice });
+            out = await GET(`/api/orders/${id}`);
+          }
+        }
+        notice(`This order now comes to ${
+          out.total == null ? $('#io_total').textContent : peso(out.total)} 🌸`, 'good');
+        closeDialog();
+        reload();
+      } catch (e) { whoops(withProductName(e, goods)); button.disabled = false; }
+    });
+  }
+
+  act('#io_cancel', 'cancel');
+  act('#io_delivered', 'deliver');
+}
+
+/**
  * One row per invoice raised — Customers already shows a reseller's whole
  * account via resellerList('money'), so this is built fresh rather than
  * branched off it: a row here, and the three papers behind it, without
@@ -8728,7 +9108,7 @@ SCREENS.coinvoices = async (page) => {
     }));
 
     $$('[data-invco]', page).forEach((b) => b.addEventListener('click',
-      () => openOrder(b.dataset.invco, load).catch(whoops)));
+      () => openInvoiceOrder(b.dataset.invco, load).catch(whoops)));
   };
 
   page.innerHTML = `
