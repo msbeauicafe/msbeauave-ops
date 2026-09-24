@@ -47,6 +47,7 @@ test('a draft saves, lists, reopens and discards', async () => {
   assert.ok(mine, 'the draft is in the list');
   assert.equal(Number(mine.items), 2, 'with its line count');
   assert.ok(mine.reseller, 'and the account name');
+  assert.equal(Number(mine.total), 250, 'and its own total, 2*100 + 1*50 — Draft tab reads this now');
 
   const one = await req(desk, 'GET', `/api/order-drafts/${saved.data.id}`);
   assert.equal(one.status, 200);

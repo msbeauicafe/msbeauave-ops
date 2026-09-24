@@ -232,11 +232,86 @@ test('Draft also lists what Chat order has saved, without reaching into it', () 
 
   assert.match(screen, /GET\('\/api\/order-drafts'\)/, 'its own fetch of the same data');
   assert.match(screen, /\[\.\.\.parked, \.\.\.chatDrafts\]/, 'the two kinds sit on one list');
-  assert.match(screen, /data-dropchat="\$\{o\.id\}"/, 'its own Discard button');
-  assert.match(screen, /DELETE\(`\/api\/order-drafts\/\$\{b\.dataset\.dropchat\}`\)/,
-    'and its own delete call');
   assert.doesNotMatch(screen, /openDraftsList|reopenDraft/,
     'Chat order\'s own dialog and basket-reopening logic are untouched');
+});
+
+// A saved-but-never-placed basket had no way back to Chat order from here —
+// only Discard, since removed — even though the tab's own header promises
+// "Place order brings one back." reopenChatDraftId is the hand-off: Draft
+// tab sets it and switches the panel, Chat order itself reads it and clears
+// it, so neither screen reaches into the other's own functions to make it
+// happen.
+test('Draft hands a saved basket back to Chat order to place; there is no discard any more', () => {
+  const before = app.slice(0, app.indexOf('SCREENS.chatorders = async'));
+  assert.match(before, /let reopenChatDraftId = null;/,
+    'a module-level hand-off, the same way orderPanel already is');
+
+  const draftScreen = app.slice(app.indexOf('SCREENS.draftorders = async'),
+    app.indexOf('\n};', app.indexOf('SCREENS.draftorders = async')));
+  assert.match(draftScreen, /data-placechat="\$\{o\.id\}">Place order</,
+    'a Place order button sits on a chat-saved row');
+  assert.doesNotMatch(draftScreen, /Discard|dropchat/,
+    'discarding a saved basket is no longer offered here at all');
+  assert.match(draftScreen, /reopenChatDraftId = b\.dataset\.placechat/,
+    'clicking it hands the draft id off');
+  assert.match(draftScreen, /orderPanel = 'chatorders'/,
+    'and switches the panel — Draft tab does not open Chat order\'s basket itself');
+  assert.doesNotMatch(draftScreen, /reopenDraft\(/,
+    'the actual reopening stays inside Chat order\'s own screen');
+
+  const chatScreen = app.slice(app.indexOf('SCREENS.chatorders = async'),
+    app.indexOf('\n};', app.indexOf('SCREENS.chatorders = async')));
+  assert.match(chatScreen, /if \(reopenChatDraftId\)/,
+    'Chat order reads the hand-off itself rather than Draft tab pushing into it');
+  assert.match(chatScreen, /reopenChatDraftId = null;/,
+    'and clears it, so it only ever fires once');
+  assert.match(chatScreen, /reopenDraft\(await GET\(`\/api\/order-drafts\/\$\{id\}`\)\)/,
+    'reopened the same way Preview in its own Drafts dialog already does');
+});
+
+// The basket's own total was real and simply never read — items and who it
+// is for already showed, so a blank Total column was the odd one out.
+test('a saved basket shows its own total, not a blank column', () => {
+  const draftScreen = app.slice(app.indexOf('SCREENS.draftorders = async'),
+    app.indexOf('\n};', app.indexOf('SCREENS.draftorders = async')));
+  assert.match(draftScreen, /head: 'Total', n: true, cell: \(o\) => peso\(o\.total\)/,
+    'one reading for both kinds of row now, not a dash for the chat-saved half');
+});
+
+// A saved basket has no order to open — openOrder has nothing to read — so
+// Open here is its own dialog: the same customer order form on the left,
+// and on the right a list of orders that mirrors Chat order's own basket
+// editor, since that is what built this basket. Saving writes straight back
+// onto the draft; placing it for real is still Place order's job.
+test('a saved basket opens its own editable dialog, not openOrder\'s', () => {
+  const before = app.slice(0, app.indexOf('SCREENS.draftorders = async'));
+  assert.match(before, /async function openChatDraft\(draftId, reload\)/,
+    "its own function, not openOrder — there is no real order to read");
+  assert.match(before, /GET\(`\/api\/order-drafts\/\$\{draftId\}`\)/,
+    'reads the one draft\'s own lines straight');
+  assert.match(before, /GET\(`\/api\/resellers\/\$\{d\.reseller_id\}`\)/,
+    'the account\'s own tax details are fetched too — the form has a block for them');
+
+  const fn = before.slice(before.indexOf('async function openChatDraft'));
+  assert.match(fn, /customerOrderForm\(\{/, 'the same form builder, not a share of openOrder');
+  assert.match(fn, /<h3>List of orders<\/h3>/,
+    'the right side reads like Chat order\'s own basket, not a plain table');
+  assert.match(fn, /data-code="\$\{esc\(l\.sku\)\}"/, 'a PCODE picker on every line');
+  assert.match(fn, /PUT\(`\/api\/order-drafts\/\$\{draftId\}`, \{ lines: rows \}\)/,
+    'Save the changes writes straight back onto this same draft');
+  assert.match(fn, /reload\?\.\(\)/,
+    'and tells the Draft list to refresh once it has');
+  assert.doesNotMatch(fn, /POST\(`\/api\/resellers\/.*\/orders`|\/api\/orders\/\$\{id\}\/lines/,
+    'nothing here places the order for real — that stays Place order\'s job');
+
+  const draftScreen = app.slice(app.indexOf('SCREENS.draftorders = async'),
+    app.indexOf('\n};', app.indexOf('SCREENS.draftorders = async')));
+  assert.match(draftScreen,
+    /data-placechat="\$\{o\.id\}">Place order<\/button>\s*<button class="btn sm quiet" data-openchat="\$\{o\.id\}">Open/,
+    'Open sits right after Place order, same order as the parked half of the list');
+  assert.match(draftScreen, /openChatDraft\(b\.dataset\.openchat, load\)/,
+    'wired to its own dialog, not openOrder, and told how to refresh the list');
 });
 
 // One row per invoice, not one row per reseller — that account-level list
