@@ -14159,7 +14159,7 @@ SCREENS.payroll = async (page) => {
       { head: 'Hol', n: true, cell: (r) => box(r, 'holidays', '0.5') },
       { head: 'Spe hol', n: true, cell: (r) => box(r, 'spe_holidays', '0.5') },
       { head: 'Leave', n: true, cell: (r) => box(r, 'leave_days', '0.5') },
-      { head: 'Allow.', n: true, cell: (r) => box(r, 'allowance', '0.01') },
+      { head: 'Allow./ day', n: true, cell: (r) => box(r, 'allowance', '0.01') },
       { head: 'Adj.', n: true, cell: (r) => box(r, 'adjustment', '0.01') },
       { head: 'Earn.', n: true, cell: (r) => `<b>${money(r.total_earnings)}</b>` },
       { head: 'Late min', n: true, cell: (r) => box(r, 'late_minutes', '1') },
@@ -14222,8 +14222,12 @@ SCREENS.payroll = async (page) => {
     r.spe_holiday = d * 0.30 * Number(r.spe_holidays || 0);
     r.leave_pay = d * Number(r.leave_days || 0);
     r.late_charge = d / 480 * Number(r.late_minutes || 0);
+    // A rate per day, not a flat figure — 60 typed against 13 days present
+    // is 780, the same way every other per-day box on this line already
+    // multiplies out.
+    r.allowance_total = Number(r.allowance || 0) * Number(r.days_present || 0);
     r.total_earnings = r.basic + r.nsd + r.overtime + r.holiday + r.spe_holiday
-      + r.leave_pay + Number(r.allowance || 0) + Number(r.adjustment || 0);
+      + r.leave_pay + r.allowance_total + Number(r.adjustment || 0);
     r.total_deductions = r.late_charge + Number(r.sss || 0)
       + Number(r.philhealth || 0) + Number(r.pagibig || 0) + Number(r.loans || 0)
       + Number(r.other_charges || 0);
@@ -14907,7 +14911,7 @@ function payslip(period, r) {
         ${line('Night Differential', hrs(r.nsd_hours), r.nsd)}
         ${line('Regular Holiday', days(r.holidays), r.holiday)}
         ${line('Special Holiday', days(r.spe_holidays), r.spe_holiday)}
-        ${line('Allowance', null, r.allowance)}
+        ${line('Allowance', days(r.days_present), r.allowance_total)}
         ${line('Adjustment', null, r.adjustment)}
       </tbody><tfoot>
         <tr><td>Gross Pay</td><td></td><td class="n">${money(r.total_earnings)}</td></tr>
