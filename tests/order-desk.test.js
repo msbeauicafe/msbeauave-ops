@@ -281,6 +281,28 @@ test("Product list's own Quantity cell reads free-to-sell, Purchase order's pick
     "Purchase order's own product picker is untouched — ordering more asks how much there is");
 });
 
+test("Internal Inventory Report has its own Stock in, Stock out and History tabs", () => {
+  const screen = app.slice(app.indexOf('SCREENS.inventory = async'),
+    app.indexOf('\n};', app.indexOf('SCREENS.inventory = async')));
+
+  assert.match(screen, /\['stockin', 'Stock in'\]/);
+  assert.match(screen, /\['stockout', 'Stock out'\]/);
+  assert.match(screen, /\['history', 'History'\]/);
+
+  // Stock in — Deliveries you can still undo, connected to Purchase order
+  // by way of receiving, kept exactly as it was.
+  assert.match(screen, /<h3>Deliveries you can still undo<\/h3>/);
+  assert.match(screen, /data-undo="\$\{r\.batch_id\}"/, 'the Undo button is still there');
+
+  // Stock out — its own route, connected to Customer order.
+  assert.match(screen, /GET\('\/api\/reports\/stock-out\?limit=20'\)/,
+    "reads its own endpoint, not the shared journal");
+
+  // History — the same reading Just received always gave.
+  assert.match(screen, /<h3>Just received<\/h3>/);
+  assert.match(screen, /GET\('\/api\/reports\/journal\?limit=20'\)/);
+});
+
 // Pending customer order's own Invoice button says the office has raised
 // the invoice and moved the order along — worth recording even for a
 // tier-1 account, the floor that pays before dispatch and so reads Awaiting

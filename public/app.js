@@ -4266,64 +4266,112 @@ SCREENS.purchaseorders = async (page, headless = false) => {
 };
 
 // ===========================================================================
-// Inventory — what came in, and what can still be unmade
+// Inventory — what came in, what went out, and what can still be unmade
 // ===========================================================================
+let inventoryPanel = 'stockin';
+
 SCREENS.inventory = async (page) => {
+  const PANELS = [
+    ['stockin', 'Stock in'],
+    ['stockout', 'Stock out'],
+    ['history', 'History'],
+  ];
+  if (!PANELS.some(([id]) => id === inventoryPanel)) inventoryPanel = 'stockin';
+
   page.innerHTML = `
     <div class="head"><h2>Inventory</h2>
       <span class="hint">Everything that has moved, newest first</span>
       <button class="btn" id="inv_new_product">＋ New product</button></div>
-    <div class="panel"><h3>Deliveries you can still undo</h3>
-      <div class="dim">A delivery entered wrongly should be unmade, not written
-        off as damage — writing it off puts goods that never existed into the
-        shrinkage report and money that never moved into the loss column. This
-        only works while nothing has happened to the lot yet.</div>
-      <div id="r_undo" class="mt"></div></div>
-    <div class="panel"><h3>Just received</h3><div id="r_recent"></div></div>`;
-
-  const recent = async () => {
-    const rows = await GET('/api/reports/journal?limit=20');
-    $('#r_recent', page).innerHTML = table(rows, [
-      { head: 'When', cell: (m) => when(m.at) },
-      { head: 'Product', cell: (m) => esc(m.name) },
-      { head: 'Batch', cell: (m) => `<span class="dim">${esc(m.batch_no)}</span>` },
-      { head: 'Move', cell: (m) => `${esc(m.from_pool || '·')} → ${esc(m.to_pool || 'out')}` },
-      { head: 'Qty', n: true, cell: (m) => count(m.qty) },
-      { head: 'Why', cell: (m) => `<span class="dim">${esc(m.reason)}</span>` },
-      { head: 'Who', cell: (m) => `<span class="dim">${esc(m.actor)}</span>` },
-    ], 'Nothing has moved yet.');
-  };
-
-  // The list says why a delivery is stuck as well as that it is, so nobody
-  // presses a button to find out.
-
-  const undoable = async () => {
-    const rows = await GET('/api/receipts?limit=15');
-    $('#r_undo', page).innerHTML = table(rows, [
-      { head: 'When', cell: (r) => when(r.received_at) },
-      { head: 'Product', cell: (r) => esc(r.name) },
-      { head: 'Batch', cell: (r) => `<span class="dim">${esc(r.batch_no || '—')}</span>` },
-      { head: 'Units', n: true, cell: (r) => count(r.qty_received) },
-      { head: 'Cost', n: true, cell: (r) => peso(r.value) },
-      { head: 'Where', cell: (r) => `<span class="dim">${esc(r.branches || '—')}</span>` },
-      { head: '', cell: (r) => (r.held_by
-          ? tag(r.held_by, 'grey')
-          : `<button class="btn sm stop" data-undo="${r.batch_id}"
-               data-what="${esc(r.name)} — ${esc(r.batch_no || 'no batch number')}, ${
-                 r.qty_received} unit(s), ${peso(r.value)}">Undo</button>`) },
-    ], 'Nothing received yet.');
-
-    $$('[data-undo]', page).forEach((b) => b.addEventListener('click',
-      () => undoDialog(b.dataset.undo, b.dataset.what, () => {
-        undoable(); recent();
-      })));
-  };
-
-  await recent();
-  await undoable().catch(() => {});
-  repeat(recent, 15000);
+    <div class="subtabs">
+      ${PANELS.map(([id, label]) => `<button data-panel="${esc(id)}"
+        class="${id === inventoryPanel ? 'on' : ''}">${esc(label)}</button>`).join('')}
+    </div>
+    <div id="inv_panel"></div>`;
 
   $('#inv_new_product', page)?.addEventListener('click', () => editProduct(null, () => {}));
+  $$('[data-panel]', page).forEach((b) => b.addEventListener('click', () => {
+    inventoryPanel = b.dataset.panel;
+    SCREENS.inventory(page).catch(whoops);
+  }));
+
+  const box = $('#inv_panel', page);
+
+  // Stock in — connected to Purchase order: what a delivery brought in, and
+  // the one place a wrongly entered one can still be unmade rather than
+  // written off, while nothing has happened to the lot yet.
+  if (inventoryPanel === 'stockin') {
+    box.innerHTML = `
+      <div class="panel"><h3>Deliveries you can still undo</h3>
+        <div class="dim">A delivery entered wrongly should be unmade, not written
+          off as damage — writing it off puts goods that never existed into the
+          shrinkage report and money that never moved into the loss column. This
+          only works while nothing has happened to the lot yet.</div>
+        <div id="r_undo" class="mt"></div></div>`;
+
+    const undoable = async () => {
+      const rows = await GET('/api/receipts?limit=15');
+      $('#r_undo', page).innerHTML = table(rows, [
+        { head: 'When', cell: (r) => when(r.received_at) },
+        { head: 'Product', cell: (r) => esc(r.name) },
+        { head: 'Batch', cell: (r) => `<span class="dim">${esc(r.batch_no || '—')}</span>` },
+        { head: 'Units', n: true, cell: (r) => count(r.qty_received) },
+        { head: 'Cost', n: true, cell: (r) => peso(r.value) },
+        { head: 'Where', cell: (r) => `<span class="dim">${esc(r.branches || '—')}</span>` },
+        { head: '', cell: (r) => (r.held_by
+            ? tag(r.held_by, 'grey')
+            : `<button class="btn sm stop" data-undo="${r.batch_id}"
+                 data-what="${esc(r.name)} — ${esc(r.batch_no || 'no batch number')}, ${
+                   r.qty_received} unit(s), ${peso(r.value)}">Undo</button>`) },
+      ], 'Nothing received yet.');
+
+      $$('[data-undo]', page).forEach((b) => b.addEventListener('click',
+        () => undoDialog(b.dataset.undo, b.dataset.what, () => undoable())));
+    };
+    await undoable().catch(() => {});
+  }
+
+  // Stock out — connected to Customer order: only what left the building
+  // because one dispatched, read off /api/reports/stock-out's own reading of
+  // the journal rather than a filter added to the shared one Reports uses.
+  if (inventoryPanel === 'stockout') {
+    box.innerHTML = `<div class="panel"><h3>Stock out</h3><div id="r_out"></div></div>`;
+
+    const stockOut = async () => {
+      const rows = await GET('/api/reports/stock-out?limit=20');
+      $('#r_out', page).innerHTML = table(rows, [
+        { head: 'When', cell: (m) => when(m.at) },
+        { head: 'Product', cell: (m) => esc(m.name) },
+        { head: 'Batch', cell: (m) => `<span class="dim">${esc(m.batch_no)}</span>` },
+        { head: 'Move', cell: (m) => `${esc(m.from_pool || '·')} → ${esc(m.to_pool || 'out')}` },
+        { head: 'Qty', n: true, cell: (m) => count(m.qty) },
+        { head: 'Why', cell: (m) => `<span class="dim">${esc(m.reason)}</span>` },
+        { head: 'Who', cell: (m) => `<span class="dim">${esc(m.actor)}</span>` },
+      ], 'Nothing has shipped yet.');
+    };
+    await stockOut();
+    repeat(stockOut, 15000);
+  }
+
+  // History — everything that has moved, the same reading Just received
+  // always gave, now under its own tab.
+  if (inventoryPanel === 'history') {
+    box.innerHTML = `<div class="panel"><h3>Just received</h3><div id="r_recent"></div></div>`;
+
+    const recent = async () => {
+      const rows = await GET('/api/reports/journal?limit=20');
+      $('#r_recent', page).innerHTML = table(rows, [
+        { head: 'When', cell: (m) => when(m.at) },
+        { head: 'Product', cell: (m) => esc(m.name) },
+        { head: 'Batch', cell: (m) => `<span class="dim">${esc(m.batch_no)}</span>` },
+        { head: 'Move', cell: (m) => `${esc(m.from_pool || '·')} → ${esc(m.to_pool || 'out')}` },
+        { head: 'Qty', n: true, cell: (m) => count(m.qty) },
+        { head: 'Why', cell: (m) => `<span class="dim">${esc(m.reason)}</span>` },
+        { head: 'Who', cell: (m) => `<span class="dim">${esc(m.actor)}</span>` },
+      ], 'Nothing has moved yet.');
+    };
+    await recent();
+    repeat(recent, 15000);
+  }
 };
 
 
