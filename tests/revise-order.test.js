@@ -627,7 +627,7 @@ test("Pending customer order's product search finds the order that carries it, n
   assert.ok(!ids.includes(String(doesNot.orderId)), 'an order without it is not');
 });
 
-test("Pending customer order's product search stays off a parked order", async () => {
+test("Pending customer order's product search still finds a marked-Draft order", async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await stocked(admin, store, 60, 300);
@@ -637,8 +637,8 @@ test("Pending customer order's product search stays off a parked order", async (
 
   const found = await GET(admin, `/api/pending-orders/by-product?q=${encodeURIComponent(sku)}`);
   assert.equal(found.status, 200, JSON.stringify(found.data));
-  assert.ok(!found.data.map(String).includes(String(o.orderId)),
-    'set aside on Draft, so it is not something Pending customer order would show anyway');
+  assert.ok(found.data.map(String).includes(String(o.orderId)),
+    'marked Draft still stays right here on Pending customer order, so the search still finds it');
 });
 
 // The invoice and the packing list are the same order seen from two sides.
