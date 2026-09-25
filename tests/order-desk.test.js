@@ -240,6 +240,47 @@ test('restoring a Draft order is refused once its stock has gone to someone else
     'the refused restore leaves it exactly as it was — still on Draft');
 });
 
+// Product list's own Quantity column, unlike Purchase order's product picker,
+// is asked to move with reservations — physical count stays put, only what
+// counts as free to sell goes up and down as an order is placed and Drafted.
+test("Product list's Quantity follows reservations, not just the physical count", async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const desk = await signIn('orderdesk');
+  const sku = await stocked(admin, store); // 60 on hand
+  const id = await anAccount(admin);
+  const row = async () => (await GET(admin, `/api/products?q=${sku}`)).data[0];
+
+  const before = await row();
+  assert.equal(before.total_on_hand, 60, 'the physical count');
+  assert.equal(before.committed_shop, 0, 'nothing reserved yet');
+
+  const placed = await POST(desk, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 5 }] });
+  const order = placed.data.orderId;
+
+  const ordered = await row();
+  assert.equal(ordered.total_on_hand, 60, 'placing an order moves nothing physically');
+  assert.equal(ordered.committed_shop, 5, 'the reservation the Quantity column now reads against');
+
+  assert.equal((await POST(desk, `/api/orders/${order}/park`)).status, 200);
+  const drafted = await row();
+  assert.equal(drafted.total_on_hand, 60);
+  assert.equal(drafted.committed_shop, 0, 'Draft frees the reservation');
+});
+
+test("Product list's own Quantity cell reads free-to-sell, Purchase order's picker still reads the physical count", () => {
+  const products = app.slice(app.indexOf('SCREENS.products = async'), app.indexOf('SCREENS.receive = async'));
+  const picker = app.slice(app.indexOf('SCREENS.purchaseorders = async'), app.indexOf('SCREENS.inventory = async'));
+
+  assert.match(products, /cell: \(p\) => count\(available\(p\)\)/,
+    "Product list's Quantity moves with reservations");
+  assert.doesNotMatch(products, /Quantity', n: true, cell: \(p\) => count\(p\.total_on_hand\)/,
+    'not the plain physical count any more');
+
+  assert.match(picker, /Quantity', n: true, cell: \(p\) => count\(p\.total_on_hand\)/,
+    "Purchase order's own product picker is untouched — ordering more asks how much there is");
+});
+
 // Pending customer order's own Invoice button says the office has raised
 // the invoice and moved the order along — worth recording even for a
 // tier-1 account, the floor that pays before dispatch and so reads Awaiting
