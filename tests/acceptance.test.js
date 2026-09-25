@@ -929,6 +929,33 @@ test('the reserve can only be released by the owner', async () => {
     'releasing the buffer is recorded as exactly that');
 });
 
+// Internal Inventory Report's own Stock out tab — connected to Customer
+// order, so it reads only 'shipped', fulfil_order's own reason for a b2b
+// dispatch. A receipt and a till sale on the very same product must not
+// show up alongside it — those are Stock in's and the till's business.
+test("Stock out reads only what a customer order dispatched, not a delivery or a till sale", async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const till = await signIn('cashier');
+  const sku = await newProduct(admin);
+  await receive(store, sku, 24, 20);
+  const buyer = await signIn('reseller', await newReseller(admin));
+
+  const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 5 }] });
+  await POST(store, `/api/orders/${order.data.orderId}/dispatch`);
+  await POST(till, '/api/till/sell', { lines: [{ sku, qty: 2 }], method: 'cash', tendered: 1000 });
+
+  const out = await GET(store, `/api/reports/stock-out?q=${sku}`);
+  assert.ok(out.data.every((m) => m.reason === 'shipped'),
+    'every row here is a customer order leaving, nothing else');
+  assert.ok(out.data.some((m) => m.qty === 5), 'the dispatched order is on it');
+  assert.ok(!out.data.some((m) => m.qty === 2), 'the till sale is not');
+
+  const journal = await GET(store, `/api/reports/journal?q=${sku}`);
+  assert.ok(journal.data.some((m) => m.reason === 'received'),
+    'the shared journal still carries the delivery, untouched');
+});
+
 test('hostile input is treated as text, never as a command', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
