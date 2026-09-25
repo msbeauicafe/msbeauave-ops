@@ -15056,18 +15056,10 @@ SCREENS.payroll = async (page) => {
           <div class="label">Still owed</div></div>
       </div>
 
-      ${Number(l.balance) > 0 ? `
-      <div class="row mt">
-        <div><label>Take off</label>
-          <input id="lg_amt" type="number" step="0.01" min="0"
-            value="${Number(l.per_cutoff || 0)}"></div>
-        <div><label>Dated</label><input id="lg_on" type="date"
-          value="${(picked?.paid_on || '').slice(0, 10)}"></div>
-        <div><label>Note</label><input id="lg_note" type="text"
-          placeholder="Optional"></div>
-        <div style="flex:0 0 auto; align-self:flex-end">
-          <button class="btn" id="lg_take">Take it off</button></div>
-      </div>` : '<div class="mt">' + tag('cleared', 'green') + '</div>'}
+      ${Number(l.balance) > 0
+        ? `<div class="dim mt">Taken off on its own, a cutoff at a time, once this
+             one has started — nothing here is typed in by hand.</div>`
+        : '<div class="mt">' + tag('cleared', 'green') + '</div>'}
 
       <h3 class="mt">The ledger</h3>
       ${table(rows, [
@@ -15084,20 +15076,6 @@ SCREENS.payroll = async (page) => {
       <div class="dim">Only one with nothing taken off it can go — the payments
         are the record of what was collected.</div>
       <div class="mt"><button class="btn warn sm" id="lg_remove">Remove</button></div>` : ''}`);
-
-    $('#lg_take')?.addEventListener('click', async () => {
-      const amount = Number($('#lg_amt').value || 0);
-      if (!(amount > 0)) return notice('How much is coming off?', 'bad');
-      try {
-        await POST(`/api/advances/${l.id}/take`, {
-          amount, paid_on: $('#lg_on').value || null,
-          period_id: picked?.id || null, note: $('#lg_note').value,
-        });
-        notice('Taken off 🌸', 'good');
-        closeDialog();
-        await loadLedgers(true);
-      } catch (err) { whoops(err); }
-    });
 
     $$('[data-undo]').forEach((b) => b.addEventListener('click', async () => {
       if (!await askFirst('Undo this payment?',
