@@ -4543,6 +4543,22 @@ async function deliveryDialog(knownPromise, reload, branchId = null) {
 // answers a narrower question — what has cleared enough to be packed for —
 // so it is its own screen rather than a branch through the shared one.
 // ===========================================================================
+// This tab's own reading of Stage — every row here is already paid, so
+// Awaiting payment (which needs an open invoice) can never apply. The owner
+// does not want the bench reading Picking as a stage of its own: an order
+// being picked still reads Committed, right up to Dispatch. orderTag itself
+// is untouched — Pick & send still needs to see Picking, since tracking it
+// is that screen's own job.
+const packingStageTag = (o) => {
+  if (o.delivered_at) return tag('Delivered', 'green');
+  return {
+    placed: tag('Committed', 'pink'),
+    picking: tag('Committed', 'pink'),
+    fulfilled: tag('Dispatched', 'green'),
+    cancelled: tag('Cancelled', 'grey'),
+  }[o.status] ?? tag(o.status, 'grey');
+};
+
 SCREENS.copacking = async (page) => {
   let status = '';
   const load = async () => {
@@ -4553,7 +4569,7 @@ SCREENS.copacking = async (page) => {
       { head: 'Packing list', cell: (o) => `<b>${esc(o.pl_no || o.id)}</b>` },
       { head: 'Reseller', cell: (o) => `<b>${esc(o.reseller || '')}</b> `
           + (o.tier ? tierTag(o.tier) : '') },
-      { head: 'Stage', cell: (o) => orderTag(o) },
+      { head: 'Stage', cell: (o) => packingStageTag(o) },
       { head: 'Invoice', cell: (o) => tag(o.invoice_status, 'green') },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
       { head: 'Placed', cell: (o) => when(o.placed_at) },

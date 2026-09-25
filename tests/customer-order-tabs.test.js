@@ -591,6 +591,29 @@ test('the tab is its own screen, paid orders only — the shared board stays unt
     'Pick & send and Wholesale still show every committed order, paid or not');
 });
 
+// The bench reads Picking as still Committed — Pick & send is where that
+// stage is tracked; this tab only answers whether it has cleared to be
+// packed for. orderTag itself keeps showing Picking, untouched, for every
+// screen that still needs it.
+test("the packing list's own Stage reads Picking as Committed, not its own stage", () => {
+  const before = app.slice(0, app.indexOf('SCREENS.copacking = async'));
+  assert.match(before, /const packingStageTag = \(o\) => \{/,
+    "this tab's own reading of Stage, not a branch of the shared orderTag");
+  assert.match(before, /picking: tag\('Committed', 'pink'\),/,
+    'Picking and Committed read identically here');
+
+  const at = app.indexOf('SCREENS.copacking = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /head: 'Stage', cell: \(o\) => packingStageTag\(o\)/,
+    'the Stage column reads its own tag, not the shared one');
+  assert.doesNotMatch(screen, /cell: \(o\) => orderTag\(o\)/,
+    'orderTag itself is not called from this screen any more');
+
+  const shared = app.slice(app.indexOf('function orderTag'), app.indexOf('function table('));
+  assert.match(shared, /picking: tag\('Picking', 'amber'\),/,
+    'the shared tag still shows Picking for Pick & send and everywhere else');
+});
+
 test('the panel tabs are plainly subordinate to the menu', () => {
   assert.match(css, /\.subtabs\s*\{/, 'the panel tabs are styled');
   const block = css.slice(css.indexOf('.subtabs {'), css.indexOf('.subtabs {') + 900);
