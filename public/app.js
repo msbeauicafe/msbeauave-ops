@@ -931,6 +931,14 @@ SCREENS.products = async (page) => {
   // typed in on the form — and it arrives already in it.
   const ladder = (p) => (Array.isArray(p.prices) ? p.prices : []).slice(0, TIERS);
 
+  // 117 made Quantity the plain physical count, after a reserved-stock split
+  // once made a full delivery look short. The owner wants Product list's own
+  // Quantity to move with reservations again regardless — free to sell, not
+  // what's on the shelf: down while an order holds it, back up the moment
+  // Draft frees it. Purchase order's own product picker is untouched and
+  // still reads total_on_hand plain, for the reason its own comment gives.
+  const available = (p) => Number(p.total_on_hand) - Number(p.committed_shop || 0);
+
   const drawBrands = async () => {
     const box = $('#brand_list', page);
     if (!box) return;
@@ -940,7 +948,7 @@ SCREENS.products = async (page) => {
     const rows = all.filter((r) => (!pcat
       || (r.category || '').trim().toLowerCase() === pcat)
       && (!brandFilter || (r.brand || '') === brandFilter));
-    if (qtySort) rows.sort((a, b) => Number(b.total_on_hand) - Number(a.total_on_hand));
+    if (qtySort) rows.sort((a, b) => available(b) - available(a));
     else rows.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     // Freebies are not what the shop sells, so they sink below everything
     // that is — a stable sort keeps the rest in whatever order they were
@@ -966,7 +974,7 @@ SCREENS.products = async (page) => {
           esc(p.sku)}"><b>${esc(p.name)}</b></button>` },
       { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
       { head: 'Category', cell: (p) => prodCatTag(p.category) },
-      { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
+      { head: 'Quantity', n: true, cell: (p) => count(available(p)) },
     ] : [
       { head: '', cell: (p) => thumb(p) },
       { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
@@ -974,10 +982,9 @@ SCREENS.products = async (page) => {
           esc(p.sku)}"><b>${esc(p.name)}</b></button>` },
       { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
       { head: 'Category', cell: (p) => prodCatTag(p.category) },
-      // What there is. This column said Wholesale and showed the wholesale
-      // pool, so 200 units received read as 140 and looked like sixty had gone
-      // missing. The shop counts what it has, not how the system filed it.
-      { head: 'Quantity', n: true, cell: (p) => count(p.total_on_hand) },
+      // Free to sell, not the physical count — see `available` above for why
+      // this differs from Purchase order's own product picker on purpose.
+      { head: 'Quantity', n: true, cell: (p) => count(available(p)) },
       // Named in its cell like every price beside it, so the row reads as one
       // run of name-over-figure rather than one bare number and then six.
       { head: 'Cost price', n: true, cell: (p) =>
