@@ -14175,7 +14175,8 @@ SCREENS.payroll = async (page) => {
       { head: 'Hol', n: true, cell: (r) => box(r, 'holidays', '0.5') },
       { head: 'Spe hol', n: true, cell: (r) => box(r, 'spe_holidays', '0.5') },
       { head: 'Leave', n: true, cell: (r) => box(r, 'leave_days', '0.5') },
-      { head: 'Allow./ day', n: true, cell: (r) => box(r, 'allowance', '0.01') },
+      { head: 'Alw./ day', n: true, cell: (r) => box(r, 'allowance', '0.01') },
+      { head: 'Alw. tot.', n: true, cell: (r) => money(r.allowance_total) },
       { head: 'Adj.', n: true, cell: (r) => box(r, 'adjustment', '0.01') },
       { head: 'Earn.', n: true, cell: (r) => `<b>${money(r.total_earnings)}</b>` },
       { head: 'Late min', n: true, cell: (r) => box(r, 'late_minutes', '1') },
@@ -14266,15 +14267,16 @@ SCREENS.payroll = async (page) => {
       const set = (i, v) => { if (cells[i]) cells[i].innerHTML = v; };
       // Indices into the column list above — Name, Paid, Salary/month,
       // Rate/day, Rate/hour, Days, Hours, Basic, NSD hrs, OT hrs, OT pay,
-      // Hol, Spe hol, Leave, Allow., Adj., Earnings, Late min, Late, SSS,
-      // PhilHealth, Pag-IBIG, Loan/CA, Other charges, Deductions, Net pay.
-      // Move a column there, move it here.
+      // Hol, Spe hol, Leave, Allow./day, Allow. total, Adj., Earnings,
+      // Late min, Late, SSS, PhilHealth, Pag-IBIG, Loan/CA, Other charges,
+      // Deductions, Net pay. Move a column there, move it here.
       set(7, money(r.basic));
       set(10, money(r.overtime));
-      set(16, `<b>${money(r.total_earnings)}</b>`);
-      set(18, money(r.late_charge));
-      set(24, money(r.total_deductions));
-      set(25, `<b>${money(r.net_pay)}</b>`);
+      set(15, money(r.allowance_total));
+      set(17, `<b>${money(r.total_earnings)}</b>`);
+      set(19, money(r.late_charge));
+      set(25, money(r.total_deductions));
+      set(26, `<b>${money(r.net_pay)}</b>`);
     });
   };
 

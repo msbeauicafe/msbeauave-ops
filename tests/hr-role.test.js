@@ -105,13 +105,15 @@ test('the Payroll table has an Other charges column, after Loan/CA', () => {
     'the payslip has its own line for it, so Total Deductions still adds up');
 });
 
-// Allow./ day, not the old bare Allow. — a plain rename would leave whoever
+// Alw./ day, not the old bare Allow. — a plain rename would leave whoever
 // runs payroll typing what they think is the whole cutoff's figure into a
-// box that is actually read as a day rate now.
+// box that is actually read as a day rate now. Abbreviated past "Allow."
+// itself once that word alone stopped fitting one line at this table's
+// width — the same cramping "Other charges" already ran into.
 test('Allowance reads as a rate per day, on the table and on the payslip alike', () => {
   const at = app.indexOf('SCREENS.payroll = async');
   const screen = app.slice(at, app.indexOf('\nconst LOAN_LINES', at));
-  assert.match(screen, /head: 'Allow\.\/ day', n: true, cell: \(r\) => box\(r, 'allowance', '0\.01'\)/,
+  assert.match(screen, /head: 'Alw\.\/ day', n: true, cell: \(r\) => box\(r, 'allowance', '0\.01'\)/,
     'the header itself says it is a day rate now');
   assert.match(screen, /r\.allowance_total = Number\(r\.allowance \|\| 0\) \* Number\(r\.days_present \|\| 0\)/,
     "the screen's own live preview multiplies it out the same way the database will");
@@ -121,6 +123,22 @@ test('Allowance reads as a rate per day, on the table and on the payslip alike',
   const slip = app.slice(app.indexOf('function payslip('));
   assert.match(slip, /line\('Allowance', days\(r\.days_present\), r\.allowance_total\)/,
     'the payslip shows the day count beside it and the multiplied total, the same way Basic Pay does');
+});
+
+// Only two people on this cutoff have a daily allowance at all, and reading
+// it meant multiplying the rate by Days by hand — the same reckoning OT hrs
+// already gets its own OT pay column for, right beside it.
+test('Alw. tot. sits right after Alw./ day, the same way OT pay sits after OT hrs', () => {
+  const at = app.indexOf('SCREENS.payroll = async');
+  const screen = app.slice(at, app.indexOf('\nconst LOAN_LINES', at));
+  const heads = [...screen.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
+  const rate = heads.indexOf('Alw./ day');
+  const total = heads.indexOf('Alw. tot.');
+  assert.ok(rate > 0 && total === rate + 1, 'right after the rate column, not somewhere else');
+  assert.match(screen, /head: 'Alw\. tot\.', n: true, cell: \(r\) => money\(r\.allowance_total\)/,
+    'reads the same multiplied figure Earnings already folds in');
+  assert.match(screen, /set\(15, money\(r\.allowance_total\)\)/,
+    'retotal redraws it live too, the same way OT pay already is');
 });
 
 test('the role picker offers it, and the badge has a name for it', () => {
