@@ -270,8 +270,9 @@ test('a running loan takes itself off automatically when a cutoff opens', async 
 // The cutoff closes on the 10th or the 25th; payout follows five days later,
 // on the 15th or the 30th. A loan starting after the cutoff has already
 // closed has nothing to do with it, even if it starts before the payout
-// that cutoff will settle on — everything is decided at the cutoff itself,
-// never held open until the money actually moves.
+// that cutoff will settle on — eligibility is decided at the cutoff itself.
+// The ledger's own date is still the payout day, the day the money actually
+// comes off — that part was tried the other way and reversed back.
 test("a loan starting after the cutoff closes waits for the next one, even if it starts before payout", async () => {
   const admin = await signIn('admin');
   const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
@@ -309,8 +310,8 @@ test("a loan starting after the cutoff closes waits for the next one, even if it
 
   const dated = (await db.query(
     `select paid_on from advance_payments where advance_id = $1`, [advance.data.id])).rows[0];
-  assert.equal(new Date(dated.paid_on).toISOString().slice(0, 10), '2030-02-10',
-    "dated to the cutoff's own close, not five days later at payout");
+  assert.equal(new Date(dated.paid_on).toISOString().slice(0, 10), '2030-02-15',
+    "dated to the payout day, five days after the cutoff that took it closes");
 });
 
 // The owner asked for the manual escape hatch gone, having seen where it was
