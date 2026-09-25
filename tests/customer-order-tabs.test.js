@@ -201,7 +201,23 @@ test('Draft only offers on a row still awaiting payment; the stale tag names the
     'a row past the threshold says how many days, not just that it is stale');
   assert.match(screen, /data-open="\$\{o\.id\}"[\s\S]{0,120}pendingAwaitingPayment\(o\)[\s\S]{0,80}data-park="\$\{o\.id\}"/,
     'Draft sits beside Open, but only for a row awaiting payment');
-  assert.match(screen, /!o\.parked_at/, 'a parked order drops off Pending by itself');
+});
+
+// A pressed Draft used to take the row off this list entirely, onto Draft
+// tab and nowhere else — the owner asked for the opposite: the row stays
+// right here, Stage reads Draft in place, and it also still shows on Draft
+// tab exactly as it did before. Nothing about that tab's own copy changes.
+test('a marked Draft row stays on Pending customer order, Stage reading Draft', () => {
+  const before = app.slice(0, app.indexOf('SCREENS.pendingorders = async'));
+  assert.match(before, /&& !o\.parked_at;/,
+    'once marked, the button itself stops offering — one press is what it takes');
+  assert.match(before, /if \(o\.parked_at\) return tag\('Draft', 'grey'\);/,
+    "Stage reads Draft ahead of Committed or Awaiting payment, Pending customer order's own reading");
+
+  const at = app.indexOf('SCREENS.pendingorders = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.doesNotMatch(screen, /!o\.parked_at/,
+    'the list itself no longer drops a parked row — only the button\'s own check does that now');
 });
 
 // Pending customer order's own Invoice button commits an order — it can say
@@ -287,6 +303,19 @@ test('Draft hands a saved basket back to Chat order to place; there is no discar
     'and clears it, so it only ever fires once');
   assert.match(chatScreen, /reopenDraft\(await GET\(`\/api\/order-drafts\/\$\{id\}`\)\)/,
     'reopened the same way Preview in its own Drafts dialog already does');
+});
+
+// A parked order's own Stage used to be the shared orderTag, which has no
+// idea an order was set aside — it read Committed or Awaiting payment off
+// status alone, straight through the park. Every row this screen loads is
+// parked by definition, so Stage can just say Draft outright.
+test("a parked order's own Stage says Draft, not the shared orderTag's Committed", () => {
+  const draftScreen = app.slice(app.indexOf('SCREENS.draftorders = async'),
+    app.indexOf('\n};', app.indexOf('SCREENS.draftorders = async')));
+  assert.match(draftScreen, /o\.co_no \? tag\('Draft', 'grey'\)/,
+    'Stage reads Draft outright rather than asking orderTag');
+  assert.doesNotMatch(draftScreen, /orderTag\(/,
+    'the shared tag is not called from this screen at all any more');
 });
 
 // wholesale_price and the RS price code are two separate figures that can

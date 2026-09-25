@@ -7429,19 +7429,24 @@ const PENDING_STALE_MS = 2 * 24 * 60 * 60 * 1000;
 
 // The office still owes for this one — Committed and everything past it has
 // already been paid for, or has otherwise been moved along by Invoice, so
-// Draft, which sets it aside unfinished, only belongs on the row still
-// waiting to be paid.
+// Draft, which marks it, only belongs on the row still waiting to be paid.
+// Once already marked (parked_at set) it stops offering the button again —
+// one press is what it takes.
 const pendingAwaitingPayment = (o) =>
-  !o.committed_at && o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open';
+  !o.committed_at && o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open'
+  && !o.parked_at;
 
-// This tab's own reading of Stage — the same one orderTag draws, except once
-// the office has pushed Invoice on an order (committed_at set) it reads
+// This tab's own reading of Stage — the same one orderTag draws, except:
+// once the office has pushed Invoice on an order (committed_at set) it reads
 // Committed from then on, regardless of what tier or payment alone would
-// still call it. orderTag itself is untouched: every other screen that
-// shows a stage still reads payment status straight, and committed_at is
-// only ever set or read here.
+// still call it; and once Draft has been pressed on it (parked_at set) it
+// reads Draft ahead of anything else, since the row stays right here on
+// this list rather than moving off it. orderTag itself is untouched: every
+// other screen that shows a stage still reads payment status straight, and
+// parked_at and committed_at are only ever set or read here.
 const pendingStageTag = (o) => {
   if (o.delivered_at) return tag('Delivered', 'green');
+  if (o.parked_at) return tag('Draft', 'grey');
   if (!o.committed_at && o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open') {
     return tag('Awaiting payment', 'amber');
   }
@@ -7484,14 +7489,16 @@ SCREENS.pendingorders = async (page) => {
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openPendingOrder(b.dataset.open, load, page).catch(whoops)));
     $$('[data-park]', page).forEach((b) => b.addEventListener('click', async () => {
-      try { await POST(`/api/orders/${b.dataset.park}/park`); notice('Set aside on Draft 🌸', 'good'); await load(); }
+      try { await POST(`/api/orders/${b.dataset.park}/park`); notice('Marked Draft 🌸', 'good'); await load(); }
       catch (e) { whoops(e); }
     }));
   };
 
   const load = async () => {
     rows = (await GET('/api/orders?status='))
-      .filter((o) => (o.status === 'placed' || o.status === 'picking') && !o.parked_at)
+      // A row marked Draft stays right here — parked_at no longer takes it
+      // off this list, only Draft tab's own copy of it depends on that flag.
+      .filter((o) => (o.status === 'placed' || o.status === 'picking'))
       // By customer order number, latest first — the newest CO at the top and
       // the earliest at the bottom. The numbers are fixed-width (CO26_09_011),
       // so ordering the text descending orders them by number; an order not yet
@@ -8438,7 +8445,11 @@ SCREENS.draftorders = async (page) => {
       { head: 'Placed', cell: (o) => o.placed_at ? when(o.placed_at) : '<span class="dim">—</span>' },
       { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')} `
           + (o.tier ? tierTag(o.tier) : '') },
-      { head: 'Stage', cell: (o) => o.co_no ? orderTag(o) : tag(`${count(o.items)} items`, 'grey') },
+      // Every row here is parked by definition — the load above only ever
+      // keeps o.parked_at rows — so Stage always reads Draft, not the shared
+      // orderTag's Committed/Awaiting payment, which has no idea an order
+      // was set aside at all.
+      { head: 'Stage', cell: (o) => o.co_no ? tag('Draft', 'grey') : tag(`${count(o.items)} items`, 'grey') },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
       { head: '', cell: (o) => o.co_no
           ? `<button class="btn sm quiet" data-restore="${o.id}">Place order</button>
