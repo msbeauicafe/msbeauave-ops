@@ -393,20 +393,29 @@ test('the Invoice tab is its own screen, eight columns, built apart from the res
   assert.doesNotMatch(screen, /resellerList/,
     'built fresh rather than branched off the shared account list');
 
-  for (const btn of [/data-invpay=/, /data-invbill=/, /data-invco=/]) {
-    assert.match(screen, btn, `${btn} is one of the row's three buttons`);
+  for (const btn of [/data-invpay=/, /data-invbill=/, /data-invco=/, /data-invdoc=/]) {
+    assert.match(screen, btn, `${btn} is one of the row's four buttons`);
   }
 });
 
-test('the three invoice-row buttons do their own three things', () => {
+test('the four invoice-row buttons do their own four things', () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   assert.match(screen, /recordInvoicePayment\(/, 'Record payment opens its own form');
   assert.match(screen, /showInvoiceBillingStatement\(/, 'Billing statement prints the yellow ledger, not the blue invoice');
-  assert.doesNotMatch(screen, /showInvoiceDoc\(/, 'not the blue INVOICE document');
   assert.match(screen, /openInvoiceOrder\(b\.dataset\.invco, load\)/,
     'Customer order opens Invoice tab\'s own dialog, not the shared openOrder');
+
+  // Invoice reuses the generic showInvoiceDoc renderer — the same blue
+  // INVOICE document a reseller's own account page already opens it from —
+  // rather than redrawing the paper here; only the fetch that feeds it data
+  // is this screen's own.
+  const invdoc = screen.slice(screen.indexOf("$$('[data-invdoc]'"));
+  assert.match(invdoc, /GET\(`\/api\/orders\/\$\{o\.id\}`\)/, "this screen's own fetch of the order");
+  assert.match(invdoc, /GET\(`\/api\/resellers\/\$\{o\.reseller_id\}\/payments\?order_id=\$\{o\.id\}`\)/,
+    'and of the payments made against it, so they show in the form\'s own Payment Details');
+  assert.match(invdoc, /showInvoiceDoc\(\{/, 'the shared renderer, reused rather than redrawn');
 
   // Record payment shows on every row, paid or void included — the owner
   // asked for it there regardless, not only while something is still owed.

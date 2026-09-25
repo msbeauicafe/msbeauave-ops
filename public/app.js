@@ -9155,6 +9155,7 @@ SCREENS.coinvoices = async (page) => {
                 data-orderid="${o.id}">Record payment</button>
             <button class="btn sm quiet" data-invbill="${o.id}">🖨 Billing statement</button>
             <button class="btn sm quiet" data-invco="${o.id}">🖨 Customer order</button>
+            <button class="btn sm quiet" data-invdoc="${o.id}">🖨 Invoice</button>
           </div>` },
     ], 'No invoices raised yet.');
 
@@ -9177,6 +9178,27 @@ SCREENS.coinvoices = async (page) => {
 
     $$('[data-invco]', page).forEach((b) => b.addEventListener('click',
       () => openInvoiceOrder(b.dataset.invco, load).catch(whoops)));
+
+    // The blue INVOICE document itself — the same generic renderer a
+    // reseller's own account page already opens it from, reused here rather
+    // than redrawn, since the paper is identical wherever it is read from.
+    // Only the fetch that hands it its data is this screen's own.
+    $$('[data-invdoc]', page).forEach((b) => b.addEventListener('click', async () => {
+      const o = find(b.dataset.invdoc);
+      try {
+        const [full, payments] = await Promise.all([
+          GET(`/api/orders/${o.id}`),
+          GET(`/api/resellers/${o.reseller_id}/payments?order_id=${o.id}`).catch(() => []),
+        ]);
+        showInvoiceDoc({
+          orderId: full.id, issuedOn: full.placed_at, resellerName: full.reseller,
+          payments, who: full, invoiceNo: full.si_no,
+          shipping: Number(full.shipping || 0), others: Number(full.others || 0),
+          lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
+            price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+        });
+      } catch (e) { whoops(e); }
+    }));
   };
 
   page.innerHTML = `
