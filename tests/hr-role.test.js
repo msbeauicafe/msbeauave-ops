@@ -247,6 +247,52 @@ test('a running loan takes itself off automatically when a cutoff opens', async 
   assert.equal(Number(ledger.balance), 3800, 'and the ledger agrees with the cutoff');
 });
 
+// The cutoff closes on the 10th or the 25th; payout follows five days later,
+// on the 15th or the 30th. A loan starting after the cutoff has already
+// closed has nothing to do with it, even if it starts before the payout
+// that cutoff will settle on — everything is decided at the cutoff itself,
+// never held open until the money actually moves.
+test("a loan starting after the cutoff closes waits for the next one, even if it starts before payout", async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('CutoffLoan'), branch?.id ?? null])).rows[0];
+
+  // The cutoff closes 2030-01-25; payout would be 2030-01-30. Started_on
+  // sits in between — after the cutoff, before the payout.
+  const advance = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'ca', principal: 5000, per_cutoff: 1200,
+      started_on: '2030-01-27', note: 'test' });
+  assert.equal(advance.status, 200, JSON.stringify(advance.data));
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-01-11', ends_on: '2030-01-25' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const line = (await db.query(
+    'select loans from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+  assert.equal(Number(line.loans), 0,
+    'closed before the loan started — this cutoff owes it nothing');
+
+  const next = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-01-26', ends_on: '2030-02-10' });
+  assert.equal(next.status, 200, JSON.stringify(next.data));
+
+  const nextLine = (await db.query(
+    'select loans from payroll_lines where period_id = $1 and employee_id = $2',
+    [next.data.id, emp.id])).rows[0];
+  assert.equal(Number(nextLine.loans), 1200,
+    'the next cutoff closes after the loan started, so it takes it');
+
+  const dated = (await db.query(
+    `select paid_on from advance_payments where advance_id = $1`, [advance.data.id])).rows[0];
+  assert.equal(new Date(dated.paid_on).toISOString().slice(0, 10), '2030-02-10',
+    "dated to the cutoff's own close, not five days later at payout");
+});
+
 // The owner asked for the manual escape hatch gone, having seen where it was
 // used to fix a real gap in auto-take — trusting the automatic run alone now,
 // on this one ledger dialog. Payroll's own per-line Take off, a different
