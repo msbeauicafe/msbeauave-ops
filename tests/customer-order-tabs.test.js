@@ -426,8 +426,7 @@ test('the four invoice-row buttons do their own four things', () => {
 });
 
 // Invoice tab's own dialog, not a branch of the shared openOrder — correcting
-// the CO/PL/SI series is Draft tab's job, where an order is still being
-// worked on, not something Invoice tab should offer at all.
+// the CO/PL/SI series was never something Invoice tab should offer at all.
 test('Invoice tab\'s Customer order dialog has no numbers-on-the-paperwork panel', () => {
   const before = app.slice(0, app.indexOf('SCREENS.coinvoices = async'));
   assert.match(before, /async function openInvoiceOrder\(id, reload\)/,
@@ -439,12 +438,35 @@ test('Invoice tab\'s Customer order dialog has no numbers-on-the-paperwork panel
   assert.doesNotMatch(fn, /on_keep|on_co|on_pl|on_si/,
     'and none of its wiring left behind either');
 
-  // The shared dialog itself, and every other screen still calling it, is
-  // untouched — this panel stays exactly where it was for them.
+  // The shared dialog itself is untouched — Packing list's own read-only
+  // Open still reads it, panel and all, even though Draft no longer does.
   const openOrderFn = app.slice(app.indexOf('async function openOrder'),
     app.indexOf('async function openInvoiceOrder'));
   assert.match(openOrderFn, /The numbers on the paperwork/,
-    'openOrder itself still has it, for Draft tab');
+    'openOrder itself is left exactly as it was');
+});
+
+// Draft is a pending order set aside, not one Warehouse is picking — it now
+// opens the same dialog Pending customer order's own Open does, not
+// Packing list's read-only openOrder, and the CO/PL/SI numbers-correction
+// panel goes with it, on purpose: the owner asked Draft not to keep that.
+test("Draft tab's Open uses Pending customer order's own dialog, not Packing list's openOrder", () => {
+  const draftScreen = app.slice(app.indexOf('SCREENS.draftorders = async'),
+    app.indexOf('\n};', app.indexOf('SCREENS.draftorders = async')));
+  assert.match(draftScreen, /openPendingOrder\(b\.dataset\.open, load, page\)/,
+    "wired to Pending's own dialog");
+  assert.doesNotMatch(draftScreen, /openOrder\(b\.dataset\.open, load\)/,
+    'not the shared read-only one Packing list uses');
+
+  // Packing list's and Pick & send's own read-only Opens are untouched.
+  const packingScreen = app.slice(app.indexOf('SCREENS.copacking = async'),
+    app.indexOf('SCREENS.orders = async'));
+  assert.match(packingScreen, /openOrder\(b\.dataset\.open, load, \{ readOnly: true \}\)/,
+    "Packing list's own read-only Open, unchanged");
+  const wholesaleScreen = app.slice(app.indexOf('SCREENS.orders = async'),
+    app.indexOf('async function openPendingOrder'));
+  assert.match(wholesaleScreen, /openOrder\(b\.dataset\.open, load, \{ readOnly: true \}\)/,
+    "Pick & send's own read-only Open, unchanged");
 });
 
 // Every b2b order gets an invoice row the moment it is placed — bookkeeping,

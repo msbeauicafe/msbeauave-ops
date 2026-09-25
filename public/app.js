@@ -8485,8 +8485,11 @@ SCREENS.draftorders = async (page) => {
     $('#draft_count', page).textContent = (parked.length + chatDrafts.length)
       ? `${count(parked.length + chatDrafts.length)} on Draft` : '';
 
+    // Pending customer order's own dialog, not Packing list's read-only
+    // openOrder — a Draft order is a pending order set aside, not one
+    // Warehouse is picking, so it opens the same way Pending's own Open does.
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
-      () => openOrder(b.dataset.open, load).catch(whoops)));
+      () => openPendingOrder(b.dataset.open, load, page).catch(whoops)));
     $$('[data-openchat]', page).forEach((b) => b.addEventListener('click',
       () => openChatDraft(b.dataset.openchat, load).catch(whoops)));
     $$('[data-placechat]', page).forEach((b) => b.addEventListener('click', () => {
