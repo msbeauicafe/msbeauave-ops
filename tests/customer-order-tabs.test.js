@@ -358,7 +358,8 @@ test('a saved basket opens its own editable dialog, not openOrder\'s', () => {
   assert.match(before, /GET\(`\/api\/resellers\/\$\{d\.reseller_id\}`\)/,
     'the account\'s own tax details are fetched too — the form has a block for them');
 
-  const fn = before.slice(before.indexOf('async function openChatDraft'));
+  const fn = before.slice(before.indexOf('async function openChatDraft'),
+    before.indexOf('async function openDraftOrder'));
   assert.match(fn, /customerOrderForm\(\{/, 'the same form builder, not a share of openOrder');
   assert.match(fn, /<h3>List of orders<\/h3>/,
     'the right side reads like Chat order\'s own basket, not a plain table');
@@ -447,14 +448,14 @@ test('Invoice tab\'s Customer order dialog has no numbers-on-the-paperwork panel
 });
 
 // Draft is a pending order set aside, not one Warehouse is picking — it now
-// opens the same dialog Pending customer order's own Open does, not
+// opens the same shaped dialog Pending customer order's own Open does, not
 // Packing list's read-only openOrder, and the CO/PL/SI numbers-correction
 // panel goes with it, on purpose: the owner asked Draft not to keep that.
-test("Draft tab's Open uses Pending customer order's own dialog, not Packing list's openOrder", () => {
+test("Draft tab's Open uses its own dialog, not Pending's and not Packing list's openOrder", () => {
   const draftScreen = app.slice(app.indexOf('SCREENS.draftorders = async'),
     app.indexOf('\n};', app.indexOf('SCREENS.draftorders = async')));
-  assert.match(draftScreen, /openPendingOrder\(b\.dataset\.open, load, page\)/,
-    "wired to Pending's own dialog");
+  assert.match(draftScreen, /openDraftOrder\(b\.dataset\.open, load, page\)/,
+    "wired to its own dialog");
   assert.doesNotMatch(draftScreen, /openOrder\(b\.dataset\.open, load\)/,
     'not the shared read-only one Packing list uses');
 
@@ -467,6 +468,27 @@ test("Draft tab's Open uses Pending customer order's own dialog, not Packing lis
     app.indexOf('async function openPendingOrder'));
   assert.match(wholesaleScreen, /openOrder\(b\.dataset\.open, load, \{ readOnly: true \}\)/,
     "Pick & send's own read-only Open, unchanged");
+});
+
+// The Invoice button pushes an order along to Invoice tab and marks it
+// Committed — not something a Draft order, set aside on purpose, is ready
+// for. Removed from Draft's own copy only; Pending customer order's own
+// dialog, and the button on it, are untouched.
+test("Draft's own dialog has no Invoice button; Pending customer order's still does", () => {
+  const draftFn = app.slice(app.indexOf('async function openDraftOrder'),
+    app.indexOf('SCREENS.draftorders = async'));
+  assert.doesNotMatch(draftFn, /id="pl_invoice"/, 'no Invoice button on Draft\'s own dialog');
+  assert.doesNotMatch(draftFn, /pl_invoice.*addEventListener|orderPanel = 'coinvoices'/s,
+    'and none of its wiring left behind either');
+  assert.match(draftFn, /id="pl_place"/, 'Save the changes is still there');
+  assert.match(draftFn, /id="pl_cancel"/, 'and Cancel');
+
+  const pendingFn = app.slice(app.indexOf('async function openPendingOrder'),
+    app.indexOf('async function openOrder'));
+  assert.match(pendingFn, /id="pl_invoice"/,
+    "Pending customer order's own Invoice button, untouched");
+  assert.match(pendingFn, /orderPanel = 'coinvoices'/,
+    'and its wiring, untouched');
 });
 
 // Every b2b order gets an invoice row the moment it is placed — bookkeeping,

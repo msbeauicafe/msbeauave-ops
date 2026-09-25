@@ -8445,6 +8445,340 @@ async function openChatDraft(draftId, reload) {
   $('#cd_done')?.addEventListener('click', closeDialog);
 }
 
+// Draft's own copy of openPendingOrder — same "List of orders" dialog, minus
+// the Invoice button. Pushing Invoice moves an order along to Invoice tab and
+// marks it Committed; a Draft order was set aside precisely because it is not
+// ready for that, so the button has no business here. A duplicate rather
+// than a flag on the shared one, so Pending customer order's own copy, and
+// the button on it, stay exactly as they were.
+async function openDraftOrder(id, reload, page) {
+  const o = await GET(`/api/orders/${id}`);
+  const canEdit = ['admin', 'office'].includes(user?.role)
+    && o.channel === 'b2b' && ['placed', 'picking'].includes(o.status);
+  const catalog = canEdit ? await wholesaleCatalog() : null;
+  const goods = catalog || [];
+  const codes = canEdit ? await GET('/api/price-codes').catch(() => []) : [];
+
+  const coForm = customerOrderForm({
+    orderId: o.id, orderNo: o.co_no, issuedOn: o.placed_at || o.issued_on || new Date(),
+    amount: o.total, resellerName: o.reseller,
+    lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty,
+      price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+    who: o, shipping: o.shipping || 0, others: o.others || 0,
+  });
+  const chat = (o.chat_link || '').trim();
+
+  // A working copy, keyed by the line's own id so an existing row can be
+  // repriced or dropped without losing which one it was; a product added
+  // here has no id yet, so it gets one of its own that is plainly not real.
+  let addSeq = 0;
+  const lines = new Map(o.lines.map((l) => {
+    const g = goods.find((x) => x.sku === l.sku);
+    return [String(l.id), { key: String(l.id), kind: 'existing', id: l.id,
+      sku: l.sku, name: l.name, price: Number(l.unit_price),
+      listed: Number(g?.wholesale_price ?? l.unit_price),
+      unit: l.unit_type, code: l.price_code || '', typed: !l.price_code,
+      prices: g?.prices || {}, qty: Number(l.qty) }];
+  }));
+  const asPlaced = [...o.lines.reduce((by, l) =>
+    by.set(l.sku, (by.get(l.sku) || 0) + Number(l.qty)), new Map())]
+    .map(([sku, qty]) => ({ sku, qty }));
+  const paid = Number(o.total || 0) - Number(o.balance ?? o.total ?? 0);
+
+  dialog(`
+    <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
+    <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
+      ${o.invoice_id ? tag(`Invoice ${o.invoice_status} · due ${onDay(o.due_on)}`,
+          o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
+    <div class="chatbar">
+      ${['admin', 'office'].includes(user?.role) ? `
+        <input id="pco_chat" type="url" placeholder="Paste their FB / group-chat link"
+          value="${esc(chat)}">
+        <button class="btn quiet" id="pco_chat_save">Save link</button>` : ''}
+      <a class="btn go" id="pco_send" href="${chat ? esc(chat) : '#'}" target="_blank"
+        rel="noopener noreferrer" ${chat ? '' : 'hidden'}>💬 Open chat</a>
+    </div>
+    <div class="order-split">
+      <div class="co-side">
+        <div class="co-scale">${coForm}</div>
+        <div class="co-actions">
+          <button class="btn quiet" id="pco_jpeg">⬇ Download JPEG</button>
+          ${PRINT_BTN}
+        </div>
+      </div>
+      <div class="edit-side">
+    <div class="panel">
+      <h3>List of orders</h3>
+      <div id="pl_basket"></div>
+      ${canEdit ? `
+        <div class="row" style="margin-top:8px">
+          <div style="flex:2"><label for="pl_add">Add a product</label>
+            <input id="pl_add" type="text" autocomplete="off" list="doc_goods"
+              placeholder="Type a product name"></div>
+          <div style="flex:0 0 auto;align-self:flex-end">
+            <button class="btn sm quiet" id="pl_add_go">Add</button></div>
+        </div>${goodsList(goods)}` : ''}
+      <div class="basket-sum">
+        <div class="sumrow"><span>Subtotal</span><span id="pl_sub">₱0.00</span></div>
+        ${canEdit ? `
+        <div class="sumrow"><span>Shipping/Delivery Fee</span>
+          <input id="pl_ship" type="text" class="n" inputmode="decimal"
+            value="${Number(o.shipping || 0).toFixed(2)}"></div>
+        <div class="sumrow"><span>Others</span>
+          <input id="pl_oth" type="text" class="n" inputmode="decimal"
+            value="${Number(o.others || 0).toFixed(2)}"></div>` : ''}
+        <div class="sumrow grand"><span>Total</span><span id="pl_total">₱0.00</span></div>
+      </div>
+      <div id="pl_nocode"></div>
+      <div class="mt right">
+        <span class="dim" id="pl_state"></span>
+        ${canEdit ? '<button class="btn" id="pl_place">Save the changes</button>' : ''}
+        <button class="btn stop" id="pl_cancel">Cancel</button>
+      </div>
+    </div>
+      </div>
+    </div>`, 'wide co-open');
+
+  wireSave('#pco_jpeg', '.co-side .doc', `${o.co_no || o.id}.jpg`);
+
+  const chatIn = $('#pco_chat');
+  const chatOpen = $('#pco_send');
+  const syncChat = () => {
+    const v = (chatIn?.value || '').trim();
+    if (chatOpen) { if (v) { chatOpen.href = v; chatOpen.hidden = false; } else chatOpen.hidden = true; }
+  };
+  chatIn?.addEventListener('input', syncChat);
+  $('#pco_chat_save')?.addEventListener('click', async () => {
+    const v = (chatIn?.value || '').trim();
+    try {
+      const r = await GET(`/api/resellers/${o.reseller_id}`);
+      await POST(`/api/resellers/${o.reseller_id}/details`, {
+        name: r.name, contact: r.contact, email: r.email, chat_link: v });
+      notice('Chat link saved 🌸 — it is on the account now', 'good');
+      syncChat();
+    } catch (e) { whoops(e); }
+  });
+
+  const scaleCoForm = () => {
+    const coDoc = $('#dialog .co-scale .doc.cof');
+    if (!coDoc) return;
+    const scaleBox = coDoc.parentElement;
+    const room = scaleBox.clientWidth || 900;
+    coDoc.style.width = '900px';
+    coDoc.style.transformOrigin = 'top left';
+    const scale = Math.min(1, room / 900);
+    coDoc.style.transform = `scale(${scale})`;
+    scaleBox.style.height = `${coDoc.scrollHeight * scale}px`;
+  };
+  scaleCoForm();
+
+  const money = (el) => {
+    const n = Number(String(el?.value ?? '').replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  const plain = (v) => peso(v).replace('₱', '');
+
+  const drawList = () => {
+    const box = $('#pl_basket');
+    if (!box) return;
+    const rows = [...lines.values()];
+    box.innerHTML = rows.length ? rows.map((l) => `
+      <div class="pick">
+        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${
+          l.price === 0 ? 'FREE' : l.typed ? 'typed price' : l.code ? esc(l.code) : 'no PCODE'
+          }${l.unit ? ' · ' + esc(l.unit) : ''} · ${l.price === 0 ? 'no charge'
+            : peso(l.price * l.qty)} for ${count(l.qty)}</span></span>
+        ${canEdit ? `
+        <select class="pcode" data-code="${esc(l.key)}"
+          title="Which agreed price this line is charged at">
+          <option value="">${l.price === 0 ? 'free of charge'
+            : l.typed ? 'typed price' : `no PCODE — ${plain(l.listed ?? l.price)}`}</option>
+          ${(codes || []).filter((c) => (l.prices || {})[c.code] != null)
+            .map((c) => `<option value="${esc(c.code)}"
+              ${!l.typed && c.code === l.code ? 'selected' : ''}>${esc(c.code)} — ${
+              plain(l.prices[c.code])}</option>`).join('')}
+        </select>
+        <input class="unit" type="text" inputmode="decimal" data-price="${esc(l.key)}"
+          value="${plain(l.price)}" title="The unit price charged on this line">
+        <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.key)}">` : `
+        <span class="dim">${count(l.qty)} × ${peso(l.price)}</span>`}
+        <b class="linetot">${l.price === 0 ? 'FREE' : peso(l.price * l.qty)}</b>
+        ${canEdit ? `<button class="btn sm stop" data-drop="${esc(l.key)}">✕</button>` : ''}
+      </div>`).join('') : '<div class="none">Nothing on this order.</div>';
+
+    const sub = rows.reduce((s, l) => s + l.price * l.qty, 0);
+    const ship = canEdit ? money($('#pl_ship')) : Number(o.shipping || 0);
+    const oth = canEdit ? money($('#pl_oth')) : Number(o.others || 0);
+    $('#pl_sub').textContent = peso(sub);
+    $('#pl_total').textContent = peso(sub + ship + oth);
+
+    // The printed sheet on the left is read off this same working list, so a
+    // product swapped, a price corrected or a line dropped shows there as it
+    // happens rather than waiting for Save the changes to catch it up.
+    const scaleBox = $('#dialog .co-scale');
+    if (scaleBox) {
+      scaleBox.innerHTML = customerOrderForm({
+        orderId: o.id, orderNo: o.co_no, issuedOn: o.placed_at || o.issued_on || new Date(),
+        amount: sub + ship + oth, resellerName: o.reseller,
+        lines: rows.filter((l) => l.qty > 0).map((l) => ({
+          sku: l.sku, name: l.name, qty: l.qty, price: l.price,
+          code: l.typed ? '' : l.code, unit: l.unit })),
+        who: o, shipping: ship, others: oth,
+      });
+      scaleCoForm();
+    }
+
+    if (!canEdit) return;
+
+    const empty = !rows.some((l) => l.qty > 0);
+    const whole = sub + ship + oth;
+    const short = paid > 0 && whole < paid;
+    $('#pl_state').innerHTML = empty
+      ? `<span class="over">An order with nothing on it is a cancellation —
+         use Cancel if that is what this is</span>`
+      : short
+        ? `<span class="over">${peso(paid)} has already been settled against
+           this order — it cannot come to less</span>` : '';
+    if ($('#pl_place')) $('#pl_place').disabled = empty || short;
+
+    const warn = $('#pl_nocode');
+    if (warn) {
+      const bare = rows.filter((l) => !l.code && !l.typed && Object.keys(l.prices || {}).length);
+      warn.innerHTML = bare.length ? `<div class="banner warn">
+        <b>${count(bare.length)} line${bare.length > 1 ? 's have' : ' has'} no PCODE.</b>
+        ${bare.map((l) => `${esc(l.name)} — ${peso(l.price)}, against ${
+          peso(Math.min(...Object.values(l.prices).map(Number)))} at its cheapest code`)
+          .join('<br>')}
+        <div class="dim mt">Placed as it stands, ${bare.length > 1 ? 'these lines are' : 'this line is'}
+          charged the listed price, which is not a dealer price.</div></div>` : '';
+    }
+
+    $$('[data-qty]', box).forEach((i) => i.addEventListener('change', () => {
+      const l = lines.get(i.dataset.qty);
+      if (l) l.qty = Math.max(1, +i.value || 1);
+      drawList();
+    }));
+    $$('[data-drop]', box).forEach((b) => b.addEventListener('click', () => {
+      lines.delete(b.dataset.drop);
+      drawList();
+    }));
+    $$('[data-code]', box).forEach((sel) => sel.addEventListener('change', () => {
+      const l = lines.get(sel.dataset.code);
+      if (!l) return;
+      l.code = sel.value;
+      l.typed = false;
+      const priced = (l.prices || {})[l.code];
+      l.price = priced != null ? Number(priced) : Number(l.listed ?? l.price);
+      drawList();
+    }));
+    $$('[data-price]', box).forEach((i) => i.addEventListener('change', () => {
+      const l = lines.get(i.dataset.price);
+      if (!l) return;
+      const said = String(i.value).replace(/[^0-9.]/g, '');
+      const asked = Number(said);
+      if (said === '' || !Number.isFinite(asked) || asked < 0) { drawList(); return; }
+      const listed = Number(l.listed ?? l.price);
+      const coded = Object.entries(l.prices || {}).find(([, v]) => Number(v) === asked);
+      l.price = asked;
+      if (asked === 0) { l.code = ''; l.typed = true; }
+      else if (coded) { l.code = coded[0]; l.typed = false; }
+      else if (asked === listed) { l.code = ''; l.typed = false; }
+      else { l.code = ''; l.typed = true; }
+      drawList();
+    }));
+  };
+  drawList();
+
+  if (canEdit) {
+    $$('#pl_ship, #pl_oth').forEach((el) => {
+      el.addEventListener('input', drawList);
+      el.addEventListener('change', () => { el.value = money(el).toFixed(2); drawList(); });
+    });
+
+    $('#pl_add_go')?.addEventListener('click', () => {
+      const input = $('#pl_add');
+      const said = (input.value || '').trim();
+      if (!said) return;
+      const g = goods.find((x) => x.name === said) || goods.find((x) => x.sku === said.toUpperCase());
+      if (!g) return notice('Not a product this catalogue has.', 'bad');
+      if (g.available <= 0) return notice(`${g.name} has none on hand.`, 'bad');
+      addSeq += 1;
+      const key = `new${addSeq}`;
+      lines.set(key, { key, kind: 'added', id: null, sku: g.sku, name: g.name,
+        price: Number(g.wholesale_price), listed: Number(g.wholesale_price),
+        unit: g.unit_type || 'PCS', code: '', typed: false, prices: g.prices || {}, qty: 1 });
+      input.value = '';
+      drawList();
+    });
+
+    $('#pl_place').addEventListener('click', async () => {
+      const button = $('#pl_place');
+      button.disabled = true;
+      try {
+        const existing = [...lines.values()].filter((l) => l.kind === 'existing' && l.qty > 0);
+        await POST(`/api/orders/${id}/invoice`, {
+          lines: existing.map((l) => ({ id: l.id, price: l.price })),
+          shipping: money($('#pl_ship')),
+          others: money($('#pl_oth')),
+        });
+        const now = [...[...lines.values()].filter((l) => l.qty > 0)
+          .reduce((by, l) => by.set(l.sku, (by.get(l.sku) || 0) + l.qty), new Map())]
+          .map(([sku, qty]) => ({ sku, qty }));
+        const moved = now.length !== asPlaced.length || now.some(({ sku, qty }) =>
+          qty !== asPlaced.find((l) => l.sku === sku)?.qty);
+        let out = moved
+          ? await POST(`/api/orders/${id}/lines`, { lines: now })
+          : { total: null };
+
+        // Nothing has ever written a PCODE back onto an order line after it
+        // was first placed — this is that write. An unmoved line keeps its
+        // own id, so it is corrected straight; a re-picked one has a fresh
+        // id, matched back by sku the same way an added line's hand-typed
+        // price already is, below.
+        if (!moved) {
+          const recode = existing.map((l) => ({ id: l.id, code: l.typed ? '' : (l.code || '') }));
+          if (recode.length) await POST(`/api/orders/${id}/line-codes`, { lines: recode });
+        }
+
+        const handed = new Map();
+        [...lines.values()].filter((l) => l.kind === 'added' && l.qty > 0)
+          .forEach((l) => { if (l.price !== Number(l.listed)) handed.set(l.sku, l.price); });
+        if (handed.size || moved) {
+          const fresh = await GET(`/api/orders/${id}`);
+          if (handed.size) {
+            const reprice = (fresh.lines || []).filter((l) => handed.has(l.sku))
+              .map((l) => ({ id: l.id, price: handed.get(l.sku) }));
+            if (reprice.length) {
+              await POST(`/api/orders/${id}/invoice`, { lines: reprice });
+              out = await GET(`/api/orders/${id}`);
+            }
+          }
+          if (moved) {
+            const bySku = new Map([...lines.values()].filter((l) => l.qty > 0)
+              .map((l) => [l.sku, l.typed ? '' : (l.code || '')]));
+            const recode = (fresh.lines || []).filter((l) => bySku.has(l.sku))
+              .map((l) => ({ id: l.id, code: bySku.get(l.sku) }));
+            if (recode.length) await POST(`/api/orders/${id}/line-codes`, { lines: recode });
+          }
+        }
+        notice(`This order now comes to ${
+          out.total == null ? $('#pl_total').textContent : peso(out.total)} 🌸`, 'good');
+        closeDialog();
+        reload();
+      } catch (e) { whoops(withProductName(e, goods)); button.disabled = false; }
+    });
+  }
+
+  $('#pl_cancel')?.addEventListener('click', async () => {
+    try {
+      const r = await POST(`/api/orders/${id}/cancel`);
+      notice(r.message || 'Done', 'good');
+      closeDialog();
+      reload();
+    } catch (e) { whoops(e); }
+  });
+}
+
 /**
  * Orders set aside off the Pending customer order list — stalled, not wrong.
  * Setting one aside also frees its reserved stock back to Internal Inventory
@@ -8485,11 +8819,11 @@ SCREENS.draftorders = async (page) => {
     $('#draft_count', page).textContent = (parked.length + chatDrafts.length)
       ? `${count(parked.length + chatDrafts.length)} on Draft` : '';
 
-    // Pending customer order's own dialog, not Packing list's read-only
-    // openOrder — a Draft order is a pending order set aside, not one
-    // Warehouse is picking, so it opens the same way Pending's own Open does.
+    // Its own copy of Pending customer order's dialog, not Packing list's
+    // read-only openOrder and not a share of openPendingOrder either — same
+    // shape, minus the Invoice button that order isn't ready to push yet.
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
-      () => openPendingOrder(b.dataset.open, load, page).catch(whoops)));
+      () => openDraftOrder(b.dataset.open, load, page).catch(whoops)));
     $$('[data-openchat]', page).forEach((b) => b.addEventListener('click',
       () => openChatDraft(b.dataset.openchat, load).catch(whoops)));
     $$('[data-placechat]', page).forEach((b) => b.addEventListener('click', () => {
