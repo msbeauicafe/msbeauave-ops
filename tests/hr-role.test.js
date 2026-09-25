@@ -247,6 +247,31 @@ test('a running loan takes itself off automatically when a cutoff opens', async 
   assert.equal(Number(ledger.balance), 3800, 'and the ledger agrees with the cutoff');
 });
 
+// The owner asked for the manual escape hatch gone, having seen where it was
+// used to fix a real gap in auto-take — trusting the automatic run alone now,
+// on this one ledger dialog. Payroll's own per-line Take off, a different
+// screen entirely, is untouched.
+test("a loan or cash advance ledger has no manual Take it off any more", () => {
+  const at = app.indexOf('const openLedger = (l) =>');
+  assert.ok(at > 0, "openLedger is still the ledger's own dialog");
+  const fn = app.slice(at, app.indexOf('const newLedger = async'));
+
+  assert.doesNotMatch(fn, /id="lg_take"|id="lg_amt"|id="lg_on"|id="lg_note"/,
+    'no manual take form left in the markup');
+  assert.doesNotMatch(fn, /\/api\/advances\/\$\{l\.id\}\/take/,
+    'and no wiring left to call it');
+  assert.match(fn, /Taken off on its own/,
+    'a plain note explains why there is nothing to press');
+
+  // Undo and Remove are untouched — only the manual take came out.
+  assert.match(fn, /data-undo="\$\{p\.id\}"/);
+  assert.match(fn, /id="lg_remove"/);
+
+  const payrollScreen = app.slice(app.indexOf('SCREENS.payroll = async'), at);
+  assert.match(payrollScreen, /\/api\/advances\/\$\{b\.dataset\.take\}\/take/,
+    "Payroll's own per-line Take off is a different screen, left alone");
+});
+
 test('a loan down to less than a cutoff\'s worth only takes what is left', async () => {
   const admin = await signIn('admin');
   const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
