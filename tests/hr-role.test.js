@@ -125,6 +125,24 @@ test('Allowance reads as a rate per day, on the table and on the payslip alike',
     'the payslip shows the day count beside it and the multiplied total, the same way Basic Pay does');
 });
 
+// Basic Pay for a monthly-paid person used to read "half a month" — true of
+// the rate, but it told nobody whether the person had actually been there.
+// It now reads the same day count every other line already does, the way
+// a daily or hourly person's Basic Pay always has.
+test("a monthly person's Basic Pay shows the days they were actually present", () => {
+  const slip = app.slice(app.indexOf('function payslip('));
+  assert.match(slip, /line\('Basic Pay', days\(r\.days_present\), r\.basic\)/,
+    'the monthly branch reads actual days present, not a fixed label');
+  assert.doesNotMatch(slip, /line\('Basic Pay', 'half a month', r\.basic\)/,
+    'the old fixed placeholder is gone');
+  // The hourly branch, and the rate footnote describing how the half-month
+  // figure itself is computed, are untouched.
+  assert.match(slip, /line\('Basic Pay', hrs\(r\.hours_present\), r\.basic\)/);
+  assert.equal([...slip.matchAll(/line\('Basic Pay', days\(r\.days_present\), r\.basic\)/g)].length, 2,
+    'monthly and daily now read identically, each its own branch');
+  assert.match(slip, /half a month a cutoff/, "the rate footnote's own wording is untouched");
+});
+
 // Only two people on this cutoff have a daily allowance at all, and reading
 // it meant multiplying the rate by Days by hand — the same reckoning OT hrs
 // already gets its own OT pay column for, right beside it.

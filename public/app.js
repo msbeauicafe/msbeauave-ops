@@ -15313,7 +15313,7 @@ function payslip(period, r) {
         <tr><th>Earnings</th><th class="c">Hours/Days</th><th class="n">Amount</th></tr>
       </thead><tbody>
         ${r.pay_basis === 'monthly'
-          ? line('Basic Pay', 'half a month', r.basic)
+          ? line('Basic Pay', days(r.days_present), r.basic)
           : r.pay_basis === 'hourly'
           ? line('Basic Pay', hrs(r.hours_present), r.basic)
           : line('Basic Pay', days(r.days_present), r.basic)}
