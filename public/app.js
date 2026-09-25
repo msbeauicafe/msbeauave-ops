@@ -15322,7 +15322,7 @@ function payslip(period, r) {
         ${line('Night Differential', hrs(r.nsd_hours), r.nsd)}
         ${line('Regular Holiday', days(r.holidays), r.holiday)}
         ${line('Special Holiday', days(r.spe_holidays), r.spe_holiday)}
-        ${line('Allowance', days(r.days_present), r.allowance_total)}
+        ${line('Allowance', days(Number(r.allowance) > 0 ? r.days_present : 0), r.allowance_total)}
         ${line('Adjustment', null, r.adjustment)}
       </tbody><tfoot>
         <tr><td>Gross Pay</td><td></td><td class="n">${money(r.total_earnings)}</td></tr>

@@ -121,8 +121,10 @@ test('Allowance reads as a rate per day, on the table and on the payslip alike',
     'and Earnings adds the multiplied figure, not the bare rate typed');
 
   const slip = app.slice(app.indexOf('function payslip('));
-  assert.match(slip, /line\('Allowance', days\(r\.days_present\), r\.allowance_total\)/,
-    'the payslip shows the day count beside it and the multiplied total, the same way Basic Pay does');
+  assert.match(slip,
+    /line\('Allowance', days\(Number\(r\.allowance\) > 0 \? r\.days_present : 0\), r\.allowance_total\)/,
+    'the payslip shows the day count beside it and the multiplied total, the same way Basic Pay does — ' +
+    'but only for somebody who actually has a daily allowance, not everyone\'s attendance sitting beside a ₱0 line');
 });
 
 // Basic Pay for a monthly-paid person used to read "half a month" — true of
