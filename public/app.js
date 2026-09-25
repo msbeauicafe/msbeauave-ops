@@ -8440,8 +8440,9 @@ async function openChatDraft(draftId, reload) {
 
 /**
  * Orders set aside off the Pending customer order list — stalled, not wrong.
- * Restore puts one straight back; nothing about the order itself changes
- * while it sits here.
+ * Setting one aside also frees its reserved stock back to Internal Inventory
+ * Report; Restore re-reserves the same stock, and is refused if another
+ * order has since taken it.
  */
 SCREENS.draftorders = async (page) => {
   const load = async () => {

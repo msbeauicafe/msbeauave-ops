@@ -184,15 +184,20 @@ test('an order desk can set a stalled order aside and bring it back', async () =
   const desk = await signIn('orderdesk');
   const sku = await stocked(admin, store);
   const id = await anAccount(admin);
+  const free = async () => (await GET(admin, `/api/products?q=${sku}`)).data[0].free_shop;
 
+  assert.equal(await free(), 60, 'nothing ordered yet');
   const placed = await POST(desk, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 2 }] });
   const order = placed.data.orderId;
+  assert.equal(await free(), 58, 'placing an order reserves its stock');
 
   const parked = await POST(desk, `/api/orders/${order}/park`);
   assert.equal(parked.status, 200, JSON.stringify(parked.data));
   assert.ok((await GET(desk, `/api/orders?status=`))
     .data.find((o) => Number(o.id) === Number(order)).parked_at,
     'the order carries when it was set aside');
+  assert.equal(await free(), 60,
+    'Draft frees the reserved stock back to Internal Inventory Report');
 
   // Parking again, or unparking one that never was, is refused — the flag
   // only ever moves one way at a time.
@@ -203,9 +208,36 @@ test('an order desk can set a stalled order aside and bring it back', async () =
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
   assert.equal((await GET(desk, `/api/orders?status=`))
     .data.find((o) => Number(o.id) === Number(order)).parked_at, null, 'and Restore clears it');
+  assert.equal(await free(), 58, 'and re-reserves the same stock');
 
   assert.equal((await POST(desk, `/api/orders/${order}/unpark`)).status, 400,
     'not on Draft — nothing to clear a second time');
+});
+
+test('restoring a Draft order is refused once its stock has gone to someone else', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const desk = await signIn('orderdesk');
+  const sku = await stocked(admin, store); // 60 on hand
+  const first = await anAccount(admin);
+  const second = await anAccount(admin);
+
+  const placed = await POST(desk, `/api/resellers/${first}/orders`, { lines: [{ sku, qty: 60 }] });
+  const order = placed.data.orderId;
+  assert.equal((await POST(desk, `/api/orders/${order}/park`)).status, 200,
+    'setting it aside frees all 60 units');
+
+  // With the shelf free again, someone else takes every unit of it.
+  const other = await POST(desk, `/api/resellers/${second}/orders`, { lines: [{ sku, qty: 60 }] });
+  assert.equal(other.status, 200, JSON.stringify(other.data));
+
+  const restore = await POST(desk, `/api/orders/${order}/unpark`);
+  assert.equal(restore.status, 400, 'nothing is left to re-reserve for the drafted order');
+  assert.match(restore.data.error, /Not enough stock/i,
+    'told plainly, not shown a database error');
+  assert.ok((await GET(desk, `/api/orders?status=`))
+    .data.find((o) => Number(o.id) === Number(order)).parked_at,
+    'the refused restore leaves it exactly as it was — still on Draft');
 });
 
 // Pending customer order's own Invoice button says the office has raised
