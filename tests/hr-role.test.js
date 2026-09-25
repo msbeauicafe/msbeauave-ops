@@ -105,6 +105,24 @@ test('the Payroll table has an Other charges column, after Loan/CA', () => {
     'the payslip has its own line for it, so Total Deductions still adds up');
 });
 
+// Allow./ day, not the old bare Allow. — a plain rename would leave whoever
+// runs payroll typing what they think is the whole cutoff's figure into a
+// box that is actually read as a day rate now.
+test('Allowance reads as a rate per day, on the table and on the payslip alike', () => {
+  const at = app.indexOf('SCREENS.payroll = async');
+  const screen = app.slice(at, app.indexOf('\nconst LOAN_LINES', at));
+  assert.match(screen, /head: 'Allow\.\/ day', n: true, cell: \(r\) => box\(r, 'allowance', '0\.01'\)/,
+    'the header itself says it is a day rate now');
+  assert.match(screen, /r\.allowance_total = Number\(r\.allowance \|\| 0\) \* Number\(r\.days_present \|\| 0\)/,
+    "the screen's own live preview multiplies it out the same way the database will");
+  assert.match(screen, /r\.allowance_total \+ Number\(r\.adjustment \|\| 0\)/,
+    'and Earnings adds the multiplied figure, not the bare rate typed');
+
+  const slip = app.slice(app.indexOf('function payslip('));
+  assert.match(slip, /line\('Allowance', days\(r\.days_present\), r\.allowance_total\)/,
+    'the payslip shows the day count beside it and the multiplied total, the same way Basic Pay does');
+});
+
 test('the role picker offers it, and the badge has a name for it', () => {
   const at = app.indexOf('const ROLES = [');
   const list = app.slice(at, app.indexOf('];', at));
@@ -316,6 +334,38 @@ test('Other charges is its own deduction, on top of Loan/CA', async () => {
     'it adds to Deductions like everything else there');
   assert.equal(Number(after.net_pay), Number(before.net_pay) - 150,
     'and comes off Net pay the same way');
+});
+
+// A rate per day, not a flat figure typed once for the whole cutoff — the
+// owner typed 60 against a line that had worked 13 days and expected 780,
+// not 60, added to Earnings.
+test('Allowance multiplies by days present, the same way Basic already does', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('AllowTimesDays'), branch?.id ?? null])).rows[0];
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-06-01', ends_on: '2030-06-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const line = (await db.query(
+    'select id from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+
+  const saved = await PUT(admin, `/api/payroll-lines/${line.id}`,
+    { days_present: 13, allowance: 60 });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+
+  const after = (await db.query(
+    'select allowance, allowance_total, total_earnings from payroll_summary where id = $1',
+    [line.id])).rows[0];
+  assert.equal(Number(after.allowance), 60, 'the rate typed is kept as typed');
+  assert.equal(Number(after.allowance_total), 780, '60 a day for 13 days present');
+  assert.equal(Number(after.total_earnings), 500 * 13 + 780,
+    'Basic (500/day \xd7 13) plus the multiplied allowance, nothing left flat');
 });
 
 // A loan whose own Since date has not arrived yet is not this cutoff's
