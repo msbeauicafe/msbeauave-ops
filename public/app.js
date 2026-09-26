@@ -103,7 +103,10 @@ function shrink(file, edge = 900, quality = 0.82) {
 }
 
 let user = null;
-let tab = null;
+// Remembered across a hard refresh, the same way the branch picker already
+// remembers its own choice — a refresh landing back on Dashboard, whatever
+// screen it happened on, is how somebody loses their place.
+let tab = localStorage.getItem('tab') || null;
 let refreshTimer = null;
 
 // ---------------------------------------------------------------------------
@@ -649,6 +652,7 @@ const roleName = (r) => ({
 function drawFrame() {
   const tabs = TABS[user.role] ?? [];
   tab = tabs.some(([id]) => id === tab) ? tab : tabs[0][0];
+  localStorage.setItem('tab', tab);
   $('#app').innerHTML = `
     <div class="shell">
       <header class="app">
@@ -4268,7 +4272,7 @@ SCREENS.purchaseorders = async (page, headless = false) => {
 // ===========================================================================
 // Inventory — what came in, what went out, and what can still be unmade
 // ===========================================================================
-let inventoryPanel = 'stockin';
+let inventoryPanel = localStorage.getItem('inventoryPanel') || 'stockin';
 
 SCREENS.inventory = async (page) => {
   const PANELS = [
@@ -4277,6 +4281,7 @@ SCREENS.inventory = async (page) => {
     ['history', 'History'],
   ];
   if (!PANELS.some(([id]) => id === inventoryPanel)) inventoryPanel = 'stockin';
+  localStorage.setItem('inventoryPanel', inventoryPanel);
 
   page.innerHTML = `
     <div class="head"><h2>Inventory</h2>
@@ -7047,9 +7052,10 @@ function showOR(r, reseller, paid = {}, over = false) {
 //
 // Which panel is open outlives a redraw, because raising an invoice from the
 // chat tab and being put back on the chat tab is right, and being put back on
-// the first tab every time is how somebody loses their place.
-let orderPanel = 'chatorders';
-let customerPanel = 'reselleraccounts';
+// the first tab every time is how somebody loses their place. It now outlives
+// a hard refresh too, the same way the top-level tab does.
+let orderPanel = localStorage.getItem('orderPanel') || 'chatorders';
+let customerPanel = localStorage.getItem('customerPanel') || 'reselleraccounts';
 // Draft tab's own way of handing a saved-but-never-placed basket back to
 // Chat order: set the draft's id, switch the panel, and Chat order itself
 // picks it up and clears this the moment it opens.
@@ -7294,6 +7300,7 @@ SCREENS.customers = async (page) => {
     ['birthdays', 'Birthdays'],
   ];
   if (!PANELS.some(([id]) => id === customerPanel)) customerPanel = 'reselleraccounts';
+  localStorage.setItem('customerPanel', customerPanel);
 
   page.innerHTML = `
     <div class="subtabs">
@@ -7462,6 +7469,7 @@ SCREENS.customerorder = async (page) => {
     ['copacking', 'Packing list'],
   ];
   if (!PANELS.some(([id]) => id === orderPanel)) orderPanel = 'chatorders';
+  localStorage.setItem('orderPanel', orderPanel);
 
   page.innerHTML = `
     <div class="subtabs">

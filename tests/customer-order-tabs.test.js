@@ -68,8 +68,8 @@ test('Customers carries the reseller account beside the shop list', () => {
     + 'distributor, then the shop’s own loyalty list, then this month’s birthdays');
   assert.match(screen, /SCREENS\[customerPanel\]/,
     'the panel is drawn by the screen it names, not by a copy of it');
-  assert.match(app, /let customerPanel = 'reselleraccounts';/,
-    'which panel is open is kept outside the screen function');
+  assert.match(app, /let customerPanel = localStorage\.getItem\('customerPanel'\) \|\| 'reselleraccounts';/,
+    'which panel is open is kept outside the screen function, and now survives a hard refresh too');
 
   const entries = [...adminMenu.matchAll(/\['([a-z]+)',\s*'[^']*',\s*'([^']+)'\]/g)]
     .map((m) => ({ id: m[1], label: m[2] }));
@@ -127,13 +127,38 @@ test('the account splits into the half you came for', () => {
 });
 
 test('which panel is open survives a redraw', () => {
-  assert.match(app, /let orderPanel = 'chatorders';/,
-    'the open panel is kept outside the screen function');
+  assert.match(app, /let orderPanel = localStorage\.getItem\('orderPanel'\) \|\| 'chatorders';/,
+    'the open panel is kept outside the screen function, and now survives a hard refresh too');
   const at = app.indexOf('SCREENS.customerorder = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
   assert.match(screen, /orderPanel = b\.dataset\.panel/,
     'clicking a tab records which one, so raising an invoice does not bounce '
     + 'somebody back to the first tab');
+  assert.match(screen, /localStorage\.setItem\('orderPanel', orderPanel\)/,
+    'and every render saves the resolved panel, not only a click on it, so an '
+    + 'Invoice button switching the panel programmatically survives a refresh too');
+});
+
+// A hard refresh used to land everybody back on Dashboard, whatever screen or
+// panel they were actually on — the tab and panel variables were only ever
+// kept in memory. The same localStorage convention branchPicker already uses
+// now remembers the top-level tab and the three screens with their own
+// sub-panels, the same way across all four.
+test('a hard refresh remembers the tab and panel that were open, not just a redraw', () => {
+  assert.match(app, /let tab = localStorage\.getItem\('tab'\) \|\| null;/,
+    'the top-level tab is seeded from what was last saved');
+  const at = app.indexOf('function drawFrame');
+  const fn = app.slice(at, app.indexOf('\n}', at));
+  assert.match(fn, /localStorage\.setItem\('tab', tab\)/,
+    'every draw saves the resolved tab, covering both a click and the '
+    + 'role-mismatch fallback alike');
+
+  assert.match(app, /let inventoryPanel = localStorage\.getItem\('inventoryPanel'\) \|\| 'stockin';/,
+    "Internal Inventory Report's own panel is seeded the same way");
+  const invAt = app.indexOf('SCREENS.inventory = async');
+  const invScreen = app.slice(invAt, app.indexOf('const box = $', invAt));
+  assert.match(invScreen, /localStorage\.setItem\('inventoryPanel', inventoryPanel\)/,
+    'and saved on every render');
 });
 
 // Used to read "a delivered order drops off the list by itself" — the owner
