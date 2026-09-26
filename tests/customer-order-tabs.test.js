@@ -136,13 +136,19 @@ test('which panel is open survives a redraw', () => {
     + 'somebody back to the first tab');
 });
 
-test('the pending list is what is waiting, not everything ever ordered', () => {
+// Used to read "a delivered order drops off the list by itself" — the owner
+// reversed that: a dispatched row now stays right here too, Stage reading
+// Completed (see the pendingStageTag tests above), so this only checks what
+// still never belongs: a cancelled order, which still leaves.
+test('the pending list keeps a dispatched row, but not a cancelled one', () => {
   const at = app.indexOf('SCREENS.pendingorders = async');
   assert.ok(at > 0, 'there is a Pending customer order screen');
   const screen = app.slice(at, app.indexOf('\n};', at));
 
-  assert.match(screen, /o\.status === 'placed' \|\| o\.status === 'picking'/,
-    'a delivered order drops off the list by itself');
+  assert.match(screen, /\['placed', 'picking', 'fulfilled'\]\.includes\(o\.status\)/,
+    'a dispatched order stays, not just placed or picking');
+  assert.doesNotMatch(screen, /'cancelled'/,
+    'a cancelled order is still not one of the statuses kept');
   assert.match(screen, /data-open="\$\{o\.id\}"/, 'every row opens');
 });
 
@@ -256,6 +262,27 @@ test("Pending customer order's own Stage stays Committed even once picking has s
   const fn = app.slice(at, app.indexOf('\n};', at));
   assert.match(fn, /if \(o\.committed_at && \['placed', 'picking'\]\.includes\(o\.status\)\) return tag\('Committed', 'pink'\);/,
     'once committed, placed or picking both still read Committed');
+});
+
+// Dispatch used to take a row off Pending customer order entirely, onto
+// Packing list and nowhere else — the owner asked for the opposite: it stays
+// right here too, Stage reading Completed, and the "waiting" count above the
+// table keeps meaning only what has not gone out yet. Scoped to this screen
+// alone; Packing list's own board and count are untouched.
+test("a dispatched order stays on Pending customer order, Stage reading Completed, without inflating the waiting count", () => {
+  const stageAt = app.indexOf('const pendingStageTag = (o) => {');
+  const stageFn = app.slice(stageAt, app.indexOf('\n};', stageAt));
+  assert.match(stageFn, /fulfilled: tag\('Completed', 'green'\)/,
+    "a fulfilled order reads Completed here, not the Dispatched other screens use");
+
+  const at = app.indexOf('SCREENS.pendingorders = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /\.filter\(\(o\) => \['placed', 'picking', 'fulfilled'\]\.includes\(o\.status\)\)/,
+    'the list itself keeps a dispatched row rather than dropping it');
+  assert.match(screen, /const waiting = rows\.filter\(\(o\) => o\.status !== 'fulfilled'\);/,
+    'the count and total above the table are computed off the still-waiting rows only');
+  assert.match(screen, /waiting\.length[\s\S]{0,60}count\(waiting\.length\)/,
+    'the header reads off that narrower list, not every row shown below');
 });
 
 test('Draft is its own tab, and Restore is the only way back', () => {
