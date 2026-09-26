@@ -247,6 +247,17 @@ test("Pending customer order's own Stage tells Committed once Invoice has been p
     'the shared tag does not know about committed_at at all');
 });
 
+// A committed order does not fall back to reading Picking off raw status —
+// the warehouse can start picking the same order on Pick & send without this
+// screen's own Stage moving off Committed. Scoped to pendingStageTag alone;
+// packingStageTag and orderTag keep reading their own screens' rules.
+test("Pending customer order's own Stage stays Committed even once picking has started elsewhere", () => {
+  const at = app.indexOf('const pendingStageTag = (o) => {');
+  const fn = app.slice(at, app.indexOf('\n};', at));
+  assert.match(fn, /if \(o\.committed_at && \['placed', 'picking'\]\.includes\(o\.status\)\) return tag\('Committed', 'pink'\);/,
+    'once committed, placed or picking both still read Committed');
+});
+
 test('Draft is its own tab, and Restore is the only way back', () => {
   const at = app.indexOf('SCREENS.draftorders = async');
   assert.ok(at > 0, 'there is a Draft screen');

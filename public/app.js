@@ -7510,17 +7510,21 @@ const pendingAwaitingPayment = (o) =>
 // This tab's own reading of Stage — the same one orderTag draws, except:
 // once the office has pushed Invoice on an order (committed_at set) it reads
 // Committed from then on, regardless of what tier or payment alone would
-// still call it; and once Draft has been pressed on it (parked_at set) it
-// reads Draft ahead of anything else, since the row stays right here on
-// this list rather than moving off it. orderTag itself is untouched: every
-// other screen that shows a stage still reads payment status straight, and
-// parked_at and committed_at are only ever set or read here.
+// still call it, and regardless of the warehouse having separately started
+// picking it on Pick & send — this row does not move off Committed until it
+// is dispatched or cancelled; and once Draft has been pressed on it
+// (parked_at set) it reads Draft ahead of anything else, since the row stays
+// right here on this list rather than moving off it. orderTag itself is
+// untouched: every other screen that shows a stage still reads payment and
+// picking status straight, and parked_at and committed_at are only ever set
+// or read here.
 const pendingStageTag = (o) => {
   if (o.delivered_at) return tag('Delivered', 'green');
   if (o.parked_at) return tag('Draft', 'grey');
   if (!o.committed_at && o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open') {
     return tag('Awaiting payment', 'amber');
   }
+  if (o.committed_at && ['placed', 'picking'].includes(o.status)) return tag('Committed', 'pink');
   return {
     placed: tag('Committed', 'pink'),
     picking: tag('Picking', 'amber'),
