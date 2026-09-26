@@ -549,3 +549,30 @@ test('they cannot read the money or the catalogue underneath the screens', async
     assert.equal(r.rows.length, 0, `${table} gives them nothing`);
   }
 });
+
+// Add someone used to close on save and leave the owner to reopen the same
+// person just to type in their pay and PIN — the Edit dialog's own second
+// half (Pay, Clock PIN, Fingerprints, Photograph) needs an id that does not
+// exist a moment before Save is pressed. Now it lands straight in that same
+// dialog, themselves rather than a blank form, the instant they have one.
+test("Add someone lands straight in that person's own Edit dialog once saved", () => {
+  const at = app.indexOf('const openPerson = (p) => {');
+  assert.ok(at > 0, "Team's own person dialog");
+  const fn = app.slice(at, app.indexOf('\n  };', at));
+
+  // Email is asked on Add now too, not only once somebody already exists.
+  assert.doesNotMatch(fn, /\$\{isNew \? '' : `<div style="flex:2"><label>Email/,
+    'no longer hidden for a new person');
+  assert.match(fn, /<label>Email<\/label>\s*<input id="t_email"/,
+    'the box itself is unconditional');
+
+  const save = fn.slice(fn.indexOf("$('#t_save')"));
+  assert.match(save, /const created = await POST\('\/api\/team', \{ \.\.\.body, started:/,
+    'still the same creating call');
+  assert.match(save, /POST\(`\/api\/team\/\$\{created\.id\}\/email`, \{ email \}\)/,
+    'the typed email is saved onto the person the moment they have an id');
+  assert.match(save, /const fresh = data\.team\.find\(\(x\) => Number\(x\.id\) === Number\(created\.id\)\)/,
+    'reads them back from the refreshed list');
+  assert.match(save, /if \(fresh\) openPerson\(fresh\)/,
+    'and reopens on themselves — the same dialog, Pay and PIN now on it');
+});

@@ -12585,9 +12585,9 @@ SCREENS.team = async (page) => {
       <div class="row">
         <div><label>Phone</label>
           <input id="t_phone" type="text" value="${esc(p?.phone || '')}"></div>
-        ${isNew ? '' : `<div style="flex:2"><label>Email</label>
-          <input id="t_email" type="email" value="${esc(p.email || '')}"
-            placeholder="Where their payslip is sent"></div>`}
+        <div style="flex:2"><label>Email</label>
+          <input id="t_email" type="email" value="${esc(p?.email || '')}"
+            placeholder="Where their payslip is sent"></div>
         <div><label>Signs in as</label>
           <select id="t_user">
             ${options.map((o) => `<option value="${esc(String(o.id))}"
@@ -12823,13 +12823,23 @@ SCREENS.team = async (page) => {
 
       try {
         if (isNew) {
-          await POST('/api/team', { ...body, started: $('#t_from').value || null });
+          const created = await POST('/api/team', { ...body, started: $('#t_from').value || null });
+          const email = $('#t_email').value.trim();
+          if (email) await POST(`/api/team/${created.id}/email`, { email });
+          notice(`${body.name || 'Added'} 🌸 — now set their pay and PIN`, 'good');
+          // Straight into the same dialog, now themselves rather than a blank
+          // form — Pay, Clock PIN, Fingerprints and Photograph all need the
+          // id this save just created, so there was nothing there to show
+          // a moment ago.
+          await load();
+          const fresh = data.team.find((x) => Number(x.id) === Number(created.id));
+          if (fresh) openPerson(fresh); else closeDialog();
         } else {
           await PUT(`/api/team/${p.id}`, body);
+          closeDialog();
+          notice('Saved 🌸', 'good');
+          load();
         }
-        closeDialog();
-        notice('Saved 🌸', 'good');
-        load();
       } catch (e) { whoops(e); }
     });
   };
