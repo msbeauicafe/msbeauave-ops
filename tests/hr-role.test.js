@@ -576,3 +576,23 @@ test("Add someone lands straight in that person's own Edit dialog once saved", (
   assert.match(save, /if \(fresh\) openPerson\(fresh\)/,
     'and reopens on themselves — the same dialog, Pay and PIN now on it');
 });
+
+// A typed email with nothing under it left both the owner and whoever it
+// belongs to guessing whether it actually went through. A small note under
+// the box now says exactly what was saved, filled in the moment the dialog
+// opens on somebody who already has one, and updated the moment a save
+// actually happens — not merely typed.
+test('a note under the Email box confirms what was actually saved, not just typed', () => {
+  const at = app.indexOf('const openPerson = (p) => {');
+  const fn = app.slice(at, app.indexOf('\n  };', at));
+
+  assert.match(fn, /<div class="dim" id="t_email_saved"[\s\S]{0,80}\$\{\s*p\?\.email \? `Saved — \$\{esc\(p\.email\)\}` : ''\}<\/div>/,
+    'seeded from whatever is already on record the moment the dialog opens');
+
+  const save = fn.slice(fn.indexOf('const saveEmail = async'));
+  assert.match(save, /if \(typed === \(p\.email \|\| ''\)\) return;/,
+    'nothing to confirm again if nothing actually changed');
+  assert.match(save, /const note = \$\('#t_email_saved'\);/);
+  assert.match(save, /if \(note\) note\.textContent = typed \? `Saved — \$\{typed\}` : '';/,
+    'updated only after the save call above it succeeds, not on every keystroke');
+});
