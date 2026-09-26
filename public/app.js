@@ -7512,12 +7512,14 @@ const pendingAwaitingPayment = (o) =>
 // Committed from then on, regardless of what tier or payment alone would
 // still call it, and regardless of the warehouse having separately started
 // picking it on Pick & send — this row does not move off Committed until it
-// is dispatched or cancelled; and once Draft has been pressed on it
-// (parked_at set) it reads Draft ahead of anything else, since the row stays
-// right here on this list rather than moving off it. orderTag itself is
-// untouched: every other screen that shows a stage still reads payment and
-// picking status straight, and parked_at and committed_at are only ever set
-// or read here.
+// is dispatched; once Draft has been pressed on it (parked_at set) it reads
+// Draft ahead of anything else, since the row stays right here on this list
+// rather than moving off it; and once Dispatch has been pressed on Packing
+// list or Pick & send, this row does not leave this list either — it stays,
+// reading Completed, rather than vanishing the moment it is out the door.
+// orderTag itself is untouched: every other screen that shows a stage still
+// reads payment and picking status straight, and parked_at and committed_at
+// are only ever set or read here.
 const pendingStageTag = (o) => {
   if (o.delivered_at) return tag('Delivered', 'green');
   if (o.parked_at) return tag('Draft', 'grey');
@@ -7528,7 +7530,7 @@ const pendingStageTag = (o) => {
   return {
     placed: tag('Committed', 'pink'),
     picking: tag('Picking', 'amber'),
-    fulfilled: tag('Dispatched', 'green'),
+    fulfilled: tag('Completed', 'green'),
     cancelled: tag('Cancelled', 'grey'),
   }[o.status] ?? tag(o.status, 'grey');
 };
@@ -7573,15 +7575,21 @@ SCREENS.pendingorders = async (page) => {
     rows = (await GET('/api/orders?status='))
       // A row marked Draft stays right here — parked_at no longer takes it
       // off this list, only Draft tab's own copy of it depends on that flag.
-      .filter((o) => (o.status === 'placed' || o.status === 'picking'))
+      // Dispatched (fulfilled) stays too, now reading Completed, rather than
+      // leaving the moment it is out the door.
+      .filter((o) => ['placed', 'picking', 'fulfilled'].includes(o.status))
       // By customer order number, latest first — the newest CO at the top and
       // the earliest at the bottom. The numbers are fixed-width (CO26_09_011),
       // so ordering the text descending orders them by number; an order not yet
       // numbered sits last.
       .sort((a, b) => (b.co_no || '').localeCompare(a.co_no || ''));
 
-    $('#pending_count', page).textContent = rows.length
-      ? `${count(rows.length)} waiting · ${peso(rows.reduce((t, o) => t + Number(o.total), 0))}`
+    // The count and total above the table are what is still actually
+    // waiting — a dispatched row stays visible below but does not inflate
+    // a figure whose whole point is what has not gone out yet.
+    const waiting = rows.filter((o) => o.status !== 'fulfilled');
+    $('#pending_count', page).textContent = waiting.length
+      ? `${count(waiting.length)} waiting · ${peso(waiting.reduce((t, o) => t + Number(o.total), 0))}`
       : '';
 
     // Warm the catalogue in the background while the list is being read, so the
