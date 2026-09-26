@@ -12607,7 +12607,9 @@ SCREENS.team = async (page) => {
           <input id="t_phone" type="text" value="${esc(p?.phone || '')}"></div>
         <div style="flex:2"><label>Email</label>
           <input id="t_email" type="email" value="${esc(p?.email || '')}"
-            placeholder="Where their payslip is sent"></div>
+            placeholder="Where their payslip is sent">
+          <div class="dim" id="t_email_saved" style="font-size:.72rem;margin-top:2px">${
+            p?.email ? `Saved — ${esc(p.email)}` : ''}</div></div>
         <div><label>Signs in as</label>
           <select id="t_user">
             ${options.map((o) => `<option value="${esc(String(o.id))}"
@@ -12780,6 +12782,8 @@ SCREENS.team = async (page) => {
         if (typed === (p.email || '')) return;
         await POST(`/api/team/${p.id}/email`, { email: typed });
         p.email = typed;
+        const note = $('#t_email_saved');
+        if (note) note.textContent = typed ? `Saved — ${typed}` : '';
       };
       $('#t_email')?.addEventListener('change', () => saveEmail().catch(whoops));
 
