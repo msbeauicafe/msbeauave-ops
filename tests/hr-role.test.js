@@ -237,6 +237,31 @@ test('they can hire somebody, set their pay and run a cutoff', async () => {
     'and they can close it, which used to be the owner only');
 });
 
+// Saving an email and sending a payslip to it were both already theirs
+// (PAYWORK covers both) — reading the team list back used to strip email
+// out for anyone but admin, so the box she had just saved looked empty and
+// the payslip mail button looked broken, even though both had worked.
+test('what they save as an email, they can read back', async () => {
+  const hr = await signIn('hr');
+  const made = await POST(hr, '/api/team', { name: unique('Mailed'), position: 'Live Seller' });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+  const who = made.data.id;
+
+  await POST(hr, `/api/team/${who}/email`, { email: 'someone@example.com' });
+
+  const team = await GET(hr, '/api/team');
+  assert.equal(team.status, 200);
+  const row = team.data.team.find((r) => Number(r.id) === who);
+  assert.equal(row?.email, 'someone@example.com', "hr's own read of the list carries it");
+
+  // Nobody else on that same narrower branch gets it handed to them.
+  const observer = await signIn('observer');
+  const asObserver = await GET(observer, '/api/team');
+  assert.equal(asObserver.status, 200);
+  const seen = asObserver.data.team.find((r) => Number(r.id) === who);
+  assert.equal(seen?.email, undefined, 'an observer still does not see anybody\'s email');
+});
+
 // A cutoff no longer waits on somebody clicking Take it off — every running
 // loan or cash advance takes its own per-cutoff amount the moment the
 // cutoff opens, the same arithmetic, run for everyone at once.
