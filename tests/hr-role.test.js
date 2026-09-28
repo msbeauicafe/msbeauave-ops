@@ -88,14 +88,18 @@ test('the menu is those four screens and nothing else', () => {
   assert.deepEqual(ids, ['team', 'hr', 'payroll', 'attendance', 'me']);
 });
 
-test('the Payroll table has an Other charges column, after Loan/CA', () => {
+test('the Payroll table has an Other charges column, after CA and Loan', () => {
   const at = app.indexOf('SCREENS.payroll = async');
   const screen = app.slice(at, app.indexOf('\nconst LOAN_LINES', at));
   const heads = [...screen.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
-  const loan = heads.indexOf('Loan/ CA');
+  const ca = heads.indexOf('CA');
+  const loan = heads.indexOf('Loan');
   const other = heads.indexOf('Oth. chg.');
-  assert.ok(loan > 0 && other === loan + 1, 'right after Loan/CA, not somewhere else');
-  assert.match(screen, /box\(r, 'other_charges', '0\.01'\)/, 'typed straight into the line, like Loan/CA');
+  assert.ok(ca > 0 && loan === ca + 1 && other === loan + 1,
+    'CA then Loan, and Other charges right after both, not somewhere else');
+  assert.match(screen, /box\(r, 'ca_amount', '0\.01'\)/, 'CA is its own box');
+  assert.match(screen, /box\(r, 'loan_amount', '0\.01'\)/, 'Loan is its own box, separate from CA');
+  assert.match(screen, /box\(r, 'other_charges', '0\.01'\)/, 'typed straight into the line, like CA and Loan');
 
   // The payslip's own Deductions table reads total_deductions off the same
   // line, so its itemised rows have to add up to the same figure or the
@@ -389,6 +393,94 @@ test('a loan down to less than a cutoff\'s worth only takes what is left', async
   const ledger = (await db.query(
     'select balance from advance_balances where id = $1', [advance.data.id])).rows[0];
   assert.equal(Number(ledger.balance), 0, 'and the loan is now settled');
+});
+
+// The gap this was actually built to close: an advance opened after its
+// cutoff already had (so the automatic sweep at open time found nothing to
+// take), typed straight into the Payroll table's own CA box instead of
+// being fixed by hand in the database, the way Sara's, Reymar's, Adona's
+// and Angelhita's all had to be this session.
+test('typing an amount in the CA box auto-reflects to that ledger, not just the payslip', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('BoxSyncCA'), branch?.id ?? null])).rows[0];
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-07-01', ends_on: '2030-07-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  // Opened only after the cutoff already exists — same shape as the real
+  // gap: nothing for the automatic sweep to have found.
+  const advance = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'ca', principal: 5000, per_cutoff: 1000,
+      started_on: '2030-01-01', note: 'test' });
+  assert.equal(advance.status, 200, JSON.stringify(advance.data));
+
+  const line = (await db.query(
+    'select id from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+  assert.equal((await db.query(
+    'select count(*) from advance_payments where advance_id = $1', [advance.data.id]
+  )).rows[0].count, '0', 'nothing yet — the sweep already ran before this advance existed');
+
+  const saved = await PUT(admin, `/api/payroll-lines/${line.id}`, { ca_amount: 1000 });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+
+  const rows = (await db.query(
+    `select amount, period_id, note from advance_payments where advance_id = $1`,
+    [advance.data.id])).rows;
+  assert.equal(rows.length, 1, 'one ledger row, made by the box itself');
+  assert.equal(Number(rows[0].amount), 1000);
+  assert.equal(Number(rows[0].period_id), cutoff.data.id);
+
+  // Correcting the box updates that same row rather than adding a second.
+  const corrected = await PUT(admin, `/api/payroll-lines/${line.id}`, { ca_amount: 700 });
+  assert.equal(corrected.status, 200, JSON.stringify(corrected.data));
+  const after = (await db.query(
+    'select amount from advance_payments where advance_id = $1', [advance.data.id])).rows;
+  assert.equal(after.length, 1, 'still one row, not a second one');
+  assert.equal(Number(after[0].amount), 700, 'updated to match what was retyped');
+});
+
+// A CA box and a Loan box are two different figures now — typing into one
+// must never touch the other kind's own ledger.
+test('the CA box never touches a Loan ledger, and the Loan box never touches CA', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('BoxSyncKinds'), branch?.id ?? null])).rows[0];
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-08-01', ends_on: '2030-08-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const ca = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'ca', principal: 5000, per_cutoff: 1000,
+      started_on: '2030-01-01', note: 'test' });
+  const loan = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'sss', principal: 8000, per_cutoff: 800,
+      started_on: '2030-01-01', note: 'test', loan_type: 'salary' });
+  assert.equal(ca.status, 200); assert.equal(loan.status, 200);
+
+  const line = (await db.query(
+    'select id from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+
+  const saved = await PUT(admin, `/api/payroll-lines/${line.id}`, { ca_amount: 1000 });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+
+  const caRows = (await db.query(
+    'select amount from advance_payments where advance_id = $1', [ca.data.id])).rows;
+  const loanRows = (await db.query(
+    'select amount from advance_payments where advance_id = $1', [loan.data.id])).rows;
+  assert.equal(caRows.length, 1, "the CA box reached the CA ledger");
+  assert.equal(Number(caRows[0].amount), 1000);
+  assert.equal(loanRows.length, 0, "the CA box left the Loan ledger alone");
 });
 
 // Hourly is a real third way of being paid, not daily wearing a different

@@ -14633,7 +14633,8 @@ SCREENS.payroll = async (page) => {
       { head: 'SSS', n: true, cell: (r) => box(r, 'sss', '0.01') },
       { head: 'Phil Health', n: true, cell: (r) => box(r, 'philhealth', '0.01') },
       { head: 'Pag-IBIG', n: true, cell: (r) => box(r, 'pagibig', '0.01') },
-      { head: 'Loan/ CA', n: true, cell: (r) => box(r, 'loans', '0.01') },
+      { head: 'CA', n: true, cell: (r) => box(r, 'ca_amount', '0.01') },
+      { head: 'Loan', n: true, cell: (r) => box(r, 'loan_amount', '0.01') },
       { head: 'Oth. chg.', n: true, cell: (r) => box(r, 'other_charges', '0.01') },
       { head: 'Deduct.', n: true, cell: (r) => money(r.total_deductions) },
       { head: 'Net pay', n: true, cell: (r) => `<b>${money(r.net_pay)}</b>` },
@@ -14694,8 +14695,9 @@ SCREENS.payroll = async (page) => {
     r.allowance_total = Number(r.allowance || 0) * Number(r.days_present || 0);
     r.total_earnings = r.basic + r.nsd + r.overtime + r.holiday + r.spe_holiday
       + r.leave_pay + r.allowance_total + Number(r.adjustment || 0);
+    r.loans = Number(r.ca_amount || 0) + Number(r.loan_amount || 0);
     r.total_deductions = r.late_charge + Number(r.sss || 0)
-      + Number(r.philhealth || 0) + Number(r.pagibig || 0) + Number(r.loans || 0)
+      + Number(r.philhealth || 0) + Number(r.pagibig || 0) + r.loans
       + Number(r.other_charges || 0);
     r.net_pay = r.total_earnings - r.total_deductions;
   };
@@ -14717,15 +14719,15 @@ SCREENS.payroll = async (page) => {
       // Indices into the column list above — Name, Paid, Salary/month,
       // Rate/day, Rate/hour, Days, Hours, Basic, NSD hrs, OT hrs, OT pay,
       // Hol, Spe hol, Leave, Allow./day, Allow. total, Adj., Earnings,
-      // Late min, Late, SSS, PhilHealth, Pag-IBIG, Loan/CA, Other charges,
+      // Late min, Late, SSS, PhilHealth, Pag-IBIG, CA, Loan, Other charges,
       // Deductions, Net pay. Move a column there, move it here.
       set(7, money(r.basic));
       set(10, money(r.overtime));
       set(15, money(r.allowance_total));
       set(17, `<b>${money(r.total_earnings)}</b>`);
       set(19, money(r.late_charge));
-      set(25, money(r.total_deductions));
-      set(26, `<b>${money(r.net_pay)}</b>`);
+      set(26, money(r.total_deductions));
+      set(27, `<b>${money(r.net_pay)}</b>`);
     });
   };
 
@@ -14852,13 +14854,15 @@ SCREENS.payroll = async (page) => {
       const amount = Number($(`#pp_take_${b.dataset.take}`)?.value || 0);
       if (!(amount > 0)) return notice('How much is coming off?', 'bad');
       try {
+        const ledger = owing.find((l) => String(l.id) === b.dataset.take);
         await POST(`/api/advances/${b.dataset.take}/take`, {
           amount, period_id: picked?.id || null,
           paid_on: picked?.paid_on || null,
         });
         if (picked?.status !== 'closed') {
+          const field = ledger?.kind === 'ca' ? 'ca_amount' : 'loan_amount';
           await PUT(`/api/payroll-lines/${line.id}`,
-            { loans: Number(line.loans || 0) + amount });
+            { [field]: Number(line[field] || 0) + amount });
         }
         notice('Taken off 🌸', 'good');
         closeDialog();
