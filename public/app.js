@@ -14427,12 +14427,18 @@ const PR_KINDS = { ca: 'Cash advance', pagibig: 'Pag-IBIG loan', sss: 'SSS loan'
 // what a payslip is broken down by and stays the kind; which one it is rides
 // beside it, so two Pag-IBIG loans on one person stop reading identically.
 const PR_LOANS = [
-  { kind: 'pagibig', type: 'salary',     label: 'PAG-IBIG SALARY LOAN' },
-  { kind: 'pagibig', type: 'calamity',   label: 'PAG-IBIG CALAMITY LOAN' },
-  { kind: 'pagibig', type: 'short term', label: 'PAG-IBIG SHORT TERM LOAN' },
-  { kind: 'sss',     type: 'salary',     label: 'SSS SALARY LOAN' },
-  { kind: 'sss',     type: 'emergency',  label: 'SSS EMERGENCY LOAN' },
-  { kind: 'sss',     type: 'calamity',   label: 'SSS CALAMITY LOAN' },
+  { kind: 'pagibig', type: 'salary',     label: 'PAG-IBIG SALARY LOAN',
+    field: 'pagibig_salary_amount' },
+  { kind: 'pagibig', type: 'calamity',   label: 'PAG-IBIG CALAMITY LOAN',
+    field: 'pagibig_calamity_amount' },
+  { kind: 'pagibig', type: 'short term', label: 'PAG-IBIG SHORT TERM LOAN',
+    field: 'pagibig_short_amount' },
+  { kind: 'sss',     type: 'salary',     label: 'SSS SALARY LOAN',
+    field: 'sss_salary_amount' },
+  { kind: 'sss',     type: 'emergency',  label: 'SSS EMERGENCY LOAN',
+    field: 'sss_emergency_amount' },
+  { kind: 'sss',     type: 'calamity',   label: 'SSS CALAMITY LOAN',
+    field: 'sss_calamity_amount' },
 ];
 // What a ledger is called on screen. A loan opened before there were six keeps
 // its family's name rather than being guessed into one of them.
@@ -14634,7 +14640,12 @@ SCREENS.payroll = async (page) => {
       { head: 'Phil Health', n: true, cell: (r) => box(r, 'philhealth', '0.01') },
       { head: 'Pag-IBIG', n: true, cell: (r) => box(r, 'pagibig', '0.01') },
       { head: 'CA', n: true, cell: (r) => box(r, 'ca_amount', '0.01') },
-      { head: 'Loan', n: true, cell: (r) => box(r, 'loan_amount', '0.01') },
+      { head: 'PI Sal.', n: true, cell: (r) => box(r, 'pagibig_salary_amount', '0.01') },
+      { head: 'PI Cal.', n: true, cell: (r) => box(r, 'pagibig_calamity_amount', '0.01') },
+      { head: 'PI Short', n: true, cell: (r) => box(r, 'pagibig_short_amount', '0.01') },
+      { head: 'SSS Sal.', n: true, cell: (r) => box(r, 'sss_salary_amount', '0.01') },
+      { head: 'SSS Emer.', n: true, cell: (r) => box(r, 'sss_emergency_amount', '0.01') },
+      { head: 'SSS Cal.', n: true, cell: (r) => box(r, 'sss_calamity_amount', '0.01') },
       { head: 'Oth. chg.', n: true, cell: (r) => box(r, 'other_charges', '0.01') },
       { head: 'Deduct.', n: true, cell: (r) => money(r.total_deductions) },
       { head: 'Net pay', n: true, cell: (r) => `<b>${money(r.net_pay)}</b>` },
@@ -14695,7 +14706,8 @@ SCREENS.payroll = async (page) => {
     r.allowance_total = Number(r.allowance || 0) * Number(r.days_present || 0);
     r.total_earnings = r.basic + r.nsd + r.overtime + r.holiday + r.spe_holiday
       + r.leave_pay + r.allowance_total + Number(r.adjustment || 0);
-    r.loans = Number(r.ca_amount || 0) + Number(r.loan_amount || 0);
+    r.loans = Number(r.ca_amount || 0)
+      + PR_LOANS.reduce((s, l) => s + Number(r[l.field] || 0), 0);
     r.total_deductions = r.late_charge + Number(r.sss || 0)
       + Number(r.philhealth || 0) + Number(r.pagibig || 0) + r.loans
       + Number(r.other_charges || 0);
@@ -14719,15 +14731,15 @@ SCREENS.payroll = async (page) => {
       // Indices into the column list above — Name, Paid, Salary/month,
       // Rate/day, Rate/hour, Days, Hours, Basic, NSD hrs, OT hrs, OT pay,
       // Hol, Spe hol, Leave, Allow./day, Allow. total, Adj., Earnings,
-      // Late min, Late, SSS, PhilHealth, Pag-IBIG, CA, Loan, Other charges,
-      // Deductions, Net pay. Move a column there, move it here.
+      // Late min, Late, SSS, PhilHealth, Pag-IBIG, CA, the six named loans,
+      // Other charges, Deductions, Net pay. Move a column there, move it here.
       set(7, money(r.basic));
       set(10, money(r.overtime));
       set(15, money(r.allowance_total));
       set(17, `<b>${money(r.total_earnings)}</b>`);
       set(19, money(r.late_charge));
-      set(26, money(r.total_deductions));
-      set(27, `<b>${money(r.net_pay)}</b>`);
+      set(31, money(r.total_deductions));
+      set(32, `<b>${money(r.net_pay)}</b>`);
     });
   };
 
@@ -14860,9 +14872,12 @@ SCREENS.payroll = async (page) => {
           paid_on: picked?.paid_on || null,
         });
         if (picked?.status !== 'closed') {
-          const field = ledger?.kind === 'ca' ? 'ca_amount' : 'loan_amount';
-          await PUT(`/api/payroll-lines/${line.id}`,
-            { [field]: Number(line[field] || 0) + amount });
+          const field = ledger?.kind === 'ca' ? 'ca_amount' : PR_LOANS.find(
+            (x) => x.kind === ledger?.kind && x.type === ledger?.loan_type)?.field;
+          if (field) {
+            await PUT(`/api/payroll-lines/${line.id}`,
+              { [field]: Number(line[field] || 0) + amount });
+          }
         }
         notice('Taken off 🌸', 'good');
         closeDialog();

@@ -88,18 +88,25 @@ test('the menu is those four screens and nothing else', () => {
   assert.deepEqual(ids, ['team', 'hr', 'payroll', 'attendance', 'me']);
 });
 
-test('the Payroll table has an Other charges column, after CA and Loan', () => {
+test('the Payroll table has an Other charges column, after CA and the six named loans', () => {
   const at = app.indexOf('SCREENS.payroll = async');
   const screen = app.slice(at, app.indexOf('\nconst LOAN_LINES', at));
   const heads = [...screen.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
   const ca = heads.indexOf('CA');
-  const loan = heads.indexOf('Loan');
   const other = heads.indexOf('Oth. chg.');
-  assert.ok(ca > 0 && loan === ca + 1 && other === loan + 1,
-    'CA then Loan, and Other charges right after both, not somewhere else');
+  assert.ok(ca > 0 && other === ca + 7,
+    'CA, then the six named loan boxes, then Other charges right after — not somewhere else');
   assert.match(screen, /box\(r, 'ca_amount', '0\.01'\)/, 'CA is its own box');
-  assert.match(screen, /box\(r, 'loan_amount', '0\.01'\)/, 'Loan is its own box, separate from CA');
-  assert.match(screen, /box\(r, 'other_charges', '0\.01'\)/, 'typed straight into the line, like CA and Loan');
+  const loanFields = [
+    'pagibig_salary_amount', 'pagibig_calamity_amount', 'pagibig_short_amount',
+    'sss_salary_amount', 'sss_emergency_amount', 'sss_calamity_amount',
+  ];
+  for (const field of loanFields) {
+    assert.match(screen, new RegExp(`box\\(r, '${field}', '0\\.01'\\)`),
+      `each named loan is its own box (${field})`);
+    assert.match(app, new RegExp(`field: '${field}'`), `PR_LOANS wires up ${field}`);
+  }
+  assert.match(screen, /box\(r, 'other_charges', '0\.01'\)/, 'typed straight into the line, like CA and the loans');
 
   // The payslip's own Deductions table reads total_deductions off the same
   // line, so its itemised rows have to add up to the same figure or the
@@ -481,6 +488,90 @@ test('the CA box never touches a Loan ledger, and the Loan box never touches CA'
   assert.equal(caRows.length, 1, "the CA box reached the CA ledger");
   assert.equal(Number(caRows[0].amount), 1000);
   assert.equal(loanRows.length, 0, "the CA box left the Loan ledger alone");
+});
+
+// A Loan box used to be one figure for every running loan of either family.
+// Now each named loan — SSS Salary, SSS Emergency, and the rest — has its
+// own box and its own ledger, so a Pag-IBIG salary loan being paid stops
+// looking like a guess split across whatever else that person happens to
+// be paying off.
+test('a named loan box auto-reflects to that exact loan\'s own ledger', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('BoxSyncNamed'), branch?.id ?? null])).rows[0];
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-09-01', ends_on: '2030-09-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const advance = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'pagibig', principal: 6000, per_cutoff: 500,
+      started_on: '2030-01-01', note: 'test', loan_type: 'salary' });
+  assert.equal(advance.status, 200, JSON.stringify(advance.data));
+
+  const line = (await db.query(
+    'select id from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+
+  const saved = await PUT(admin, `/api/payroll-lines/${line.id}`,
+    { pagibig_salary_amount: 500 });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+
+  const rows = (await db.query(
+    'select amount, period_id from advance_payments where advance_id = $1',
+    [advance.data.id])).rows;
+  assert.equal(rows.length, 1, 'one ledger row, made by the box itself');
+  assert.equal(Number(rows[0].amount), 500);
+  assert.equal(Number(rows[0].period_id), cutoff.data.id);
+
+  const totals = (await db.query(
+    'select loan_amount, loans from payroll_lines where id = $1', [line.id])).rows[0];
+  assert.equal(Number(totals.loan_amount), 500, 'the combined Loan figure still adds up');
+  assert.equal(Number(totals.loans), 500);
+});
+
+// SSS Salary and SSS Emergency share the same family ('sss') but are two
+// different debts — typing into one must never reach off the other's
+// ledger, the way an SSS salary loan once got its split polluted by an
+// unrelated SSS emergency loan that had not even started yet.
+test('an SSS Salary box never touches an SSS Emergency ledger on the same person', async () => {
+  const admin = await signIn('admin');
+  const branch = (await db.query('select id from branches order by id limit 1')).rows[0];
+  const emp = (await db.query(
+    `insert into employees (name, position, branch_id, company, daily_rate)
+     values ($1, 'Live Seller', $2, 'MS BEAU', 500) returning id`,
+    [unique('BoxSyncSSSTypes'), branch?.id ?? null])).rows[0];
+
+  const cutoff = await POST(admin, '/api/payroll',
+    { company: 'MS BEAU', starts_on: '2030-10-01', ends_on: '2030-10-15' });
+  assert.equal(cutoff.status, 200, JSON.stringify(cutoff.data));
+
+  const salary = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'sss', principal: 8000, per_cutoff: 800,
+      started_on: '2030-01-01', note: 'test', loan_type: 'salary' });
+  const emergency = await POST(admin, '/api/advances',
+    { employee_id: emp.id, kind: 'sss', principal: 3000, per_cutoff: 300,
+      started_on: '2030-01-01', note: 'test', loan_type: 'emergency' });
+  assert.equal(salary.status, 200); assert.equal(emergency.status, 200);
+
+  const line = (await db.query(
+    'select id from payroll_lines where period_id = $1 and employee_id = $2',
+    [cutoff.data.id, emp.id])).rows[0];
+
+  const saved = await PUT(admin, `/api/payroll-lines/${line.id}`,
+    { sss_salary_amount: 800 });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+
+  const salaryRows = (await db.query(
+    'select amount from advance_payments where advance_id = $1', [salary.data.id])).rows;
+  const emergencyRows = (await db.query(
+    'select amount from advance_payments where advance_id = $1', [emergency.data.id])).rows;
+  assert.equal(salaryRows.length, 1, 'the SSS Salary box reached the SSS Salary ledger');
+  assert.equal(Number(salaryRows[0].amount), 800);
+  assert.equal(emergencyRows.length, 0, 'the SSS Salary box left the SSS Emergency ledger alone');
 });
 
 // Hourly is a real third way of being paid, not daily wearing a different
