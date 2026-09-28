@@ -129,6 +129,8 @@ test('an order desk can do the whole job, start to finish', async () => {
   assert.equal(placed.status, 200, JSON.stringify(placed.data));
   const order = placed.data.orderId;
   assert.ok(placed.data.co_no, 'and it comes back with its number on it');
+  assert.equal((await POST(desk, `/api/orders/${order}/commit`)).status, 200,
+    'and Invoice is the order desk\'s to press too');
 
   // Correct it — the quantity, the money, the number on the paper.
   const detail = await GET(desk, `/api/orders/${order}`);
@@ -323,7 +325,7 @@ test('committing an order carries even while it is still Awaiting payment', asyn
   const before = (await GET(desk, '/api/orders?status='))
     .data.find((o) => Number(o.id) === Number(order));
   assert.equal(before.tier, 1, 'placed against a tier-1 account');
-  assert.equal(before.invoice_status, 'open', 'an invoice already raised, unpaid');
+  assert.equal(before.invoice_status, null, 'nothing raised yet — that waits for Invoice too');
   assert.equal(before.committed_at, null, 'not committed yet');
 
   const committed = await POST(desk, `/api/orders/${order}/commit`);
@@ -332,6 +334,7 @@ test('committing an order carries even while it is still Awaiting payment', asyn
   const after = (await GET(desk, '/api/orders?status='))
     .data.find((o) => Number(o.id) === Number(order));
   assert.ok(after.committed_at, 'the order now carries when it was committed');
+  assert.equal(after.invoice_status, 'open', 'and pressing it is what raises the invoice');
 
   // Pushing Invoice again leaves the timestamp as it was rather than
   // erroring — the same idempotency park_order and unpark_order carry.

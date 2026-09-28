@@ -85,6 +85,9 @@ async function anOrder(admin, store, qty = 4) {
 
   const order = await POST(admin, `/api/resellers/${seller.id}/orders`, { lines: [{ sku, qty }] });
   assert.equal(order.status, 200, JSON.stringify(order.data));
+  // Every test in this file is about revising an invoice that already
+  // exists — placing no longer raises one on its own, so press Invoice here.
+  await POST(admin, `/api/orders/${order.data.orderId}/commit`);
   return { sku, seller: seller.id, orderId: order.data.orderId };
 }
 

@@ -119,6 +119,9 @@ test('a reseller order is stamped with all three document numbers', async () => 
 
   const order = await POST(admin, `/api/resellers/${seller}/orders`, { lines: [{ sku, qty: 2 }] });
   assert.equal(order.status, 200, JSON.stringify(order.data));
+  // CO and PL are stamped the moment the order lands; SI only once Invoice
+  // is pressed.
+  await POST(admin, `/api/orders/${order.data.orderId}/commit`);
 
   const n = await numbers(order.data.orderId);
   const on = stamp();
@@ -141,6 +144,8 @@ test('the count goes up, and each document counts for itself', async () => {
   const first = await POST(admin, `/api/resellers/${seller}/orders`, { lines: [{ sku, qty: 1 }] });
   const then = await POST(admin, `/api/resellers/${seller}/orders`, { lines: [{ sku, qty: 1 }] });
   assert.equal(then.status, 200, JSON.stringify(then.data));
+  await POST(admin, `/api/orders/${first.data.orderId}/commit`);
+  await POST(admin, `/api/orders/${then.data.orderId}/commit`);
 
   const a = await numbers(first.data.orderId);
   const b = await numbers(then.data.orderId);
@@ -183,6 +188,13 @@ test('two orders raised at once cannot take the same number', async () => {
   assert.ok(raised.every((r) => r.status === 200),
     `not all six were accepted: ${JSON.stringify(raised.map((r) => r.data))}`);
 
+  // SI is only stamped once Invoice is pressed — six presses at once is the
+  // same rush this test is actually about.
+  const committed = await Promise.all(raised.map((r) =>
+    POST(admin, `/api/orders/${r.data.orderId}/commit`)));
+  assert.ok(committed.every((r) => r.status === 200),
+    `not all six committed: ${JSON.stringify(committed.map((r) => r.data))}`);
+
   const all = await Promise.all(raised.map((r) => numbers(r.data.orderId)));
   const cos = all.map((n) => n.co_no);
   assert.equal(new Set(cos).size, 6, `six orders produced ${new Set(cos).size} numbers: ${cos}`);
@@ -205,6 +217,10 @@ async function anOrder(admin, store) {
   const seller = await newReseller(admin);
   const order = await POST(admin, `/api/resellers/${seller}/orders`, { lines: [{ sku, qty: 1 }] });
   assert.equal(order.status, 200, JSON.stringify(order.data));
+  // Placing no longer raises the invoice — Invoice no. is only stamped once
+  // Invoice is pressed, so this helper presses it: every test below still
+  // gets a real si_no to write against, the same as CO and PL already had.
+  await POST(admin, `/api/orders/${order.data.orderId}/commit`);
   return order.data.orderId;
 }
 
