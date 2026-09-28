@@ -7655,7 +7655,6 @@ SCREENS.chatorders = async (page) => {
     <div class="tools">
       <span class="tools-gap" aria-hidden="true"></span>
       <input type="search" id="rs_find" placeholder="Filter by name or email…" autofocus>
-      <button class="btn quiet" id="rs_drafts">🗒 Drafts</button>
     </div>
     <div id="rs_hits"></div>
     <div id="working"></div>`;
@@ -8110,55 +8109,11 @@ SCREENS.chatorders = async (page) => {
     drawWorking();
   }
 
-  async function openDraftsList() {
-    let drafts;
-    try { drafts = await GET('/api/order-drafts'); } catch (e) { return whoops(e); }
-    // A customer's drafts are their own. With one picked, this is their shelf
-    // and nobody else's; with none picked, the drafts stand grouped by account
-    // rather than jumbled into one run, so one customer's never mixes with
-    // another's.
-    if (picked) drafts = drafts.filter((d) => String(d.reseller_id) === String(picked.id));
-    const groups = new Map();
-    for (const d of drafts) {
-      const key = d.reseller || '—';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(d);
-    }
-    const row = (d) => `
-      <div class="draft-row">
-        <div>${d.items} item${Number(d.items) === 1 ? '' : 's'}
-          <div class="dim">${esc(d.saved_by || '')} · ${when(d.updated_at)}</div></div>
-        <div style="display:flex;gap:6px">
-          <button class="btn sm" data-open="${d.id}">Preview</button>
-          <button class="btn sm stop" data-drop="${d.id}">Discard</button></div>
-      </div>`;
-    const title = picked ? `Saved drafts — ${esc(picked.name)}` : 'Saved drafts';
-    dialog(`<h3>${title}</h3>
-      ${drafts.length ? [...groups.entries()].map(([name, list]) => `
-        <div class="draft-group">
-          <div class="draft-head"><b>${esc(name)}</b> · ${list.length} draft${list.length === 1 ? '' : 's'}</div>
-          <div class="draft-list">${list.map(row).join('')}</div>
-        </div>`).join('')
-        : `<div class="none">No drafts parked${picked ? ` for ${esc(picked.name)}` : ''}.</div>`}
-      <div class="mt right"><button class="btn quiet" id="dr_close">Close</button></div>`);
-    $('#dr_close').addEventListener('click', closeDialog);
-    $$('[data-open]').forEach((b) => b.addEventListener('click', async () => {
-      try { const d = await GET(`/api/order-drafts/${b.dataset.open}`); closeDialog(); reopenDraft(d); }
-      catch (e) { whoops(e); }
-    }));
-    $$('[data-drop]').forEach((b) => b.addEventListener('click', async () => {
-      try { await DELETE(`/api/order-drafts/${b.dataset.drop}`); notice('Discarded', 'good'); openDraftsList(); }
-      catch (e) { whoops(e); }
-    }));
-  }
-  $('#rs_drafts', page).addEventListener('click', openDraftsList);
-
   findBox.addEventListener('input', drawHits);
   resellers = (await GET('/api/resellers'))
     .sort((a, b) => a.name.localeCompare(b.name));
-  // Draft tab's own "Place order" hands a saved basket straight back here
-  // rather than through this screen's own Drafts dialog — reopen it the
-  // same way that dialog's Preview does, and skip the grid nobody asked for.
+  // Draft tab's own "Place order" hands a saved basket straight back here —
+  // reopen it directly and skip the grid nobody asked for.
   if (reopenChatDraftId) {
     const id = reopenChatDraftId;
     reopenChatDraftId = null;
