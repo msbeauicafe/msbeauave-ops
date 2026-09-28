@@ -7754,7 +7754,7 @@ SCREENS.chatorders = async (page) => {
       <div class="split">
         <div class="panel">
           <h3>Product list</h3>
-          <input type="search" id="ch_find" placeholder="Search products…">
+          <input type="search" id="ch_find" placeholder="Search by code, name or brand…">
           <div class="dim" id="ch_count" style="font-size:.72rem;margin:4px 0 2px"></div>
           <div id="ch_goods" class="scroll" style="max-height:560px;overflow-y:auto"></div>
         </div>
@@ -7824,9 +7824,14 @@ SCREENS.chatorders = async (page) => {
     // built from, so they do not lead it. A stable sort keeps everything else
     // in the order it came, only the freebies moved down.
     const isFreebie = (p) => /freebie/i.test(p.name || '');
+    // Nearly every code here shares the same shop prefix (MS-…), so a term
+    // that short would match the code on almost everything in the catalog —
+    // useless as a code search, and drowning out the name search it was
+    // typed for. A real code is longer than that prefix; this is short
+    // enough to still type a bare number like 057 and find it.
     const rows = (catalog || []).filter((p) => !term
       || p.name.toLowerCase().includes(term) || (p.brand || '').toLowerCase().includes(term)
-      || (p.sku || '').toLowerCase().includes(term))
+      || (term.length >= 3 && (p.sku || '').toLowerCase().includes(term)))
       .sort((a, b) => (isFreebie(a) ? 1 : 0) - (isFreebie(b) ? 1 : 0));
     // Named for what it is rather than what it holds: `count` is the shared
     // formatter three lines below, and taking that name here left the table
