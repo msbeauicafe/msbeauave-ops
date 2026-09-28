@@ -462,6 +462,17 @@ test('the Invoice tab is its own screen, eight columns, built apart from the res
   }
 });
 
+// Pressing Invoice again can move a number on its own, independent of when
+// the order was placed — so the newest invoice is the one with the newest
+// number, not necessarily the one placed most recently.
+test('the Invoice tab lists rows by the invoice number itself, newest first', () => {
+  const at = app.indexOf('SCREENS.coinvoices = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen,
+    /\.sort\(\(a, b\) => \(b\.si_no \|\| ''\)\.localeCompare\(a\.si_no \|\| ''\)/,
+    'descending by si_no, b before a');
+});
+
 test('the four invoice-row buttons do their own four things', () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   const screen = app.slice(at, app.indexOf('\n};', at));

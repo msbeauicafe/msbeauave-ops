@@ -9501,10 +9501,12 @@ SCREENS.coinvoices = async (page) => {
   const load = async () => {
     const rows = (await GET('/api/orders?status='))
       .filter((o) => o.invoice_id && !notYetCommitted(o))
-      // Most recently invoiced first, the same way Pending customer order
-      // reads newest to oldest.
-      .sort((a, b) => new Date(b.invoice_issued_on || b.placed_at)
-        - new Date(a.invoice_issued_on || a.placed_at));
+      // By the invoice number itself, newest first — pressing Invoice can
+      // now move a number on its own, independent of when the order was
+      // placed, so the row has to follow the number rather than the date
+      // or the newest invoice stops reading as the newest row.
+      .sort((a, b) => (b.si_no || '').localeCompare(a.si_no || '')
+        || new Date(b.invoice_issued_on || b.placed_at) - new Date(a.invoice_issued_on || a.placed_at));
 
     $('#coinv_list', page).innerHTML = table(rows, [
       { head: 'Customer order no.', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
