@@ -252,6 +252,65 @@ test('the counter carries on from what was written', async () => {
     'the counter reads the highest number in the month, so nothing has to be told');
 });
 
+// Pressing Invoice again is not asking for a second invoice — raise_invoice
+// already no-ops once one exists — but it is asking for this one to be read
+// last. Whoever is pressed last takes the newest number; everything that
+// sat above its old spot closes the gap behind it.
+test('pressing Invoice again moves that invoice to the newest number', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const first = await anOrder(admin, store);
+  const second = await anOrder(admin, store);
+  const third = await anOrder(admin, store);
+
+  const before = {
+    first: (await numbers(first)).si_no,
+    second: (await numbers(second)).si_no,
+    third: (await numbers(third)).si_no,
+  };
+  const tail = (s) => Number(s.slice(-3));
+  assert.equal(tail(before.second), tail(before.first) + 1);
+  assert.equal(tail(before.third), tail(before.first) + 2);
+
+  // Pressed again — the same order, nothing new placed.
+  const pressed = await POST(admin, `/api/orders/${first}/commit`);
+  assert.equal(pressed.status, 200, JSON.stringify(pressed.data));
+
+  const after = {
+    first: (await numbers(first)).si_no,
+    second: (await numbers(second)).si_no,
+    third: (await numbers(third)).si_no,
+  };
+  assert.equal(after.first, before.third, 'the one pressed last now carries the newest number');
+  assert.equal(tail(after.second), tail(before.second) - 1, 'closed up by one behind it');
+  assert.equal(tail(after.third), tail(before.third) - 1, 'closed up by one behind it');
+});
+
+// A number written by hand is a promise about a piece of paper already
+// printed. Pressing Invoice again on that order must never move it, and
+// must never ask anything else to make room for it either — there is
+// nothing to make room for, since it never had a slot in the automatic
+// count to begin with.
+test('a written number stays put even when Invoice is pressed again', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const first = await anOrder(admin, store);
+  const second = await anOrder(admin, store);
+
+  const mine = `BIR-${unique('X')}`;
+  const written = await POST(admin, `/api/orders/${first}/invoice-no`, { si_no: mine });
+  assert.equal(written.status, 200, JSON.stringify(written.data));
+
+  const secondBefore = (await numbers(second)).si_no;
+
+  const pressed = await POST(admin, `/api/orders/${first}/commit`);
+  assert.equal(pressed.status, 200, JSON.stringify(pressed.data));
+
+  assert.equal((await numbers(first)).si_no, mine, 'the written number never moves');
+  assert.equal((await numbers(second)).si_no, secondBefore,
+    'and nothing else moves to make room for it either');
+});
+
 test('two invoices cannot be made to share one number', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
