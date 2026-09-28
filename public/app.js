@@ -4623,7 +4623,13 @@ SCREENS.copacking = async (page) => {
   let status = '';
   const load = async () => {
     const rows = (await GET(`/api/orders?status=${status}`))
-      .filter((o) => o.invoice_status === 'paid');
+      .filter((o) => o.invoice_status === 'paid')
+      // Newest-pressed first — pressing Packing list on Invoice tab's own
+      // Record payment dialog is what sends an order here, and doing it
+      // again is asking for this one to be seen first, the same as
+      // pressing Invoice again is on Invoice tab itself.
+      .sort((a, b) => new Date(b.packing_list_issued_at || b.placed_at)
+        - new Date(a.packing_list_issued_at || a.placed_at));
     $('#board', page).innerHTML = table(rows, [
       // The number on the sheet the bench is holding, not the database's own.
       { head: 'Packing list', cell: (o) => `<b>${esc(o.pl_no || o.id)}</b>` },
@@ -9089,14 +9095,19 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
   // the bench to open on their own once they are there — but if a payment
   // was actually typed into the form first, that is saved on the way out
   // rather than left behind, since Packing list only shows what is paid.
+  // The press itself is stamped too, the same as pressing Invoice stamps
+  // that one — Packing list reads newest-pressed first off it.
   $('#ci_pack').addEventListener('click', async () => {
     $('#ci_pack').disabled = true;
     try {
       await save();
+      await POST(`/api/orders/${orderId}/packing-list-pressed`);
       closeDialog();
       $('[data-panel="copacking"]')?.click();
-    } catch (e) { whoops(e); }
-    $('#ci_pack').disabled = false;
+    } catch (e) {
+      whoops(e);
+      $('#ci_pack').disabled = false;
+    }
   });
 }
 
@@ -9511,13 +9522,15 @@ SCREENS.coinvoices = async (page) => {
     $('#coinv_list', page).innerHTML = table(rows, [
       { head: 'Customer order no.', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
       { head: 'Invoice no.', cell: (o) => esc(o.si_no || '—') },
-      { head: 'Reseller', cell: (o) => esc(o.reseller || '') },
-      { head: 'Tier', cell: (o) => o.tier ? tierTag(o.tier) : '' },
-      { head: 'Issued', cell: (o) => onDay(o.invoice_issued_on || o.placed_at) },
+      { head: 'Reseller', cell: (o) => `${esc(o.reseller || '')}
+          ${o.tier ? `<div>${tierTag(o.tier)}</div>` : ''}` },
+      { head: 'Invoice issued date', cell: (o) => onDay(o.invoice_issued_on || o.placed_at) },
       { head: 'Standing', cell: standing },
       { head: 'Amount', n: true, cell: (o) => peso(o.invoice_amount ?? o.total) },
       { head: 'Bal', n: true, cell: (o) => o.balance == null
           ? '<span class="dim">—</span>' : peso(o.balance) },
+      { head: 'Packing list issued date', cell: (o) => o.packing_list_issued_at
+          ? when(o.packing_list_issued_at) : '<span class="dim">—</span>' },
       { head: '', cell: (o) => `
           <div class="inv-actions">
             <button class="btn sm"

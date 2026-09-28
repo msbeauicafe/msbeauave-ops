@@ -445,14 +445,17 @@ test('a saved basket opens its own editable dialog, not openOrder\'s', () => {
 
 // One row per invoice, not one row per reseller — that account-level list
 // stays exactly where it was, resellerList('money'), untouched and unbranched.
-test('the Invoice tab is its own screen, eight columns, built apart from the reseller account list', () => {
+test('the Invoice tab is its own screen, built apart from the reseller account list', () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   assert.ok(at > 0, 'there is an Invoice screen of its own');
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   const heads = [...screen.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
-  assert.deepEqual(heads, ['Customer order no.', 'Invoice no.', 'Reseller', 'Tier',
-    'Issued', 'Standing', 'Amount', 'Bal', ''], 'in the order the owner asked for');
+  assert.deepEqual(heads, ['Customer order no.', 'Invoice no.', 'Reseller',
+    'Invoice issued date', 'Standing', 'Amount', 'Bal', 'Packing list issued date', ''],
+    'in the order the owner asked for — Tier folded under Reseller\'s own name, ' +
+    'not a column of its own');
+  assert.match(screen, /tierTag\(o\.tier\)/, 'the tier still shows, just under the name');
 
   assert.doesNotMatch(screen, /resellerList/,
     'built fresh rather than branched off the shared account list');
@@ -698,6 +701,18 @@ test('the packing list screen leads with its own number, not a database id', () 
   const screen = app.slice(at, app.indexOf('\n};', at));
   assert.match(screen, /head: 'Packing list', cell: \(o\) => `<b>\$\{esc\(o\.pl_no/,
     'the bench is holding a sheet with PL26_08_004 on it, not #41');
+});
+
+// Pressing Packing list on Invoice tab's own Record payment dialog is what
+// sends an order here in the first place — pressing it again on an order
+// already sitting here is asking to be seen first, the same as pressing
+// Invoice again asks Invoice tab for the newest number.
+test('the packing list screen reads newest-pressed first', () => {
+  const at = app.indexOf('SCREENS.copacking = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen,
+    /\.sort\(\(a, b\) => new Date\(b\.packing_list_issued_at \|\| b\.placed_at\)\s*-\s*new Date\(a\.packing_list_issued_at \|\| a\.placed_at\)\)/,
+    'descending by packing_list_issued_at, b before a');
 });
 
 // The tab shows only what has cleared payment. The warehouse's own Pick &
