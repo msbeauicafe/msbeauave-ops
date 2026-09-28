@@ -792,3 +792,17 @@ test("Chat order's product search also matches the product code", () => {
   assert.match(screen, /placeholder="Search by code, name or brand…"/,
     'the box says so, now that code is one of the three');
 });
+
+// The box says it searches by code — the table it searches has to show one,
+// or typing a code found on a printed price list has nothing on screen to
+// confirm the match against.
+test('the product table leads with the code, ahead of the product itself', () => {
+  const at = app.indexOf('SCREENS.chatorders = async');
+  const screen = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
+  const codeAt = screen.indexOf("head: 'Code'");
+  const productAt = screen.indexOf("head: 'Product'");
+  assert.ok(codeAt > -1 && productAt > -1 && codeAt < productAt,
+    'Code is a column of its own, and comes before Product');
+  assert.match(screen, /head: 'Code', cell: \(p\) => esc\(p\.sku \|\| ''\)/,
+    'the code column reads the sku plainly, nothing dressed up');
+});
