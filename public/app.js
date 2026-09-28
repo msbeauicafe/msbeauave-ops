@@ -7843,6 +7843,7 @@ SCREENS.chatorders = async (page) => {
         : `All ${rows.length} products — type to narrow it down`;
     }
     box.innerHTML = table(rows, [
+      { head: 'Code', cell: (p) => esc(p.sku || '') },
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b> <span class="dim">${esc(p.brand || '')}</span>` },
       { head: 'RS Price', n: true, cell: (p) => peso(rsPrice(p)) },
       { head: 'Have', n: true, cell: (p) => count(p.available) },
