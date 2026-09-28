@@ -774,3 +774,13 @@ test('the panel tabs are plainly subordinate to the menu', () => {
   assert.match(block, /border-bottom/,
     'an underline for the open one rather than a tinted bar of its own');
 });
+
+// Chat order's own product search — typing a code should find the product
+// the same as typing its name already does. Draft resumes into this exact
+// same basket screen, so there is nothing else to touch for that flow.
+test("Chat order's product search also matches the product code", () => {
+  const at = app.indexOf('SCREENS.chatorders = async');
+  const screen = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
+  assert.match(screen, /\(p\.sku \|\| ''\)\.toLowerCase\(\)\.includes\(term\)/,
+    'the sku is checked alongside name and brand');
+});
