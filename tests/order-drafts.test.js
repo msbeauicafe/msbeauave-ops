@@ -118,14 +118,17 @@ test('drafts are the order desk\'s — nobody else gets in', async () => {
   }
 });
 
-test('the Drafts button and save/reopen are wired into the chat-order screen', async () => {
+// The Drafts button and its dialog were removed from Chat order — Draft, the
+// tab, is the one place to see what is parked. Saving one and reopening it
+// (Draft's own "Place order" hands a basket straight back here) still work.
+test('save/reopen are wired into the chat-order screen; its own Drafts button is gone', async () => {
   const fs = await import('node:fs');
   const url = await import('node:url');
   const path = await import('node:path');
   const here = path.dirname(url.fileURLToPath(import.meta.url));
   const src = fs.readFileSync(path.join(here, '..', 'public/app.js'), 'utf8');
-  assert.match(src, /id="rs_drafts"/, 'a Drafts button by the filter');
-  assert.match(src, /function openDraftsList/, 'that opens the list');
-  assert.match(src, /function reopenDraft/, 'reopening a parked basket');
-  assert.match(src, /async function saveDraft/, 'and the right button saves one');
+  assert.doesNotMatch(src, /id="rs_drafts"/, 'no more Drafts button by the filter');
+  assert.doesNotMatch(src, /function openDraftsList/, 'and no dialog left to open');
+  assert.match(src, /function reopenDraft/, 'reopening a parked basket still works');
+  assert.match(src, /async function saveDraft/, 'and the right button still saves one');
 });
