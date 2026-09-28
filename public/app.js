@@ -4623,11 +4623,12 @@ SCREENS.copacking = async (page) => {
   let status = '';
   const load = async () => {
     const rows = (await GET(`/api/orders?status=${status}`))
-      .filter((o) => o.invoice_status === 'paid')
-      // Newest-pressed first — pressing Packing list on Invoice tab's own
-      // Record payment dialog is what sends an order here, and doing it
-      // again is asking for this one to be seen first, the same as
-      // pressing Invoice again is on Invoice tab itself.
+      // Pressing Packing list, on Invoice tab's own Record payment dialog,
+      // is what puts an order here now — paid or not. Whether it is paid
+      // is still its own column, read from, not gated on.
+      .filter((o) => o.packing_list_issued_at)
+      // Newest-pressed first — doing it again is asking for this one to be
+      // seen first, the same as pressing Invoice again is on Invoice tab.
       .sort((a, b) => new Date(b.packing_list_issued_at || b.placed_at)
         - new Date(a.packing_list_issued_at || a.placed_at));
     $('#board', page).innerHTML = table(rows, [
@@ -4640,7 +4641,7 @@ SCREENS.copacking = async (page) => {
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
       { head: 'Placed', cell: (o) => when(o.placed_at) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>` },
-    ], 'No paid orders here yet.');
+    ], 'Nothing has had Packing list pressed yet.');
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openOrder(b.dataset.open, load, { readOnly: true }).catch(whoops)));
@@ -4648,7 +4649,7 @@ SCREENS.copacking = async (page) => {
 
   page.innerHTML = `
     <div class="head"><h2>Wholesale orders</h2>
-      <span class="hint">Only what is paid shows here — Pick &amp; send still has everything</span></div>
+      <span class="hint">Only what has had Packing list pressed shows here — Pick &amp; send still has everything</span></div>
     <div class="tools"><select id="stage">
       <option value="">Every stage</option>
       <option value="placed">Committed</option>

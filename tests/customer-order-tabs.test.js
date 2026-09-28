@@ -715,22 +715,32 @@ test('the packing list screen reads newest-pressed first', () => {
     'descending by packing_list_issued_at, b before a');
 });
 
-// The tab shows only what has cleared payment. The warehouse's own Pick &
-// send, and the observer's Wholesale, still need every committed order
-// whether or not it is paid — so this is its own screen, not a filter bolted
-// onto the shared one, the same lesson PRs #531-535 already paid for once.
-test('the tab is its own screen, paid orders only — the shared board stays untouched', () => {
+// The tab shows only what Packing list has actually been pressed for — paid
+// or not, the press decides. The warehouse's own Pick & send, and the
+// observer's Wholesale, still need every committed order regardless of that
+// press — so this is its own screen, not a filter bolted onto the shared
+// one, the same lesson PRs #531-535 already paid for once.
+test('the tab is its own screen, packing-list-pressed only — the shared board stays untouched', () => {
   const at = app.indexOf('SCREENS.copacking = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
-  assert.match(screen, /\.filter\(\(o\) => o\.invoice_status === 'paid'\)/,
-    'only invoices marked fully paid show here');
+  assert.match(screen, /\.filter\(\(o\) => o\.packing_list_issued_at\)/,
+    'only orders Packing list was pressed for show here, whether paid or not');
   assert.doesNotMatch(screen, /user\.role === 'warehouse'/,
     'this copy never speaks for Pick & send — it does not know that heading exists');
 
   const shared = app.slice(app.indexOf('SCREENS.orders = async'),
                             app.indexOf('/**\n * One order, opened.'));
-  assert.doesNotMatch(shared, /\.filter\(\(o\) => o\.invoice_status === 'paid'\)/,
-    'Pick & send and Wholesale still show every committed order, paid or not');
+  assert.doesNotMatch(shared, /\.filter\(\(o\) => o\.packing_list_issued_at\)/,
+    'Pick & send and Wholesale still show every committed order, pressed or not');
+});
+
+// The explicit reversal: an unpaid order that has had Packing list pressed
+// still belongs here. Payment is read as its own column, not a gate.
+test('an unpaid order still shows here once Packing list has been pressed', () => {
+  const at = app.indexOf('SCREENS.copacking = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.doesNotMatch(screen, /invoice_status === 'paid'/,
+    'payment status no longer gates this screen at all');
 });
 
 // The bench reads Picking as still Committed — Pick & send is where that
