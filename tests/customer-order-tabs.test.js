@@ -778,9 +778,17 @@ test('the panel tabs are plainly subordinate to the menu', () => {
 // Chat order's own product search — typing a code should find the product
 // the same as typing its name already does. Draft resumes into this exact
 // same basket screen, so there is nothing else to touch for that flow.
+//
+// Nearly every code in the real catalog shares the shop's own prefix, so
+// matching it on any term at all — including something as short and common
+// as a two-letter word — turns "search" into "show almost everything".
+// The code only joins the search once the term is long enough to actually
+// mean something as a code, name and brand still matching at any length.
 test("Chat order's product search also matches the product code", () => {
   const at = app.indexOf('SCREENS.chatorders = async');
   const screen = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
-  assert.match(screen, /\(p\.sku \|\| ''\)\.toLowerCase\(\)\.includes\(term\)/,
-    'the sku is checked alongside name and brand');
+  assert.match(screen, /term\.length >= 3 && \(p\.sku \|\| ''\)\.toLowerCase\(\)\.includes\(term\)/,
+    'the sku only joins the search once the term is long enough to mean something as a code');
+  assert.match(screen, /placeholder="Search by code, name or brand…"/,
+    'the box says so, now that code is one of the three');
 });
