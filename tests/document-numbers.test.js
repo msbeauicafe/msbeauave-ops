@@ -311,6 +311,43 @@ test('a written number stays put even when Invoice is pressed again', async () =
     'and nothing else moves to make room for it either');
 });
 
+// The date is the other half of the same story a moved number already
+// tells — a number that jumped to the newest slot but a date still
+// reading a week old would be two different answers to "when was this
+// actually raised".
+test('an invoice\'s issued date moves to today when Invoice is pressed again', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+
+  await db.query(`update invoices set issued_on = current_date - 10 where order_id = $1`, [id]);
+
+  const pressed = await POST(admin, `/api/orders/${id}/commit`);
+  assert.equal(pressed.status, 200, JSON.stringify(pressed.data));
+
+  const row = (await db.query(
+    'select issued_on = current_date as is_today from invoices where order_id = $1', [id])).rows[0];
+  assert.equal(row.is_today, true, 'the date follows the press, the same as the number does');
+});
+
+// Pressing Packing list on Invoice tab's own Record payment dialog is what
+// sends an order there — pressing it again is asking to be seen there
+// first, the same as pressing Invoice again asks for the newest number.
+test('pressing Packing list stamps when, and the order carries it', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+
+  const before = (await request(admin, 'GET', `/api/orders/${id}`)).data;
+  assert.equal(before.packing_list_issued_at, null, 'nothing pressed yet');
+
+  const pressed = await POST(admin, `/api/orders/${id}/packing-list-pressed`);
+  assert.equal(pressed.status, 200, JSON.stringify(pressed.data));
+
+  const after = (await request(admin, 'GET', `/api/orders/${id}`)).data;
+  assert.ok(after.packing_list_issued_at, 'the press is now on the order');
+});
+
 test('two invoices cannot be made to share one number', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
