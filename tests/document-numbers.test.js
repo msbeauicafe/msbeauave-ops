@@ -286,6 +286,70 @@ test('pressing Invoice again moves that invoice to the newest number', async () 
   assert.equal(tail(after.third), tail(before.third) - 1, 'closed up by one behind it');
 });
 
+// A number written by hand caps nothing. Pressing Invoice still sends the
+// pressed order to the newest number there is — built past the written one,
+// never onto or above it by reuse — the same "whoever is pressed last wins"
+// rule as when nothing has been written by hand at all.
+test('pressing Invoice climbs past a written number, not up to it', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const first = await anOrder(admin, store);
+  const second = await anOrder(admin, store);
+
+  const tail = (s) => Number(s.slice(-3));
+  // One past whatever the counter currently reads — free, since second was
+  // the last thing it handed out.
+  const written = tail((await numbers(second)).si_no) + 1;
+  const mine = `SI${stamp()}${String(written).padStart(3, '0')}`;
+  const set = await POST(admin, `/api/orders/${second}/invoice-no`, { si_no: mine });
+  assert.equal(set.status, 200, JSON.stringify(set.data));
+
+  const pressed = await POST(admin, `/api/orders/${first}/commit`);
+  assert.equal(pressed.status, 200, JSON.stringify(pressed.data));
+
+  const after = (await numbers(first)).si_no;
+  assert.equal(tail(after), written + 1,
+    'built one past the written number, not reused up to it');
+  assert.equal((await numbers(second)).si_no, mine, 'the written number itself never moved');
+});
+
+// Once one order has climbed past a written number, it is sitting right
+// above it — so the next order to close its own gap past that one has to
+// step around the written slot rather than land on it.
+test('closing a later gap steps around a written number in its way', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const first = await anOrder(admin, store);
+  const second = await anOrder(admin, store);
+  const third = await anOrder(admin, store);
+
+  const tail = (s) => Number(s.slice(-3));
+  // One past whatever the counter currently reads — free, since third was
+  // the last thing it handed out.
+  const written = tail((await numbers(third)).si_no) + 1;
+  const mine = `SI${stamp()}${String(written).padStart(3, '0')}`;
+  const set = await POST(admin, `/api/orders/${third}/invoice-no`, { si_no: mine });
+  assert.equal(set.status, 200, JSON.stringify(set.data));
+
+  // first climbs past the written number — the newest there is, for now.
+  await POST(admin, `/api/orders/${first}/commit`);
+  const firstAfterFirstPress = tail((await numbers(first)).si_no);
+  assert.equal(firstAfterFirstPress, written + 1);
+
+  // second closes its own gap, and the only thing above its old spot now
+  // is first, sitting one slot above the written number — reassigning it
+  // one lower would collide with the written slot outright.
+  const pressed = await POST(admin, `/api/orders/${second}/commit`);
+  assert.equal(pressed.status, 200, JSON.stringify(pressed.data));
+
+  assert.equal((await numbers(third)).si_no, mine, 'the written number stayed put throughout');
+  assert.equal(tail((await numbers(second)).si_no), firstAfterFirstPress,
+    'the one pressed last now carries the newest number');
+  const firstNow = tail((await numbers(first)).si_no);
+  assert.notEqual(firstNow, written, 'stepped around the written slot instead of landing on it');
+  assert.equal(firstNow, written - 1, 'and closed up right behind it');
+});
+
 // A number written by hand is a promise about a piece of paper already
 // printed. Pressing Invoice again on that order must never move it, and
 // must never ask anything else to make room for it either — there is
