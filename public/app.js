@@ -8903,8 +8903,7 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
       <div class="row payrow">
         <div><label${n ? ' class="sr"' : ''}>Amount paid</label>
           <input class="ci_amt" type="text" inputmode="decimal"
-            placeholder="${n ? '' : '0.00'}"${n ? ''
-              : ` value="${Number(owed).toLocaleString('en-US')}"`}></div>
+            placeholder="${n ? '' : Number(owed).toLocaleString('en-US')}"></div>
         <div><label${n ? ' class="sr"' : ''}>Date</label>
           <input class="ci_on" type="date" value="${localDay()}"></div>
         <div><label${n ? ' class="sr"' : ''}>Mode of payment</label>
@@ -9039,7 +9038,9 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
   // own button.
   const resetRows = () => {
     $$('.payrow', $('#ci_rows')).forEach((row, n) => {
-      $('.ci_amt', row).value = n === 0 && owed > 0 ? Number(owed).toLocaleString('en-US') : '';
+      $('.ci_amt', row).value = '';
+      $('.ci_amt', row).placeholder = n === 0 && owed > 0
+        ? Number(owed).toLocaleString('en-US') : '';
       $('.ci_on', row).value = localDay();
       $('.ci_mop', row).selectedIndex = 0;
       $('.ci_ref', row).value = '';
