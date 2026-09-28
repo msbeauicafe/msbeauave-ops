@@ -453,7 +453,11 @@ test('an account with nothing open turns a whole payment straight into credit', 
   assert.equal(Number(account.data.credit), 1000);
 });
 
-test('an order placed on a reseller\'s behalf raises the same invoice their own checkout would',
+// Unlike the reseller's own checkout — placing on somebody's behalf is Chat
+// order's own doing, and Chat order has an Invoice button waiting for it
+// afterwards, on Pending customer order. Raising one immediately would make
+// Invoice no. count the same thing Customer order no. already does.
+test('an order placed on a reseller\'s behalf waits for Invoice to be pressed, unlike their own checkout',
   async () => {
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
@@ -463,12 +467,20 @@ test('an order placed on a reseller\'s behalf raises the same invoice their own 
 
     const order = await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 4 }] }); // ₱1,000
     assert.equal(order.status, 200, JSON.stringify(order.data));
-    assert.equal(Number(order.data.invoice.amount), 1000);
-    assert.equal(Number(order.data.invoice.reseller_id), id);
+    assert.equal(order.data.invoice, null, 'nothing is billed until Invoice is pressed');
 
-    const account = await GET(admin, `/api/resellers/${id}`);
-    assert.equal(Number(account.data.owed), 1000);
-    assert.ok(account.data.invoices.some((i) => i.id === order.data.invoice.id));
+    const before = await GET(admin, `/api/resellers/${id}`);
+    assert.equal(Number(before.data.owed), 0);
+
+    const committed = await POST(admin, `/api/orders/${order.data.orderId}/commit`);
+    assert.equal(committed.status, 200, JSON.stringify(committed.data));
+
+    const opened = await GET(admin, `/api/orders/${order.data.orderId}`);
+    assert.equal(Number(opened.data.invoice_amount), 1000);
+
+    const after = await GET(admin, `/api/resellers/${id}`);
+    assert.equal(Number(after.data.owed), 1000);
+    assert.ok(after.data.invoices.some((i) => i.id === opened.data.invoice_id));
   });
 
 test('placing an empty order for a reseller is refused, not filed as a ₱0 order', async () => {
@@ -1706,11 +1718,14 @@ test('a price code sets the line price, and one without a price refuses the orde
   assert.match(JSON.stringify(blind.data), /price/i);
 
   // The same order with no code at all still works, the way it did before
-  // any of this existed.
+  // any of this existed. The order's own total is what pricing sets — an
+  // invoice does not exist yet, Chat order's own placement no longer raises
+  // one on the spot.
   const plain = await POST(admin, `/api/resellers/${reseller}/orders`,
     { lines: [{ sku, qty: 2 }] });
   assert.equal(plain.status, 200, JSON.stringify(plain.data));
-  assert.equal(Number(plain.data.invoice.amount), 500, 'two at the wholesale price');
+  const plainOrder = await GET(admin, `/api/orders/${plain.data.orderId}`);
+  assert.equal(Number(plainOrder.data.total), 500, 'two at the wholesale price');
 
   // Price the base, and the adjusted code that hangs off it follows.
   await POST(admin, `/api/products/${sku}/price`, { code: 'PD', price: 180 });
@@ -1719,12 +1734,14 @@ test('a price code sets the line price, and one without a price refuses the orde
   const atBase = await POST(admin, `/api/resellers/${reseller}/orders`,
     { lines: [{ sku, qty: 2, code: 'PD' }] });
   assert.equal(atBase.status, 200, JSON.stringify(atBase.data));
-  assert.equal(Number(atBase.data.invoice.amount), 360, 'two at the PD price');
+  const atBaseOrder = await GET(admin, `/api/orders/${atBase.data.orderId}`);
+  assert.equal(Number(atBaseOrder.data.total), 360, 'two at the PD price');
 
   const adjusted = await POST(admin, `/api/resellers/${reseller}/orders`,
     { lines: [{ sku, qty: 2, code: 'PD-10' }] });
   assert.equal(adjusted.status, 200, JSON.stringify(adjusted.data));
-  assert.equal(Number(adjusted.data.invoice.amount), 380, 'PD plus the ten pesos');
+  const adjustedOrder = await GET(admin, `/api/orders/${adjusted.data.orderId}`);
+  assert.equal(Number(adjustedOrder.data.total), 380, 'PD plus the ten pesos');
 
   // And the code is on the line afterwards, which is the whole point: the
   // document is printed from the order, not from what somebody remembers.
@@ -1851,6 +1868,9 @@ test('four transfers are confirmed separately and receipted once', async () => {
 
   const order = await POST(admin, `/api/resellers/${id}/orders`, { lines: [{ sku, qty: 4 }] });
   assert.equal(order.status, 200, JSON.stringify(order.data));   // ₱1,000
+  // Invoice pressed straight away — this test is about confirming and
+  // receipting, not about invoice timing, so there is something to pay.
+  await POST(admin, `/api/orders/${order.data.orderId}/commit`);
 
   // Nothing has been paid, so nothing is waiting for a receipt.
   const idle = await GET(admin, `/api/resellers/${id}/pending-receipt`);
@@ -2087,7 +2107,8 @@ test('one invoice takes its payment in pieces, each with the bank it came throug
     const placed = await POST(admin, `/api/resellers/${id}/orders`, {
       lines: [{ sku, qty: 20 }],                                    // ₱10,000
     });
-    const invoice = placed.data.invoice.id;
+    await POST(admin, `/api/orders/${placed.data.orderId}/commit`);
+    const invoice = (await GET(admin, `/api/orders/${placed.data.orderId}`)).data.invoice_id;
 
     const out = await POST(admin, `/api/invoices/${invoice}/payments`, {
       payments: [
@@ -2137,7 +2158,8 @@ test('more than one invoice owes is refused whole, not half applied', async () =
   const placed = await POST(admin, `/api/resellers/${id}/orders`, {
     lines: [{ sku, qty: 20 }],                                      // ₱10,000
   });
-  const invoice = placed.data.invoice.id;
+  await POST(admin, `/api/orders/${placed.data.orderId}/commit`);
+  const invoice = (await GET(admin, `/api/orders/${placed.data.orderId}`)).data.invoice_id;
 
   // A nought too many on the second row.
   const fat = await POST(admin, `/api/invoices/${invoice}/payments`, {

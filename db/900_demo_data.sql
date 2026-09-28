@@ -214,6 +214,7 @@ begin
   v_order := place_order('b2b',
     '[{"sku":"SER-001","qty":60},{"sku":"SOP-001","qty":150},{"sku":"CRM-001","qty":40}]'::jsonb,
     (ids ->> 'Bella Skin Manila')::bigint);
+  perform commit_order(v_order);
   update orders set placed_at = now() - interval '50 days' where id = v_order;
   update invoices set issued_on = current_date - 50, due_on = current_date - 5
    where order_id = v_order;
@@ -228,6 +229,7 @@ begin
   v_order := place_order('b2b',
     '[{"sku":"LIP-002","qty":80},{"sku":"SUN-001","qty":40}]'::jsonb,
     (ids ->> 'Bella Skin Manila')::bigint);
+  perform commit_order(v_order);
   update orders set placed_at = now() - interval '12 days' where id = v_order;
   update invoices set issued_on = current_date - 12, due_on = current_date + 33
    where order_id = v_order;
@@ -239,6 +241,7 @@ begin
   v_order := place_order('b2b',
     '[{"sku":"SOP-002","qty":120},{"sku":"TON-002","qty":50}]'::jsonb,
     (ids ->> 'Cebu Glow Distributors')::bigint);
+  perform commit_order(v_order);
   update orders set placed_at = now() - interval '40 days' where id = v_order;
   update invoices set issued_on = current_date - 40, due_on = current_date - 10
    where order_id = v_order;
@@ -253,6 +256,7 @@ begin
   v_order := place_order('b2b',
     '[{"sku":"SER-003","qty":45},{"sku":"CRM-003","qty":90}]'::jsonb,
     (ids ->> 'Davao Beauty Hub')::bigint);
+  perform commit_order(v_order);
   update orders set placed_at = now() - interval '60 days' where id = v_order;
   update invoices set issued_on = current_date - 60, due_on = current_date - 30
    where order_id = v_order;
@@ -265,6 +269,7 @@ begin
   v_order := place_order('b2b',
     '[{"sku":"SOP-003","qty":60},{"sku":"LIP-005","qty":40}]'::jsonb,
     (ids ->> 'Iloilo Radiance Store')::bigint);
+  perform commit_order(v_order);
   update orders set placed_at = now() - interval '8 days' where id = v_order;
   select * into inv from invoices where order_id = v_order;
   perform record_payment(inv.id, inv.amount, current_date - 8);

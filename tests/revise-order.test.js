@@ -97,6 +97,7 @@ test('sending fewer puts the difference back on the shelf', async () => {
   const { data: o } = await POST(admin, `/api/resellers/${id}/orders`,
     { lines: [{ sku, qty: 4 }] });
   assert.equal(await held(sku), 4);
+  await POST(admin, `/api/orders/${o.orderId}/commit`);
 
   const out = await POST(admin, `/api/orders/${o.orderId}/lines`,
     { lines: [{ sku, qty: 1 }] });
@@ -211,6 +212,7 @@ test('the sheet cannot come to less than has already been settled', async () => 
   const id = await anAccount(admin);
   const { data: o } = await POST(admin, `/api/resellers/${id}/orders`,
     { lines: [{ sku, qty: 4 }] });
+  await POST(admin, `/api/orders/${o.orderId}/commit`);
   const inv = await db.query('select id from invoices where order_id = $1', [o.orderId]);
   await db.query('update invoices set paid = 1000 where id = $1', [inv.rows[0].id]);
 
