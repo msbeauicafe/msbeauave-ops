@@ -9540,7 +9540,10 @@ SCREENS.coinvoices = async (page) => {
 
   const load = async () => {
     const rows = (await GET('/api/orders?status='))
-      .filter((o) => o.invoice_id && !notYetCommitted(o))
+      // A cancelled order's invoice is nothing left to collect — Pending
+      // customer order is where its Cancelled stage is read; here it just
+      // has no business being asked about any more.
+      .filter((o) => o.invoice_id && o.status !== 'cancelled' && !notYetCommitted(o))
       // By the invoice number itself, newest first — pressing Invoice can
       // now move a number on its own, independent of when the order was
       // placed, so the row has to follow the number rather than the date
