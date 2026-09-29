@@ -7519,9 +7519,10 @@ const PENDING_STALE_MS = 2 * 24 * 60 * 60 * 1000;
 // Once already marked (parked_at set) it stops offering the button again —
 // one press is what it takes. There is no invoice to read a status off
 // before Invoice is pressed now — raising one moved to that same moment —
-// so "still owed" is read off committed_at alone.
+// so "still owed" is read off committed_at alone. Every tier waits here the
+// same way — pressing Invoice is what moves any of them past it, not tier.
 const pendingAwaitingPayment = (o) =>
-  !o.committed_at && o.status === 'placed' && o.tier === 1 && !o.parked_at;
+  !o.committed_at && o.status === 'placed' && !o.parked_at;
 
 // This tab's own reading of Stage — the same one orderTag draws, except:
 // once the office has pushed Invoice on an order (committed_at set) it reads
@@ -7539,7 +7540,7 @@ const pendingAwaitingPayment = (o) =>
 const pendingStageTag = (o) => {
   if (o.delivered_at) return tag('Delivered', 'green');
   if (o.parked_at) return tag('Draft', 'grey');
-  if (!o.committed_at && o.status === 'placed' && o.tier === 1) {
+  if (!o.committed_at && o.status === 'placed') {
     return tag('Awaiting payment', 'amber');
   }
   if (o.committed_at && ['placed', 'picking'].includes(o.status)) return tag('Committed', 'pink');

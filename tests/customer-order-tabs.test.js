@@ -220,8 +220,8 @@ test('Draft only offers on a row still awaiting payment; the stale tag names the
   const before = app.slice(0, app.indexOf('SCREENS.pendingorders = async'));
   assert.match(before, /const pendingAwaitingPayment = \(o\) =>/,
     "Pending customer order's own check, not a branch of the shared orderTag");
-  assert.match(before, /o\.status === 'placed' && o\.tier === 1 && o\.invoice_status === 'open'/,
-    'the same reading "Awaiting payment" is drawn from, kept in step by hand');
+  assert.match(before, /!o\.committed_at && o\.status === 'placed' && !o\.parked_at;/,
+    'every tier waits the same way now — not gated to tier 1 the way the shared orderTag still is');
 
   const at = app.indexOf('SCREENS.pendingorders = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
@@ -252,15 +252,16 @@ test('a marked Draft row stays on Pending customer order, Stage reading Draft', 
 });
 
 // Pending customer order's own Invoice button commits an order — it can say
-// Committed from then on even while orderTag, reading payment alone, would
-// still call a tier-1 order Awaiting payment. Every other screen that shows
-// a stage still calls orderTag straight, unmoved by anything in this file.
+// Committed from then on even while orderTag, reading payment alone and still
+// gated to tier 1, would call a tier-2 or tier-3 order Committed already.
+// Every other screen that shows a stage still calls orderTag straight,
+// unmoved by anything in this file.
 test("Pending customer order's own Stage tells Committed once Invoice has been pushed", () => {
   const before = app.slice(0, app.indexOf('SCREENS.pendingorders = async'));
   assert.match(before, /const pendingStageTag = \(o\) => \{/,
     "its own reading of Stage, not a branch of the shared orderTag");
-  assert.match(before, /if \(!o\.committed_at && o\.status === 'placed' && o\.tier === 1[\s\S]{0,40}\)/,
-    'Awaiting payment only holds while nothing has committed the order yet');
+  assert.match(before, /if \(!o\.committed_at && o\.status === 'placed'\) \{/,
+    'Awaiting payment holds for every tier while nothing has committed the order yet');
   assert.match(before, /placed: tag\('Committed', 'pink'\)/,
     'falling through to Committed the same way orderTag does for every other placed order');
 
