@@ -163,17 +163,17 @@ test('a hard refresh remembers the tab and panel that were open, not just a redr
 
 // Used to read "a delivered order drops off the list by itself" — the owner
 // reversed that: a dispatched row now stays right here too, Stage reading
-// Completed (see the pendingStageTag tests above), so this only checks what
-// still never belongs: a cancelled order, which still leaves.
-test('the pending list keeps a dispatched row, but not a cancelled one', () => {
+// Completed. Pressing Cancel inside the order dialog used to take the row
+// off this list the same moment it was pressed — the owner reversed that
+// too: it stays, Stage reading Cancelled, the press itself still visible
+// rather than the row quietly vanishing.
+test('the pending list keeps a dispatched row, and a cancelled one too', () => {
   const at = app.indexOf('SCREENS.pendingorders = async');
   assert.ok(at > 0, 'there is a Pending customer order screen');
   const screen = app.slice(at, app.indexOf('\n};', at));
 
-  assert.match(screen, /\['placed', 'picking', 'fulfilled'\]\.includes\(o\.status\)/,
-    'a dispatched order stays, not just placed or picking');
-  assert.doesNotMatch(screen, /'cancelled'/,
-    'a cancelled order is still not one of the statuses kept');
+  assert.match(screen, /\['placed', 'picking', 'fulfilled', 'cancelled'\]\.includes\(o\.status\)/,
+    'a dispatched or cancelled order stays, not just placed or picking');
   assert.match(screen, /data-open="\$\{o\.id\}"/, 'every row opens');
 });
 
@@ -303,9 +303,9 @@ test("a dispatched order stays on Pending customer order, Stage reading Complete
 
   const at = app.indexOf('SCREENS.pendingorders = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
-  assert.match(screen, /\.filter\(\(o\) => \['placed', 'picking', 'fulfilled'\]\.includes\(o\.status\)\)/,
-    'the list itself keeps a dispatched row rather than dropping it');
-  assert.match(screen, /const waiting = rows\.filter\(\(o\) => o\.status !== 'fulfilled'\);/,
+  assert.match(screen, /\.filter\(\(o\) => \['placed', 'picking', 'fulfilled', 'cancelled'\]\.includes\(o\.status\)\)/,
+    'the list itself keeps a dispatched or cancelled row rather than dropping it');
+  assert.match(screen, /const waiting = rows\.filter\(\(o\) => !\['fulfilled', 'cancelled'\]\.includes\(o\.status\)\);/,
     'the count and total above the table are computed off the still-waiting rows only');
   assert.match(screen, /waiting\.length[\s\S]{0,60}count\(waiting\.length\)/,
     'the header reads off that narrower list, not every row shown below');

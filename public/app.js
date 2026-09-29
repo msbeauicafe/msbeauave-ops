@@ -7593,8 +7593,10 @@ SCREENS.pendingorders = async (page) => {
       // A row marked Draft stays right here — parked_at no longer takes it
       // off this list, only Draft tab's own copy of it depends on that flag.
       // Dispatched (fulfilled) stays too, now reading Completed, rather than
-      // leaving the moment it is out the door.
-      .filter((o) => ['placed', 'picking', 'fulfilled'].includes(o.status))
+      // leaving the moment it is out the door — and a cancelled one stays for
+      // the same reason: Cancel is a press worth still being able to see, not
+      // a row that quietly disappears the moment it is pressed.
+      .filter((o) => ['placed', 'picking', 'fulfilled', 'cancelled'].includes(o.status))
       // By customer order number, latest first — the newest CO at the top and
       // the earliest at the bottom. The numbers are fixed-width (CO26_09_011),
       // so ordering the text descending orders them by number; an order not yet
@@ -7602,9 +7604,10 @@ SCREENS.pendingorders = async (page) => {
       .sort((a, b) => (b.co_no || '').localeCompare(a.co_no || ''));
 
     // The count and total above the table are what is still actually
-    // waiting — a dispatched row stays visible below but does not inflate
-    // a figure whose whole point is what has not gone out yet.
-    const waiting = rows.filter((o) => o.status !== 'fulfilled');
+    // waiting — a dispatched or cancelled row stays visible below but does
+    // not inflate a figure whose whole point is what has not been settled
+    // yet, one way or the other.
+    const waiting = rows.filter((o) => !['fulfilled', 'cancelled'].includes(o.status));
     $('#pending_count', page).textContent = waiting.length
       ? `${count(waiting.length)} waiting · ${peso(waiting.reduce((t, o) => t + Number(o.total), 0))}`
       : '';
