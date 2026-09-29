@@ -582,8 +582,18 @@ test('a tier-1 order still Awaiting payment does not show on the Invoice tab', (
   assert.match(screen,
     /o\.status === 'placed' && o\.tier === 1 && o\.invoice_status === 'open'/,
     'the same reading "Awaiting payment" is drawn from, kept in step by hand');
-  assert.match(screen, /\.filter\(\(o\) => o\.invoice_id && !notYetCommitted\(o\)\)/,
+  assert.match(screen, /\.filter\(\(o\) => o\.invoice_id && o\.status !== 'cancelled' && !notYetCommitted\(o\)\)/,
     'a row needs an invoice and to no longer be Awaiting payment');
+});
+
+// A cancelled order has nothing left to collect — Pending customer order is
+// where its own Cancelled stage is read; the Invoice tab has no business
+// asking about it any more, open balance or not.
+test('a cancelled order does not show on the Invoice tab either', () => {
+  const at = app.indexOf('SCREENS.coinvoices = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /o\.status !== 'cancelled'/,
+    'a cancelled order is filtered out here too, same as one never committed');
 });
 
 // The same bones as the yellow sheet (.doc.po) a purchase order bill
