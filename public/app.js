@@ -8899,8 +8899,12 @@ SCREENS.draftorders = async (page) => {
 async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, done) {
   dialog(`
     <h3>Record payment — ${esc(siNo || `#${invoiceId}`)}</h3>
-    <div id="ci_accttotal" style="font-size:1.6rem;font-weight:700;color:var(--rose-deep);
-      font-variant-numeric:tabular-nums"></div>
+
+    <div class="row mt" id="ci_figs">
+      <div><div class="dim">Amount</div><b id="ci_amount"></b></div>
+      <div><div class="dim">Paid so far</div><b id="ci_paidsofar"></b></div>
+      <div><div class="dim">Still owed</div><b id="ci_owed">${peso(owed)}</b></div>
+    </div>
 
     <h3 class="mt">Payments on file</h3>
     <div class="filegrid" id="ci_prior"><div class="dim">Loading…</div></div>
@@ -8975,9 +8979,13 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
       box.insertAdjacentHTML('beforeend', `<div class="dim mt" style="text-align:right">
         Total — Amount <b>${peso(sum('amount'))}</b> · Bal <b>${peso(sum('balance'))}</b></div>`);
     }
-    const totalBox = $('#ci_accttotal');
-    if (totalBox) {
-      totalBox.textContent = acct.invoices.length ? peso(sum('amount')) : '';
+    // This one invoice's own figures — the account's total belongs to the log
+    // above, not up here beside the row a payment is actually typed into.
+    const mine = acct.invoices.find((i) => String(i.id) === String(invoiceId));
+    if (mine) {
+      $('#ci_amount').textContent = peso(mine.amount);
+      $('#ci_paidsofar').textContent = peso(mine.paid);
+      $('#ci_owed').textContent = peso(mine.balance);
     }
   };
   await paintLog();
@@ -8988,10 +8996,14 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
     const prior = await GET(`/api/resellers/${resellerId}/payments?order_id=${orderId}`).catch(() => []);
     grid.innerHTML = prior.length ? prior.map((p) => `
       <figure class="filecard">
-        <span class="filethumb none-photo" style="width:132px;height:96px;
-          display:flex;align-items:center;justify-content:center;
-          border-radius:8px;background:var(--rose-blush);
-          border:1px solid var(--rose-soft)">🧾</span>
+        ${p.file_ids?.length
+          ? `<img class="filethumb" src="/api/invoice-payment-files/${p.file_ids[0]}"
+               alt="" loading="lazy" data-zoom="/api/invoice-payment-files/${p.file_ids[0]}"
+               data-zoom-cap="${esc(p.method || '')} · ${esc(peso(p.amount))}">`
+          : `<span class="filethumb none-photo" style="width:132px;height:96px;
+               display:flex;align-items:center;justify-content:center;
+               border-radius:8px;background:var(--rose-blush);
+               border:1px solid var(--rose-soft)">🧾</span>`}
         <figcaption><b>${esc(peso(p.amount))}</b><br>
           <span class="dim">${onDay(p.paid_on)}${p.method ? ` · ${esc(p.method)}` : ''}${
             p.reference_no ? ` · ${esc(p.reference_no)}` : ''}</span>
@@ -9069,12 +9081,16 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
     })).filter((r) => r.amount > 0);
     if (!rows.length) return false;
 
-    await POST(`/api/invoices/${invoiceId}/payments`, { payments: rows.map(
+    const saved = await POST(`/api/invoices/${invoiceId}/payments`, { payments: rows.map(
       ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
-    for (const r of rows) {
-      if (r.file) {
-        await POST(`/api/resellers/${resellerId}/files`,
-          { dataUrl: await shrink(r.file, 1600), category: 'payment_proof' });
+    // Filed against the payment it is proof of, in the same order the rows
+    // were sent — the server's own rows come back in that same order, one
+    // per row that actually had an amount in it.
+    for (let n = 0; n < rows.length; n++) {
+      const paymentId = saved.rows?.[n]?.id;
+      if (rows[n].file && paymentId) {
+        await POST(`/api/invoice-payments/${paymentId}/files`,
+          { dataUrl: await shrink(rows[n].file, 1600) });
       }
     }
     // The owed figure the next row is prefilled with should be the one the

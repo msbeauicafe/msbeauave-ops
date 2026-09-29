@@ -654,7 +654,9 @@ test('Record payment shows the whole account\'s invoice log, below Pending payme
 });
 
 // The account's invoices, added up, so the total is read here rather than
-// worked out by hand off the rows above.
+// worked out by hand off the rows above — that sum belongs to the log at
+// the bottom of the dialog, not the header, which is this one invoice's own
+// figures, the same three Purchase order's own billing statement heads with.
 test('the invoice log totals its own Amount and Bal columns', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
@@ -665,12 +667,46 @@ test('the invoice log totals its own Amount and Bal columns', () => {
   assert.match(log, /sum\('amount'\)/, 'the Amount column is summed');
   assert.match(log, /sum\('balance'\)/, 'the Bal column is summed too');
 
-  assert.match(fn, /id="ci_accttotal"/,
-    'the account-wide total is the one figure at the top of the dialog');
-  assert.doesNotMatch(fn, /id="ci_owed"/,
-    'this one invoice\'s own balance is not what heads the dialog');
-  assert.match(log, /totalBox\.textContent = acct\.invoices\.length \? peso\(sum\('amount'\)\) : ''/,
-    'just the figure, bold and big — no other words in the header');
+  assert.doesNotMatch(fn, /id="ci_accttotal"/,
+    'the account-wide sum no longer heads the dialog');
+  assert.match(fn, /id="ci_amount"|id="ci_paidsofar"|id="ci_owed"/,
+    'this one invoice\'s own Amount, Paid so far and Still owed head it instead');
+  assert.match(log, /acct\.invoices\.find\(\(i\) => String\(i\.id\) === String\(invoiceId\)\)/,
+    'read off this one invoice, not summed across the account');
+});
+
+// Purchase order's own billing statement already shows Amount / Paid so far
+// / Still owed, and a real photo thumbnail once a payment has one on file —
+// this is that same shape, for an invoice, built apart rather than shared.
+test('Record payment heads with its own Amount, Paid so far and Still owed', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn, /<div><div class="dim">Amount<\/div><b id="ci_amount"><\/b><\/div>/);
+  assert.match(fn, /<div><div class="dim">Paid so far<\/div><b id="ci_paidsofar"><\/b><\/div>/);
+  assert.match(fn, /<div><div class="dim">Still owed<\/div><b id="ci_owed">\$\{peso\(owed\)\}<\/b><\/div>/);
+});
+
+// A payment's proof, once uploaded, is filed against that exact payment —
+// Payments on file reads a real thumbnail back off it, the same as Purchase
+// order's own billing statement already does for a bill's payments.
+test('an uploaded payment proof shows as a real thumbnail, not always the blank icon', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const priorAt = fn.indexOf('const paintPrior');
+  const prior = fn.slice(priorAt, fn.indexOf('await paintPrior();', priorAt));
+
+  assert.match(prior, /p\.file_ids\?\.length/,
+    'a payment with a file on file is told apart from one with none');
+  assert.match(prior, /src="\/api\/invoice-payment-files\/\$\{p\.file_ids\[0\]\}"/,
+    'the real photo is read back, not just its presence noted');
+
+  const saveAt = fn.indexOf('const save = async');
+  const save = fn.slice(saveAt, fn.indexOf('$(\'#ci_go\')', saveAt));
+  assert.match(save, /\/api\/invoice-payments\/\$\{paymentId\}\/files/,
+    'a photo is filed against the payment it belongs to');
+  assert.doesNotMatch(save, /resellers\/\$\{resellerId\}\/files/,
+    'no longer dropped into the account\'s general file drawer');
 });
 
 // The button is a door, not a shortcut — it lands on the tab where the

@@ -2122,6 +2122,8 @@ test('one invoice takes its payment in pieces, each with the bank it came throug
     assert.equal(Number(out.data.balance), 0);
     assert.equal(out.data.status, 'paid', 'and between them they settled it');
     assert.equal(out.data.rows.length, 3, 'three rows, not one lump');
+    assert.ok(out.data.rows.every((r) => Number(r.id) > 0),
+      'each row carries the id it was actually written under, for a proof photo to file against');
 
     // The breakdown is in the ledger, against that invoice, bank by bank.
     const ledger = await GET(admin, `/api/resellers/${id}/payments`);
@@ -2148,6 +2150,58 @@ test('one invoice takes its payment in pieces, each with the bank it came throug
     assert.equal(or.status, 200, JSON.stringify(or.data));
     assert.equal(Number(or.data.amount), 10000, 'one number over all three');
   });
+
+// ===========================================================================
+// A payment's own proof, filed against the payment itself
+//
+// Record payment's own Attachment column used to have nowhere real to put
+// what it collected — every upload landed in the account's general file
+// drawer with no thread back to which payment it was proof of. Payments on
+// file could only ever show a blank icon because of it. This is that thread.
+// ===========================================================================
+test('a payment\'s proof photo is filed against that exact payment', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin, { wholesale_price: 500 });
+  await receive(store, sku, 24, 40);
+  const id = await newReseller(admin, { terms_days: 15 });
+  const placed = await POST(admin, `/api/resellers/${id}/orders`, {
+    lines: [{ sku, qty: 20 }],
+  });
+  await POST(admin, `/api/orders/${placed.data.orderId}/commit`);
+  const invoice = (await GET(admin, `/api/orders/${placed.data.orderId}`)).data.invoice_id;
+
+  const out = await POST(admin, `/api/invoices/${invoice}/payments`, {
+    payments: [
+      { amount: 4000, method: 'BANCO DE ORO (BDO)', reference_no: 'BDO-771' },
+      { amount: 6000, method: 'GCASH',              reference_no: 'GC-1' },
+    ],
+  });
+  assert.equal(out.status, 200, JSON.stringify(out.data));
+  const [first, second] = out.data.rows;
+
+  // A one-pixel PNG is a photograph as far as any of this is concerned.
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
+    + 'AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const filed = await POST(admin, `/api/invoice-payments/${first.id}/files`, { dataUrl: png });
+  assert.equal(filed.status, 200, JSON.stringify(filed.data));
+  const fileId = filed.data.id;
+
+  const ledger = await GET(admin, `/api/resellers/${id}/payments?order_id=${placed.data.orderId}`);
+  const withPhoto = ledger.data.find((p) => String(p.id) === String(first.id));
+  const withoutPhoto = ledger.data.find((p) => String(p.id) === String(second.id));
+  assert.deepEqual(withPhoto.file_ids.map(Number), [fileId],
+    'the photo is filed against the payment it was uploaded for');
+  assert.deepEqual(withoutPhoto.file_ids, [],
+    'and against no others — the second payment never had one attached');
+
+  const shown = await fetch(`${base}/api/invoice-payment-files/${fileId}`, { headers: { Cookie: admin } });
+  assert.equal(shown.status, 200, 'the photo itself can be read back');
+  assert.match(shown.headers.get('content-type'), /^image\//);
+
+  const warehouse = await POST(store, `/api/invoice-payments/${second.id}/files`, { dataUrl: png });
+  assert.equal(warehouse.status, 403, 'the warehouse floor cannot file a proof photo against a payment');
+});
 
 test('more than one invoice owes is refused whole, not half applied', async () => {
   const admin = await signIn('admin');
