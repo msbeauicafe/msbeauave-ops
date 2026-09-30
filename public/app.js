@@ -9511,9 +9511,17 @@ async function openInvoiceOrder(id, reload) {
  * reaching into what that shared list draws.
  */
 SCREENS.coinvoices = async (page) => {
-  const standing = (o) => o.invoice_status === 'paid' ? tag('paid', 'green')
-    : o.invoice_status === 'void' ? tag('void', 'grey')
-    : o.invoice_overdue ? tag('past due', 'red') : tag('open', 'amber');
+  // Unpaid and paid w/bal split on whether anything has landed against the
+  // invoice yet, not just whether it is fully settled — a red tag still
+  // marks either one once it is overdue, the due date already says that.
+  const standing = (o) => {
+    if (o.invoice_status === 'paid') return tag('paid', 'green');
+    if (o.invoice_status === 'void') return tag('void', 'grey');
+    const amount = Number(o.invoice_amount ?? o.total ?? 0);
+    const balance = Number(o.balance ?? amount);
+    const label = balance < amount ? 'paid w/bal' : 'unpaid';
+    return tag(label, o.invoice_overdue ? 'red' : 'amber');
+  };
 
   // Every b2b order gets an invoice row the moment it is placed — that is
   // bookkeeping, not the office invoicing anybody. A tier-1 order still

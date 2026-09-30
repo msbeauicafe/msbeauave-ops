@@ -466,6 +466,23 @@ test('the Invoice tab is its own screen, built apart from the reseller account l
   }
 });
 
+// Four states, not the old paid/open/past due/void — unpaid and paid w/bal
+// split on whether anything has landed against the invoice yet, and either
+// one still reads red once it is overdue rather than losing that signal.
+test('Standing reads paid, unpaid, paid w/bal, or void', () => {
+  const at = app.indexOf('SCREENS.coinvoices = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  assert.match(screen, /if \(o\.invoice_status === 'paid'\) return tag\('paid', 'green'\);/,
+    'paid stays paid, green');
+  assert.match(screen, /if \(o\.invoice_status === 'void'\) return tag\('void', 'grey'\);/,
+    'void stays void, grey');
+  assert.match(screen, /const label = balance < amount \? 'paid w\/bal' : 'unpaid';/,
+    'paid w/bal once something has landed against it, unpaid while nothing has');
+  assert.match(screen, /tag\(label, o\.invoice_overdue \? 'red' : 'amber'\)/,
+    'either one still reads red past its due date, amber otherwise');
+});
+
 // Pressing Invoice again can move a number on its own, independent of when
 // the order was placed — so the newest invoice is the one with the newest
 // number, not necessarily the one placed most recently.
