@@ -311,6 +311,46 @@ test("a dispatched order stays on Pending customer order, Stage reading Complete
     'the header reads off that narrower list, not every row shown below');
 });
 
+// A cancelled purchase order already says why it was called off — Pending
+// customer order's own Cancelled tag now does too, read off this screen's
+// own reason rather than anything shared.
+test("Pending customer order's own Cancelled tag shows the reason, when there is one", () => {
+  const stageAt = app.indexOf('const pendingStageTag = (o) => {');
+  const stageFn = app.slice(stageAt, app.indexOf('\n};', stageAt));
+  assert.match(stageFn, /if \(o\.status === 'cancelled'\) \{/,
+    'cancelled is its own branch, not folded into the object literal any more');
+  assert.match(stageFn, /o\.cancel_reason[\s\S]{0,80}esc\(o\.cancel_reason\)/,
+    'the reason is shown, escaped, when the order has one');
+  assert.doesNotMatch(stageFn, /cancelled: tag\('Cancelled'/,
+    'no longer the bare object-literal branch it used to be');
+
+  // orderTag, used everywhere else a stage shows, knows nothing about a
+  // cancel reason at all.
+  const shared = app.slice(app.indexOf('function orderTag'), app.indexOf('function table('));
+  assert.doesNotMatch(shared, /cancel_reason/, 'the shared tag is untouched');
+});
+
+// Cancelling here asks why, the same as a purchase order already does — its
+// own copy of that prompt, scoped to this screen's own Cancel button.
+// cancel_order itself is unchanged, and so is Draft's own copy of this same
+// dialog: Draft was never asked for this, so it keeps cancelling silently.
+test("Pending customer order's own Cancel asks why; Draft's identical button still does not", () => {
+  const pendingFn = app.slice(app.indexOf('async function openPendingOrder'),
+    app.indexOf('async function openOrder'));
+  const pendingCancel = pendingFn.slice(pendingFn.indexOf("$('#pl_cancel')"));
+  assert.match(pendingCancel, /const reason = prompt\('Why is this order being cancelled\?'\);/,
+    'asks why, the same wording the purchase order prompt already uses');
+  assert.match(pendingCancel, /if \(!reason\) return;/, 'no reason, no cancel — same as purchase order');
+  assert.match(pendingCancel, /await POST\(`\/api\/orders\/\$\{id\}\/cancel-reason`, \{ reason \}\);/,
+    'the reason is recorded against the order once it is cancelled');
+
+  const draftFn = app.slice(app.indexOf('async function openDraftOrder'),
+    app.indexOf('SCREENS.draftorders = async'));
+  const draftCancel = draftFn.slice(draftFn.indexOf("$('#pl_cancel')"));
+  assert.doesNotMatch(draftCancel, /prompt\(/, "Draft's own Cancel is untouched, still silent");
+  assert.doesNotMatch(draftCancel, /cancel-reason/, 'and never asked to record one');
+});
+
 test('Draft is its own tab, and Restore is the only way back', () => {
   const at = app.indexOf('SCREENS.draftorders = async');
   assert.ok(at > 0, 'there is a Draft screen');

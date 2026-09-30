@@ -5054,9 +5054,15 @@ async function openPendingOrder(id, reload, page) {
     if (outer) SCREENS.customerorder(outer).catch(whoops);
   });
 
+  // Asks why, the same as cancelling a purchase order already does — this
+  // screen's own copy of that prompt, not a change to cancel_order itself,
+  // which the Invoice tab's own Cancel still calls without one.
   $('#pl_cancel')?.addEventListener('click', async () => {
+    const reason = prompt('Why is this order being cancelled?');
+    if (!reason) return;
     try {
       const r = await POST(`/api/orders/${id}/cancel`);
+      await POST(`/api/orders/${id}/cancel-reason`, { reason });
       notice(r.message || 'Done', 'good');
       closeDialog();
       reload();
@@ -7544,11 +7550,16 @@ const pendingStageTag = (o) => {
     return tag('Awaiting payment', 'amber');
   }
   if (o.committed_at && ['placed', 'picking'].includes(o.status)) return tag('Committed', 'pink');
+  // Cancelled says why, the same as a cancelled purchase order already
+  // does — read back only here, off this screen's own reason.
+  if (o.status === 'cancelled') {
+    return `${tag('Cancelled', 'grey')}${o.cancel_reason
+      ? `<div class="dim" style="font-size:.72rem;margin-top:2px">— ${esc(o.cancel_reason)}</div>` : ''}`;
+  }
   return {
     placed: tag('Committed', 'pink'),
     picking: tag('Picking', 'amber'),
     fulfilled: tag('Completed', 'green'),
-    cancelled: tag('Cancelled', 'grey'),
   }[o.status] ?? tag(o.status, 'grey');
 };
 

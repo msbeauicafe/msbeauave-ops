@@ -428,6 +428,32 @@ test("cancelling an order with a written invoice number does not free or move an
   assert.equal((await numbers(second)).si_no, secondBefore, 'and nothing else moved because of it');
 });
 
+// Pending customer order's own Cancel now asks why, the same as a cancelled
+// purchase order already does. Set once the order is already cancelled,
+// against that order alone — cancel_order itself still asks for nothing.
+test('a cancelled order can have a reason set against it, but only once cancelled', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const id = await anOrder(admin, store);
+
+  const tooSoon = await POST(admin, `/api/orders/${id}/cancel-reason`, { reason: 'Out of stock' });
+  assert.equal(tooSoon.status, 400, JSON.stringify(tooSoon.data));
+  assert.match(tooSoon.data.error, /not cancelled/);
+
+  const cancelled = await POST(admin, `/api/orders/${id}/cancel`);
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+
+  const blank = await POST(admin, `/api/orders/${id}/cancel-reason`, { reason: '   ' });
+  assert.equal(blank.status, 400, JSON.stringify(blank.data));
+  assert.match(blank.data.error, /Why is this order being cancelled/);
+
+  const said = await POST(admin, `/api/orders/${id}/cancel-reason`, { reason: '  Out of stock  ' });
+  assert.equal(said.status, 200, JSON.stringify(said.data));
+
+  const row = (await db.query('select cancel_reason from orders where id = $1', [id])).rows[0];
+  assert.equal(row.cancel_reason, 'Out of stock', 'trimmed, and actually stored');
+});
+
 // The date is the other half of the same story a moved number already
 // tells — a number that jumped to the newest slot but a date still
 // reading a week old would be two different answers to "when was this
