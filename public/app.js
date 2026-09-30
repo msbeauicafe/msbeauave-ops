@@ -9528,10 +9528,12 @@ SCREENS.coinvoices = async (page) => {
       // By the invoice number itself, newest first — pressing Invoice can
       // now move a number on its own, independent of when the order was
       // placed, so the row has to follow the number rather than the date
-      // or the newest invoice stops reading as the newest row. A cancelled
-      // order's invoice is nothing left to collect, so it sinks to the
-      // bottom rather than crowding the active ones above it.
-      .sort((a, b) => (a.status === 'cancelled') - (b.status === 'cancelled')
+      // or the newest invoice stops reading as the newest row. A void
+      // invoice is nothing left to collect, so it sinks to the bottom —
+      // by the invoice's own standing, not the order's: a cancelled order
+      // that already had a payment on it keeps its invoice open, still
+      // owed, and stays up with the rest that are still owed.
+      .sort((a, b) => (a.invoice_status === 'void') - (b.invoice_status === 'void')
         || (b.si_no || '').localeCompare(a.si_no || '')
         || new Date(b.invoice_issued_on || b.placed_at) - new Date(a.invoice_issued_on || a.placed_at));
 
