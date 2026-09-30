@@ -663,6 +663,18 @@ test("Draft's own dialog has no Invoice button; Pending customer order's still d
     'and its wiring, untouched');
 });
 
+// A cancelled order has nothing left to invoice — Pending customer order's
+// own Invoice button drops off its own dialog once the order is cancelled,
+// while Cancel stays so the row can still be reopened and looked at.
+test("Pending customer order's own Invoice button is gone once the order is cancelled", () => {
+  const pendingFn = app.slice(app.indexOf('async function openPendingOrder'),
+    app.indexOf('async function openOrder'));
+  assert.match(pendingFn,
+    /\$\{o\.status !== 'cancelled' \? '<button class="btn quiet" id="pl_invoice">Invoice<\/button>' : ''\}/,
+    'the Invoice button only renders when the order is not cancelled');
+  assert.match(pendingFn, /id="pl_cancel"/, 'Cancel stays, whatever the status');
+});
+
 // Every b2b order gets an invoice row the moment it is placed — bookkeeping,
 // not the office invoicing anybody. A tier-1 order still reading Awaiting
 // payment on Pending customer order has not been committed yet and has no
