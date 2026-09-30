@@ -469,12 +469,12 @@ test('the Invoice tab is its own screen, built apart from the reseller account l
 // Pressing Invoice again can move a number on its own, independent of when
 // the order was placed — so the newest invoice is the one with the newest
 // number, not necessarily the one placed most recently.
-test('the Invoice tab lists rows by the invoice number itself, newest first', () => {
+test('the Invoice tab lists rows by the invoice number itself, newest first, cancelled last', () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
   assert.match(screen,
-    /\.sort\(\(a, b\) => \(b\.si_no \|\| ''\)\.localeCompare\(a\.si_no \|\| ''\)/,
-    'descending by si_no, b before a');
+    /\.sort\(\(a, b\) => \(a\.status === 'cancelled'\) - \(b\.status === 'cancelled'\)\s*\n\s*\|\|\s*\(b\.si_no \|\| ''\)\.localeCompare\(a\.si_no \|\| ''\)/,
+    'cancelled sorts after active, then descending by si_no, b before a');
 });
 
 test('the four invoice-row buttons do their own four things', () => {
@@ -582,18 +582,21 @@ test('a tier-1 order still Awaiting payment does not show on the Invoice tab', (
   assert.match(screen,
     /o\.status === 'placed' && o\.tier === 1 && o\.invoice_status === 'open'/,
     'the same reading "Awaiting payment" is drawn from, kept in step by hand');
-  assert.match(screen, /\.filter\(\(o\) => o\.invoice_id && o\.status !== 'cancelled' && !notYetCommitted\(o\)\)/,
-    'a row needs an invoice and to no longer be Awaiting payment');
+  assert.match(screen, /\.filter\(\(o\) => o\.invoice_id && !notYetCommitted\(o\)\)/,
+    'a row needs an invoice, and to no longer be Awaiting payment');
 });
 
-// A cancelled order has nothing left to collect — Pending customer order is
-// where its own Cancelled stage is read; the Invoice tab has no business
-// asking about it any more, open balance or not.
-test('a cancelled order does not show on the Invoice tab either', () => {
+// The owner reversed course from an earlier fix: a cancelled order's voided
+// invoice is back on the Invoice tab rather than hidden, so its own record
+// of the number reads here too — just sorted after every still-active row
+// rather than crowding them.
+test('a cancelled order\'s invoice shows on the Invoice tab, sorted to the bottom', () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
-  assert.match(screen, /o\.status !== 'cancelled'/,
-    'a cancelled order is filtered out here too, same as one never committed');
+  assert.doesNotMatch(screen, /o\.status !== 'cancelled'/,
+    'no longer filtered out for being cancelled');
+  assert.match(screen, /\(a\.status === 'cancelled'\) - \(b\.status === 'cancelled'\)/,
+    'a cancelled row sorts after every active one, ahead of the si_no ordering');
 });
 
 // The same bones as the yellow sheet (.doc.po) a purchase order bill
