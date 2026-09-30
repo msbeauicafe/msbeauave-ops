@@ -9161,7 +9161,7 @@ async function openInvoiceOrder(id, reload) {
   // nothing to offer for adding something new.
   const catalog = canEdit ? await wholesaleCatalog() : null;
   const goods = catalog || [];
-  const SPARE = canEdit && goods.length ? 3 : 0;
+  const codes = canEdit ? await GET('/api/price-codes').catch(() => []) : [];
 
   // The customer order form itself, drawn full size on the left of the working
   // order — one view, both things: the paper to read, print, download and send,
@@ -9175,6 +9175,27 @@ async function openInvoiceOrder(id, reload) {
     who: o, shipping: o.shipping || 0, others: o.others || 0,
   });
   const chat = (o.chat_link || '').trim();
+
+  // A working copy, keyed by the line's own id so an existing row can be
+  // repriced or dropped without losing which one it was; a product added
+  // here has no id yet, so it gets one of its own that is plainly not real.
+  // This screen's own copy of the List of orders basket — Pending customer
+  // order has the same shape, but this one is invoiced already and reached
+  // from a different screen, so it stays its own rather than branching that one.
+  let addSeq = 0;
+  const lines = new Map(o.lines.map((l) => {
+    const g = goods.find((x) => x.sku === l.sku);
+    return [String(l.id), { key: String(l.id), kind: 'existing', id: l.id,
+      sku: l.sku, name: l.name, price: Number(l.unit_price),
+      listed: Number(g?.wholesale_price ?? l.unit_price),
+      unit: l.unit_type, code: l.price_code || '', typed: !l.price_code,
+      prices: g?.prices || {}, qty: Number(l.qty) }];
+  }));
+  const asPlaced = [...o.lines.reduce((by, l) =>
+    by.set(l.sku, (by.get(l.sku) || 0) + Number(l.qty)), new Map())]
+    .map(([sku, qty]) => ({ sku, qty }));
+  const paid = Number(o.total || 0) - Number(o.balance ?? o.total ?? 0);
+
   dialog(`
     <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
     <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
@@ -9197,77 +9218,37 @@ async function openInvoiceOrder(id, reload) {
         </div>
       </div>
       <div class="edit-side">
-    <h3>Pick in this order</h3>
-    <div class="dim">Soonest to expire first — that is what leaves the building.${canEdit
-      ? ` Every box on this table can be typed in. Change the product, how
-          many, or what it costs, and the stock, the packing list and the
-          invoice all move with it. Emptying a quantity takes that product off
-          the order; a product swapped or added takes its batch the same way,
-          soonest to expire first, and arrives on its standing price.`
-      : ''}</div>
-    <div id="io_box">
-    ${o.lines.length || SPARE ? `
-      <div class="scroll"><table>
-        <thead><tr>
-          <th>Product</th><th>Batch</th><th>Expires</th>
-          <th class="n">Qty</th><th class="n">Price</th><th class="n">Total</th>
-          ${canEdit ? '<th></th>' : ''}
-        </tr></thead>
-        <tbody>
-          ${o.lines.map((l) => `<tr>
-            <td>${canEdit && goods.length
-              ? `<input class="cellbox open" list="doc_goods" data-swap="${esc(String(l.id))}"
-                   data-was="${esc(l.sku)}" data-wasname="${esc(l.name)}"
-                   autocomplete="off" title="${esc(l.name)}" value="${esc(l.name)}">`
-              : esc(l.name)}</td>
-            <td><b>${esc(l.batch_no)}</b></td>
-            <td>${onDay(l.expiry)}</td>
-            <td class="n">${canEdit
-              ? `<input class="cellbox open n" inputmode="numeric" data-sku="${esc(l.sku)}"
-                   data-qtyfor="${esc(String(l.id))}" value="${Number(l.qty)}">`
-              : count(l.qty)}</td>
-            <td class="n">${canEdit
-              ? `<input class="cellbox open n" inputmode="decimal" data-line="${esc(String(l.id))}"
-                   value="${Number(l.unit_price).toFixed(2)}">`
-              : peso(l.unit_price)}</td>
-            <td class="n" data-linetotal="${esc(String(l.id))}">${peso(l.unit_price * l.qty)}</td>
-            ${canEdit ? `<td class="n"><button class="btn sm stop" data-remove="${esc(String(l.id))}"
-                 title="Take ${esc(l.name)} off this order">✕</button></td>` : ''}
-          </tr>`).join('')}
-          ${Array.from({ length: SPARE }, (_x, i) => `<tr>
-            <td><input class="cellbox open" list="doc_goods" data-add="${i}"
-                  autocomplete="off" placeholder="Add a product"></td>
-            <td></td>
-            <td></td>
-            <td class="n"><input class="cellbox open n" data-addqty="${i}"
-                  inputmode="numeric" disabled></td>
-            <td class="n"><input class="cellbox open n" data-addprice="${i}"
-                  inputmode="decimal" disabled></td>
-            <td class="n" data-addtotal="${i}"></td>
-            ${canEdit ? `<td class="n"><button class="btn sm stop" data-clear="${i}"
-                 title="Clear this row">✕</button></td>` : ''}
-          </tr>`).join('')}
-        </tbody>
-      </table></div>${goodsList(goods)}`
-      : '<div class="none">No lines on this order.</div>'}
-    </div>
-    ${canEdit ? `
-      <div class="row" style="justify-content:flex-end;align-items:flex-end;gap:14px">
-        <div style="flex:0 0 150px"><label for="io_ship">Shipping/Delivery Fee</label>
+    <div class="panel">
+      <h3>List of orders</h3>
+      <div id="io_basket"></div>
+      ${canEdit ? `
+        <div class="row" style="margin-top:8px">
+          <div style="flex:2"><label for="io_add">Add a product</label>
+            <input id="io_add" type="text" autocomplete="off" list="doc_goods"
+              placeholder="Type a product name"></div>
+          <div style="flex:0 0 auto;align-self:flex-end">
+            <button class="btn sm quiet" id="io_add_go">Add</button></div>
+        </div>${goodsList(goods)}` : ''}
+      <div class="basket-sum">
+        <div class="sumrow"><span>Subtotal</span><span id="io_sub">₱0.00</span></div>
+        ${canEdit ? `
+        <div class="sumrow"><span>Shipping/Delivery Fee</span>
           <input id="io_ship" type="text" class="n" inputmode="decimal"
             value="${Number(o.shipping || 0).toFixed(2)}"></div>
-        <div style="flex:0 0 150px"><label for="io_oth">Others</label>
+        <div class="sumrow"><span>Others</span>
           <input id="io_oth" type="text" class="n" inputmode="decimal"
-            value="${Number(o.others || 0).toFixed(2)}"></div>
-      </div>` : ''}
-    <div class="right mt"><b>Total <span id="io_total">${peso(o.total)}</span></b></div>
-    ${canEdit ? `<div class="right"><span class="dim" id="io_state"></span>
-      <button class="btn sm" id="io_keep">Save the changes</button></div>` : ''}
-    <div class="mt right">
-      ${['placed', 'picking'].includes(o.status)
-        ? '<button class="btn stop" id="io_cancel">Cancel</button>' : ''}
-      ${o.status === 'fulfilled' && !o.delivered_at
-        ? '<button class="btn go" id="io_delivered">Mark delivered</button>' : ''}
+            value="${Number(o.others || 0).toFixed(2)}"></div>` : ''}
+        <div class="sumrow grand"><span>Total</span><span id="io_total">₱0.00</span></div>
+      </div>
+      <div id="io_nocode"></div>
+      <div class="mt right">
+        <span class="dim" id="io_state"></span>
+        ${canEdit ? '<button class="btn" id="io_keep">Save the changes</button>' : ''}
+        ${['placed', 'picking'].includes(o.status)
+          ? '<button class="btn stop" id="io_cancel">Cancel</button>' : ''}
+        ${o.status === 'fulfilled' && !o.delivered_at
+          ? '<button class="btn go" id="io_delivered">Mark delivered</button>' : ''}
+      </div>
     </div>
       </div>
     </div>`, 'wide co-open');
@@ -9322,190 +9303,193 @@ async function openInvoiceOrder(id, reload) {
     } catch (e) { whoops(e); }
   });
 
-  // The lines themselves. Same two calls the invoice makes and in the same
-  // order — prices before quantities, because both are judged against what has
-  // already been settled and the usual correction is a price going up while a
-  // quantity comes down.
-  if (canEdit) {
-    const box = $('#io_box');
-    const each = sheetBoxes(box, goods, () => retotal());
-    const money = (el) => {
-      const n = Number(String(el?.value ?? '').replace(/[^0-9.]/g, ''));
-      return Number.isFinite(n) && n >= 0 ? n : 0;
-    };
-    const asPlaced = [...o.lines.reduce((by, l) =>
-      by.set(l.sku, (by.get(l.sku) || 0) + Number(l.qty)), new Map())]
-      .map(([sku, qty]) => ({ sku, qty }));
-    const paid = Number(o.total || 0) - Number(o.balance ?? o.total ?? 0);
+  const money = (el) => {
+    const n = Number(String(el?.value ?? '').replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  const plain = (v) => peso(v).replace('₱', '');
 
-    function retotal() {
-      let running = 0;
-      for (const price of $$('[data-line]', box)) {
-        const qty = wholeUnits($(`[data-qtyfor="${price.dataset.line}"]`, box));
-        const line = money(price) * qty;
-        running += line;
-        const cell = $(`[data-linetotal="${price.dataset.line}"]`, box);
-        if (cell) cell.textContent = peso(line);
-      }
-      // Something added here has no price of its own until it is saved: it
-      // takes the standing wholesale price, and the office corrects it after
-      // like any other line. Showing that now keeps the total honest.
-      each.added().forEach((g, i) => {
-        // The price box opens the moment a product is on the row and is seeded
-        // with its standing wholesale price; typed over, that hand price is what
-        // the line comes to and, below, what it is saved at.
-        const price = $(`[data-addprice="${i}"]`, box);
-        if (price) {
-          price.disabled = false;
-          if (price.value.trim() === '') price.value = Number(g.wholesale_price || 0).toFixed(2);
-        }
-        const line = money(price) * g.qty;
-        running += line;
-        const total = $(`[data-addtotal="${i}"]`, box);
-        if (total) total.textContent = peso(line);
-      });
-      const whole = running + money($('#io_ship')) + money($('#io_oth'));
-      $('#io_total').textContent = peso(whole);
-      const empty = !each.picture().some((l) => l.qty > 0);
-      const short = paid > 0 && whole < paid;
-      $('#io_state').innerHTML = empty
-        ? `<span class="over">An order with nothing on it is a cancellation —
-           use Cancel if that is what this is</span>`
-        : short
-          ? `<span class="over">${peso(paid)} has already been settled against
-             this order — it cannot come to less</span>` : '';
-      $('#io_keep').disabled = empty || short;
-      refreshForm();
-    }
+  const drawList = () => {
+    const box = $('#io_basket');
+    if (!box) return;
+    const rows = [...lines.values()];
+    box.innerHTML = rows.length ? rows.map((l) => `
+      <div class="pick">
+        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${
+          l.price === 0 ? 'FREE' : l.typed ? 'typed price' : l.code ? esc(l.code) : 'no PCODE'
+          }${l.unit ? ' · ' + esc(l.unit) : ''} · ${l.price === 0 ? 'no charge'
+            : peso(l.price * l.qty)} for ${count(l.qty)}</span></span>
+        ${canEdit ? `
+        <select class="pcode" data-code="${esc(l.key)}"
+          title="Which agreed price this line is charged at">
+          <option value="">${l.price === 0 ? 'free of charge'
+            : l.typed ? 'typed price' : `no PCODE — ${plain(l.listed ?? l.price)}`}</option>
+          ${(codes || []).filter((c) => (l.prices || {})[c.code] != null)
+            .map((c) => `<option value="${esc(c.code)}"
+              ${!l.typed && c.code === l.code ? 'selected' : ''}>${esc(c.code)} — ${
+              plain(l.prices[c.code])}</option>`).join('')}
+        </select>
+        <input class="unit" type="text" inputmode="decimal" data-price="${esc(l.key)}"
+          value="${plain(l.price)}" title="The unit price charged on this line">
+        <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.key)}">` : `
+        <span class="dim">${count(l.qty)} × ${peso(l.price)}</span>`}
+        <b class="linetot">${l.price === 0 ? 'FREE' : peso(l.price * l.qty)}</b>
+        ${canEdit ? `<button class="btn sm stop" data-drop="${esc(l.key)}">✕</button>` : ''}
+      </div>`).join('') : '<div class="none">Nothing on this order.</div>';
 
-    // The sheet on the left redrawn from the working order as it stands right
-    // now — a product added, a quantity changed, a line struck off all show on
-    // the customer order form as they happen, so what will be sent is read off
-    // the same figures that will be saved.
-    const currentFormLines = () => {
-      const out = [];
-      for (const l of o.lines) {
-        const q = $(`[data-qtyfor="${l.id}"]`, box);
-        const p = $(`[data-line="${l.id}"]`, box);
-        const nm = $(`[data-swap="${l.id}"]`, box);
-        if (!q || wholeUnits(q) <= 0 || p?.dataset.removed) continue;
-        out.push({ sku: l.sku, name: nm ? nm.value : l.name, qty: wholeUnits(q),
-          price: money(p), code: p?.dataset.swapped ? '' : (l.price_code || ''),
-          unit: l.unit_type });
-      }
-      each.added().forEach((g, i) => {
-        const pr = $(`[data-addprice="${i}"]`, box);
-        out.push({ sku: g.sku, name: g.name, qty: g.qty,
-          price: pr && pr.value.trim() !== '' ? money(pr) : Number(g.wholesale_price || 0),
-          code: '', unit: g.unit_type });
-      });
-      return out;
-    };
-    function refreshForm() {
-      const scaleBox = $('#dialog .co-scale');
-      if (!scaleBox) return;
-      const lines = currentFormLines();
-      const ship = money($('#io_ship'));
-      const oth = money($('#io_oth'));
-      const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+    const sub = rows.reduce((s, l) => s + l.price * l.qty, 0);
+    const ship = canEdit ? money($('#io_ship')) : Number(o.shipping || 0);
+    const oth = canEdit ? money($('#io_oth')) : Number(o.others || 0);
+    $('#io_sub').textContent = peso(sub);
+    $('#io_total').textContent = peso(sub + ship + oth);
+
+    // The printed sheet on the left is read off this same working list, so a
+    // product swapped, a price corrected or a line dropped shows there as it
+    // happens rather than waiting for Save the changes to catch it up.
+    const scaleBox = $('#dialog .co-scale');
+    if (scaleBox) {
       scaleBox.innerHTML = customerOrderForm({
-        orderId: o.id, orderNo: o.co_no,
-        issuedOn: o.placed_at || o.issued_on || new Date(),
-        amount: sub + ship + oth, resellerName: o.reseller, lines,
+        orderId: o.id, orderNo: o.co_no, issuedOn: o.placed_at || o.issued_on || new Date(),
+        amount: sub + ship + oth, resellerName: o.reseller,
+        lines: rows.filter((l) => l.qty > 0).map((l) => ({
+          sku: l.sku, name: l.name, qty: l.qty, price: l.price,
+          code: l.typed ? '' : l.code, unit: l.unit })),
         who: o, shipping: ship, others: oth,
       });
       scaleCoForm();
     }
 
-    // Clearing an added row empties its picker and quantity — row-scoped so a
-    // freshly grown row clears the same way — and the totals settle back.
-    box.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-clear]');
-      if (!b) return;
-      const row = b.closest('tr');
-      const pick = $('[data-add]', row);
-      const qty = $('[data-addqty]', row);
-      const price = $('[data-addprice]', row);
-      if (pick) { pick.value = ''; pick.classList.remove('named'); }
-      if (qty) { qty.value = ''; qty.disabled = true; }
-      if (price) { price.value = ''; price.disabled = true; }
-      const tot = $('[data-addtotal]', row); if (tot) tot.textContent = '';
-      retotal();
-    });
-    // A hand price typed into an added row recomputes the line and the sheet —
-    // delegated, so a freshly grown row's price box counts the same way.
-    box.addEventListener('input', (e) => {
-      if (e.target.matches('[data-addprice]')) retotal();
+    if (!canEdit) return;
+
+    const empty = !rows.some((l) => l.qty > 0);
+    const whole = sub + ship + oth;
+    const short = paid > 0 && whole < paid;
+    $('#io_state').innerHTML = empty
+      ? `<span class="over">An order with nothing on it is a cancellation —
+         use Cancel if that is what this is</span>`
+      : short
+        ? `<span class="over">${peso(paid)} has already been settled against
+           this order — it cannot come to less</span>` : '';
+    if ($('#io_keep')) $('#io_keep').disabled = empty || short;
+
+    const warn = $('#io_nocode');
+    if (warn) {
+      const bare = rows.filter((l) => !l.code && !l.typed && Object.keys(l.prices || {}).length);
+      warn.innerHTML = bare.length ? `<div class="banner warn">
+        <b>${count(bare.length)} line${bare.length > 1 ? 's have' : ' has'} no PCODE.</b>
+        ${bare.map((l) => `${esc(l.name)} — ${peso(l.price)}, against ${
+          peso(Math.min(...Object.values(l.prices).map(Number)))} at its cheapest code`)
+          .join('<br>')}
+        <div class="dim mt">Placed as it stands, ${bare.length > 1 ? 'these lines are' : 'this line is'}
+          charged the listed price, which is not a dealer price.</div></div>` : '';
+    }
+
+    $$('[data-qty]', box).forEach((i) => i.addEventListener('change', () => {
+      const l = lines.get(i.dataset.qty);
+      if (l) l.qty = Math.max(1, +i.value || 1);
+      drawList();
+    }));
+    $$('[data-drop]', box).forEach((b) => b.addEventListener('click', () => {
+      lines.delete(b.dataset.drop);
+      drawList();
+    }));
+    $$('[data-code]', box).forEach((sel) => sel.addEventListener('change', () => {
+      const l = lines.get(sel.dataset.code);
+      if (!l) return;
+      l.code = sel.value;
+      l.typed = false;
+      const priced = (l.prices || {})[l.code];
+      l.price = priced != null ? Number(priced) : Number(l.listed ?? l.price);
+      drawList();
+    }));
+    $$('[data-price]', box).forEach((i) => i.addEventListener('change', () => {
+      const l = lines.get(i.dataset.price);
+      if (!l) return;
+      const said = String(i.value).replace(/[^0-9.]/g, '');
+      const asked = Number(said);
+      if (said === '' || !Number.isFinite(asked) || asked < 0) { drawList(); return; }
+      const listed = Number(l.listed ?? l.price);
+      const coded = Object.entries(l.prices || {}).find(([, v]) => Number(v) === asked);
+      l.price = asked;
+      if (asked === 0) { l.code = ''; l.typed = true; }
+      else if (coded) { l.code = coded[0]; l.typed = false; }
+      else if (asked === listed) { l.code = ''; l.typed = false; }
+      else { l.code = ''; l.typed = true; }
+      drawList();
+    }));
+  };
+  drawList();
+
+  if (canEdit) {
+    $$('#io_ship, #io_oth').forEach((el) => {
+      el.addEventListener('input', drawList);
+      el.addEventListener('change', () => { el.value = money(el).toFixed(2); drawList(); });
     });
 
-    // The delivery fee and whatever else the order carried used to be typed on
-    // the invoice. The invoice is a document now, so they are here, beside the
-    // figures they are added to — and they go up in the same call the prices
-    // do, because they are the same correction to the same money.
-    $$('[data-line], #io_ship, #io_oth').forEach((el) => {
-      el.addEventListener('input', retotal);
-      el.addEventListener('change', () => { el.value = money(el).toFixed(2); retotal(); });
+    $('#io_add_go')?.addEventListener('click', () => {
+      const input = $('#io_add');
+      const said = (input.value || '').trim();
+      if (!said) return;
+      const g = goods.find((x) => x.name === said) || goods.find((x) => x.sku === said.toUpperCase());
+      if (!g) return notice('Not a product this catalogue has.', 'bad');
+      if (g.available <= 0) return notice(`${g.name} has none on hand.`, 'bad');
+      addSeq += 1;
+      const key = `new${addSeq}`;
+      lines.set(key, { key, kind: 'added', id: null, sku: g.sku, name: g.name,
+        price: Number(g.wholesale_price), listed: Number(g.wholesale_price),
+        unit: g.unit_type || 'PCS', code: '', typed: false, prices: g.prices || {}, qty: 1 });
+      input.value = '';
+      drawList();
     });
-    // The ✕ takes a line off the order: its quantity goes to nought — which is
-    // how a line leaves when the picture is saved — its price is held back so a
-    // line about to be deleted is not repriced first, and the row is struck out
-    // so it reads as gone while still on screen to bring back if it was a slip.
-    $$('[data-remove]', box).forEach((b) => b.addEventListener('click', () => {
-      const line = b.dataset.remove;
-      const qty = $(`[data-qtyfor="${line}"]`, box);
-      const price = $(`[data-line="${line}"]`, box);
-      const gone = b.closest('tr').classList.toggle('struck');
-      if (gone) {
-        if (qty) { qty.dataset.was = qty.value; qty.value = '0'; qty.disabled = true; }
-        if (price) price.dataset.removed = '1';
-        b.textContent = '↺';
-      } else {
-        if (qty) { qty.value = qty.dataset.was ?? '1'; qty.disabled = false; }
-        if (price) delete price.dataset.removed;
-        b.textContent = '✕';
-      }
-      retotal();
-    }));
-    retotal();
 
     $('#io_keep').addEventListener('click', async () => {
       const button = $('#io_keep');
       button.disabled = true;
       try {
+        const existing = [...lines.values()].filter((l) => l.kind === 'existing' && l.qty > 0);
         await POST(`/api/orders/${id}/invoice`, {
-          // A line whose product was swapped is about to be replaced, so its
-          // price box is showing the new product's standing figure rather than
-          // anything anybody agreed to. Sending it would price the old line a
-          // moment before it is deleted.
-          lines: $$('[data-line]', box)
-            .filter((el) => !el.dataset.swapped && !el.dataset.removed)
-            .map((el) => ({ id: el.dataset.line, price: money(el) })),
+          lines: existing.map((l) => ({ id: l.id, price: l.price })),
           shipping: money($('#io_ship')),
           others: money($('#io_oth')),
         });
-        // A hand price typed against an added product, kept by its sku: the
-        // revise below brings the line in at its standing price, and this is
-        // what it is corrected to once it exists — the same as a placed order.
-        const handed = new Map();
-        each.added().forEach((g, i) => {
-          const pr = $(`[data-addprice="${i}"]`, box);
-          if (pr && pr.value.trim() !== '' && money(pr) !== Number(g.wholesale_price || 0)) {
-            handed.set(g.sku, money(pr));
-          }
-        });
-        const now = each.picture().filter((l) => l.qty > 0);
+        const now = [...[...lines.values()].filter((l) => l.qty > 0)
+          .reduce((by, l) => by.set(l.sku, (by.get(l.sku) || 0) + l.qty), new Map())]
+          .map(([sku, qty]) => ({ sku, qty }));
         const moved = now.length !== asPlaced.length || now.some(({ sku, qty }) =>
           qty !== asPlaced.find((l) => l.sku === sku)?.qty);
         let out = moved
           ? await POST(`/api/orders/${id}/lines`, { lines: now })
           : { total: null };
-        if (handed.size) {
+
+        // Nothing has ever written a PCODE back onto an order line after it
+        // was first placed — this is that write. An unmoved line keeps its
+        // own id, so it is corrected straight; a re-picked one has a fresh
+        // id, matched back by sku the same way an added line's hand-typed
+        // price already is, below.
+        if (!moved) {
+          const recode = existing.map((l) => ({ id: l.id, code: l.typed ? '' : (l.code || '') }));
+          if (recode.length) await POST(`/api/orders/${id}/line-codes`, { lines: recode });
+        }
+
+        const handed = new Map();
+        [...lines.values()].filter((l) => l.kind === 'added' && l.qty > 0)
+          .forEach((l) => { if (l.price !== Number(l.listed)) handed.set(l.sku, l.price); });
+        if (handed.size || moved) {
           const fresh = await GET(`/api/orders/${id}`);
-          const reprice = (fresh.lines || []).filter((l) => handed.has(l.sku))
-            .map((l) => ({ id: l.id, price: handed.get(l.sku) }));
-          if (reprice.length) {
-            await POST(`/api/orders/${id}/invoice`, { lines: reprice });
-            out = await GET(`/api/orders/${id}`);
+          if (handed.size) {
+            const reprice = (fresh.lines || []).filter((l) => handed.has(l.sku))
+              .map((l) => ({ id: l.id, price: handed.get(l.sku) }));
+            if (reprice.length) {
+              await POST(`/api/orders/${id}/invoice`, { lines: reprice });
+              out = await GET(`/api/orders/${id}`);
+            }
+          }
+          if (moved) {
+            const bySku = new Map([...lines.values()].filter((l) => l.qty > 0)
+              .map((l) => [l.sku, l.typed ? '' : (l.code || '')]));
+            const recode = (fresh.lines || []).filter((l) => bySku.has(l.sku))
+              .map((l) => ({ id: l.id, code: bySku.get(l.sku) }));
+            if (recode.length) await POST(`/api/orders/${id}/line-codes`, { lines: recode });
           }
         }
         notice(`This order now comes to ${
