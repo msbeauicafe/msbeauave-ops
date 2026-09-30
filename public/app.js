@@ -9632,11 +9632,11 @@ SCREENS.coinvoices = async (page) => {
     <div class="head"><h2>Invoice</h2>
       <span class="hint">One row per invoice raised. Open it to record a
         payment, print the statement, or the customer order it is for</span></div>
-    <div class="row" style="align-items:flex-end">
-      <div style="flex:2"><label for="coinv_search">Search reseller</label>
-        <input id="coinv_search" type="text" autocomplete="off"
+    <div class="tools">
+      <div><label for="coinv_search">Search reseller</label>
+        <input id="coinv_search" type="search" autocomplete="off"
           placeholder="Type a reseller's name"></div>
-      <div style="flex:0 0 180px"><label for="coinv_standing_pick">Standing</label>
+      <div><label for="coinv_standing_pick">Standing</label>
         <select id="coinv_standing_pick">
           <option value="">All</option>
           <option value="paid">paid</option>
