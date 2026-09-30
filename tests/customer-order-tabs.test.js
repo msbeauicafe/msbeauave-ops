@@ -486,13 +486,12 @@ test('Standing reads paid, unpaid, paid w/bal, or void', () => {
 // Pressing Invoice again can move a number on its own, independent of when
 // the order was placed — so the newest invoice is the one with the newest
 // number, not necessarily the one placed most recently.
-test('the Invoice tab lists rows by the invoice number itself, newest first, void last', () => {
+test('the Invoice tab lists rows by the invoice number itself, newest first, void or not', () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
   assert.match(screen,
-    /\.sort\(\(a, b\) => \(a\.invoice_status === 'void'\) - \(b\.invoice_status === 'void'\)\s*\n\s*\|\|\s*\(b\.si_no \|\| ''\)\.localeCompare\(a\.si_no \|\| ''\)/,
-    'a void invoice sorts after every still-owed one, keyed by the invoice itself, ' +
-    'then descending by si_no, b before a');
+    /\.sort\(\(a, b\) => \(b\.si_no \|\| ''\)\.localeCompare\(a\.si_no \|\| ''\)/,
+    'descending by si_no, b before a, with no separate void grouping');
 });
 
 test('the four invoice-row buttons do their own four things', () => {
@@ -606,17 +605,15 @@ test('a tier-1 order still Awaiting payment does not show on the Invoice tab', (
 
 // The owner reversed course from an earlier fix: a cancelled order's voided
 // invoice is back on the Invoice tab rather than hidden, so its own record
-// of the number reads here too — just sorted after every still-active row
-// rather than crowding them. A cancelled order with a payment already on it
-// keeps its invoice open, not void, so it stays up top rather than sinking
-// with the ones that are truly nothing left to collect.
-test('a void invoice shows on the Invoice tab, sorted to the bottom', () => {
+// of the number reads here too — sorted by that number same as any other
+// row, not singled out to the bottom for being void.
+test('a void invoice shows on the Invoice tab, sorted by its number like any other', () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
   assert.doesNotMatch(screen, /o\.status !== 'cancelled'/,
     'no longer filtered out for being cancelled');
-  assert.match(screen, /\(a\.invoice_status === 'void'\) - \(b\.invoice_status === 'void'\)/,
-    'a void row sorts after every still-owed one, ahead of the si_no ordering');
+  assert.doesNotMatch(screen, /invoice_status === 'void'\) - \(b/,
+    'no separate void-sorts-last grouping');
 });
 
 // The same bones as the yellow sheet (.doc.po) a purchase order bill
