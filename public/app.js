@@ -9514,12 +9514,19 @@ SCREENS.coinvoices = async (page) => {
   // Unpaid and paid w/bal split on whether anything has landed against the
   // invoice yet, not just whether it is fully settled — a red tag still
   // marks either one once it is overdue, the due date already says that.
-  const standing = (o) => {
-    if (o.invoice_status === 'paid') return tag('paid', 'green');
-    if (o.invoice_status === 'void') return tag('void', 'grey');
+  // Pulled apart from the tag itself so the Standing filter below can pick
+  // against the same plain word the row reads, not scrape it off a tag.
+  const standingLabel = (o) => {
+    if (o.invoice_status === 'paid') return 'paid';
+    if (o.invoice_status === 'void') return 'void';
     const amount = Number(o.invoice_amount ?? o.total ?? 0);
     const balance = Number(o.balance ?? amount);
-    const label = balance < amount ? 'paid w/bal' : 'unpaid';
+    return balance < amount ? 'paid w/bal' : 'unpaid';
+  };
+  const standing = (o) => {
+    const label = standingLabel(o);
+    if (label === 'paid') return tag('paid', 'green');
+    if (label === 'void') return tag('void', 'grey');
     return tag(label, o.invoice_overdue ? 'red' : 'amber');
   };
 
@@ -9530,16 +9537,17 @@ SCREENS.coinvoices = async (page) => {
   const notYetCommitted = (o) => !o.committed_at
     && o.status === 'placed' && o.tier === 1 && o.invoice_status === 'open';
 
-  const load = async () => {
-    const rows = (await GET('/api/orders?status='))
-      .filter((o) => o.invoice_id && !notYetCommitted(o))
-      // By the invoice number itself, newest first — pressing Invoice can
-      // now move a number on its own, independent of when the order was
-      // placed, so the row has to follow the number rather than the date
-      // or the newest invoice stops reading as the newest row. Void or
-      // not, the number is what the row sorts by.
-      .sort((a, b) => (b.si_no || '').localeCompare(a.si_no || '')
-        || new Date(b.invoice_issued_on || b.placed_at) - new Date(a.invoice_issued_on || a.placed_at));
+  // The full fetched list, kept here so the search box and Standing pick can
+  // re-filter and redraw on every keystroke without asking the server again
+  // — only an actual reload (a payment recorded, a dialog closed) re-fetches.
+  let allRows = [];
+
+  const draw = () => {
+    const search = ($('#coinv_search', page)?.value || '').trim().toLowerCase();
+    const pick = $('#coinv_standing_pick', page)?.value || '';
+    const rows = allRows.filter((o) =>
+      (!search || (o.reseller || '').toLowerCase().includes(search))
+      && (!pick || standingLabel(o) === pick));
 
     $('#coinv_list', page).innerHTML = table(rows, [
       { head: 'Customer order no.', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
@@ -9563,9 +9571,9 @@ SCREENS.coinvoices = async (page) => {
             <button class="btn sm quiet" data-invco="${o.id}">🖨 Customer order</button>
             <button class="btn sm quiet" data-invdoc="${o.id}">🖨 Invoice</button>
           </div>` },
-    ], 'No invoices raised yet.');
+    ], search || pick ? 'No invoices match.' : 'No invoices raised yet.');
 
-    const find = (id) => rows.find((o) => String(o.id) === id);
+    const find = (id) => allRows.find((o) => String(o.id) === id);
 
     $$('[data-invpay]', page).forEach((b) => b.addEventListener('click',
       () => recordInvoicePayment(b.dataset.invpay, b.dataset.sino, Number(b.dataset.owed),
@@ -9607,11 +9615,39 @@ SCREENS.coinvoices = async (page) => {
     }));
   };
 
+  const load = async () => {
+    allRows = (await GET('/api/orders?status='))
+      .filter((o) => o.invoice_id && !notYetCommitted(o))
+      // By the invoice number itself, newest first — pressing Invoice can
+      // now move a number on its own, independent of when the order was
+      // placed, so the row has to follow the number rather than the date
+      // or the newest invoice stops reading as the newest row. Void or
+      // not, the number is what the row sorts by.
+      .sort((a, b) => (b.si_no || '').localeCompare(a.si_no || '')
+        || new Date(b.invoice_issued_on || b.placed_at) - new Date(a.invoice_issued_on || a.placed_at));
+    draw();
+  };
+
   page.innerHTML = `
     <div class="head"><h2>Invoice</h2>
       <span class="hint">One row per invoice raised. Open it to record a
         payment, print the statement, or the customer order it is for</span></div>
+    <div class="row" style="align-items:flex-end">
+      <div style="flex:2"><label for="coinv_search">Search reseller</label>
+        <input id="coinv_search" type="text" autocomplete="off"
+          placeholder="Type a reseller's name"></div>
+      <div style="flex:0 0 180px"><label for="coinv_standing_pick">Standing</label>
+        <select id="coinv_standing_pick">
+          <option value="">All</option>
+          <option value="paid">paid</option>
+          <option value="paid w/bal">paid w/bal</option>
+          <option value="unpaid">unpaid</option>
+          <option value="void">void</option>
+        </select></div>
+    </div>
     <div id="coinv_list"></div>`;
+  $('#coinv_search', page).addEventListener('input', draw);
+  $('#coinv_standing_pick', page).addEventListener('change', draw);
   await load();
 };
 

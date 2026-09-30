@@ -473,14 +473,50 @@ test('Standing reads paid, unpaid, paid w/bal, or void', () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
 
-  assert.match(screen, /if \(o\.invoice_status === 'paid'\) return tag\('paid', 'green'\);/,
-    'paid stays paid, green');
-  assert.match(screen, /if \(o\.invoice_status === 'void'\) return tag\('void', 'grey'\);/,
-    'void stays void, grey');
-  assert.match(screen, /const label = balance < amount \? 'paid w\/bal' : 'unpaid';/,
+  assert.match(screen, /if \(o\.invoice_status === 'paid'\) return 'paid';/, 'paid stays paid');
+  assert.match(screen, /if \(o\.invoice_status === 'void'\) return 'void';/, 'void stays void');
+  assert.match(screen, /return balance < amount \? 'paid w\/bal' : 'unpaid';/,
     'paid w/bal once something has landed against it, unpaid while nothing has');
   assert.match(screen, /tag\(label, o\.invoice_overdue \? 'red' : 'amber'\)/,
     'either one still reads red past its due date, amber otherwise');
+});
+
+// The Standing filter picks against the same plain word standingLabel hands
+// the tag — a dropdown reading its own private copy of that logic would be
+// the kind of drift that quietly falls out of step with what the tag says.
+test('the Standing filter and the Standing tag read off the same label', () => {
+  const at = app.indexOf('SCREENS.coinvoices = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  assert.match(screen, /const standingLabel = \(o\) => \{/,
+    'one function the tag and the filter both call');
+  assert.match(screen, /standingLabel\(o\) === pick/,
+    'the filter compares against that same label, not a copy of the branches');
+
+  const options = [...screen.matchAll(/<option value="([^"]*)">/g)].map((m) => m[1]);
+  assert.deepEqual(options, ['', 'paid', 'paid w/bal', 'unpaid', 'void'],
+    'All, then the same four words the tag itself can read');
+});
+
+// Search and Standing sit above the table, scoped to this screen alone — no
+// server round trip on every keystroke, since the full list is already in
+// hand from the last load.
+test('the Invoice tab has a reseller search and a Standing pick, filtering client-side', () => {
+  const at = app.indexOf('SCREENS.coinvoices = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+
+  assert.match(screen, /id="coinv_search"/, 'the search box');
+  assert.match(screen, /id="coinv_standing_pick"/, 'the standing dropdown');
+  assert.match(screen,
+    /o\.reseller \|\| ''\)\.toLowerCase\(\)\.includes\(search\)/,
+    'filters by reseller name');
+  assert.match(screen, /\$\('#coinv_search', page\)\.addEventListener\('input', draw\)/,
+    'search redraws on every keystroke');
+  assert.match(screen, /\$\('#coinv_standing_pick', page\)\.addEventListener\('change', draw\)/,
+    'and the pick redraws the moment it changes');
+  assert.match(screen, /const draw = \(\) => \{/, 'a redraw that only re-filters allRows');
+  assert.match(screen, /allRows = \(await GET\('\/api\/orders\?status='\)\)/,
+    'only load itself asks the server, once');
 });
 
 // Pressing Invoice again can move a number on its own, independent of when
