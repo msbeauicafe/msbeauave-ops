@@ -742,6 +742,36 @@ test('the invoice log totals its own Amount and Bal columns', () => {
     'read off this one invoice, not summed across the account');
 });
 
+// The Invoice tab's own Standing tag reads paid / paid w/bal / unpaid / void
+// — this log used to read paid / open / past due / void instead, its own
+// older, unrelated branches. Brought in step, as its own copy.
+test('the invoice log reads the same four Standing words the Invoice tab does', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const logStandingAt = fn.indexOf('const logStanding');
+  const logStanding = fn.slice(logStandingAt, fn.indexOf('const paintLog', logStandingAt));
+
+  assert.match(logStanding, /if \(i\.status === 'paid'\) return tag\('paid', 'green'\);/);
+  assert.match(logStanding, /if \(i\.status === 'void'\) return tag\('void', 'grey'\);/);
+  assert.match(logStanding,
+    /const label = Number\(i\.balance\) < Number\(i\.amount\) \? 'paid w\/bal' : 'unpaid';/);
+  assert.match(logStanding, /tag\(label, i\.overdue \? 'red' : 'amber'\)/);
+  assert.doesNotMatch(logStanding, /'open'|'past due'/, 'the old four words are gone');
+});
+
+// A row in the account-wide log is a dead end without its own way to open
+// the document it is the record of — the same blue INVOICE the Invoice tab
+// itself opens from, not a redrawn copy.
+test('every row in the invoice log has its own Invoice button', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn, /data-cilog-invdoc="\$\{i\.order_id\}"/, 'the button names its own order');
+  assert.match(fn, /\$\$\('\[data-cilog-invdoc\]', box\)\.forEach/,
+    'wired for every row drawn into the log');
+  assert.match(fn, /showInvoiceDoc\(\{/, 'opens the same document renderer, reused not redrawn');
+});
+
 // Purchase order's own billing statement already shows Amount / Paid so far
 // / Still owed, and a real photo thumbnail once a payment has one on file —
 // this is that same shape, for an invoice, built apart rather than shared.

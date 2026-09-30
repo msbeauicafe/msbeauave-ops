@@ -8959,6 +8959,15 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
   // Gathered here rather than left to be pieced together off the main list,
   // where the same account's invoices fall wherever their own dates land
   // them, next to nobody else's.
+  // This log's own copy of the four-word Standing — same words the Invoice
+  // tab reads, not the old paid/open/past due/void this table used to show.
+  const logStanding = (i) => {
+    if (i.status === 'paid') return tag('paid', 'green');
+    if (i.status === 'void') return tag('void', 'grey');
+    const label = Number(i.balance) < Number(i.amount) ? 'paid w/bal' : 'unpaid';
+    return tag(label, i.overdue ? 'red' : 'amber');
+  };
+
   const paintLog = async () => {
     const box = $('#ci_log');
     if (!box) return;
@@ -8968,12 +8977,31 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
     box.innerHTML = table(acct.invoices, [
       { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no || '—')}</b>` },
       { head: 'Issued', cell: (i) => onDay(i.issued_on) },
-      { head: 'Standing', cell: (i) => i.status === 'paid' ? tag('paid', 'green')
-          : i.status === 'void' ? tag('void', 'grey')
-          : i.overdue ? tag('past due', 'red') : tag('open', 'amber') },
+      { head: 'Standing', cell: logStanding },
       { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
       { head: 'Bal', n: true, cell: (i) => peso(i.balance) },
+      { head: '', cell: (i) => `<button class="btn sm quiet"
+          data-cilog-invdoc="${i.order_id}">🖨 Invoice</button>` },
     ], 'No invoices yet.');
+
+    // The blue INVOICE document itself, same renderer the Invoice tab's own
+    // row opens it from — reused rather than redrawn, only the fetch that
+    // hands it its data is this log's own.
+    $$('[data-cilog-invdoc]', box).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const [full, payments] = await Promise.all([
+          GET(`/api/orders/${b.dataset.cilogInvdoc}`),
+          GET(`/api/resellers/${resellerId}/payments?order_id=${b.dataset.cilogInvdoc}`).catch(() => []),
+        ]);
+        showInvoiceDoc({
+          orderId: full.id, issuedOn: full.placed_at, resellerName: full.reseller,
+          payments, who: full, invoiceNo: full.si_no,
+          shipping: Number(full.shipping || 0), others: Number(full.others || 0),
+          lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
+            price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+        });
+      } catch (e) { whoops(e); }
+    }));
     // Every invoice's own amount added up, so the account's total is read
     // here rather than added up by hand off the rows above — and again at
     // the top of the dialog, beside this one invoice's own balance, since
