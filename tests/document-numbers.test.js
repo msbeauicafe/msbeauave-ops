@@ -375,38 +375,36 @@ test('a written number stays put even when Invoice is pressed again', async () =
     'and nothing else moves to make room for it either');
 });
 
-// A voided invoice does not keep its slot forever — cancelling before
-// anything was paid frees the number, the same close-the-gap shift a press
-// already does, closing what it leaves behind rather than leaving a hole.
-test("cancelling an order closes the gap its invoice's number leaves behind", async () => {
+// A voided invoice keeps its slot — cancelling before anything was paid
+// still marks the invoice void, but its number, and everything above it,
+// stays exactly where it was.
+test("cancelling an order leaves its invoice's number, and every other, untouched", async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const first = await anOrder(admin, store);
   const second = await anOrder(admin, store);
   const third = await anOrder(admin, store);
 
-  const tail = (s) => Number(s.slice(-3));
   const before = {
-    first: tail((await numbers(first)).si_no),
-    second: tail((await numbers(second)).si_no),
-    third: tail((await numbers(third)).si_no),
+    first: (await numbers(first)).si_no,
+    second: (await numbers(second)).si_no,
+    third: (await numbers(third)).si_no,
   };
 
   const cancelled = await POST(admin, `/api/orders/${first}/cancel`);
   assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
 
-  assert.equal((await numbers(first)).si_no, null,
-    'the cancelled order\'s invoice keeps no number at all — it was freed, not kept');
-  assert.equal(tail((await numbers(second)).si_no), before.second - 1,
-    'closed up by one behind the freed slot');
-  assert.equal(tail((await numbers(third)).si_no), before.third - 1,
-    'closed up by one behind the freed slot too');
+  assert.equal((await numbers(first)).si_no, before.first,
+    'the cancelled order keeps its own number, void or not');
+  assert.equal((await numbers(second)).si_no, before.second, 'nothing above it moves down');
+  assert.equal((await numbers(third)).si_no, before.third, 'nor above that');
 
-  // The freed number is genuinely available again — the next one raised
-  // lands where third now sits plus one, not skipping over the gap.
+  // The next one raised still counts on from the real top, not from a gap
+  // that was never opened.
   const fourth = await anOrder(admin, store);
-  assert.equal(tail((await numbers(fourth)).si_no), before.third,
-    'the counter picked up right after the compacted top, no gap left behind');
+  const tail = (s) => Number(s.slice(-3));
+  assert.equal(tail((await numbers(fourth)).si_no), tail(before.third) + 1,
+    'picks up right after the highest number still standing');
 });
 
 // A hand-written number was never on the automatic counter to begin with —
