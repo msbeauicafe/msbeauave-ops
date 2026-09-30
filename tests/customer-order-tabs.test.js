@@ -507,8 +507,9 @@ test('the Invoice tab is its own screen, built apart from the reseller account l
 });
 
 // Four states, not the old paid/open/past due/void — unpaid and paid w/bal
-// split on whether anything has landed against the invoice yet, and either
-// one still reads red once it is overdue rather than losing that signal.
+// split on whether anything has landed against the invoice yet. Only unpaid
+// reads red once it is overdue; paid w/bal already shows money landed, so it
+// stays amber.
 test('Standing reads paid, unpaid, paid w/bal, or void', () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
@@ -517,8 +518,8 @@ test('Standing reads paid, unpaid, paid w/bal, or void', () => {
   assert.match(screen, /if \(o\.invoice_status === 'void'\) return 'void';/, 'void stays void');
   assert.match(screen, /return balance < amount \? 'paid w\/bal' : 'unpaid';/,
     'paid w/bal once something has landed against it, unpaid while nothing has');
-  assert.match(screen, /tag\(label, o\.invoice_overdue \? 'red' : 'amber'\)/,
-    'either one still reads red past its due date, amber otherwise');
+  assert.match(screen, /tag\(label, label === 'unpaid' && o\.invoice_overdue \? 'red' : 'amber'\)/,
+    'only unpaid reads red past its due date; paid w/bal stays amber');
 });
 
 // The Standing filter picks against the same plain word standingLabel hands
@@ -795,7 +796,7 @@ test('the invoice log reads the same four Standing words the Invoice tab does', 
   assert.match(logStanding, /if \(i\.status === 'void'\) return tag\('void', 'grey'\);/);
   assert.match(logStanding,
     /const label = Number\(i\.balance\) < Number\(i\.amount\) \? 'paid w\/bal' : 'unpaid';/);
-  assert.match(logStanding, /tag\(label, i\.overdue \? 'red' : 'amber'\)/);
+  assert.match(logStanding, /tag\(label, label === 'unpaid' && i\.overdue \? 'red' : 'amber'\)/);
   assert.doesNotMatch(logStanding, /'open'|'past due'/, 'the old four words are gone');
 });
 
