@@ -816,6 +816,20 @@ test('the invoice log reads the same four Standing words the Invoice tab does', 
   assert.doesNotMatch(logStanding, /'open'|'past due'/, 'the old four words are gone');
 });
 
+// A void invoice never happened, so the account-wide log's own Total —
+// Amount / Bal line leaves it out of the sum; paid, paid w/bal and unpaid
+// all still count, since those are real.
+test("the invoice log's Total leaves void invoices out of the sum", () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const sumAt = fn.indexOf('const sum = ');
+  const sum = fn.slice(sumAt, fn.indexOf(';', fn.indexOf('reduce', sumAt)) + 1);
+
+  assert.match(sum, /\.filter\(\(i\) => i\.status !== 'void'\)/,
+    'void invoices are filtered out before the reduce');
+  assert.match(sum, /\.reduce\(\(s, i\) => s \+ Number\(i\[f\] \|\| 0\), 0\)/);
+});
+
 // A row in the account-wide log is a dead end without its own way to open
 // the document it is the record of — the same blue INVOICE the Invoice tab
 // itself opens from, not a redrawn copy.

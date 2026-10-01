@@ -9017,7 +9017,11 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
     // here rather than added up by hand off the rows above — and again at
     // the top of the dialog, beside this one invoice's own balance, since
     // that is the figure asked for where the payment is actually typed in.
-    const sum = (f) => acct.invoices.reduce((s, i) => s + Number(i[f] || 0), 0);
+    // A void invoice never happened, so it sits out of this total; paid,
+    // paid w/bal and unpaid all still count — they're all real.
+    const sum = (f) => acct.invoices
+      .filter((i) => i.status !== 'void')
+      .reduce((s, i) => s + Number(i[f] || 0), 0);
     if (acct.invoices.length) {
       box.insertAdjacentHTML('beforeend', `<div class="dim mt" style="text-align:right">
         Total — Amount <b>${peso(sum('amount'))}</b> · Bal <b>${peso(sum('balance'))}</b></div>`);
