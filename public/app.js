@@ -4800,8 +4800,7 @@ async function openPendingOrder(id, reload, page) {
       <div id="pl_nocode"></div>
       <div class="mt right">
         <span class="dim" id="pl_state"></span>
-        ${o.status !== 'cancelled' && !o.committed_at
-          ? '<button class="btn quiet" id="pl_invoice">Invoice</button>' : ''}
+        ${o.status !== 'cancelled' ? '<button class="btn quiet" id="pl_invoice">Invoice</button>' : ''}
         ${canEdit ? '<button class="btn" id="pl_place">Save the changes</button>' : ''}
         <button class="btn stop" id="pl_cancel">Cancel</button>
       </div>
