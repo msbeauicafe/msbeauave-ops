@@ -663,17 +663,19 @@ test("Draft's own dialog has no Invoice button; Pending customer order's still d
     'and its wiring, untouched');
 });
 
-// A cancelled order has nothing left to invoice, and an already-committed
-// one has already been pushed there — Pending customer order's own Invoice
-// button drops off its own dialog in either case, while Cancel stays so the
-// row can still be reopened and looked at.
-test("Pending customer order's own Invoice button is gone once cancelled or already committed", () => {
+// A cancelled order has nothing left to invoice — Pending customer order's
+// own Invoice button drops off its own dialog only then. A committed order
+// still shows it; Invoice is how an order gets committed in the first
+// place, and pressing it again is harmless. Cancel stays whatever the
+// status, so the row can still be reopened and looked at.
+test("Pending customer order's own Invoice button is gone only once cancelled, not once committed", () => {
   const pendingFn = app.slice(app.indexOf('async function openPendingOrder'),
     app.indexOf('async function openOrder'));
-  assert.match(pendingFn, /\$\{o\.status !== 'cancelled' && !o\.committed_at/,
-    'the Invoice button only renders when the order is neither cancelled nor already committed');
   assert.match(pendingFn,
-    /\? '<button class="btn quiet" id="pl_invoice">Invoice<\/button>' : ''\}/);
+    /\$\{o\.status !== 'cancelled' \? '<button class="btn quiet" id="pl_invoice">Invoice<\/button>' : ''\}/,
+    'the Invoice button only disappears when the order is cancelled, committed or not');
+  assert.doesNotMatch(pendingFn, /o\.committed_at/,
+    'committed_at plays no part in whether Invoice shows');
   assert.match(pendingFn, /id="pl_cancel"/, 'Cancel stays, whatever the status');
 });
 
