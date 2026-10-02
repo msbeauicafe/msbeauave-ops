@@ -966,6 +966,68 @@ test('Record payment has a second Packing list / Done / Save row under the payme
     'and Packing list, same door, not a second copy of it');
 });
 
+// Paying more than one invoice owes used to be a dead end: record_invoice_payments
+// itself refuses it, pointing whoever hit the wall at a different screen.
+// The owner asked for it to be accepted right here instead — so a row that
+// overshoots is split, with the overflow going through the same account
+// credit channel the reseller account page's own overpayment flow already
+// uses, not a parallel way of writing the same ledger.
+test('a row that overshoots what the invoice owes is split, not refused', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const splitAt = fn.indexOf('const splitToInvoice');
+  const split = fn.slice(splitAt, fn.indexOf('const save = async', splitAt));
+
+  assert.ok(splitAt > 0, 'this dialog has its own split, not a reuse of the account page\'s');
+  assert.match(split, /toInvoice\.push\(\{ \.\.\.r, amount: room \}\)/,
+    'a row that only partly fits is itself split at the invoice\'s own room');
+  assert.match(split, /toCredit\.push\(\{ \.\.\.r, amount: r\.amount - room \}\)/);
+
+  const saveAt = fn.indexOf('const save = async');
+  const save = fn.slice(saveAt, fn.indexOf("$('#ci_go')", saveAt));
+  assert.match(save, /splitToInvoice\(rows, owed\)/, 'capped at this one invoice\'s own balance');
+  assert.match(save, /\/api\/resellers\/\$\{resellerId\}\/confirm/,
+    'the overflow goes through the account\'s own Confirm the bank payment channel');
+  assert.doesNotMatch(save, /pay_reseller_account|confirm_reseller_payment/,
+    'calling the existing route, not a copy of the database function behind it');
+});
+
+// The amount held as credit is what the Save button tells the owner, not a
+// silent success — she asked for the overpayment to be visible, not just
+// accepted without a word.
+test('Save says when part of a payment was held as credit', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const goAt = fn.indexOf("$('#ci_go').addEventListener");
+  const go = fn.slice(goAt, fn.indexOf('});', goAt) + 3);
+
+  assert.match(go, /credited > 0/);
+  assert.match(go, /held as credit/);
+});
+
+// Below the Invoice log, same account, same dialog — not a second fetch of
+// an account already loaded for the Invoice log just above it.
+test('a Funds log sits below the Invoice log, fed off the same account fetch', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  const logAt = fn.indexOf('id="ci_log"');
+  const fundsAt = fn.indexOf('id="ci_funds"');
+  const buttonsAt = fn.indexOf('id="ci_pack"', fundsAt);
+  assert.ok(logAt > 0 && fundsAt > logAt && buttonsAt > fundsAt,
+    'Funds log sits between the Invoice log and the bottom buttons');
+  assert.match(fn, /<h3 class="mt">Funds log/);
+
+  const paintAt = fn.indexOf('const paintLog');
+  const paint = fn.slice(paintAt, fn.indexOf('await paintLog();', paintAt));
+  const fundsBoxAt = paint.indexOf("$('#ci_funds')");
+  assert.ok(fundsBoxAt > 0, 'painted from inside paintLog, not a second GET of its own');
+  const fundsPaint = paint.slice(fundsBoxAt);
+  assert.match(fundsPaint, /acct\.credits/, 'reads the account\'s own credit ledger');
+  assert.doesNotMatch(fn, /\/api\/resellers\/\$\{resellerId\}\/credits/,
+    'no separate credits endpoint — the one account fetch already carries it');
+});
+
 test('the packing list screen leads with its own number, not a database id', () => {
   const at = app.indexOf('SCREENS.copacking = async');
   const screen = app.slice(at, app.indexOf('\n};', at));

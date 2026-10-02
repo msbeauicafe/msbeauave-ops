@@ -8957,6 +8957,12 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       rather than scattered down the list outside.</div>
     <div id="ci_log"><div class="dim">Loading…</div></div>
 
+    <h3 class="mt">Funds log — <span id="ci_fundswho"></span></h3>
+    <div class="dim">Paid more than this invoice (or the account) owed? That's
+      accepted, not refused — held here as credit, drawn down the moment a
+      new invoice takes it, rather than a mystery nobody can trace.</div>
+    <div id="ci_funds"><div class="dim">Loading…</div></div>
+
     <div class="mt right">
       <button class="btn quiet" id="ci_pack">🖨 Packing list</button>
       <button class="btn quiet" id="ci_done">Done</button>
@@ -9030,6 +9036,24 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       $('#ci_paidsofar').textContent = peso(mine.paid);
       $('#ci_owed').textContent = peso(mine.balance);
     }
+
+    // The account's own credit ledger — the same record a reseller's account
+    // page already keeps, read here rather than kept twice: money that
+    // landed with nothing open left to put it against, and, in the other
+    // direction, a credit drawn down the moment a new invoice took it.
+    const fundsBox = $('#ci_funds');
+    if (fundsBox) {
+      $('#ci_fundswho').textContent = acct.name;
+      fundsBox.innerHTML = (acct.credits || []).length
+        ? `<div class="dim">${(acct.credits || []).map((c) =>
+            `${when(c.at)} — <b>${Number(c.amount) > 0 ? '+' : ''}${peso(c.amount)}</b>
+             — ${esc(c.reason)}`).join('<br>')}</div>`
+        : '<div class="dim">No overpayment on this account.</div>';
+      if ((acct.credits || []).length) {
+        fundsBox.insertAdjacentHTML('beforeend', `<div class="dim mt" style="text-align:right">
+          Credit balance — <b>${peso(acct.credit)}</b></div>`);
+      }
+    }
   };
   await paintLog();
 
@@ -9073,9 +9097,32 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     });
   };
 
+  // A row that overshoots what this invoice owes is not turned away —
+  // whatever fits goes against the invoice, oldest-room-first, and whatever
+  // is left spills into the next row's own room, same as a person splitting
+  // a single big transfer across several bills by hand would. Its own copy,
+  // not a reuse of the account page's splitToBalance, which answers to a
+  // different cap (the whole account, not one invoice).
+  const splitToInvoice = (rows, cap) => {
+    const toInvoice = []; const toCredit = []; let filled = 0;
+    for (const r of rows) {
+      const room = Math.max(0, cap - filled);
+      if (room <= 0.005) { toCredit.push(r); continue; }
+      if (r.amount <= room + 0.005) { toInvoice.push(r); filled += r.amount; }
+      else {
+        toInvoice.push({ ...r, amount: room });
+        toCredit.push({ ...r, amount: r.amount - room });
+        filled = cap;
+      }
+    }
+    return { toInvoice, toCredit };
+  };
+
   // Gathers whatever rows actually have an amount in them and saves those as
   // real payments. Returns false, having done nothing, when the form is
   // empty — that is not an error, it just means there was nothing to save.
+  // Returns the amount (0 or more) that ended up held as account credit,
+  // when there was more in the rows than this invoice owed.
   const save = async () => {
     const rows = $$('.payrow', $('#ci_rows')).map((row) => ({
       amount: num($('.ci_amt', row).value),
@@ -9086,16 +9133,37 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     })).filter((r) => r.amount > 0);
     if (!rows.length) return false;
 
-    const saved = await POST(`/api/invoices/${invoiceId}/payments`, { payments: rows.map(
-      ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
-    // Filed against the payment it is proof of, in the same order the rows
-    // were sent — the server's own rows come back in that same order, one
-    // per row that actually had an amount in it.
-    for (let n = 0; n < rows.length; n++) {
-      const paymentId = saved.rows?.[n]?.id;
-      if (rows[n].file && paymentId) {
-        await POST(`/api/invoice-payments/${paymentId}/files`,
-          { dataUrl: await shrink(rows[n].file, 1600) });
+    const { toInvoice, toCredit } = splitToInvoice(rows, owed);
+
+    if (toInvoice.length) {
+      const saved = await POST(`/api/invoices/${invoiceId}/payments`, { payments: toInvoice.map(
+        ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
+      // Filed against the payment it is proof of, in the same order the rows
+      // were sent — the server's own rows come back in that same order, one
+      // per row that actually had an amount in it.
+      for (let n = 0; n < toInvoice.length; n++) {
+        const paymentId = saved.rows?.[n]?.id;
+        if (toInvoice[n].file && paymentId) {
+          await POST(`/api/invoice-payments/${paymentId}/files`,
+            { dataUrl: await shrink(toInvoice[n].file, 1600) });
+        }
+      }
+    }
+    // Whatever this invoice has no room left for is theirs, on the record —
+    // through the same account-credit channel the reseller's own account
+    // page already turns an overpayment into (Confirm the bank payment),
+    // not a second way of writing the same ledger.
+    let credited = 0;
+    if (toCredit.length) {
+      await POST(`/api/resellers/${resellerId}/confirm`, { payments: toCredit.map(
+        ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
+      credited = toCredit.reduce((s, r) => s + r.amount, 0);
+      for (const r of toCredit) {
+        if (!r.file) continue;
+        try {
+          await uploadResellerFile(resellerId, r.file, 'payment_proof',
+            `Invoice #${invoiceId} overpayment${r.reference_no ? ` · ${r.reference_no}` : ''}`);
+        } catch (e) { whoops(e); }
       }
     }
     // The owed figure the next row is prefilled with should be the one the
@@ -9107,14 +9175,17 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     resetRows();
     await paintPrior();
     await paintLog();
-    return true;
+    return credited;
   };
 
   $('#ci_go').addEventListener('click', async () => {
     $('#ci_go').disabled = true;
     try {
-      if (await save()) notice('Payment recorded 🌸', 'good');
-      else notice('Fill in at least one row.', 'bad');
+      const credited = await save();
+      if (credited === false) notice('Fill in at least one row.', 'bad');
+      else notice(credited > 0
+        ? `Payment recorded — ${peso(credited)} held as credit 🌸`
+        : 'Payment recorded 🌸', 'good');
     } catch (e) { whoops(e); }
     $('#ci_go').disabled = false;
   });
