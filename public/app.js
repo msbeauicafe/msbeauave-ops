@@ -8946,6 +8946,12 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
           <input class="ci_file" type="file" accept="image/*"></div>
       </div>`).join('')}</div>
 
+    <div class="row mt" id="ci_fundsnow">
+      <div><div class="dim">Funds</div><b id="ci_fundsnowamt"></b>
+        <label class="mt" style="display:block"><input type="checkbox" id="ci_fundscheck">
+          Apply to this payment</label></div>
+    </div>
+
     <div class="mt right">
       <button class="btn quiet" id="ci_pack2">🖨 Packing list</button>
       <button class="btn quiet" id="ci_done2">Done</button>
@@ -8961,13 +8967,7 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     <div class="dim">Paid more than this invoice (or the account) owed? That's
       accepted, not refused — held here as credit, drawn down the moment a
       new invoice takes it, rather than a mystery nobody can trace.</div>
-    <div id="ci_funds"><div class="dim">Loading…</div></div>
-
-    <div class="mt right">
-      <button class="btn quiet" id="ci_pack">🖨 Packing list</button>
-      <button class="btn quiet" id="ci_done">Done</button>
-      <button class="btn" id="ci_go">Save</button>
-    </div>`, 'wide');
+    <div id="ci_funds"><div class="dim">Loading…</div></div>`, 'wide');
 
   // Gathered here rather than left to be pieced together off the main list,
   // where the same account's invoices fall wherever their own dates land
@@ -8980,6 +8980,12 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     const label = Number(i.balance) < Number(i.amount) ? 'paid w/bal' : 'unpaid';
     return tag(label, label === 'unpaid' && i.overdue ? 'red' : 'amber');
   };
+
+  // Read by the Funds checkbox below, set each time paintLog refreshes —
+  // the account's own current credit, and the reference the newest overflow
+  // entry was logged under, if this account has one.
+  let fundsAmount = 0;
+  let fundsRef = '';
 
   const paintLog = async () => {
     const box = $('#ci_log');
@@ -9044,6 +9050,14 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       $('#ci_paidsofar').textContent = peso(mine.paid);
       $('#ci_owed').textContent = peso(mine.balance);
     }
+
+    // Right under the rows a payment is typed into — the account's own
+    // available credit, so whoever is recording a payment can see at a
+    // glance what is already sitting there before adding more to it.
+    fundsAmount = Number(acct.credit || 0);
+    fundsRef = (acct.overflow || []).find((f) => f.reference_no)?.reference_no || '';
+    const fundsNow = $('#ci_fundsnowamt');
+    if (fundsNow) fundsNow.textContent = peso(fundsAmount);
 
     // Invoice tab's own record of an overflow's own journey — which invoice
     // it came from and which invoice, if any, actually absorbed it, both
@@ -9133,7 +9147,27 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       $('.ci_ref', row).value = '';
       $('.ci_file', row).value = '';
     });
+    $('#ci_fundscheck').checked = false;
   };
+
+  // Ticking it fills the first row with the account's own available
+  // funds — amount, Mode of payment set to Funds, and whatever reference
+  // the money originally came in under — rather than typing it all by
+  // hand off the figure just above. Unticking clears that same row back
+  // to blank, not just the amount, so nothing half-filled is left behind.
+  $('#ci_fundscheck').addEventListener('change', (e) => {
+    const row = $$('.payrow', $('#ci_rows'))[0];
+    if (!row) return;
+    if (e.target.checked) {
+      $('.ci_amt', row).value = fundsAmount > 0 ? Number(fundsAmount).toLocaleString('en-US') : '';
+      $('.ci_mop', row).value = 'FUNDS';
+      $('.ci_ref', row).value = fundsRef;
+    } else {
+      $('.ci_amt', row).value = '';
+      $('.ci_mop', row).selectedIndex = 0;
+      $('.ci_ref', row).value = '';
+    }
+  });
 
   // A row that overshoots what this invoice owes is not turned away —
   // whatever fits goes against the invoice, oldest-room-first, and whatever
@@ -9204,16 +9238,23 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       // peso of it went, read back by its own Funds log — best-effort, so a
       // hiccup here never undoes a payment that has already actually landed.
       try {
-        for (const row of (out.confirmed || [])) {
+        const confirmed = out.confirmed || [];
+        for (let n = 0; n < confirmed.length; n++) {
+          const row = confirmed[n];
+          // The server's own rows come back in the same order the request
+          // sent them — the reference the office typed for this one bank
+          // transfer, carried along so the Funds checkbox below can fill it
+          // straight back in later, rather than inventing a new number.
+          const reference_no = toCredit[n]?.reference_no || null;
           for (const a of (row.applied || [])) {
             if (a.applied > 0) {
               await POST(`/api/invoices/${invoiceId}/overflow-log`,
-                { reseller_id: resellerId, target_invoice_id: a.invoice_id, amount: a.applied });
+                { reseller_id: resellerId, target_invoice_id: a.invoice_id, amount: a.applied, reference_no });
             }
           }
           if (row.credited > 0) {
             await POST(`/api/invoices/${invoiceId}/overflow-log`,
-              { reseller_id: resellerId, target_invoice_id: null, amount: row.credited });
+              { reseller_id: resellerId, target_invoice_id: null, amount: row.credited, reference_no });
           }
         }
       } catch (e) { whoops(e); }
@@ -9237,8 +9278,8 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     return credited;
   };
 
-  $('#ci_go').addEventListener('click', async () => {
-    $('#ci_go').disabled = true;
+  $('#ci_go2').addEventListener('click', async () => {
+    $('#ci_go2').disabled = true;
     try {
       const credited = await save();
       if (credited === false) notice('Fill in at least one row.', 'bad');
@@ -9246,10 +9287,10 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
         ? `Payment recorded — ${peso(credited)} held as credit 🌸`
         : 'Payment recorded 🌸', 'good');
     } catch (e) { whoops(e); }
-    $('#ci_go').disabled = false;
+    $('#ci_go2').disabled = false;
   });
 
-  $('#ci_done').addEventListener('click', closeDialog);
+  $('#ci_done2').addEventListener('click', closeDialog);
 
   // The door to where this order already sits, on the Packing list tab, for
   // the bench to open on their own once they are there — but if a payment
@@ -9257,8 +9298,8 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
   // rather than left behind, since Packing list only shows what is paid.
   // The press itself is stamped too, the same as pressing Invoice stamps
   // that one — Packing list reads newest-pressed first off it.
-  $('#ci_pack').addEventListener('click', async () => {
-    $('#ci_pack').disabled = true;
+  $('#ci_pack2').addEventListener('click', async () => {
+    $('#ci_pack2').disabled = true;
     try {
       await save();
       await POST(`/api/orders/${orderId}/packing-list-pressed`);
@@ -9266,16 +9307,9 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       $('[data-panel="copacking"]')?.click();
     } catch (e) {
       whoops(e);
-      $('#ci_pack').disabled = false;
+      $('#ci_pack2').disabled = false;
     }
   });
-
-  // A second Packing list / Done / Save, right under the payment rows, so
-  // these don't need a scroll past the account's whole invoice log below —
-  // same three buttons underneath, not a second copy of what they do.
-  $('#ci_go2').addEventListener('click', () => $('#ci_go').click());
-  $('#ci_done2').addEventListener('click', () => $('#ci_done').click());
-  $('#ci_pack2').addEventListener('click', () => $('#ci_pack').click());
 }
 
 /**
