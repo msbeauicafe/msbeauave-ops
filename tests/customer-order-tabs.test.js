@@ -1023,15 +1023,19 @@ test('a Funds log sits below the Invoice log, fed off the same account fetch', (
   const fundsBoxAt = paint.indexOf("$('#ci_funds')");
   assert.ok(fundsBoxAt > 0, 'painted from inside paintLog, not a second GET of its own');
   const fundsPaint = paint.slice(fundsBoxAt);
-  assert.match(fundsPaint, /acct\.credits/, 'reads the account\'s own credit ledger');
-  assert.doesNotMatch(fn, /\/api\/resellers\/\$\{resellerId\}\/credits/,
-    'no separate credits endpoint — the one account fetch already carries it');
+  assert.match(fundsPaint, /acct\.overflow/, 'reads this dialog\'s own overflow log');
+  assert.doesNotMatch(fn, /\/api\/resellers\/\$\{resellerId\}\/overflow/,
+    'no separate overflow endpoint — the one account fetch already carries it');
 });
 
-// A bare line-by-line list of credits was hard to scan next to a proper
-// table — the owner asked for the same shape the Invoice log already has,
-// Invoice no. and an Invoice button included, not just date/reason/amount.
-test('the Funds log is a table shaped like the Invoice log, Invoice no. and button included', () => {
+// reseller_credits (the account page's own Credit ledger) only ever shows a
+// leftover with nothing open to put it against — most of the time
+// pay_reseller_account pays down whatever else is open first, and that used
+// to vanish from here with nothing to show for it. The owner found exactly
+// this: a payment that overshot one invoice, with the overflow nowhere to
+// be seen. Invoice tab's own record of where it actually went — tied to
+// both invoices, with both their own numbers and dates — is read back here.
+test('the Funds log shows which invoice an overflow came from and which it actually reached', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
   const paintAt = fn.indexOf('const paintLog');
@@ -1039,19 +1043,26 @@ test('the Funds log is a table shaped like the Invoice log, Invoice no. and butt
   const fundsAt = paint.indexOf("$('#ci_funds')");
   const funds = paint.slice(fundsAt);
 
-  assert.match(funds, /table\(fundsRows, \[/, 'a real table, not a joined list of lines');
-  assert.match(funds, /head: 'Invoice no\./, 'carries the same Invoice no. column');
-  assert.match(funds, /head: 'Amount'/);
-  assert.match(funds, /data-cifunds-invdoc="\$\{c\.inv\.order_id\}"/,
-    'and its own Invoice button, same as a row in the Invoice log above it');
+  assert.match(funds, /table\(acct\.overflow \|\| \[\], \[/, 'a real table, not a joined list of lines');
+  assert.match(funds, /head: 'Invoice no\./, 'the invoice this overflow came from');
+  assert.match(funds, /f\.source_si_no/);
+  assert.match(funds, /f\.source_issued_on/, 'that invoice\'s own date, not just the log entry\'s own timestamp');
+  assert.match(funds, /f\.target_si_no/, 'and the invoice it actually reached, if any');
+  assert.match(funds, /f\.target_issued_on/, 'with that invoice\'s own date too — a second, distinct date column');
+  assert.match(funds, /Held as account credit/,
+    'a row with nothing open to reach still shows, plainly, rather than a bare dash');
+  assert.match(funds, /data-cifunds-invdoc="\$\{f\.target_order_id\}"/,
+    'its own Invoice button opens the invoice the money actually reached');
 
-  // The invoice a credit was drawn down against is named right in its own
-  // reason text already written by the database — read back here rather
-  // than asked for again, against the invoices this same fetch already
-  // loaded for the Invoice log.
-  assert.match(funds, /\/invoice #\(\\d\+\)\/\.exec\(c\.reason/,
-    'the tied invoice is read off the credit\'s own reason, not a new lookup');
-  assert.match(funds, /acct\.invoices\.find\(\(i\) => String\(i\.id\) === m\[1\]\)/);
+  // Written from this one dialog's own save, not reseller_credits or
+  // pay_reseller_account, which every other screen already depends on.
+  const saveAt = fn.indexOf('const save = async');
+  const save = fn.slice(saveAt, fn.indexOf("$('#ci_go')", saveAt));
+  assert.match(save, /\/api\/invoices\/\$\{invoiceId\}\/overflow-log/);
+  assert.match(save, /target_invoice_id: a\.invoice_id, amount: a\.applied/,
+    'one row per invoice the overflow actually settled');
+  assert.match(save, /target_invoice_id: null, amount: row\.credited/,
+    'and one more for whatever truly had nothing open to settle');
 
   // The same blue INVOICE document, reused rather than redrawn — its own
   // fetch, the same shape the Invoice log's own button just above it uses.

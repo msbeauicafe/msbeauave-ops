@@ -9037,32 +9037,27 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       $('#ci_owed').textContent = peso(mine.balance);
     }
 
-    // The account's own credit ledger — the same record a reseller's account
-    // page already keeps, read here rather than kept twice: money that
-    // landed with nothing open left to put it against, and, in the other
-    // direction, a credit drawn down the moment a new invoice took it.
+    // Invoice tab's own record of an overflow's own journey — which invoice
+    // it came from and which invoice, if any, actually absorbed it, both
+    // carrying their own number and date, not a raw id buried in a
+    // sentence. reseller_credits (the account page's own Credit ledger)
+    // only ever shows a leftover with nothing open to put it against; most
+    // of the time pay_reseller_account pays down whatever else is open
+    // first, and that used to vanish from here entirely.
     const fundsBox = $('#ci_funds');
     if (fundsBox) {
       $('#ci_fundswho').textContent = acct.name;
-      // A credit's own reason already names the invoice it was drawn down
-      // against — "Applied to invoice #924 the moment it was raised." —
-      // read back here rather than looked up again, so this table can carry
-      // the same Invoice no. and 🖨 Invoice button the Invoice log beside it
-      // already has. An overpayment with nothing open yet to apply it to
-      // names no invoice at all, and shows none.
-      const fundsRows = (acct.credits || []).map((c) => {
-        const m = /invoice #(\d+)/.exec(c.reason || '');
-        return { ...c, inv: m ? acct.invoices.find((i) => String(i.id) === m[1]) : null };
-      });
-      fundsBox.innerHTML = table(fundsRows, [
-        { head: 'Invoice no.', cell: (c) => c.inv
-          ? `<b>${esc(c.inv.si_no || '—')}</b>` : '<span class="dim">—</span>' },
-        { head: 'Date', cell: (c) => when(c.at) },
-        { head: 'Reason', cell: (c) => esc(c.reason) },
-        { head: 'Amount', n: true, cell: (c) =>
-          `<b>${Number(c.amount) > 0 ? '+' : ''}${peso(c.amount)}</b>` },
-        { head: '', cell: (c) => c.inv ? `<button class="btn sm quiet"
-            data-cifunds-invdoc="${c.inv.order_id}">🖨 Invoice</button>` : '' },
+      fundsBox.innerHTML = table(acct.overflow || [], [
+        { head: 'Invoice no.', cell: (f) => `<b>${esc(f.source_si_no || '—')}</b>` },
+        { head: 'Date', cell: (f) => onDay(f.source_issued_on) },
+        { head: 'Reason', cell: (f) => f.target_si_no
+          ? `Applied to invoice ${esc(f.target_si_no)}`
+          : 'Held as account credit — no open invoice yet' },
+        { head: 'Date', cell: (f) => f.target_issued_on
+          ? onDay(f.target_issued_on) : '<span class="dim">—</span>' },
+        { head: 'Amount', n: true, cell: (f) => `<b>${peso(f.amount)}</b>` },
+        { head: '', cell: (f) => f.target_order_id ? `<button class="btn sm quiet"
+            data-cifunds-invdoc="${f.target_order_id}">🖨 Invoice</button>` : '' },
       ], 'No overpayment on this account.');
 
       // The same blue INVOICE document the Invoice log's own row opens —
@@ -9084,7 +9079,7 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
         } catch (e) { whoops(e); }
       }));
 
-      if (fundsRows.length) {
+      if ((acct.overflow || []).length) {
         fundsBox.insertAdjacentHTML('beforeend', `<div class="dim mt" style="text-align:right">
           Credit balance — <b>${peso(acct.credit)}</b></div>`);
       }
@@ -9190,9 +9185,30 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     // not a second way of writing the same ledger.
     let credited = 0;
     if (toCredit.length) {
-      await POST(`/api/resellers/${resellerId}/confirm`, { payments: toCredit.map(
+      const out = await POST(`/api/resellers/${resellerId}/confirm`, { payments: toCredit.map(
         ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
       credited = toCredit.reduce((s, r) => s + r.amount, 0);
+      // The account-credit route pays down whatever else is open first,
+      // oldest invoice before anything sits as idle credit — so the
+      // overflow can land on a different invoice entirely, or split across
+      // several, with nothing in the account's own credit ledger to show
+      // for it. This is this dialog's own record of exactly where each
+      // peso of it went, read back by its own Funds log — best-effort, so a
+      // hiccup here never undoes a payment that has already actually landed.
+      try {
+        for (const row of (out.confirmed || [])) {
+          for (const a of (row.applied || [])) {
+            if (a.applied > 0) {
+              await POST(`/api/invoices/${invoiceId}/overflow-log`,
+                { reseller_id: resellerId, target_invoice_id: a.invoice_id, amount: a.applied });
+            }
+          }
+          if (row.credited > 0) {
+            await POST(`/api/invoices/${invoiceId}/overflow-log`,
+              { reseller_id: resellerId, target_invoice_id: null, amount: row.credited });
+          }
+        }
+      } catch (e) { whoops(e); }
       for (const r of toCredit) {
         if (!r.file) continue;
         try {
