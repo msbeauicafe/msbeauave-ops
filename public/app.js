@@ -4753,9 +4753,14 @@ async function openPendingOrder(id, reload, page) {
     .map(([sku, qty]) => ({ sku, qty }));
   const paid = Number(o.total || 0) - Number(o.balance ?? o.total ?? 0);
 
+  // The same pendingStageTag the row's own Stage column already reads, not
+  // the shared orderTag — an order can be parked and committed at once, and
+  // when it is, this screen calls that Draft, same as the list outside
+  // already does, and the Invoice button below drops off it for the same
+  // reason: a parked order isn't live here, whatever else is also true of it.
   dialog(`
     <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
-    <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
+    <div class="tags">${pendingStageTag(o)} ${o.tier ? tierTag(o.tier) : ''}
       ${o.invoice_id ? tag(`Invoice ${o.invoice_status} · due ${onDay(o.due_on)}`,
           o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
     <div class="chatbar">
@@ -4800,7 +4805,7 @@ async function openPendingOrder(id, reload, page) {
       <div id="pl_nocode"></div>
       <div class="mt right">
         <span class="dim" id="pl_state"></span>
-        ${o.status !== 'cancelled' ? '<button class="btn quiet" id="pl_invoice">Invoice</button>' : ''}
+        ${o.status !== 'cancelled' && !o.parked_at ? '<button class="btn quiet" id="pl_invoice">Invoice</button>' : ''}
         ${canEdit ? '<button class="btn" id="pl_place">Save the changes</button>' : ''}
         <button class="btn stop" id="pl_cancel">Cancel</button>
       </div>

@@ -669,19 +669,34 @@ test("Draft's own dialog has no Invoice button; Pending customer order's still d
 });
 
 // A cancelled order has nothing left to invoice — Pending customer order's
-// own Invoice button drops off its own dialog only then. A committed order
-// still shows it; Invoice is how an order gets committed in the first
-// place, and pressing it again is harmless. Cancel stays whatever the
-// status, so the row can still be reopened and looked at.
-test("Pending customer order's own Invoice button is gone only once cancelled, not once committed", () => {
+// own Invoice button drops off its own dialog then. A committed order still
+// shows it; Invoice is how an order gets committed in the first place, and
+// pressing it again is harmless. But an order can be parked and committed
+// at once, and when it is, this screen calls that Draft — the Invoice
+// button drops off for that reason too. Cancel stays whatever the status,
+// so the row can still be reopened and looked at.
+test("Pending customer order's own Invoice button is gone once cancelled or parked, not once merely committed", () => {
   const pendingFn = app.slice(app.indexOf('async function openPendingOrder'),
     app.indexOf('async function openOrder'));
   assert.match(pendingFn,
-    /\$\{o\.status !== 'cancelled' \? '<button class="btn quiet" id="pl_invoice">Invoice<\/button>' : ''\}/,
-    'the Invoice button only disappears when the order is cancelled, committed or not');
+    /\$\{o\.status !== 'cancelled' && !o\.parked_at \? '<button class="btn quiet" id="pl_invoice">Invoice<\/button>' : ''\}/,
+    'the Invoice button disappears when the order is cancelled or parked, committed or not');
   assert.doesNotMatch(pendingFn, /o\.committed_at/,
     'committed_at plays no part in whether Invoice shows');
   assert.match(pendingFn, /id="pl_cancel"/, 'Cancel stays, whatever the status');
+});
+
+// The dialog's own header reads the same Stage the row it was opened from
+// already does — not the shared orderTag every other screen's dialog uses,
+// which knows nothing about parked_at and would call this order Committed
+// even while it sits in Draft.
+test("Pending customer order's own dialog heads with pendingStageTag, not the shared orderTag", () => {
+  const pendingFn = app.slice(app.indexOf('async function openPendingOrder'),
+    app.indexOf('async function openOrder'));
+  assert.match(pendingFn, /<div class="tags">\$\{pendingStageTag\(o\)\}/,
+    'the same Stage the table row already reads');
+  assert.doesNotMatch(pendingFn, /\$\{orderTag\(o\)\}/,
+    'not the shared tag, which does not know an order can be parked and committed at once');
 });
 
 // Every b2b order gets an invoice row the moment it is placed — bookkeeping,
