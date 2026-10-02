@@ -8905,15 +8905,14 @@ SCREENS.draftorders = async (page) => {
 // A duplicate of the reseller account's own payment form and of a purchase
 // order bill's own (billPaymentForm), kept apart so a change meant for this
 // row cannot alter either. Five blank rows because a reseller settles in
-// instalments — BDO, then GCash, then BPI is three rows, not one. Pending
-// payment is the same idea as a bill's own (135_pending_bill_payment.sql):
-// what the reseller said and when, kept beside the ledger without ever
-// touching it — this invoice's own copy of that table, not a share of it.
+// instalments — BDO, then GCash, then BPI is three rows, not one. The title
+// reads the reseller's own name and chat link, not the invoice number — the
+// same chatBadge every other screen already uses.
 // A proof photo is filed under the reseller's own gallery (the same place
 // Customers shows it), since a payment here has nowhere of its own to keep one.
-async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, done) {
+async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, resellerId, orderId, done) {
   dialog(`
-    <h3>Record payment — ${esc(siNo || `#${invoiceId}`)}</h3>
+    <h3>Record payment — ${esc(resellerName || `#${invoiceId}`)} ${chatBadge(chatLink)}</h3>
 
     <div class="row mt" id="ci_figs">
       <div><div class="dim">Amount</div><b id="ci_amount"></b></div>
@@ -8942,18 +8941,10 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
           <input class="ci_file" type="file" accept="image/*"></div>
       </div>`).join('')}</div>
 
-    <h3 class="mt">Pending payment</h3>
-    <div class="dim">Not a payment yet — what the reseller said and when, so
-      it doesn't get forgotten. Doesn't touch Paid so far or Still owed;
-      record it as an actual payment above once it lands.</div>
-    <div id="ci_pending"><div class="dim">Loading…</div></div>
-    <div class="row pendrow mt">
-      <div><label>Amount paid</label>
-        <input id="cip_amt" type="text" inputmode="decimal" placeholder="0.00"></div>
-      <div><label>Date</label>
-        <input id="cip_on" type="date" value="${localDay()}"></div>
-      <div style="flex:0 0 auto;align-self:flex-end">
-        <button class="btn sm" id="cip_go">Save</button></div>
+    <div class="mt right">
+      <button class="btn quiet" id="ci_pack2">🖨 Packing list</button>
+      <button class="btn quiet" id="ci_done2">Done</button>
+      <button class="btn" id="ci_go2">Save</button>
     </div>
 
     <h3 class="mt">Invoice log — <span id="ci_logwho"></span></h3>
@@ -9059,44 +9050,6 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
   };
   await paintPrior();
 
-  const paintPending = async () => {
-    const box = $('#ci_pending');
-    if (!box) return;
-    const pending = await GET(`/api/invoices/${invoiceId}/pending-payments`).catch(() => []);
-    box.innerHTML = pending.length ? pending.map((p) => `
-      <div class="row payrow">
-        <div><b>${esc(peso(p.amount))}</b>
-          <span class="dim">expected ${onDay(p.expected_on)}</span></div>
-        <div style="flex:0 0 auto">
-          <button class="linkbtn del-pending" data-pending="${p.id}">remove</button></div>
-      </div>`).join('') : '<div class="dim">None on file.</div>';
-
-    $$('.del-pending', box).forEach((btn) => btn.addEventListener('click', async () => {
-      if (!await askFirst('Remove this pending payment?')) return;
-      try {
-        await DELETE(`/api/invoice-pending-payments/${btn.dataset.pending}`);
-        await paintPending();
-      } catch (e) { whoops(e); }
-    }));
-  };
-  await paintPending();
-  $('#cip_amt').addEventListener('input', () => comma($('#cip_amt')));
-
-  $('#cip_go').addEventListener('click', async () => {
-    const amount = num($('#cip_amt').value);
-    const expected_on = $('#cip_on').value;
-    if (!(amount > 0)) return whoops(new Error('How much is expected?'));
-    $('#cip_go').disabled = true;
-    try {
-      await POST(`/api/invoices/${invoiceId}/pending-payments`, { amount, expected_on });
-      $('#cip_amt').value = '';
-      $('#cip_on').value = localDay();
-      await paintPending();
-      notice('Saved 🌸', 'good');
-    } catch (e) { whoops(e); }
-    $('#cip_go').disabled = false;
-  });
-
   $$('.ci_amt', $('#ci_rows')).forEach((el) => el.addEventListener('input', () => comma(el)));
 
   // The rows reset rather than the dialog closing — recording a payment does
@@ -9181,6 +9134,13 @@ async function recordInvoicePayment(invoiceId, siNo, owed, resellerId, orderId, 
       $('#ci_pack').disabled = false;
     }
   });
+
+  // A second Packing list / Done / Save, right under the payment rows, so
+  // these don't need a scroll past the account's whole invoice log below —
+  // same three buttons underneath, not a second copy of what they do.
+  $('#ci_go2').addEventListener('click', () => $('#ci_go').click());
+  $('#ci_done2').addEventListener('click', () => $('#ci_done').click());
+  $('#ci_pack2').addEventListener('click', () => $('#ci_pack').click());
 }
 
 /**
@@ -9609,7 +9569,8 @@ SCREENS.coinvoices = async (page) => {
           <div class="inv-actions">
             <button class="btn sm"
                 data-invpay="${o.invoice_id}" data-owed="${o.balance || 0}"
-                data-sino="${esc(o.si_no || '')}" data-reseller="${o.reseller_id}"
+                data-resellername="${esc(o.reseller || '')}" data-chatlink="${esc(o.chat_link || '')}"
+                data-reseller="${o.reseller_id}"
                 data-orderid="${o.id}">Record payment</button>
             <button class="btn sm quiet" data-invbill="${o.id}">🖨 Billing statement</button>
             <button class="btn sm quiet" data-invco="${o.id}">🖨 Customer order</button>
@@ -9620,8 +9581,8 @@ SCREENS.coinvoices = async (page) => {
     const find = (id) => allRows.find((o) => String(o.id) === id);
 
     $$('[data-invpay]', page).forEach((b) => b.addEventListener('click',
-      () => recordInvoicePayment(b.dataset.invpay, b.dataset.sino, Number(b.dataset.owed),
-        b.dataset.reseller, b.dataset.orderid, load)));
+      () => recordInvoicePayment(b.dataset.invpay, b.dataset.resellername, b.dataset.chatlink,
+        Number(b.dataset.owed), b.dataset.reseller, b.dataset.orderid, load)));
 
     $$('[data-invbill]', page).forEach((b) => b.addEventListener('click', async () => {
       const o = find(b.dataset.invbill);
