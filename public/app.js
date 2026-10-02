@@ -9615,7 +9615,7 @@ SCREENS.coinvoices = async (page) => {
           GET(`/api/resellers/${o.reseller_id}/payments?order_id=${o.id}`).catch(() => []),
         ]);
         showInvoiceDoc({
-          orderId: full.id, issuedOn: full.placed_at, resellerName: full.reseller,
+          orderId: full.id, issuedOn: full.invoice_issued_on || full.placed_at, resellerName: full.reseller,
           payments, who: full, invoiceNo: full.si_no,
           shipping: Number(full.shipping || 0), others: Number(full.others || 0),
           lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
