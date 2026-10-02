@@ -819,6 +819,22 @@ test('Record payment shows the whole account\'s invoice log', () => {
     'the whole account, not just this one invoice');
 });
 
+// issued_on is a bare date — two invoices raised the same day tie on it, and
+// the owner found the newer one of a tied pair sitting below the older one.
+// id climbs with every new invoice, so breaking the tie on id descending
+// reads as "latest on top" the way she actually meant it.
+test('the invoice log breaks a same-day tie by the newer invoice, id descending', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const logAt = fn.indexOf('const paintLog');
+  const log = fn.slice(logAt, fn.indexOf('await paintLog();', logAt));
+
+  assert.match(log,
+    /const sortedInvoices = \[\.\.\.acct\.invoices\]\.sort\(\(a, b\) =>\s*\n\s*\(new Date\(b\.issued_on\) - new Date\(a\.issued_on\)\) \|\| \(b\.id - a\.id\)\);/,
+    'this dialog\'s own sort — newest issued_on first, newer id breaks a tie');
+  assert.match(log, /table\(sortedInvoices, \[/, 'the table reads the sorted copy, not the raw fetch order');
+});
+
 // The account's invoices, added up, so the total is read here rather than
 // worked out by hand off the rows above — that sum belongs to the log at
 // the bottom of the dialog, not the header, which is this one invoice's own

@@ -8987,7 +8987,15 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     const acct = await GET(`/api/resellers/${resellerId}`).catch(() => null);
     if (!acct) { box.innerHTML = '<div class="dim">Could not load.</div>'; return; }
     $('#ci_logwho').textContent = acct.name;
-    box.innerHTML = table(acct.invoices, [
+    // issued_on is a bare date, so two invoices raised the same day tie on
+    // it — id climbs with every new invoice, so breaking the tie on id
+    // descending puts the one most recently raised on top, same as the
+    // owner reads "latest" everywhere else in this dialog. This dialog's
+    // own sort, ahead of its own table, not a change to the order the
+    // shared account fetch itself returns.
+    const sortedInvoices = [...acct.invoices].sort((a, b) =>
+      (new Date(b.issued_on) - new Date(a.issued_on)) || (b.id - a.id));
+    box.innerHTML = table(sortedInvoices, [
       { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no || '—')}</b>` },
       { head: 'Issued', cell: (i) => onDay(i.issued_on) },
       { head: 'Standing', cell: logStanding },
