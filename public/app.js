@@ -9044,12 +9044,47 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     const fundsBox = $('#ci_funds');
     if (fundsBox) {
       $('#ci_fundswho').textContent = acct.name;
-      fundsBox.innerHTML = (acct.credits || []).length
-        ? `<div class="dim">${(acct.credits || []).map((c) =>
-            `${when(c.at)} — <b>${Number(c.amount) > 0 ? '+' : ''}${peso(c.amount)}</b>
-             — ${esc(c.reason)}`).join('<br>')}</div>`
-        : '<div class="dim">No overpayment on this account.</div>';
-      if ((acct.credits || []).length) {
+      // A credit's own reason already names the invoice it was drawn down
+      // against — "Applied to invoice #924 the moment it was raised." —
+      // read back here rather than looked up again, so this table can carry
+      // the same Invoice no. and 🖨 Invoice button the Invoice log beside it
+      // already has. An overpayment with nothing open yet to apply it to
+      // names no invoice at all, and shows none.
+      const fundsRows = (acct.credits || []).map((c) => {
+        const m = /invoice #(\d+)/.exec(c.reason || '');
+        return { ...c, inv: m ? acct.invoices.find((i) => String(i.id) === m[1]) : null };
+      });
+      fundsBox.innerHTML = table(fundsRows, [
+        { head: 'Invoice no.', cell: (c) => c.inv
+          ? `<b>${esc(c.inv.si_no || '—')}</b>` : '<span class="dim">—</span>' },
+        { head: 'Date', cell: (c) => when(c.at) },
+        { head: 'Reason', cell: (c) => esc(c.reason) },
+        { head: 'Amount', n: true, cell: (c) =>
+          `<b>${Number(c.amount) > 0 ? '+' : ''}${peso(c.amount)}</b>` },
+        { head: '', cell: (c) => c.inv ? `<button class="btn sm quiet"
+            data-cifunds-invdoc="${c.inv.order_id}">🖨 Invoice</button>` : '' },
+      ], 'No overpayment on this account.');
+
+      // The same blue INVOICE document the Invoice log's own row opens —
+      // reused rather than redrawn, only the fetch that hands it its data is
+      // this table's own, same as the Invoice log's copy right above it.
+      $$('[data-cifunds-invdoc]', fundsBox).forEach((b) => b.addEventListener('click', async () => {
+        try {
+          const [full, payments] = await Promise.all([
+            GET(`/api/orders/${b.dataset.cifundsInvdoc}`),
+            GET(`/api/resellers/${resellerId}/payments?order_id=${b.dataset.cifundsInvdoc}`).catch(() => []),
+          ]);
+          showInvoiceDoc({
+            orderId: full.id, issuedOn: full.placed_at, resellerName: full.reseller,
+            payments, who: full, invoiceNo: full.si_no,
+            shipping: Number(full.shipping || 0), others: Number(full.others || 0),
+            lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
+              price: l.unit_price, code: l.price_code, unit: l.unit_type })),
+          });
+        } catch (e) { whoops(e); }
+      }));
+
+      if (fundsRows.length) {
         fundsBox.insertAdjacentHTML('beforeend', `<div class="dim mt" style="text-align:right">
           Credit balance — <b>${peso(acct.credit)}</b></div>`);
       }

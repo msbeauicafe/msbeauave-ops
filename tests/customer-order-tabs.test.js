@@ -1028,6 +1028,37 @@ test('a Funds log sits below the Invoice log, fed off the same account fetch', (
     'no separate credits endpoint — the one account fetch already carries it');
 });
 
+// A bare line-by-line list of credits was hard to scan next to a proper
+// table — the owner asked for the same shape the Invoice log already has,
+// Invoice no. and an Invoice button included, not just date/reason/amount.
+test('the Funds log is a table shaped like the Invoice log, Invoice no. and button included', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const paintAt = fn.indexOf('const paintLog');
+  const paint = fn.slice(paintAt, fn.indexOf('await paintLog();', paintAt));
+  const fundsAt = paint.indexOf("$('#ci_funds')");
+  const funds = paint.slice(fundsAt);
+
+  assert.match(funds, /table\(fundsRows, \[/, 'a real table, not a joined list of lines');
+  assert.match(funds, /head: 'Invoice no\./, 'carries the same Invoice no. column');
+  assert.match(funds, /head: 'Amount'/);
+  assert.match(funds, /data-cifunds-invdoc="\$\{c\.inv\.order_id\}"/,
+    'and its own Invoice button, same as a row in the Invoice log above it');
+
+  // The invoice a credit was drawn down against is named right in its own
+  // reason text already written by the database — read back here rather
+  // than asked for again, against the invoices this same fetch already
+  // loaded for the Invoice log.
+  assert.match(funds, /\/invoice #\(\\d\+\)\/\.exec\(c\.reason/,
+    'the tied invoice is read off the credit\'s own reason, not a new lookup');
+  assert.match(funds, /acct\.invoices\.find\(\(i\) => String\(i\.id\) === m\[1\]\)/);
+
+  // The same blue INVOICE document, reused rather than redrawn — its own
+  // fetch, the same shape the Invoice log's own button just above it uses.
+  assert.match(funds, /\$\$\('\[data-cifunds-invdoc\]', fundsBox\)\.forEach/);
+  assert.match(funds, /showInvoiceDoc\(\{/);
+});
+
 test('the packing list screen leads with its own number, not a database id', () => {
   const at = app.indexOf('SCREENS.copacking = async');
   const screen = app.slice(at, app.indexOf('\n};', at));
