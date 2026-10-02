@@ -913,6 +913,60 @@ test('Record payment heads with its own Amount, Paid so far and Still owed', () 
   assert.match(fn, /<div><div class="dim">Still owed<\/div><b id="ci_owed">\$\{peso\(owed\)\}<\/b><\/div>/);
 });
 
+// Right under the payment rows, so whoever is recording a payment can see
+// at a glance what the account already has in credit before adding to it —
+// the owner asked for it by name, "Funds".
+test('a Funds readout sits below the payment rows, showing the account\'s available credit', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  const rowsAt = fn.indexOf('id="ci_rows"');
+  const fundsNowAt = fn.indexOf('id="ci_fundsnow"');
+  const buttonRowAt = fn.indexOf('id="ci_pack2"');
+  assert.ok(rowsAt > 0 && fundsNowAt > rowsAt && buttonRowAt > fundsNowAt,
+    'sits between the payment rows and the Save/Done/Packing list row');
+  assert.match(fn, /<div><div class="dim">Funds<\/div><b id="ci_fundsnowamt"><\/b>/);
+
+  const paintAt = fn.indexOf('const paintLog');
+  const paint = fn.slice(paintAt, fn.indexOf('await paintLog();', paintAt));
+  assert.match(paint, /\$\('#ci_fundsnowamt'\)/);
+  assert.match(paint, /fundsAmount = Number\(acct\.credit \|\| 0\)/,
+    'the account\'s own current credit balance, already carried by the one account fetch');
+});
+
+// A checkbox right in the Funds readout — ticking it does the typing for
+// her: fills the first row with the account's own available funds, sets
+// Mode of payment to the account's existing FUNDS option, and carries over
+// whatever reference the money originally came in under, read off this
+// dialog's own overflow log rather than invented here.
+test('a Funds checkbox fills the first row with the account\'s funds, FUNDS, and its own reference', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn, /<input type="checkbox" id="ci_fundscheck">/);
+
+  const paintAt = fn.indexOf('const paintLog');
+  const paint = fn.slice(paintAt, fn.indexOf('await paintLog();', paintAt));
+  assert.match(paint,
+    /fundsRef = \(acct\.overflow \|\| \[\]\)\.find\(\(f\) => f\.reference_no\)\?\.reference_no \|\| ''/,
+    'the newest overflow entry with a reference on file, not a fresh guess');
+
+  const checkAt = fn.indexOf("$('#ci_fundscheck').addEventListener");
+  const check = fn.slice(checkAt, fn.indexOf('});', checkAt) + 3);
+  assert.match(check, /\$\('\.ci_mop', row\)\.value = 'FUNDS'/,
+    'the account\'s own existing FUNDS option, not a new one added just for this');
+  assert.match(check, /\$\('\.ci_ref', row\)\.value = fundsRef/);
+  assert.match(check, /\$\('\.ci_amt', row\)\.value = fundsAmount > 0/);
+  assert.match(check, /\$\('\.ci_mop', row\)\.selectedIndex = 0/,
+    'unticking clears the row back to blank, not just the amount');
+
+  // Saving resets the form either way — the checkbox should not stay
+  // ticked over a row it no longer actually filled.
+  const resetAt = fn.indexOf('const resetRows');
+  const reset = fn.slice(resetAt, fn.indexOf('};', resetAt) + 2);
+  assert.match(reset, /\$\('#ci_fundscheck'\)\.checked = false/);
+});
+
 // A payment's proof, once uploaded, is filed against that exact payment —
 // Payments on file reads a real thumbnail back off it, the same as Purchase
 // order's own billing statement already does for a bill's payments.
@@ -928,7 +982,7 @@ test('an uploaded payment proof shows as a real thumbnail, not always the blank 
     'the real photo is read back, not just its presence noted');
 
   const saveAt = fn.indexOf('const save = async');
-  const save = fn.slice(saveAt, fn.indexOf('$(\'#ci_go\')', saveAt));
+  const save = fn.slice(saveAt, fn.indexOf('$(\'#ci_go2\')', saveAt));
   assert.match(save, /\/api\/invoice-payments\/\$\{paymentId\}\/files/,
     'a photo is filed against the payment it belongs to');
   assert.doesNotMatch(save, /resellers\/\$\{resellerId\}\/files/,
@@ -944,12 +998,12 @@ test('Record payment has a Packing list button beside Done, and it saves on the 
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
-  const doneAt = fn.indexOf('id="ci_done"');
-  const packAt = fn.indexOf('id="ci_pack"');
+  const doneAt = fn.indexOf('id="ci_done2"');
+  const packAt = fn.indexOf('id="ci_pack2"');
   assert.ok(doneAt > 0 && packAt > 0 && Math.abs(packAt - doneAt) < 120,
     'Packing list sits right beside Done, not off elsewhere in the dialog');
 
-  const packHandler = fn.slice(fn.indexOf("$('#ci_pack').addEventListener"));
+  const packHandler = fn.slice(fn.indexOf("$('#ci_pack2').addEventListener"));
   assert.match(packHandler, /await save\(\);/,
     'a payment left filled in the form is saved before leaving');
   assert.match(packHandler, /\$\('\[data-panel="copacking"\]'\)\?\.click\(\)/,
@@ -958,28 +1012,27 @@ test('Record payment has a Packing list button beside Done, and it saves on the 
     'it does not open the document itself — that is opened by hand from the tab');
 });
 
-// A second Packing list / Done / Save, right under the payment rows, so
-// recording a payment doesn't need a scroll past the account's whole
-// invoice log below to reach a button. Same three actions, not a second
-// copy of what any of them does.
-test('Record payment has a second Packing list / Done / Save row under the payment rows', () => {
+// One Packing list / Done / Save, right under the payment rows (and the
+// Funds readout beneath them) — the owner asked for the second copy that
+// used to sit below the Funds log removed, so this is the only row left,
+// wired directly rather than delegating down to a row that no longer exists.
+test('Record payment has one Packing list / Done / Save row, right under the payment rows', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
   const rowsAt = fn.indexOf('id="ci_rows"');
-  const row2At = fn.indexOf('id="ci_pack2"');
+  const fundsNowAt = fn.indexOf('id="ci_fundsnow"');
+  const rowAt = fn.indexOf('id="ci_pack2"');
   const logAt = fn.indexOf('Invoice log');
-  assert.ok(rowsAt > 0 && row2At > rowsAt && logAt > row2At,
-    'sits right after the payment rows, before the invoice log');
+  assert.ok(rowsAt > 0 && fundsNowAt > rowsAt && rowAt > fundsNowAt && logAt > rowAt,
+    'payment rows, then the Funds readout, then the one button row, then the invoice log');
   assert.match(fn, /id="ci_done2"/);
   assert.match(fn, /id="ci_go2"/);
 
-  assert.match(fn, /\$\('#ci_go2'\)\.addEventListener\('click', \(\) => \$\('#ci_go'\)\.click\(\)\);/,
-    'Save delegates to the one at the bottom, not a second save');
-  assert.match(fn, /\$\('#ci_done2'\)\.addEventListener\('click', \(\) => \$\('#ci_done'\)\.click\(\)\);/,
-    'Done delegates too');
-  assert.match(fn, /\$\('#ci_pack2'\)\.addEventListener\('click', \(\) => \$\('#ci_pack'\)\.click\(\)\);/,
-    'and Packing list, same door, not a second copy of it');
+  assert.doesNotMatch(fn, /id="ci_go"|id="ci_done"|id="ci_pack"/,
+    'the bottom row this used to delegate to is gone, not just hidden');
+  assert.match(fn, /\$\('#ci_go2'\)\.addEventListener\('click', async \(\) => \{/,
+    'Save is wired directly to this one row now, not delegated to a removed one');
 });
 
 // Paying more than one invoice owes used to be a dead end: record_invoice_payments
@@ -1000,7 +1053,7 @@ test('a row that overshoots what the invoice owes is split, not refused', () => 
   assert.match(split, /toCredit\.push\(\{ \.\.\.r, amount: r\.amount - room \}\)/);
 
   const saveAt = fn.indexOf('const save = async');
-  const save = fn.slice(saveAt, fn.indexOf("$('#ci_go')", saveAt));
+  const save = fn.slice(saveAt, fn.indexOf("$('#ci_go2')", saveAt));
   assert.match(save, /splitToInvoice\(rows, owed\)/, 'capped at this one invoice\'s own balance');
   assert.match(save, /\/api\/resellers\/\$\{resellerId\}\/confirm/,
     'the overflow goes through the account\'s own Confirm the bank payment channel');
@@ -1014,7 +1067,7 @@ test('a row that overshoots what the invoice owes is split, not refused', () => 
 test('Save says when part of a payment was held as credit', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
-  const goAt = fn.indexOf("$('#ci_go').addEventListener");
+  const goAt = fn.indexOf("$('#ci_go2').addEventListener");
   const go = fn.slice(goAt, fn.indexOf('});', goAt) + 3);
 
   assert.match(go, /credited > 0/);
@@ -1022,17 +1075,19 @@ test('Save says when part of a payment was held as credit', () => {
 });
 
 // Below the Invoice log, same account, same dialog — not a second fetch of
-// an account already loaded for the Invoice log just above it.
-test('a Funds log sits below the Invoice log, fed off the same account fetch', () => {
+// an account already loaded for the Invoice log just above it. The owner
+// asked for the button row that used to follow it removed, so the dialog
+// now simply ends here.
+test('a Funds log sits below the Invoice log, fed off the same account fetch, and the dialog ends there', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
   const logAt = fn.indexOf('id="ci_log"');
   const fundsAt = fn.indexOf('id="ci_funds"');
-  const buttonsAt = fn.indexOf('id="ci_pack"', fundsAt);
-  assert.ok(logAt > 0 && fundsAt > logAt && buttonsAt > fundsAt,
-    'Funds log sits between the Invoice log and the bottom buttons');
+  assert.ok(logAt > 0 && fundsAt > logAt, 'Funds log sits below the Invoice log');
   assert.match(fn, /<h3 class="mt">Funds log/);
+  assert.doesNotMatch(fn.slice(fundsAt), /class="mt right"/,
+    'no button row follows the Funds log anymore');
 
   const paintAt = fn.indexOf('const paintLog');
   const paint = fn.slice(paintAt, fn.indexOf('await paintLog();', paintAt));
@@ -1073,7 +1128,7 @@ test('the Funds log shows which invoice an overflow came from and which it actua
   // Written from this one dialog's own save, not reseller_credits or
   // pay_reseller_account, which every other screen already depends on.
   const saveAt = fn.indexOf('const save = async');
-  const save = fn.slice(saveAt, fn.indexOf("$('#ci_go')", saveAt));
+  const save = fn.slice(saveAt, fn.indexOf("$('#ci_go2')", saveAt));
   assert.match(save, /\/api\/invoices\/\$\{invoiceId\}\/overflow-log/);
   assert.match(save, /target_invoice_id: a\.invoice_id, amount: a\.applied/,
     'one row per invoice the overflow actually settled');
