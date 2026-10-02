@@ -576,6 +576,11 @@ test('the four invoice-row buttons do their own four things', () => {
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   assert.match(screen, /recordInvoicePayment\(/, 'Record payment opens its own form');
+  assert.match(screen, /data-resellername="\$\{esc\(o\.reseller \|\| ''\)\}" data-chatlink="\$\{esc\(o\.chat_link \|\| ''\)\}"/,
+    'the button carries the reseller\'s own name and chat link, read straight off the row');
+  assert.match(screen,
+    /recordInvoicePayment\(b\.dataset\.invpay, b\.dataset\.resellername, b\.dataset\.chatlink,/,
+    'and hands both into the dialog it opens');
   assert.match(screen, /showInvoiceBillingStatement\(/, 'Billing statement prints the yellow ledger, not the blue invoice');
   assert.match(screen, /openInvoiceOrder\(b\.dataset\.invco, load\)/,
     'Customer order opens Invoice tab\'s own dialog, not the shared openOrder');
@@ -753,28 +758,44 @@ test('Record payment is its own duplicated form, not the reseller account\'s or 
     'built apart from the bill payment form too, not a branch of it');
 
   // Same shape as the Purchase order Billing statement's own dialog: what
-  // has already landed, five rows to record more, and a promise of what
-  // hasn't landed yet.
+  // has already landed and five rows to record more.
   assert.match(fn, /Payments on file/);
   assert.match(fn, /class="ci_file" type="file"/, 'each row can carry a proof photo');
-  assert.match(fn, /Pending payment/);
-  assert.match(fn, /\/api\/invoices\/\$\{invoiceId\}\/pending-payments/,
-    'the promise is this invoice\'s own, not a purchase order bill\'s');
+});
+
+// The Pending payment table — what the reseller said and when, not yet an
+// actual payment — is gone from this one dialog. Nothing about pending
+// payments anywhere else (the purchase order bill's own copy) is touched.
+test('Record payment has no Pending payment table', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.doesNotMatch(fn, /Pending payment/);
+  assert.doesNotMatch(fn, /id="ci_pending"|id="cip_amt"|id="cip_on"|id="cip_go"/);
+  assert.doesNotMatch(fn, /\/api\/invoices\/\$\{invoiceId\}\/pending-payments/);
+});
+
+// The title reads who this is for, with a way straight into their chat —
+// the same chatBadge every other screen already uses — not the invoice
+// number, which the Invoice log table below already shows per row.
+test('Record payment\'s title reads the reseller\'s name and chat link, not the invoice number', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn,
+    /<h3>Record payment — \$\{esc\(resellerName \|\| `#\$\{invoiceId\}`\)\} \$\{chatBadge\(chatLink\)\}<\/h3>/);
+  assert.doesNotMatch(fn, /esc\(siNo/, 'the invoice number no longer heads the dialog');
 });
 
 // One reseller's invoices land wherever their own dates put them on the
 // main list, next to nobody else's — this is where they are gathered.
-test('Record payment shows the whole account\'s invoice log, below Pending payment', () => {
+test('Record payment shows the whole account\'s invoice log', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
   assert.match(fn, /Invoice log/);
   assert.match(fn, /GET\(`\/api\/resellers\/\$\{resellerId\}`\)/,
     'the whole account, not just this one invoice');
-
-  const pendingAt = fn.indexOf('Pending payment');
-  const logAt = fn.indexOf('Invoice log');
-  assert.ok(pendingAt > 0 && logAt > pendingAt, 'the log sits below Pending payment');
 });
 
 // The account's invoices, added up, so the total is read here rather than
@@ -898,6 +919,30 @@ test('Record payment has a Packing list button beside Done, and it saves on the 
     'clicking it switches to the Packing list tab');
   assert.doesNotMatch(fn, /showPackingList\(/,
     'it does not open the document itself — that is opened by hand from the tab');
+});
+
+// A second Packing list / Done / Save, right under the payment rows, so
+// recording a payment doesn't need a scroll past the account's whole
+// invoice log below to reach a button. Same three actions, not a second
+// copy of what any of them does.
+test('Record payment has a second Packing list / Done / Save row under the payment rows', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  const rowsAt = fn.indexOf('id="ci_rows"');
+  const row2At = fn.indexOf('id="ci_pack2"');
+  const logAt = fn.indexOf('Invoice log');
+  assert.ok(rowsAt > 0 && row2At > rowsAt && logAt > row2At,
+    'sits right after the payment rows, before the invoice log');
+  assert.match(fn, /id="ci_done2"/);
+  assert.match(fn, /id="ci_go2"/);
+
+  assert.match(fn, /\$\('#ci_go2'\)\.addEventListener\('click', \(\) => \$\('#ci_go'\)\.click\(\)\);/,
+    'Save delegates to the one at the bottom, not a second save');
+  assert.match(fn, /\$\('#ci_done2'\)\.addEventListener\('click', \(\) => \$\('#ci_done'\)\.click\(\)\);/,
+    'Done delegates too');
+  assert.match(fn, /\$\('#ci_pack2'\)\.addEventListener\('click', \(\) => \$\('#ci_pack'\)\.click\(\)\);/,
+    'and Packing list, same door, not a second copy of it');
 });
 
 test('the packing list screen leads with its own number, not a database id', () => {
