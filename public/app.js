@@ -9070,13 +9070,27 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       // top, same as every other log in this dialog) reads the other way.
       // A deposit adds, an application (something with a target invoice)
       // takes away.
+      //
+      // This log is only ever written from this one dialog — raise_invoice
+      // (db/047, untouched, shared by every screen that commits an order)
+      // draws down the same Funds the moment a new invoice is raised, with
+      // nothing here to tell this log it happened. Left alone, the running
+      // balance would drift further stale with every invoice raised
+      // elsewhere. Anchoring the whole series to the account's own real
+      // current credit — the one number every screen already agrees on —
+      // keeps the newest row true without this dialog having to know why
+      // it moved.
       const fundsRunning = new Map();
+      let fundsRunningLast = 0;
       [...(acct.overflow || [])].sort((a, b) => a.id - b.id)
         .reduce((bal, f) => {
           const next = bal + (f.target_invoice_id ? -Number(f.amount) : Number(f.amount));
           fundsRunning.set(f.id, next);
+          fundsRunningLast = next;
           return next;
         }, 0);
+      const fundsDrift = Number(acct.credit || 0) - fundsRunningLast;
+      if (fundsDrift) for (const [id, bal] of fundsRunning) fundsRunning.set(id, bal + fundsDrift);
       fundsBox.innerHTML = table(acct.overflow || [], [
         { head: 'Invoice no.', cell: (f) => `<b>${esc(f.source_si_no || '—')}</b>` },
         { head: 'Date', cell: (f) => onDay(f.source_issued_on) },

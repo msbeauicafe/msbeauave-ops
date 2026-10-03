@@ -1148,6 +1148,18 @@ test('the Funds log\'s Amount column is a running balance, not the size of that 
     'an application takes away, a deposit adds');
   assert.match(funds, /cell: \(f\) => `<b>\$\{peso\(fundsRunning\.get\(f\.id\)\)\}<\/b>`/,
     'the computed running balance is shown, not the raw f.amount');
+
+  // raise_invoice (db/047, shared by every screen that commits an order)
+  // draws down the same Funds the moment a new invoice is raised, with no
+  // way for this one dialog's own log to hear about it — so the computed
+  // balance drifts stale the moment that happens anywhere else. Anchoring
+  // the newest entry to the account's own real current credit (the one
+  // number every screen already agrees on) keeps it honest without this
+  // dialog having to know why Funds moved.
+  assert.match(funds, /const fundsDrift = Number\(acct\.credit \|\| 0\) - fundsRunningLast;/,
+    'the gap between what this log computed and what Funds actually is');
+  assert.match(funds, /if \(fundsDrift\) for \(const \[id, bal\] of fundsRunning\) fundsRunning\.set\(id, bal \+ fundsDrift\);/,
+    'every row shifted by that same gap, so the newest one lands on the real current balance');
 });
 
 test('the packing list screen leads with its own number, not a database id', () => {
