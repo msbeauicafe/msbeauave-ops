@@ -4634,6 +4634,7 @@ SCREENS.copacking = async (page) => {
     $('#board', page).innerHTML = table(rows, [
       // The number on the sheet the bench is holding, not the database's own.
       { head: 'Packing list', cell: (o) => `<b>${esc(o.pl_no || o.id)}</b>` },
+      { head: 'Invoice no.', cell: (o) => esc(o.si_no || '—') },
       { head: 'Reseller', cell: (o) => `<b>${esc(o.reseller || '')}</b> `
           + (o.tier ? tierTag(o.tier) : '') },
       { head: 'Stage', cell: (o) => packingStageTag(o) },

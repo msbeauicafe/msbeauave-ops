@@ -1264,6 +1264,21 @@ test('the packing list screen leads with its own number, not a database id', () 
     'the bench is holding a sheet with PL26_08_004 on it, not #41');
 });
 
+// The owner asked for the invoice number to sit right beside the packing
+// list number — order_board already carries si_no along with every other
+// order field this screen fetches, so this is a column, not a new fetch.
+test("the packing list screen shows the invoice number right beside the packing list's own", () => {
+  const at = app.indexOf('SCREENS.copacking = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  const plAt = screen.indexOf("head: 'Packing list'");
+  const invAt = screen.indexOf("head: 'Invoice no.'");
+  const resellerAt = screen.indexOf("head: 'Reseller'");
+  assert.ok(plAt > 0 && invAt > plAt && resellerAt > invAt,
+    'Invoice no. sits right after Packing list, ahead of Reseller');
+  assert.match(screen, /head: 'Invoice no\.', cell: \(o\) => esc\(o\.si_no \|\| '—'\)/,
+    "the invoice's own number, not the database id, a dash when there isn't one yet");
+});
+
 // Pressing Packing list on Invoice tab's own Record payment dialog is what
 // sends an order here in the first place — pressing it again on an order
 // already sitting here is asking to be seen first, the same as pressing
