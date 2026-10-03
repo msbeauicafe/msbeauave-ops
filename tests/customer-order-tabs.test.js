@@ -964,28 +964,41 @@ test('the first row keeps a real value — what is still owed — not just a pla
     'the same real value is restored after every save, not just on first open');
 });
 
-// Save is for money that has arrived, nothing more — every typed row is
-// banked as plain account credit, the invoice itself untouched. Nothing in
-// this dialog pays an invoice from it any more, now that the checkbox is gone.
-test('Save always banks typed rows as account credit — it never pays the invoice directly', () => {
+// Typing exactly what an invoice owes used to just sit in Funds forever,
+// with no way left to actually settle the invoice once the checkbox was
+// removed — the owner hit this directly (paying 25,800 against a 25,800
+// invoice kept adding to Funds instead of ever reaching zero balance). Each
+// row now pays down what's still owed first, in the order typed; only once
+// that hits zero does any of it become a real overpayment, banked as Funds.
+test('Save pays down what the invoice still owes first — only the real overpayment becomes Funds', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
   const saveAt = fn.indexOf('const save = async');
   const save = fn.slice(saveAt, fn.indexOf("$('#ci_go2')", saveAt));
 
-  assert.match(save, /\/api\/resellers\/\$\{resellerId\}\/deposit-credit/);
-  assert.doesNotMatch(save, /\/api\/invoices\/\$\{invoiceId\}\/payments`/,
-    'no longer posts straight to the invoice itself');
+  assert.match(save, /let remaining = owed;/, 'walked down from what is still owed, not the invoice\'s full amount');
+  assert.match(save, /const pay = Math\.min\(r\.amount, Math\.max\(remaining, 0\)\);/,
+    'never pays more than either the row itself or what is actually still owed');
+  assert.match(save, /const overflow = r\.amount - pay;/,
+    'whatever a row has left over once owing is covered');
+
+  assert.match(save, /if \(payRows\.length\) \{/);
+  assert.match(save, /\/api\/invoices\/\$\{invoiceId\}\/payments`, \{ payments: payRows\.map/,
+    'the part that pays down owing goes straight to the invoice, same route as before the Funds feature existed');
+  assert.match(save, /if \(overflowRows\.length\) \{/);
+  assert.match(save, /\/api\/resellers\/\$\{resellerId\}\/deposit-credit`, \{ payments: overflowRows\.map/,
+    'only the part left over banks as credit');
   assert.doesNotMatch(save, /\/api\/resellers\/\$\{resellerId\}\/confirm/,
-    'and never the route that pays down whatever else the account has open');
+    'never the route that pays down whatever else the account has open');
   assert.match(save, /target_invoice_id: null, amount: r\.amount/,
-    'logged in this dialog\'s own Funds log same as any other deposit');
+    'an overflow row is still logged in this dialog\'s own Funds log same as before');
 });
 
 // Payments on file still reads a real thumbnail back for any payment
-// actually recorded against this invoice. A proof photo attached to a row
-// typed into Save has no specific invoice payment to file itself against
-// any more, so it goes into the account's own general file drawer instead.
+// actually recorded against this invoice. A proof photo attached to any
+// row typed into Save still goes into the account's own general file
+// drawer, whether that row paid the invoice, overflowed to Funds, or split
+// across both — simpler than threading it onto one half of a split row.
 test('Payments on file still reads a real thumbnail; a Save-row\'s own proof goes to the account\'s file drawer', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
@@ -1000,7 +1013,7 @@ test('Payments on file still reads a real thumbnail; a Save-row\'s own proof goe
   const saveAt = fn.indexOf('const save = async');
   const save = fn.slice(saveAt, fn.indexOf('$(\'#ci_go2\')', saveAt));
   assert.match(save, /uploadResellerFile\(resellerId, r\.file, 'payment_proof'/,
-    'Save no longer creates a specific invoice payment to file a proof photo against');
+    'every row\'s own proof goes to the account\'s file drawer, not threaded onto a specific invoice payment');
   assert.doesNotMatch(save, /\/api\/invoice-payments\/\$\{paymentId\}\/files/);
 });
 
@@ -1052,14 +1065,17 @@ test('Record payment has one Packing list / Done / Save row, right under the pay
 
 // The amount held as credit is what the Save button tells the owner, not a
 // silent success — she asked for the overpayment to be visible, not just
-// accepted without a word.
+// accepted without a word. And since a row can now split across both an
+// actual payment and a real overpayment, the message says so when it does.
 test('Save says when part of a payment was held as credit', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
   const goAt = fn.indexOf("$('#ci_go2').addEventListener");
   const go = fn.slice(goAt, fn.indexOf('});', goAt) + 3);
 
-  assert.match(go, /credited > 0/);
+  assert.match(go, /result\.paid > 0 && result\.overflow > 0/,
+    'a split row gets its own message — both halves named');
+  assert.match(go, /result\.overflow > 0/);
   assert.match(go, /held as credit/);
 });
 
@@ -1109,15 +1125,15 @@ test('the Funds log shows which invoice an overflow came from and which it actua
   assert.match(funds, /f\.source_issued_on/, 'that invoice\'s own date, not just the log entry\'s own timestamp');
   assert.match(funds, /f\.target_si_no/, 'and the invoice it actually reached, if any');
   assert.match(funds, /f\.target_issued_on/, 'with that invoice\'s own date too — a second, distinct date column');
-  assert.match(funds, /Held as account credit/,
-    'a row with nothing open to reach still shows, plainly, rather than a bare dash');
+  assert.match(funds, /Overpayment of \$\{esc\(f\.source_si_no \|\| '—'\)\}\$\{f\.reference_no \? `-\$\{esc\(f\.reference_no\)\}` : ''\}/,
+    'a row with nothing open to reach names the invoice it overpaid and its own reference no., not a generic phrase');
   assert.match(funds, /data-cifunds-invdoc="\$\{f\.target_order_id\}"/,
     'its own Invoice button opens the invoice the money actually reached');
 
   // Written from this one dialog's own save, not reseller_credits or
   // pay_reseller_account, which every other screen already depends on.
-  // Every row Save deposits is banked with nothing open to put it against,
-  // so target_invoice_id is always null here.
+  // Every overflow row Save deposits is banked with nothing open to put it
+  // against, so target_invoice_id is always null here.
   const saveAt = fn.indexOf('const save = async');
   const save = fn.slice(saveAt, fn.indexOf("$('#ci_go2')", saveAt));
   assert.match(save, /\/api\/invoices\/\$\{invoiceId\}\/overflow-log/);
