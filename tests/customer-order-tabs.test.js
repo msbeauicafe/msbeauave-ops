@@ -1116,8 +1116,7 @@ test('the Funds log shows which invoice an overflow came from and which it actua
 
   // Written from this one dialog's own save, not reseller_credits or
   // pay_reseller_account, which every other screen already depends on.
-  // Every row Save deposits is banked with nothing open to put it against
-  // by definition now (paying an invoice is the Funds checkbox's own job),
+  // Every row Save deposits is banked with nothing open to put it against,
   // so target_invoice_id is always null here.
   const saveAt = fn.indexOf('const save = async');
   const save = fn.slice(saveAt, fn.indexOf("$('#ci_go2')", saveAt));
@@ -1128,6 +1127,27 @@ test('the Funds log shows which invoice an overflow came from and which it actua
   // fetch, the same shape the Invoice log's own button just above it uses.
   assert.match(funds, /\$\$\('\[data-cifunds-invdoc\]', fundsBox\)\.forEach/);
   assert.match(funds, /showInvoiceDoc\(\{/);
+});
+
+// The Amount column reads as a running balance — what Funds stood at right
+// after each event — not the raw size of that one event. The table itself
+// still reads newest first, same as every other log in this dialog, but the
+// balance under it has to be walked the other way: oldest first, a deposit
+// adding, an application (something with a target invoice) taking away.
+test('the Funds log\'s Amount column is a running balance, not the size of that one event', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const paintAt = fn.indexOf('const paintLog');
+  const paint = fn.slice(paintAt, fn.indexOf('await paintLog();', paintAt));
+  const fundsAt = paint.indexOf("$('#ci_funds')");
+  const funds = paint.slice(fundsAt);
+
+  assert.match(funds, /\.sort\(\(a, b\) => a\.id - b\.id\)/,
+    'walked oldest first to accumulate correctly, regardless of the table\'s own newest-first order');
+  assert.match(funds, /f\.target_invoice_id \? -Number\(f\.amount\) : Number\(f\.amount\)/,
+    'an application takes away, a deposit adds');
+  assert.match(funds, /cell: \(f\) => `<b>\$\{peso\(fundsRunning\.get\(f\.id\)\)\}<\/b>`/,
+    'the computed running balance is shown, not the raw f.amount');
 });
 
 test('the packing list screen leads with its own number, not a database id', () => {

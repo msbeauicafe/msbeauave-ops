@@ -9064,6 +9064,19 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     const fundsBox = $('#ci_funds');
     if (fundsBox) {
       $('#ci_fundswho').textContent = acct.name;
+      // The Amount column reads as a running balance — what Funds stood at
+      // right after each event, not the size of that one event — so it has
+      // to be walked oldest first even though the table itself (newest on
+      // top, same as every other log in this dialog) reads the other way.
+      // A deposit adds, an application (something with a target invoice)
+      // takes away.
+      const fundsRunning = new Map();
+      [...(acct.overflow || [])].sort((a, b) => a.id - b.id)
+        .reduce((bal, f) => {
+          const next = bal + (f.target_invoice_id ? -Number(f.amount) : Number(f.amount));
+          fundsRunning.set(f.id, next);
+          return next;
+        }, 0);
       fundsBox.innerHTML = table(acct.overflow || [], [
         { head: 'Invoice no.', cell: (f) => `<b>${esc(f.source_si_no || '—')}</b>` },
         { head: 'Date', cell: (f) => onDay(f.source_issued_on) },
@@ -9072,7 +9085,7 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
           : 'Held as account credit — no open invoice yet' },
         { head: 'Date', cell: (f) => f.target_issued_on
           ? onDay(f.target_issued_on) : '<span class="dim">—</span>' },
-        { head: 'Amount', n: true, cell: (f) => `<b>${peso(f.amount)}</b>` },
+        { head: 'Amount', n: true, cell: (f) => `<b>${peso(fundsRunning.get(f.id))}</b>` },
         { head: '', cell: (f) => f.target_order_id ? `<button class="btn sm quiet"
             data-cifunds-invdoc="${f.target_order_id}">🖨 Invoice</button>` : '' },
       ], 'No overpayment on this account.');
