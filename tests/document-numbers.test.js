@@ -698,3 +698,74 @@ test('the order form corrects its own number before it is sent', () => {
     'the basket preview draws this same sheet before anything is placed, and '
     + 'there is no number there yet to correct');
 });
+
+// ---------------------------------------------------------------------------
+// Pressing Invoice leaves Funds alone (172)
+//
+// raise_invoice drew down an account's own Funds automatically the moment
+// an invoice was raised — right for a reseller checking out on their own
+// portal, where there is no Invoice button afterwards and the checkout is
+// the whole transaction, but wrong for staff: placing an order on Pending
+// customer order and pressing Invoice there should not reach into Funds on
+// its own. commit_order now calls a narrower copy that only raises the
+// invoice; the portal's own place_order is untouched.
+// ---------------------------------------------------------------------------
+test('staff pressing Invoice does not draw down the account\'s own Funds', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+  await receiveForResale(store, sku, 24, 50);
+  const seller = await newReseller(admin);
+
+  const deposit = await POST(admin, `/api/resellers/${seller}/deposit-credit`,
+    { amount: 5000, reference_no: unique('REF') });
+  assert.equal(deposit.status, 200, JSON.stringify(deposit.data));
+
+  const order = await POST(admin, `/api/resellers/${seller}/orders`, { lines: [{ sku, qty: 1 }] });
+  assert.equal(order.status, 200, JSON.stringify(order.data));
+  const committed = await POST(admin, `/api/orders/${order.data.orderId}/commit`);
+  assert.equal(committed.status, 200, JSON.stringify(committed.data));
+
+  const acct = await (await fetch(`${base}/api/resellers/${seller}`,
+    { headers: { Cookie: admin } })).json();
+  assert.equal(Number(acct.credit), 5000,
+    'Funds untouched — pressing Invoice raised the invoice and nothing more');
+
+  const invoice = acct.invoices.find((i) => String(i.order_id) === String(order.data.orderId));
+  assert.equal(invoice.status, 'open', 'the invoice itself sits open, not auto-paid');
+  assert.equal(Number(invoice.paid), 0);
+});
+
+test('the reseller\'s own portal still draws down Funds the moment it checks out', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+  await receiveForResale(store, sku, 24, 50);
+  const { data: created } = await POST(admin, '/api/resellers',
+    { name: unique('Reseller'), email: 'buyer@example.ph', tier: 2,
+      credit_limit: 1_000_000, terms_days: 30 });
+  await POST(admin, `/api/resellers/${created.id}/approve`);
+
+  const username = unique('reseller');
+  await db.query(
+    `insert into app_users (username, display_name, password_hash, role, reseller_id)
+     values ($1,$1,$2,'reseller',$3)`,
+    [username, hashPassword('secret123'), created.id]);
+  const loginRes = await fetch(`${base}/api/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password: 'secret123' }),
+  });
+  assert.equal(loginRes.status, 200);
+  const reseller = (loginRes.headers.getSetCookie?.()[0] ?? loginRes.headers.get('set-cookie')).split(';')[0];
+
+  const admin2 = await signIn('admin');
+  const deposit = await POST(admin2, `/api/resellers/${created.id}/deposit-credit`,
+    { amount: 5000, reference_no: unique('REF') });
+  assert.equal(deposit.status, 200, JSON.stringify(deposit.data));
+
+  const order = await POST(reseller, '/api/portal/orders', { lines: [{ sku, qty: 1 }] });
+  assert.equal(order.status, 200, JSON.stringify(order.data));
+  assert.equal(order.data.invoice.status, 'paid',
+    'the portal is the whole transaction — it still pays itself off existing Funds on the spot');
+  assert.ok(Number(order.data.invoice.paid) > 0);
+});
