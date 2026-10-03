@@ -8986,6 +8986,10 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
   // entry was logged under, if this account has one.
   let fundsAmount = 0;
   let fundsRef = '';
+  // Whether the checkbox itself filled the first row (so unticking can
+  // clear what it put there) — never true for a row she typed into by
+  // hand, which unticking must leave alone.
+  let fundsAutoFilled = false;
 
   const paintLog = async () => {
     const box = $('#ci_log');
@@ -9148,24 +9152,33 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       $('.ci_file', row).value = '';
     });
     $('#ci_fundscheck').checked = false;
+    fundsAutoFilled = false;
   };
 
-  // Ticking it fills the first row with the account's own available
-  // funds — amount, Mode of payment set to Funds, and whatever reference
-  // the money originally came in under — rather than typing it all by
-  // hand off the figure just above. Unticking clears that same row back
-  // to blank, not just the amount, so nothing half-filled is left behind.
+  // The checkbox is the one switch for what typed money does: unticked,
+  // nothing in the rows is money toward this invoice at all — it is
+  // banked as Funds and the invoice is left exactly as it was. Ticked,
+  // the rows pay the invoice the usual way, overflow included. Ticking it
+  // with the first row still empty also fills it for her, from the
+  // account's own available funds — amount, Mode of payment Funds, and
+  // whatever reference the money originally came in under — but a row she
+  // already typed into by hand is left alone, and unticking only clears
+  // what the checkbox itself put there, never her own typing.
   $('#ci_fundscheck').addEventListener('change', (e) => {
     const row = $$('.payrow', $('#ci_rows'))[0];
     if (!row) return;
     if (e.target.checked) {
-      $('.ci_amt', row).value = fundsAmount > 0 ? Number(fundsAmount).toLocaleString('en-US') : '';
-      $('.ci_mop', row).value = 'FUNDS';
-      $('.ci_ref', row).value = fundsRef;
-    } else {
+      if (!num($('.ci_amt', row).value)) {
+        $('.ci_amt', row).value = fundsAmount > 0 ? Number(fundsAmount).toLocaleString('en-US') : '';
+        $('.ci_mop', row).value = 'FUNDS';
+        $('.ci_ref', row).value = fundsRef;
+        fundsAutoFilled = true;
+      }
+    } else if (fundsAutoFilled) {
       $('.ci_amt', row).value = '';
       $('.ci_mop', row).selectedIndex = 0;
       $('.ci_ref', row).value = '';
+      fundsAutoFilled = false;
     }
   });
 
@@ -9205,7 +9218,13 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     })).filter((r) => r.amount > 0);
     if (!rows.length) return false;
 
-    const { toInvoice, toCredit } = splitToInvoice(rows, owed);
+    // Unticked, nothing typed here is a payment toward this invoice at
+    // all — every row is banked as Funds and the invoice is left exactly
+    // as it was. Ticked, the rows pay the invoice the usual way, same
+    // split as always.
+    const { toInvoice, toCredit } = $('#ci_fundscheck').checked
+      ? splitToInvoice(rows, owed)
+      : { toInvoice: [], toCredit: rows };
 
     if (toInvoice.length) {
       const saved = await POST(`/api/invoices/${invoiceId}/payments`, { payments: toInvoice.map(
@@ -9221,43 +9240,63 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
         }
       }
     }
-    // Whatever this invoice has no room left for is theirs, on the record —
-    // through the same account-credit channel the reseller's own account
-    // page already turns an overpayment into (Confirm the bank payment),
-    // not a second way of writing the same ledger.
     let credited = 0;
     if (toCredit.length) {
-      const out = await POST(`/api/resellers/${resellerId}/confirm`, { payments: toCredit.map(
-        ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
       credited = toCredit.reduce((s, r) => s + r.amount, 0);
-      // The account-credit route pays down whatever else is open first,
-      // oldest invoice before anything sits as idle credit — so the
-      // overflow can land on a different invoice entirely, or split across
-      // several, with nothing in the account's own credit ledger to show
-      // for it. This is this dialog's own record of exactly where each
-      // peso of it went, read back by its own Funds log — best-effort, so a
-      // hiccup here never undoes a payment that has already actually landed.
-      try {
-        const confirmed = out.confirmed || [];
-        for (let n = 0; n < confirmed.length; n++) {
-          const row = confirmed[n];
-          // The server's own rows come back in the same order the request
-          // sent them — the reference the office typed for this one bank
-          // transfer, carried along so the Funds checkbox below can fill it
-          // straight back in later, rather than inventing a new number.
-          const reference_no = toCredit[n]?.reference_no || null;
-          for (const a of (row.applied || [])) {
-            if (a.applied > 0) {
+      if ($('#ci_fundscheck').checked) {
+        // Whatever this invoice has no room left for is theirs, on the
+        // record — through the same account-credit channel the reseller's
+        // own account page already turns an overpayment into (Confirm the
+        // bank payment), not a second way of writing the same ledger.
+        const out = await POST(`/api/resellers/${resellerId}/confirm`, { payments: toCredit.map(
+          ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
+        // The account-credit route pays down whatever else is open first,
+        // oldest invoice before anything sits as idle credit — so the
+        // overflow can land on a different invoice entirely, or split
+        // across several, with nothing in the account's own credit ledger
+        // to show for it. This is this dialog's own record of exactly
+        // where each peso of it went, read back by its own Funds log —
+        // best-effort, so a hiccup here never undoes a payment that has
+        // already actually landed.
+        try {
+          const confirmed = out.confirmed || [];
+          for (let n = 0; n < confirmed.length; n++) {
+            const row = confirmed[n];
+            // The server's own rows come back in the same order the
+            // request sent them — the reference the office typed for this
+            // one bank transfer, carried along rather than inventing a
+            // new number.
+            const reference_no = toCredit[n]?.reference_no || null;
+            for (const a of (row.applied || [])) {
+              if (a.applied > 0) {
+                await POST(`/api/invoices/${invoiceId}/overflow-log`,
+                  { reseller_id: resellerId, target_invoice_id: a.invoice_id, amount: a.applied, reference_no });
+              }
+            }
+            if (row.credited > 0) {
               await POST(`/api/invoices/${invoiceId}/overflow-log`,
-                { reseller_id: resellerId, target_invoice_id: a.invoice_id, amount: a.applied, reference_no });
+                { reseller_id: resellerId, target_invoice_id: null, amount: row.credited, reference_no });
             }
           }
-          if (row.credited > 0) {
+        } catch (e) { whoops(e); }
+      } else {
+        // Box unticked: this money was never meant to touch an invoice at
+        // all, so it is banked straight as account credit — a separate
+        // route from Confirm the bank payment above, because that one
+        // pays down whatever the account still has open, oldest first,
+        // and the invoice sitting right here in this dialog is very often
+        // exactly that. Deposit account credit never looks at open
+        // invoices at all.
+        await POST(`/api/resellers/${resellerId}/deposit-credit`, { payments: toCredit.map(
+          ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
+        try {
+          for (const r of toCredit) {
             await POST(`/api/invoices/${invoiceId}/overflow-log`,
-              { reseller_id: resellerId, target_invoice_id: null, amount: row.credited, reference_no });
+              { reseller_id: resellerId, target_invoice_id: null, amount: r.amount,
+                reference_no: r.reference_no || null });
           }
-        }
-      } catch (e) { whoops(e); }
+        } catch (e) { whoops(e); }
+      }
       for (const r of toCredit) {
         if (!r.file) continue;
         try {
