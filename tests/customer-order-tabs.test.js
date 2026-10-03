@@ -967,6 +967,67 @@ test('a Funds checkbox fills the first row with the account\'s funds, FUNDS, and
   assert.match(reset, /\$\('#ci_fundscheck'\)\.checked = false/);
 });
 
+// Ticking the box must never clobber a payment she already typed in by
+// hand, and unticking must never erase one either — only what the
+// checkbox itself put there is its own to fill or clear.
+test('the Funds checkbox never overwrites or erases a row she typed into herself', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const checkAt = fn.indexOf("$('#ci_fundscheck').addEventListener");
+  const check = fn.slice(checkAt, fn.indexOf('});', checkAt) + 3);
+
+  assert.match(check, /if \(!num\(\$\('\.ci_amt', row\)\.value\)\)/,
+    'only fills the row when it is still empty');
+  assert.match(check, /fundsAutoFilled = true;/);
+  assert.match(check, /else if \(fundsAutoFilled\)/,
+    'only clears the row on uncheck when the checkbox itself was the one that filled it');
+  assert.match(check, /fundsAutoFilled = false;/);
+});
+
+// The checkbox is the one switch for whether typed money pays the
+// invoice at all. Unticked, it never does — every row is pure Funds, no
+// matter how much is typed or how much the invoice itself owes. Ticked,
+// it is the same split as always.
+test('the Funds checkbox decides whether typed rows pay the invoice or become pure Funds', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const saveAt = fn.indexOf('const save = async');
+  const save = fn.slice(saveAt, fn.indexOf("$('#ci_go2')", saveAt));
+
+  assert.match(save,
+    /const \{ toInvoice, toCredit \} = \$\('#ci_fundscheck'\)\.checked\s*\n\s*\? splitToInvoice\(rows, owed\)\s*\n\s*: \{ toInvoice: \[\], toCredit: rows \};/,
+    'unchecked sends every row to credit, regardless of the invoice\'s own balance');
+});
+
+// Confirm the bank payment (pay_reseller_account underneath) pays down
+// whatever the account still has open, oldest first — and the invoice
+// sitting right in this dialog is very often exactly that, which would
+// make "unticked, the invoice is untouched" a lie. Deposit account credit
+// is its own, narrower route that never looks at open invoices at all.
+test('unticked, money is banked through Deposit account credit, not Confirm the bank payment', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const saveAt = fn.indexOf('const save = async');
+  const save = fn.slice(saveAt, fn.indexOf("$('#ci_go2')", saveAt));
+
+  const credAt = save.indexOf('if (toCredit.length)');
+  const cred = save.slice(credAt);
+  const ifCheckedAt = cred.indexOf("if ($('#ci_fundscheck').checked)");
+  const elseAt = cred.indexOf('} else {', ifCheckedAt);
+  const checkedBranch = cred.slice(ifCheckedAt, elseAt);
+  const uncheckedBranch = cred.slice(elseAt);
+
+  assert.match(checkedBranch, /\/api\/resellers\/\$\{resellerId\}\/confirm/);
+  assert.match(uncheckedBranch, /\/api\/resellers\/\$\{resellerId\}\/deposit-credit/);
+  assert.doesNotMatch(uncheckedBranch, /\/api\/resellers\/\$\{resellerId\}\/confirm/,
+    'the unticked path never goes anywhere near the route that pays down open invoices');
+
+  // Still logged in this dialog's own Funds log, same as any other
+  // overflow — target_invoice_id always null here, since nothing was
+  // ever open to apply it to in the first place.
+  assert.match(uncheckedBranch, /target_invoice_id: null, amount: r\.amount/);
+});
+
 // A payment's proof, once uploaded, is filed against that exact payment —
 // Payments on file reads a real thumbnail back off it, the same as Purchase
 // order's own billing statement already does for a bill's payments.
