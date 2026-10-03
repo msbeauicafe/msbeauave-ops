@@ -9958,7 +9958,14 @@ SCREENS.coinvoices = async (page) => {
           GET(`/api/resellers/${o.reseller_id}/payments?order_id=${o.id}`).catch(() => []),
         ]);
         showInvoiceDoc({
-          orderId: full.id, issuedOn: full.invoice_issued_on || full.placed_at, resellerName: full.reseller,
+          orderId: full.id,
+          // This tab's own Invoice button reads the packing list's own
+          // issued date first — the paper is normally handed over the day
+          // the goods actually go out, not the day the invoice number was
+          // struck. Only an order never sent through Packing list falls
+          // back to the invoice's own date, same as before.
+          issuedOn: full.packing_list_issued_at || full.invoice_issued_on || full.placed_at,
+          resellerName: full.reseller,
           payments, who: full, invoiceNo: full.si_no,
           shipping: Number(full.shipping || 0), others: Number(full.others || 0),
           lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
