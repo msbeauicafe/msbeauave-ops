@@ -985,15 +985,17 @@ test('a Funds readout sits below the payment rows, showing the account\'s availa
 });
 
 // The owner asked for the "Apply to this payment" checkbox to be removed
-// from this dialog entirely — the Funds amount still reads back here, but
-// nothing in this dialog pays an invoice from it any more.
-test('the Funds checkbox is gone — the readout stays, nothing applies credit from this dialog', () => {
+// from this dialog entirely — the Funds amount still reads back here.
+// Drawing on Funds didn't leave the dialog for good, though (172): it
+// came back as its own Mode of payment, a row read by name rather than a
+// checkbox read by its own state.
+test('the Funds checkbox is gone — the readout stays, a FUNDS row is how credit is applied now', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
   assert.doesNotMatch(fn, /ci_fundscheck/, 'the checkbox and its handler are both gone');
-  assert.doesNotMatch(fn, /\/api\/invoices\/\$\{invoiceId\}\/apply-credit/,
-    'nothing in this dialog calls the apply-credit route any more');
+  assert.match(fn, /\/api\/invoices\/\$\{invoiceId\}\/apply-credit/,
+    'a FUNDS-mode row calls the same apply-credit route the old checkbox did');
   assert.match(fn, /<div><div class="dim">Funds<\/div><b id="ci_fundsnowamt"><\/b><\/div>/,
     'the Funds amount is still shown — only the checkbox was asked to go');
 });
@@ -1042,6 +1044,33 @@ test('Save pays down what the invoice still owes first — only the real overpay
     'never the route that pays down whatever else the account has open');
   assert.match(save, /target_invoice_id: null, amount: r\.amount/,
     'an overflow row is still logged in this dialog\'s own Funds log same as before');
+});
+
+// Pressing Invoice no longer reaches into Funds on its own (172) — a row
+// with Mode of payment set to FUNDS is the one door left that draws on it,
+// read by name rather than folded into the ordinary pay/overflow split
+// every other row goes through.
+test('a row with Mode of payment FUNDS draws on the account\'s own Funds instead of being paid in', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const saveAt = fn.indexOf('const save = async');
+  const save = fn.slice(saveAt, fn.indexOf("$('#ci_go2')", saveAt));
+
+  assert.match(save, /if \(r\.method === 'FUNDS'\) \{/,
+    'told apart from an ordinary row by its own Mode of payment, before the pay/overflow split runs at all');
+  assert.match(save, /fundsRows\.push\(r\);/);
+  assert.match(save, /remaining -= r\.amount;/,
+    'a FUNDS row still counts against what is owed, so a row typed after it does not also try to cover the same amount');
+
+  const fundsAt = save.indexOf('for (const r of fundsRows)');
+  const funds = save.slice(fundsAt, save.indexOf('if (payRows.length)', fundsAt));
+  assert.match(funds, /\/api\/invoices\/\$\{invoiceId\}\/apply-credit`, \{ amount: r\.amount \}/,
+    'the same apply-credit route the old checkbox used — drawn from Funds, not banked into it');
+  assert.match(funds, /\/api\/invoices\/\$\{invoiceId\}\/overflow-log`,\s*\n\s*\{ reseller_id: resellerId, target_invoice_id: invoiceId, amount: r\.amount/,
+    'logged against this invoice in the Funds log too, same as the old checkbox logged its own application');
+
+  assert.match(save, /paid: payRows\.reduce\(\(s, r\) => s \+ r\.amount, 0\) \+ fundsRows\.reduce\(\(s, r\) => s \+ r\.amount, 0\)/,
+    'counted as paid in the notice Save shows, same as a row that paid the invoice directly');
 });
 
 // Payments on file still reads a real thumbnail back for any payment

@@ -9382,15 +9382,26 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     })).filter((r) => r.amount > 0);
     if (!rows.length) return false;
 
-    // Each row pays down what this invoice still owes first, in the order
-    // typed — only once that's fully settled does any of it become a real
-    // overpayment, banked as Funds exactly as before. A row can split
-    // across both: the part that lands on the invoice, and the part left
-    // over once owing hits zero.
+    // A row with Mode of payment set to FUNDS is its own kind of payment —
+    // not money that just arrived, but an instruction to draw that much of
+    // the account's own Funds against this invoice, right now. Pressing
+    // Invoice no longer reaches into Funds on its own (db/172); this is the
+    // only door left that does, and only when it is asked for by name.
+    // Every other row still pays down what this invoice still owes first,
+    // in the order typed — only once that's fully settled does any of it
+    // become a real overpayment, banked as Funds exactly as before. A row
+    // can split across both: the part that lands on the invoice, and the
+    // part left over once owing hits zero.
     let remaining = owed;
     const payRows = [];
     const overflowRows = [];
+    const fundsRows = [];
     for (const r of rows) {
+      if (r.method === 'FUNDS') {
+        fundsRows.push(r);
+        remaining -= r.amount;
+        continue;
+      }
       const pay = Math.min(r.amount, Math.max(remaining, 0));
       const overflow = r.amount - pay;
       remaining -= pay;
@@ -9398,6 +9409,14 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       if (overflow > 0) overflowRows.push({ ...r, amount: overflow });
     }
 
+    for (const r of fundsRows) {
+      await POST(`/api/invoices/${invoiceId}/apply-credit`, { amount: r.amount });
+      try {
+        await POST(`/api/invoices/${invoiceId}/overflow-log`,
+          { reseller_id: resellerId, target_invoice_id: invoiceId, amount: r.amount,
+            reference_no: r.reference_no || null });
+      } catch (e) { whoops(e); }
+    }
     if (payRows.length) {
       await POST(`/api/invoices/${invoiceId}/payments`, { payments: payRows.map(
         ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
@@ -9430,7 +9449,7 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     await paintPrior();
     await paintLog();
     return {
-      paid: payRows.reduce((s, r) => s + r.amount, 0),
+      paid: payRows.reduce((s, r) => s + r.amount, 0) + fundsRows.reduce((s, r) => s + r.amount, 0),
       overflow: overflowRows.reduce((s, r) => s + r.amount, 0),
     };
   };
