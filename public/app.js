@@ -4644,7 +4644,7 @@ SCREENS.copacking = async (page) => {
     ], 'Nothing has had Packing list pressed yet.');
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
-      () => openOrder(b.dataset.open, load, { readOnly: true }).catch(whoops)));
+      () => openPackingListOrder(b.dataset.open, load).catch(whoops)));
   };
 
   page.innerHTML = `
@@ -5533,6 +5533,195 @@ async function openOrder(id, reload, { readOnly = false } = {}) {
       lines: o.lines.map((l) => ({ ...l, unit: l.unit_type })),
     });
   });
+}
+
+// Customer order's own Packing list tab, opening one of its own rows. The
+// shared openOrder above is also the warehouse's Pick & send screen, and a
+// request scoped to this one tab must not reach into, or visibly change,
+// that one — so this is its own copy, always read-only (nothing here was
+// ever opened any other way), with its own three buttons: no Packing list
+// button (this tab is itself reached by pressing Packing list elsewhere),
+// no Start picking, and Dispatch renamed Completed — same action underneath,
+// POST .../dispatch, just the one button carrying this tab's own word for it.
+//
+// The sheet on the left is the PACKING LIST itself, not the customer order
+// form the shared dialog draws — this tab is about packing lists, so that is
+// the paper it opens to. Its own copy of the markup, same as showPackingList
+// draws it elsewhere, rather than calling that (it opens its own popup, with
+// nowhere to hand back a string to embed here instead).
+async function openPackingListOrder(id, reload) {
+  const o = await GET(`/api/orders/${id}`);
+  const pkLines = o.lines.map((l) => ({ ...l, unit: l.unit_type }));
+  const BLANKS = Math.max(0, 8 - pkLines.length);
+  const pkForm = `
+    <div class="packing">
+      <div class="rule"></div>
+      <div class="head-row">
+        <img src="/logo.png" alt="MS Beau Ave">
+        <div class="who">
+          <b>MS BEAU AVE ENTERPRISES OPC</b>
+          <div>LOT 16-A BLK 2 MS BEAU AVE BAYAN BAYANAN AVE.<br>
+          MARIKINA HEIGHTS CITY OF MARIKINA NCR, SECOND DISTRICT 1810</div>
+        </div>
+        <span></span>
+      </div>
+      <div class="title">PACKING LIST</div>
+      <div class="party">
+        <div>
+          <div class="lbl" style="font-size:.85rem">${esc(o.reseller || 'counter sale')}</div>
+          ${TAX_LINES.map(([label, key]) => `
+            <div class="lbl">${label}:
+              <span class="val">${esc(o?.[key] || '')}</span></div>`).join('')}
+        </div>
+        <div style="white-space:nowrap">
+          <div class="lbl">DATE: <span class="val">${onDay(o.placed_at)}</span></div>
+          <div class="lbl">${o.pl_no ? 'PACKING LIST NO.' : 'SALES ORDER NO.'}:
+            <span class="val">${esc(String(o.pl_no || o.id))}</span></div>
+          ${o?.drop_ship ? `<div class="lbl">DS:
+            <span class="val">${esc(o.drop_ship)}</span></div>` : ''}
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th style="width:90px">QUANTITY</th>
+          <th style="width:90px">UNIT TYPE</th>
+          <th>PRODUCT DESCRIPTION</th>
+          <th style="width:34px"></th>
+        </tr></thead>
+        <tbody>
+          ${pkLines.map((l) => `<tr>
+            <td class="qty">${count(l.qty)}</td>
+            <td class="unit">${esc(l.unit || '')}</td>
+            <td><b>${esc(l.name)}</b></td>
+            <td class="tick"><span class="box"></span></td>
+          </tr>`).join('')}
+          ${Array.from({ length: BLANKS }, () => `<tr>
+            <td></td><td></td><td></td><td class="tick"><span class="box"></span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="sign">
+        <div class="who-line">
+          <div class="nm">${esc(user?.name || user?.username || '')}</div>
+          <div class="role">Prepared by</div>
+          <div class="cap">PREPARED BY:</div>
+        </div>
+        <div class="who-line">
+          <div class="nm">&nbsp;</div>
+          <div class="role">Warehouse Checker</div>
+          <div class="cap">CHECKED BY:</div>
+        </div>
+      </div>
+    </div>`;
+  const chat = (o.chat_link || '').trim();
+  dialog(`
+    <h3>Order ${esc(o.co_no || o.id)} — ${esc(o.reseller || 'counter sale')}</h3>
+    <div class="tags">${orderTag(o)} ${o.tier ? tierTag(o.tier) : ''}
+      ${o.invoice_id ? tag(`Invoice ${o.invoice_status} · due ${onDay(o.due_on)}`,
+          o.invoice_status === 'paid' ? 'green' : 'amber') : ''}</div>
+    <div class="chatbar">
+      ${['admin', 'office'].includes(user?.role) ? `
+        <input id="co_chat" type="url" placeholder="Paste their FB / group-chat link"
+          value="${esc(chat)}">
+        <button class="btn quiet" id="co_chat_save">Save link</button>` : ''}
+      <a class="btn go" id="co_send" href="${chat ? esc(chat) : '#'}" target="_blank"
+        rel="noopener noreferrer" ${chat ? '' : 'hidden'}>💬 Open chat</a>
+    </div>
+    <div class="order-split">
+      <div class="co-side">
+        <div class="co-scale">${pkForm}</div>
+        <div class="co-actions">
+          <button class="btn quiet" id="co_jpeg">⬇ Download JPEG</button>
+          ${PRINT_BTN}
+        </div>
+      </div>
+      <div class="edit-side">
+    <h3>Pick in this order</h3>
+    <div class="dim">Soonest to expire first — that is what leaves the building.</div>
+    <div id="ol_box">
+    ${o.lines.length ? `
+      <div class="scroll"><table>
+        <thead><tr>
+          <th>Product</th><th>Batch</th><th>Expires</th>
+          <th class="n">Qty</th><th class="n">Price</th><th class="n">Total</th>
+        </tr></thead>
+        <tbody>
+          ${o.lines.map((l) => `<tr>
+            <td>${esc(l.name)}</td>
+            <td><b>${esc(l.batch_no)}</b></td>
+            <td>${onDay(l.expiry)}</td>
+            <td class="n">${count(l.qty)}</td>
+            <td class="n">${peso(l.unit_price)}</td>
+            <td class="n">${peso(l.unit_price * l.qty)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`
+      : '<div class="none">No lines on this order.</div>'}
+    </div>
+    <div class="right mt"><b>Total <span id="ol_total">${peso(o.total)}</span></b></div>
+    <div class="mt right">
+      ${['placed', 'picking'].includes(o.status)
+        ? '<button class="btn go" id="a_send">Completed</button>' : ''}
+      ${['placed', 'picking'].includes(o.status)
+        ? '<button class="btn stop" id="a_cancel">Cancel</button>' : ''}
+      ${o.status === 'fulfilled' && !o.delivered_at
+        ? '<button class="btn go" id="a_delivered">Mark delivered</button>' : ''}
+    </div>
+      </div>
+    </div>`, 'wide co-open');
+
+  // The form's own picture, straight off the sheet drawn on the left.
+  wireSave('#co_jpeg', '.co-side .packing', `${o.pl_no || o.id} PACKING LIST.jpg`);
+
+  // The chat link where this account's paperwork is sent. Typed here, it turns
+  // the Open chat button live at once, and Save keeps it on the account so it
+  // is already there the next time — set once, clickable from every order.
+  const chatIn = $('#co_chat');
+  const chatOpen = $('#co_send');
+  const syncChat = () => {
+    const v = (chatIn?.value || '').trim();
+    if (chatOpen) { if (v) { chatOpen.href = v; chatOpen.hidden = false; } else chatOpen.hidden = true; }
+  };
+  chatIn?.addEventListener('input', syncChat);
+  $('#co_chat_save')?.addEventListener('click', async () => {
+    const v = (chatIn?.value || '').trim();
+    try {
+      // The account's own name, contact and email travel back untouched, so
+      // saving the link is not also blanking the rest of the details.
+      const r = await GET(`/api/resellers/${o.reseller_id}`);
+      await POST(`/api/resellers/${o.reseller_id}/details`, {
+        name: r.name, contact: r.contact, email: r.email, chat_link: v });
+      notice('Chat link saved 🌸 — it is on the account now', 'good');
+      syncChat();
+    } catch (e) { whoops(e); }
+  });
+  // Drawn at its printed 900px and fitted to the column it sits in. With the
+  // wide layout the column is a full 900, so the sheet is 1:1 and crisp; only a
+  // screen too narrow to hold it side by side scales it down at all.
+  const scalePkForm = () => {
+    const pkDoc = $('#dialog .co-scale .packing');
+    if (!pkDoc) return;
+    const scaleBox = pkDoc.parentElement;
+    const room = scaleBox.clientWidth || 900;
+    pkDoc.style.width = '900px';
+    pkDoc.style.transformOrigin = 'top left';
+    const scale = Math.min(1, room / 900);
+    pkDoc.style.transform = `scale(${scale})`;
+    scaleBox.style.height = `${pkDoc.scrollHeight * scale}px`;
+  };
+  scalePkForm();
+
+  const act = (sel, path) => $(sel)?.addEventListener('click', async () => {
+    try {
+      const r = await POST(`/api/orders/${id}/${path}`);
+      notice(r.message || 'Done', 'good');
+      closeDialog();
+      reload();
+    } catch (e) { whoops(e); }
+  });
+  act('#a_send', 'dispatch');
+  act('#a_cancel', 'cancel');
+  act('#a_delivered', 'deliver');
 }
 
 // ---------------------------------------------------------------------------

@@ -632,25 +632,75 @@ test('Invoice tab\'s Customer order dialog has no numbers-on-the-paperwork panel
 
 // Draft is a pending order set aside, not one Warehouse is picking — it now
 // opens the same shaped dialog Pending customer order's own Open does, not
-// Packing list's read-only openOrder, and the CO/PL/SI numbers-correction
+// Packing list's own read-only dialog, and the CO/PL/SI numbers-correction
 // panel goes with it, on purpose: the owner asked Draft not to keep that.
-test("Draft tab's Open uses its own dialog, not Pending's and not Packing list's openOrder", () => {
+test("Draft tab's Open uses its own dialog, not Pending's and not Packing list's", () => {
   const draftScreen = app.slice(app.indexOf('SCREENS.draftorders = async'),
     app.indexOf('\n};', app.indexOf('SCREENS.draftorders = async')));
   assert.match(draftScreen, /openDraftOrder\(b\.dataset\.open, load, page\)/,
     "wired to its own dialog");
   assert.doesNotMatch(draftScreen, /openOrder\(b\.dataset\.open, load\)/,
-    'not the shared read-only one Packing list uses');
+    'not the shared read-only one Pick & send uses');
+  assert.doesNotMatch(draftScreen, /openPackingListOrder\(/,
+    'and not Packing list\'s own copy either');
 
-  // Packing list's and Pick & send's own read-only Opens are untouched.
+  // Packing list has its own copy (openPackingListOrder, below) — the owner
+  // asked its buttons changed without touching Pick & send's own read-only
+  // Open, which stays wired to the shared openOrder, exactly as it was.
   const packingScreen = app.slice(app.indexOf('SCREENS.copacking = async'),
     app.indexOf('SCREENS.orders = async'));
-  assert.match(packingScreen, /openOrder\(b\.dataset\.open, load, \{ readOnly: true \}\)/,
-    "Packing list's own read-only Open, unchanged");
+  assert.match(packingScreen, /openPackingListOrder\(b\.dataset\.open, load\)/,
+    "Packing list's own dialog, not the shared one");
+  assert.doesNotMatch(packingScreen, /openOrder\(b\.dataset\.open, load, \{ readOnly: true \}\)/,
+    'no longer opens the shared read-only dialog');
   const wholesaleScreen = app.slice(app.indexOf('SCREENS.orders = async'),
     app.indexOf('async function openPendingOrder'));
   assert.match(wholesaleScreen, /openOrder\(b\.dataset\.open, load, \{ readOnly: true \}\)/,
     "Pick & send's own read-only Open, unchanged");
+});
+
+// Packing list's own copy of the order dialog: no Packing list button (this
+// tab is itself reached by pressing Packing list elsewhere), no Start
+// picking, and Dispatch renamed Completed — same action underneath, just
+// this tab's own word for it. The shared openOrder, which Pick & send still
+// uses, keeps all three exactly as they were.
+test("Packing list's own dialog drops two buttons and renames Dispatch to Completed", () => {
+  const at = app.indexOf('async function openPackingListOrder');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.doesNotMatch(fn, /id="a_packing"/, 'no Packing list button');
+  assert.doesNotMatch(fn, /id="a_pick"/, 'no Start picking button');
+  assert.doesNotMatch(fn, /showPackingList\(/,
+    'nothing here opens the Packing list document as a popup any more');
+  assert.match(fn, /id="a_send">Completed<\/button>/,
+    'Dispatch renamed to Completed, right on the button label');
+  assert.match(fn, /act\('#a_send', 'dispatch'\);/,
+    'the same action underneath — only the word on the button changed');
+
+  // openOrder itself, which Pick & send still opens, is untouched.
+  const openOrderFn = app.slice(app.indexOf('async function openOrder'),
+    app.indexOf('async function openPackingListOrder'));
+  assert.match(openOrderFn, /id="a_packing"/);
+  assert.match(openOrderFn, /id="a_pick"/);
+  assert.match(openOrderFn, />Dispatch<\/button>/);
+});
+
+// The sheet on the left is the PACKING LIST itself here, not the customer
+// order form — this tab is about packing lists, so that is the paper it
+// opens to. The owner was explicit this was not to be the customer order
+// form that openOrder draws everywhere else.
+test("Packing list's own dialog draws the PACKING LIST sheet, not the customer order form", () => {
+  const at = app.indexOf('async function openPackingListOrder');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.doesNotMatch(fn, /customerOrderForm\(\{/,
+    'not the customer order form openOrder draws');
+  assert.match(fn, /<div class="title">PACKING LIST<\/div>/,
+    'the packing list sheet itself, same title it carries everywhere else');
+  assert.match(fn, /o\.pl_no \? 'PACKING LIST NO\.' : 'SALES ORDER NO\.'/,
+    'its own packing list number, same as the sheet printed from Pick & send');
+  assert.match(fn, /PREPARED BY:/);
+  assert.match(fn, /CHECKED BY:/);
 });
 
 // The Invoice button pushes an order along to Invoice tab and marks it
