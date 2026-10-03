@@ -68,15 +68,29 @@ create trigger invoices_sync_pl_no after insert or update of si_no on invoices
 alter function stamp_order_numbers()       set search_path = public, extensions;
 alter function sync_packing_list_number()  set search_path = public, extensions;
 
--- Every order already invoiced, brought into line with the rule from here
--- on — the same correction the trigger above now keeps current by itself.
--- A hand-typed invoice number clears the packing list number rather than
--- leaving whatever stale value it already carried.
-update orders o set pl_no =
-    case when i.si_no ~ '^SI\d\d_\d\d_\d{3}$'
-         then 'PL' || substring(i.si_no from 3) else null end
+-- Every order brought into line with the rule from here on — the same
+-- correction the trigger above now keeps current by itself. A left join,
+-- not an inner one: an order with no invoice at all still carried its old
+-- placement-time number (next_pl_no, now unused) and has to be cleared the
+-- same as one whose invoice's number doesn't match the counter's own shape.
+--
+-- Two passes, not one: clearing every row first and only then reassigning
+-- is the same discipline the trigger itself uses, and for the same
+-- reason — a single UPDATE processes its rows in no particular order, so
+-- without it, one order's old number can still be sitting in the very
+-- slot another order is being moved into within that same statement,
+-- tripping orders_pl_no_once over a collision that was only ever a matter
+-- of which row the planner happened to reach first.
+update orders o set pl_no = null
   from invoices i
- where i.order_id = o.id
+ where o.channel = 'b2b' and o.id = i.order_id
    and o.pl_no is distinct from (
      case when i.si_no ~ '^SI\d\d_\d\d_\d{3}$'
           then 'PL' || substring(i.si_no from 3) else null end);
+update orders set pl_no = null
+ where channel = 'b2b' and pl_no is not null
+   and id not in (select order_id from invoices);
+
+update orders o set pl_no = 'PL' || substring(i.si_no from 3)
+  from invoices i
+ where i.order_id = o.id and i.si_no ~ '^SI\d\d_\d\d_\d{3}$' and o.pl_no is null;
