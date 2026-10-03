@@ -958,6 +958,16 @@ test('the Funds checkbox applies the lesser of funds and still-owed, immediately
   assert.match(check, /e\.target\.checked = false;/, 'a one-shot action, not a toggle left ticked');
   assert.match(check, /await paintPrior\(\);/);
   assert.match(check, /await paintLog\(\);/);
+
+  // Applying credit pays the invoice, but on its own that is invisible in
+  // this dialog's own Funds log — it only ever reads invoice_payment_overflow,
+  // written by overflow-log, which apply-credit never called. Without this,
+  // money ticked over stayed logged as "held as account credit" forever,
+  // even once it had actually paid an invoice.
+  assert.match(check, /\/api\/invoices\/\$\{invoiceId\}\/overflow-log/,
+    'the checkbox logs its own application too, so the Funds log actually shows where the money went');
+  assert.match(check, /target_invoice_id: invoiceId, amount: applyAmount/,
+    'logged against this same invoice — this is what makes the Funds log read "Applied to invoice ..."');
 });
 
 // Opening the dialog, or right after a save, the first row already reads
