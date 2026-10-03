@@ -9169,6 +9169,10 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     e.target.disabled = true;
     try {
       await POST(`/api/invoices/${invoiceId}/apply-credit`, { amount: applyAmount });
+      try {
+        await POST(`/api/invoices/${invoiceId}/overflow-log`,
+          { reseller_id: resellerId, target_invoice_id: invoiceId, amount: applyAmount });
+      } catch (e) { whoops(e); }
       notice(`${peso(applyAmount)} applied from Funds 🌸`, 'good');
       await done();
       const refreshed = (await GET('/api/orders?status=').catch(() => []))
