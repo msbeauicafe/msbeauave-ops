@@ -588,7 +588,13 @@ test('one of the two can be moved without touching the other', async () => {
   assert.notEqual(after.pl_no, before.pl_no);
 });
 
-test('the counters carry on from what was written', async () => {
+// CO still has its own counter, same as it always has — written by hand,
+// the next one picks up right where that left off. PL does not any more
+// (171): a hand-typed packing list number is a one-off for this order
+// alone, not a new floor for the counter, because there is no longer a
+// counter of its own for it to set — the next order's own packing list
+// number comes from its own invoice, same as every other one does.
+test('the customer order counter carries on from what was written; the packing list number does not, any more', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const first = await anOrder(admin, store);
@@ -599,9 +605,10 @@ test('the counters carry on from what was written', async () => {
 
   const next = await anOrder(admin, store);
   const n = await numbers(next);
-  assert.equal(n.co_no, `CO${on}801`);
-  assert.equal(n.pl_no, `PL${on}701`,
-    'each document counts for itself, from whatever it was last set to');
+  assert.equal(n.co_no, `CO${on}801`,
+    'the customer order counter still carries on from what was written');
+  assert.equal(n.pl_no, `PL${n.si_no.slice(2)}`,
+    "the packing list number mirrors this order's own invoice, not the other order's hand-typed one");
 });
 
 test('two orders cannot be made to share a number, and it says which', async () => {
