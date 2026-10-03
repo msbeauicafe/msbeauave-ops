@@ -9096,7 +9096,7 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
         { head: 'Date', cell: (f) => onDay(f.source_issued_on) },
         { head: 'Reason', cell: (f) => f.target_si_no
           ? `Applied to invoice ${esc(f.target_si_no)}`
-          : 'Held as account credit — no open invoice yet' },
+          : `Overpayment of ${esc(f.source_si_no || '—')}${f.reference_no ? `-${esc(f.reference_no)}` : ''}` },
         { head: 'Date', cell: (f) => f.target_issued_on
           ? onDay(f.target_issued_on) : '<span class="dim">—</span>' },
         { head: 'Amount', n: true, cell: (f) => `<b>${peso(fundsRunning.get(f.id))}</b>` },
@@ -9193,16 +9193,37 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     })).filter((r) => r.amount > 0);
     if (!rows.length) return false;
 
-    const credited = rows.reduce((s, r) => s + r.amount, 0);
-    await POST(`/api/resellers/${resellerId}/deposit-credit`, { payments: rows.map(
-      ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
-    try {
-      for (const r of rows) {
-        await POST(`/api/invoices/${invoiceId}/overflow-log`,
-          { reseller_id: resellerId, target_invoice_id: null, amount: r.amount,
-            reference_no: r.reference_no || null });
-      }
-    } catch (e) { whoops(e); }
+    // Each row pays down what this invoice still owes first, in the order
+    // typed — only once that's fully settled does any of it become a real
+    // overpayment, banked as Funds exactly as before. A row can split
+    // across both: the part that lands on the invoice, and the part left
+    // over once owing hits zero.
+    let remaining = owed;
+    const payRows = [];
+    const overflowRows = [];
+    for (const r of rows) {
+      const pay = Math.min(r.amount, Math.max(remaining, 0));
+      const overflow = r.amount - pay;
+      remaining -= pay;
+      if (pay > 0) payRows.push({ ...r, amount: pay });
+      if (overflow > 0) overflowRows.push({ ...r, amount: overflow });
+    }
+
+    if (payRows.length) {
+      await POST(`/api/invoices/${invoiceId}/payments`, { payments: payRows.map(
+        ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
+    }
+    if (overflowRows.length) {
+      await POST(`/api/resellers/${resellerId}/deposit-credit`, { payments: overflowRows.map(
+        ({ amount, paid_on, method, reference_no }) => ({ amount, paid_on, method, reference_no })) });
+      try {
+        for (const r of overflowRows) {
+          await POST(`/api/invoices/${invoiceId}/overflow-log`,
+            { reseller_id: resellerId, target_invoice_id: null, amount: r.amount,
+              reference_no: r.reference_no || null });
+        }
+      } catch (e) { whoops(e); }
+    }
     for (const r of rows) {
       if (!r.file) continue;
       try {
@@ -9219,17 +9240,24 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     resetRows();
     await paintPrior();
     await paintLog();
-    return credited;
+    return {
+      paid: payRows.reduce((s, r) => s + r.amount, 0),
+      overflow: overflowRows.reduce((s, r) => s + r.amount, 0),
+    };
   };
 
   $('#ci_go2').addEventListener('click', async () => {
     $('#ci_go2').disabled = true;
     try {
-      const credited = await save();
-      if (credited === false) notice('Fill in at least one row.', 'bad');
-      else notice(credited > 0
-        ? `Payment recorded — ${peso(credited)} held as credit 🌸`
-        : 'Payment recorded 🌸', 'good');
+      const result = await save();
+      if (result === false) notice('Fill in at least one row.', 'bad');
+      else if (result.paid > 0 && result.overflow > 0) {
+        notice(`${peso(result.paid)} applied — ${peso(result.overflow)} left over, held as credit 🌸`, 'good');
+      } else if (result.overflow > 0) {
+        notice(`Payment recorded — ${peso(result.overflow)} held as credit 🌸`, 'good');
+      } else {
+        notice('Payment recorded 🌸', 'good');
+      }
     } catch (e) { whoops(e); }
     $('#ci_go2').disabled = false;
   });
