@@ -1203,7 +1203,8 @@ test('the Funds log shows which invoice an overflow came from and which it actua
   assert.match(funds, /f\.source_si_no/);
   assert.match(funds, /f\.source_issued_on/, 'that invoice\'s own date, not just the log entry\'s own timestamp');
   assert.match(funds, /f\.target_si_no/, 'and the invoice it actually reached, if any');
-  assert.match(funds, /f\.target_issued_on/, 'with that invoice\'s own date too — a second, distinct date column');
+  assert.doesNotMatch(funds, /f\.target_issued_on/,
+    'the second Date column (when the overflow was applied) is gone — Reason already names the invoice');
   assert.match(funds, /Overpayment of \$\{esc\(f\.source_si_no \|\| '—'\)\}\$\{f\.reference_no \? `-\$\{esc\(f\.reference_no\)\}` : ''\}/,
     'a row with nothing open to reach names the invoice it overpaid and its own reference no., not a generic phrase');
   assert.match(funds, /data-cifunds-invdoc="\$\{f\.target_order_id\}"/,
