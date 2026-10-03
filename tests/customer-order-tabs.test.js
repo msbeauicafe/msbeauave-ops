@@ -934,40 +934,18 @@ test('a Funds readout sits below the payment rows, showing the account\'s availa
     'the account\'s own current credit balance, already carried by the one account fetch');
 });
 
-// The checkbox is its own one-click action now, separate from Save
-// entirely — ticking it draws down whatever the account's own Funds can
-// cover of what this invoice still owes, right then, through a route of
-// its own (apply_credit_to_invoice, db/170) rather than typing an amount
-// in and pressing Save.
-test('the Funds checkbox applies the lesser of funds and still-owed, immediately, on its own route', () => {
+// The owner asked for the "Apply to this payment" checkbox to be removed
+// from this dialog entirely — the Funds amount still reads back here, but
+// nothing in this dialog pays an invoice from it any more.
+test('the Funds checkbox is gone — the readout stays, nothing applies credit from this dialog', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
-  assert.match(fn, /<input type="checkbox" id="ci_fundscheck">/);
-
-  const checkAt = fn.indexOf("$('#ci_fundscheck').addEventListener");
-  const check = fn.slice(checkAt, fn.indexOf('\n  });', checkAt) + 6);
-
-  assert.match(check, /if \(!e\.target\.checked\) return;/,
-    'unticking it does nothing on its own — it only ever fires forward');
-  assert.match(check, /const applyAmount = Math\.min\(fundsAmount, owed\);/,
-    'never more than either side actually has');
-  assert.match(check, /if \(applyAmount <= 0\.005\)/, 'nothing to apply is refused, not silently ignored');
-  assert.match(check, /\/api\/invoices\/\$\{invoiceId\}\/apply-credit/,
-    'its own narrower route, not Confirm the bank payment, which pays down whatever else is open');
-  assert.match(check, /e\.target\.checked = false;/, 'a one-shot action, not a toggle left ticked');
-  assert.match(check, /await paintPrior\(\);/);
-  assert.match(check, /await paintLog\(\);/);
-
-  // Applying credit pays the invoice, but on its own that is invisible in
-  // this dialog's own Funds log — it only ever reads invoice_payment_overflow,
-  // written by overflow-log, which apply-credit never called. Without this,
-  // money ticked over stayed logged as "held as account credit" forever,
-  // even once it had actually paid an invoice.
-  assert.match(check, /\/api\/invoices\/\$\{invoiceId\}\/overflow-log/,
-    'the checkbox logs its own application too, so the Funds log actually shows where the money went');
-  assert.match(check, /target_invoice_id: invoiceId, amount: applyAmount/,
-    'logged against this same invoice — this is what makes the Funds log read "Applied to invoice ..."');
+  assert.doesNotMatch(fn, /ci_fundscheck/, 'the checkbox and its handler are both gone');
+  assert.doesNotMatch(fn, /\/api\/invoices\/\$\{invoiceId\}\/apply-credit/,
+    'nothing in this dialog calls the apply-credit route any more');
+  assert.match(fn, /<div><div class="dim">Funds<\/div><b id="ci_fundsnowamt"><\/b><\/div>/,
+    'the Funds amount is still shown — only the checkbox was asked to go');
 });
 
 // Opening the dialog, or right after a save, the first row already reads
@@ -987,8 +965,8 @@ test('the first row keeps a real value — what is still owed — not just a pla
 });
 
 // Save is for money that has arrived, nothing more — every typed row is
-// banked as plain account credit, the invoice itself untouched. Paying
-// this invoice happens only through the Funds checkbox above, on its own.
+// banked as plain account credit, the invoice itself untouched. Nothing in
+// this dialog pays an invoice from it any more, now that the checkbox is gone.
 test('Save always banks typed rows as account credit — it never pays the invoice directly', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
@@ -997,7 +975,7 @@ test('Save always banks typed rows as account credit — it never pays the invoi
 
   assert.match(save, /\/api\/resellers\/\$\{resellerId\}\/deposit-credit/);
   assert.doesNotMatch(save, /\/api\/invoices\/\$\{invoiceId\}\/payments`/,
-    'no longer posts straight to the invoice itself — Save and the Funds checkbox are two separate doors now');
+    'no longer posts straight to the invoice itself');
   assert.doesNotMatch(save, /\/api\/resellers\/\$\{resellerId\}\/confirm/,
     'and never the route that pays down whatever else the account has open');
   assert.match(save, /target_invoice_id: null, amount: r\.amount/,
@@ -1005,11 +983,9 @@ test('Save always banks typed rows as account credit — it never pays the invoi
 });
 
 // Payments on file still reads a real thumbnail back for any payment
-// actually recorded against this invoice — which now only ever happens
-// through the Funds checkbox's own apply-credit route, since Save itself
-// never creates one. A proof photo attached to a row typed into Save has
-// no specific invoice payment to file itself against any more, so it goes
-// into the account's own general file drawer instead.
+// actually recorded against this invoice. A proof photo attached to a row
+// typed into Save has no specific invoice payment to file itself against
+// any more, so it goes into the account's own general file drawer instead.
 test('Payments on file still reads a real thumbnail; a Save-row\'s own proof goes to the account\'s file drawer', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));

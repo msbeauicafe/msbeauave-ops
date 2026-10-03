@@ -8947,9 +8947,7 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       </div>`).join('')}</div>
 
     <div class="row mt" id="ci_fundsnow">
-      <div><div class="dim">Funds</div><b id="ci_fundsnowamt"></b>
-        <label class="mt" style="display:block"><input type="checkbox" id="ci_fundscheck">
-          Apply to this payment</label></div>
+      <div><div class="dim">Funds</div><b id="ci_fundsnowamt"></b></div>
     </div>
 
     <div class="mt right">
@@ -8981,7 +8979,7 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     return tag(label, label === 'unpaid' && i.overdue ? 'red' : 'amber');
   };
 
-  // Read by the Funds checkbox below, set each time paintLog refreshes —
+  // Read by the Funds readout below, set each time paintLog refreshes —
   // the account's own current credit.
   let fundsAmount = 0;
 
@@ -9146,45 +9144,7 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       $('.ci_ref', row).value = '';
       $('.ci_file', row).value = '';
     });
-    $('#ci_fundscheck').checked = false;
   };
-
-  // Not a switch over what the rows do — its own one-click action,
-  // separate from Save entirely. Ticking it draws down whatever the
-  // account's own Funds can cover of what this invoice still owes, right
-  // then: a real payment recorded against this invoice, Funds reduced by
-  // the same amount, both shown immediately. It never asks for more than
-  // either side actually has — less of a deposit than the invoice still
-  // owes, less of the invoice than Funds can cover.
-  $('#ci_fundscheck').addEventListener('change', async (e) => {
-    if (!e.target.checked) return;
-    const applyAmount = Math.min(fundsAmount, owed);
-    if (applyAmount <= 0.005) {
-      e.target.checked = false;
-      notice(fundsAmount <= 0.005
-        ? 'No funds on this account to apply.'
-        : 'Nothing left owing on this invoice.', 'bad');
-      return;
-    }
-    e.target.disabled = true;
-    try {
-      await POST(`/api/invoices/${invoiceId}/apply-credit`, { amount: applyAmount });
-      try {
-        await POST(`/api/invoices/${invoiceId}/overflow-log`,
-          { reseller_id: resellerId, target_invoice_id: invoiceId, amount: applyAmount });
-      } catch (e) { whoops(e); }
-      notice(`${peso(applyAmount)} applied from Funds 🌸`, 'good');
-      await done();
-      const refreshed = (await GET('/api/orders?status=').catch(() => []))
-        .find((o) => String(o.invoice_id) === String(invoiceId));
-      if (refreshed) owed = Number(refreshed.balance || 0);
-      resetRows();
-      await paintPrior();
-      await paintLog();
-    } catch (err) { whoops(err); }
-    e.target.checked = false;
-    e.target.disabled = false;
-  });
 
   // Gathers whatever rows actually have an amount in them and banks every
   // one of them as plain account credit — this form is for money that has
