@@ -9287,8 +9287,6 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
         { head: 'Reason', cell: (f) => f.target_si_no
           ? `Applied to invoice ${esc(f.target_si_no)}`
           : `Overpayment of ${esc(f.source_si_no || '—')}${f.reference_no ? `-${esc(f.reference_no)}` : ''}` },
-        { head: 'Date', cell: (f) => f.target_issued_on
-          ? onDay(f.target_issued_on) : '<span class="dim">—</span>' },
         { head: 'Amount', n: true, cell: (f) => `<b>${peso(fundsRunning.get(f.id))}</b>` },
         { head: '', cell: (f) => f.target_order_id ? `<button class="btn sm quiet"
             data-cifunds-invdoc="${f.target_order_id}">🖨 Invoice</button>` : '' },
