@@ -9204,7 +9204,9 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
 
     // The blue INVOICE document itself, same renderer the Invoice tab's own
     // row opens it from — reused rather than redrawn, only the fetch that
-    // hands it its data is this log's own.
+    // hands it its data is this log's own. Opened over this dialog rather
+    // than in place of it, so its own ✕ (or Done) comes back to Record
+    // payment, not out to the list behind it.
     $$('[data-cilog-invdoc]', box).forEach((b) => b.addEventListener('click', async () => {
       try {
         const [full, payments] = await Promise.all([
@@ -9215,6 +9217,7 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
           orderId: full.id, issuedOn: full.placed_at, resellerName: full.reseller,
           payments, who: full, invoiceNo: full.si_no,
           shipping: Number(full.shipping || 0), others: Number(full.others || 0),
+          over: true,
           lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
             price: l.unit_price, code: l.price_code, unit: l.unit_type })),
         });

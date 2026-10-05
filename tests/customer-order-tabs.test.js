@@ -978,6 +978,20 @@ test('every row in the invoice log opens its own Invoice document by its number,
   assert.match(fn, /showInvoiceDoc\(\{/, 'opens the same document renderer, reused not redrawn');
 });
 
+// The document opens over Record payment, not in place of it — its own ✕
+// (or Done) has to come back to the dialog it was opened from, the same
+// "one step back" the dialog stack already gives every other over:true
+// opener, rather than closing out to the list behind everything.
+test("the invoice log's own document closes back onto Record payment, not out to the list", () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const handlerAt = fn.indexOf("$$('[data-cilog-invdoc]', box)");
+  const handler = fn.slice(handlerAt, fn.indexOf('}));', handlerAt));
+
+  assert.match(handler, /showInvoiceDoc\(\{[\s\S]*?over: true,/,
+    'opened with over: true, so closing it pops back rather than closing everything');
+});
+
 // Purchase order's own billing statement already shows Amount / Paid so far
 // / Still owed, and a real photo thumbnail once a payment has one on file —
 // this is that same shape, for an invoice, built apart rather than shared.
