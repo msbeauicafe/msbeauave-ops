@@ -9191,13 +9191,15 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
     const sortedInvoices = [...acct.invoices].sort((a, b) =>
       (new Date(b.issued_on) - new Date(a.issued_on)) || (b.id - a.id));
     box.innerHTML = table(sortedInvoices, [
-      { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no || '—')}</b>` },
+      // The number itself is the way in now, not a button off at the end of
+      // the row — same nameopen pattern a reseller's own name already opens
+      // their account with, elsewhere.
+      { head: 'Invoice no.', cell: (i) => `<button class="nameopen"
+          data-cilog-invdoc="${i.order_id}"><b>${esc(i.si_no || '—')}</b></button>` },
       { head: 'Issued', cell: (i) => onDay(i.issued_on) },
       { head: 'Standing', cell: logStanding },
       { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
       { head: 'Bal', n: true, cell: (i) => peso(i.balance) },
-      { head: '', cell: (i) => `<button class="btn sm quiet"
-          data-cilog-invdoc="${i.order_id}">🖨 Invoice</button>` },
     ], 'No invoices yet.');
 
     // The blue INVOICE document itself, same renderer the Invoice tab's own
@@ -9285,14 +9287,17 @@ async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, res
       const fundsDrift = Number(acct.credit || 0) - fundsRunningLast;
       if (fundsDrift) for (const [id, bal] of fundsRunning) fundsRunning.set(id, bal + fundsDrift);
       fundsBox.innerHTML = table(acct.overflow || [], [
-        { head: 'Invoice no.', cell: (f) => `<b>${esc(f.source_si_no || '—')}</b>` },
+        // The number itself is the way in now, not a button off at the end
+        // of the row — same nameopen pattern the Invoice log just above it
+        // uses. This opens the source invoice shown here, not whichever one
+        // it was later applied to (named, not opened, in Reason).
+        { head: 'Invoice no.', cell: (f) => `<button class="nameopen"
+            data-cifunds-invdoc="${f.source_order_id}"><b>${esc(f.source_si_no || '—')}</b></button>` },
         { head: 'Date', cell: (f) => onDay(f.source_issued_on) },
         { head: 'Reason', cell: (f) => f.target_si_no
           ? `Applied to invoice ${esc(f.target_si_no)}`
           : `Overpayment of ${esc(f.source_si_no || '—')}${f.reference_no ? `-${esc(f.reference_no)}` : ''}` },
         { head: 'Amount', n: true, cell: (f) => `<b>${peso(fundsRunning.get(f.id))}</b>` },
-        { head: '', cell: (f) => f.target_order_id ? `<button class="btn sm quiet"
-            data-cifunds-invdoc="${f.target_order_id}">🖨 Invoice</button>` : '' },
       ], 'No overpayment on this account.');
 
       // The same blue INVOICE document the Invoice log's own row opens —
