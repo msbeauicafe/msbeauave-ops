@@ -113,6 +113,9 @@ node --test tests/how-they-clocked.test.js
 echo "==> every document has a number of its own"
 node --test tests/document-numbers.test.js
 
+echo "==> warehouse inventory report, receiving form, releasing form"
+node --test tests/warehouse-forms.test.js
+
 echo "==> correcting an invoice without cancelling the order"
 node --test tests/revise-invoice.test.js
 

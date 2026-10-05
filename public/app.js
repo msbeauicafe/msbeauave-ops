@@ -479,6 +479,9 @@ const TABS = {
     ['inventory', '📥', 'Internal Inventory Report'],
     ['purchaseorders', '🧾', 'Purchase order'],
     ['customerorder', '💬', 'Customer order'],
+    ['warehouseinventory', '📥', 'Warehouse inventory report'],
+    ['receivingform', '📦', 'Receiving form'],
+    ['releasingform', '📤', 'Releasing form'],
     ['finance', '💰', 'Finance'],
     ['pricelists', '💵', 'Pricelists'],
     ['receive', '📦', 'Warehouse receiving'],
@@ -2807,6 +2810,226 @@ SCREENS.receive = async (page) => {
 };
 
 // ===========================================================================
+// Receiving form — its own menu entry for the list Warehouse receiving
+// already keeps
+//
+// receiving_forms / receiving_form_lines, /api/receiving-forms and
+// showReceivingForm already exist, reached today only from a panel at the
+// foot of Warehouse receiving. This is that same list and the same "＋
+// Record a delivery" button, as their own screen — Warehouse receiving's own
+// copy, including its quick single-line Receive and its 📦 Whole delivery
+// button, is untouched.
+// ===========================================================================
+SCREENS.receivingform = async (page) => {
+  const shops = await branches();
+  let suppliers = [];
+  page.innerHTML = `
+    <div class="head"><h2>Receiving form</h2></div>
+
+    <div class="panel"><h3 class="sr">Receiving forms</h3>
+      <div class="dim">The paper the stockroom fills in while the delivery is
+        still on the floor — counted in boxes, with the courier, the shipping
+        and the guard on it. It receives the stock as it records itself, and
+        where it answers a purchase order it ticks that order off too.</div>
+      <div class="row mt">
+        <div style="flex:0 0 auto"><button class="btn" id="rvf_new">＋ Record a delivery</button></div>
+      </div>
+      <div id="rvf_list" class="mt"></div></div>`;
+
+  const drawRFs = async () => {
+    const rows = await GET('/api/receiving-forms').catch(() => []);
+    $('#rvf_list', page).innerHTML = table(rows, [
+      { head: 'No.', cell: (f) => `<b>${esc(f.rf_no)}</b>` },
+      { head: 'Received', cell: (f) => onDay(f.received_on) },
+      { head: 'Supplier', cell: (f) => `${esc(f.supplier)}${
+          f.brand_name ? `<div class="dim">${esc(f.brand_name)}</div>` : ''}` },
+      { head: 'Against', cell: (f) => f.po_no ? esc(f.po_no) : tag('no order', 'grey') },
+      { head: 'Boxes', n: true, cell: (f) => count(f.total_boxes) },
+      { head: '', cell: (f) => `<button class="btn sm quiet" data-rvf="${f.id}">Open</button>` },
+    ], 'No receiving forms yet.');
+    $$('[data-rvf]', page).forEach((b) => b.addEventListener('click', async () => {
+      try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rvf}`)); }
+      catch (e) { whoops(e); }
+    }));
+  };
+
+  $('#rvf_new', page).addEventListener('click', async () => {
+    if (!suppliers.length) return notice('Add a supplier first, on Purchase order.', 'bad');
+    const catalogue = await GET('/api/products?q=').catch(() => []);
+    receiveDelivery({ po: null, catalogue, shops, suppliers, done: () => drawRFs() });
+  });
+
+  suppliers = await GET('/api/suppliers').catch(() => []);
+  await drawRFs();
+};
+
+// ===========================================================================
+// Releasing form — a paper trail for stock leaving the warehouse outside a
+// customer order
+//
+// Nothing like this existed: a release to a branch had nowhere to be written
+// down. This is a log and a printable slip only — what left, how much, to
+// which branch, who signed for it. It never touches batches, stock or
+// movements; the pools and the real on-hand figures stay exactly what
+// Stockroom's own "Move stock between pools" makes them.
+// ===========================================================================
+function releasingForm({ id, sku, name, batchNo, qty, branch, reason, releasedBy, releasedAt }) {
+  const field = (label, value) => `
+    <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
+  const BLANKS = 7;
+  return `
+    <div class="doc po rl">
+      <div class="rule"></div>
+      <div class="po-head">
+        <img src="/logo.png" alt="MS Beau Ave">
+        <div class="po-title">
+          <h2>RELEASING FORM</h2>
+          <div class="po-nums">
+            ${field('DATE', onDay(releasedAt))}
+            ${field('RELEASING FORM', `RL-${String(id).padStart(5, '0')}`)}
+          </div>
+        </div>
+      </div>
+
+      <div class="po-parties four">
+        <div>
+          <div class="barhd">RELEASED FROM</div>
+          ${field('WAREHOUSE', 'MS BEAU AVE')}
+        </div>
+        <div>
+          <div class="barhd">RELEASED TO</div>
+          ${field('BRANCH', branch)}
+        </div>
+        <div>
+          <div class="barhd">BATCH</div>
+          ${field('BATCH NO.', batchNo)}
+        </div>
+        <div>
+          <div class="barhd">REASON</div>
+          ${field('REASON', reason)}
+        </div>
+      </div>
+
+      <table class="lines">
+        <thead><tr>
+          <th style="width:78px">QUANTITY</th>
+          <th>PRODUCT DESCRIPTION</th>
+          <th style="width:110px">SKU</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="c"><b>${count(qty)}</b></td><td>${esc(name)}</td><td class="c">${esc(sku)}</td></tr>
+          ${Array.from({ length: BLANKS },
+            () => '<tr><td>&nbsp;</td><td></td><td></td></tr>').join('')}
+        </tbody>
+      </table>
+
+      <div class="rf-foot">
+        <div class="sign3">
+          <div><div class="nm">${esc(releasedBy || '')}</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">RELEASED BY:</div></div>
+          <div><div class="nm">&nbsp;</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">CHECKED BY:</div></div>
+          <div><div class="nm">&nbsp;</div>
+            <div class="role">Signature Over Printed Name</div>
+            <div class="cap">RECEIVED BY:</div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function showReleasingForm(f) {
+  dialog(`
+    ${releasingForm(f)}
+    <div class="mt right">
+      <button class="btn quiet" id="rlf_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
+      <button class="btn" id="rlf_done">Close</button>
+    </div>`, 'wide');
+  wireSave('#rlf_save', '.doc', `RL-${String(f.id).padStart(5, '0')} RELEASING FORM.jpg`);
+  $('#rlf_done').addEventListener('click', closeDialog);
+}
+
+SCREENS.releasingform = async (page) => {
+  const shops = await branches();
+  page.innerHTML = `
+    <div class="head"><h2>Releasing form</h2></div>
+
+    <div class="panel">
+      <div class="head" style="margin:0"><h3 class="sr">Release stock</h3>
+        <span class="hint">A paper trail only — stock leaving for a branch
+          outside a customer order. Does not touch any pool or on-hand
+          figure; move it there first on Stockroom if this is a transfer.</span></div>
+      <div class="row mt">
+        <div style="flex:2"><label>Product code</label>
+          <input type="text" id="rl_sku" list="rl_skus" placeholder="scan or type"></div>
+        <div><label>Batch number</label><input type="text" id="rl_batch" placeholder="optional"></div>
+        <div><label>How many</label><input type="number" id="rl_qty" min="1"></div>
+        ${branchPicker(shops, 'rl_branch', 'Releasing to')}
+        <div style="flex:2"><label>Reason</label>
+          <input type="text" id="rl_reason" placeholder="optional"></div>
+        <div style="flex:0 0 auto"><button class="btn" id="rl_go">Release</button></div>
+      </div>
+      <datalist id="rl_skus"></datalist>
+      <div id="rl_out" class="mt"></div>
+    </div>
+
+    <div class="panel"><h3>Released</h3>
+      <div id="rl_list" class="mt"></div></div>`;
+
+  GET('/api/products?q=').then((rows) => {
+    $('#rl_skus', page).innerHTML = rows.map((p) =>
+      `<option value="${esc(p.sku)}">${esc(p.name)}</option>`).join('');
+  }).catch(() => {});
+
+  wireBranchPicker(page, 'rl_branch');
+
+  const drawReleases = async () => {
+    const rows = await GET('/api/warehouse-releases').catch(() => []);
+    $('#rl_list', page).innerHTML = table(rows, [
+      { head: 'When', cell: (r) => when(r.released_at) },
+      { head: 'Product', cell: (r) => esc(r.name) },
+      { head: 'Batch', cell: (r) => `<span class="dim">${esc(r.batch_no || '—')}</span>` },
+      { head: 'Qty', n: true, cell: (r) => count(r.qty) },
+      { head: 'To', cell: (r) => esc(r.branch) },
+      { head: 'Reason', cell: (r) => `<span class="dim">${esc(r.reason || '—')}</span>` },
+      { head: 'Who', cell: (r) => `<span class="dim">${esc(r.released_by)}</span>` },
+      { head: '', cell: (r) => `<button class="btn sm quiet" data-print="${r.id}">🖨 Print</button>` },
+    ], 'Nothing released yet.');
+    $$('[data-print]', page).forEach((b) => b.addEventListener('click', () => {
+      const r = rows.find((x) => String(x.id) === b.dataset.print);
+      if (r) showReleasingForm({
+        id: r.id, sku: r.sku, name: r.name, batchNo: r.batch_no, qty: r.qty,
+        branch: r.branch, reason: r.reason, releasedBy: r.released_by, releasedAt: r.released_at,
+      });
+    }));
+  };
+
+  $('#rl_go', page).addEventListener('click', async () => {
+    try {
+      const sku = $('#rl_sku', page).value.trim();
+      const qty = +$('#rl_qty', page).value;
+      if (!sku) return notice('Which product is this?', 'bad');
+      if (!(qty > 0)) return notice('How many are going out?', 'bad');
+      await POST('/api/warehouse-releases', {
+        sku, batch_no: $('#rl_batch', page).value.trim(),
+        qty, branch_id: branchOf(page, 'rl_branch'),
+        reason: $('#rl_reason', page).value.trim(),
+      });
+      $('#rl_out', page).innerHTML = '<div class="banner good">✅ Released</div>';
+      $('#rl_sku', page).value = '';
+      $('#rl_batch', page).value = '';
+      $('#rl_qty', page).value = '';
+      $('#rl_reason', page).value = '';
+      await drawReleases();
+    } catch (e) { whoops(e); }
+  });
+
+  await drawReleases();
+};
+
+// ===========================================================================
 // Purchase orders — the company buying
 // ===========================================================================
 SCREENS.purchaseorders = async (page, headless = false) => {
@@ -4365,6 +4588,115 @@ SCREENS.inventory = async (page) => {
     const recent = async () => {
       const rows = await GET('/api/reports/journal?limit=20');
       $('#r_recent', page).innerHTML = table(rows, [
+        { head: 'When', cell: (m) => when(m.at) },
+        { head: 'Product', cell: (m) => esc(m.name) },
+        { head: 'Batch', cell: (m) => `<span class="dim">${esc(m.batch_no)}</span>` },
+        { head: 'Move', cell: (m) => `${esc(m.from_pool || '·')} → ${esc(m.to_pool || 'out')}` },
+        { head: 'Qty', n: true, cell: (m) => count(m.qty) },
+        { head: 'Why', cell: (m) => `<span class="dim">${esc(m.reason)}</span>` },
+        { head: 'Who', cell: (m) => `<span class="dim">${esc(m.actor)}</span>` },
+      ], 'Nothing has moved yet.');
+    };
+    await recent();
+    repeat(recent, 15000);
+  }
+};
+
+// ===========================================================================
+// Warehouse inventory report — its own menu entry for the same read
+//
+// There is no separate "warehouse" pool in the data — stock only ever sits
+// in b2b, shop or reserve, and a delivery lands in a branch's shop pool the
+// moment it is received (Warehouse receiving's own job). So this has nothing
+// of its own to filter to; it is Internal Inventory Report's three tabs
+// again, kept as its own copy rather than a second menu entry pointed at the
+// same screen, so a change meant for one is never made on both by accident.
+// ===========================================================================
+let warehouseInventoryPanel = localStorage.getItem('warehouseInventoryPanel') || 'stockin';
+
+SCREENS.warehouseinventory = async (page) => {
+  const PANELS = [
+    ['stockin', 'Stock in'],
+    ['stockout', 'Stock out'],
+    ['history', 'History'],
+  ];
+  if (!PANELS.some(([id]) => id === warehouseInventoryPanel)) warehouseInventoryPanel = 'stockin';
+  localStorage.setItem('warehouseInventoryPanel', warehouseInventoryPanel);
+
+  page.innerHTML = `
+    <div class="head"><h2>Warehouse inventory report</h2>
+      <span class="hint">Everything that has moved, newest first</span>
+      <button class="btn" id="winv_new_product">＋ New product</button></div>
+    <div class="subtabs">
+      ${PANELS.map(([id, label]) => `<button data-panel="${esc(id)}"
+        class="${id === warehouseInventoryPanel ? 'on' : ''}">${esc(label)}</button>`).join('')}
+    </div>
+    <div id="winv_panel"></div>`;
+
+  $('#winv_new_product', page)?.addEventListener('click', () => editProduct(null, () => {}));
+  $$('[data-panel]', page).forEach((b) => b.addEventListener('click', () => {
+    warehouseInventoryPanel = b.dataset.panel;
+    SCREENS.warehouseinventory(page).catch(whoops);
+  }));
+
+  const box = $('#winv_panel', page);
+
+  if (warehouseInventoryPanel === 'stockin') {
+    box.innerHTML = `
+      <div class="panel"><h3>Deliveries you can still undo</h3>
+        <div class="dim">A delivery entered wrongly should be unmade, not written
+          off as damage — writing it off puts goods that never existed into the
+          shrinkage report and money that never moved into the loss column. This
+          only works while nothing has happened to the lot yet.</div>
+        <div id="winv_undo" class="mt"></div></div>`;
+
+    const undoable = async () => {
+      const rows = await GET('/api/receipts?limit=15');
+      $('#winv_undo', page).innerHTML = table(rows, [
+        { head: 'When', cell: (r) => when(r.received_at) },
+        { head: 'Product', cell: (r) => esc(r.name) },
+        { head: 'Batch', cell: (r) => `<span class="dim">${esc(r.batch_no || '—')}</span>` },
+        { head: 'Units', n: true, cell: (r) => count(r.qty_received) },
+        { head: 'Cost', n: true, cell: (r) => peso(r.value) },
+        { head: 'Where', cell: (r) => `<span class="dim">${esc(r.branches || '—')}</span>` },
+        { head: '', cell: (r) => (r.held_by
+            ? tag(r.held_by, 'grey')
+            : `<button class="btn sm stop" data-undo="${r.batch_id}"
+                 data-what="${esc(r.name)} — ${esc(r.batch_no || 'no batch number')}, ${
+                   r.qty_received} unit(s), ${peso(r.value)}">Undo</button>`) },
+      ], 'Nothing received yet.');
+
+      $$('[data-undo]', page).forEach((b) => b.addEventListener('click',
+        () => undoDialog(b.dataset.undo, b.dataset.what, () => undoable())));
+    };
+    await undoable().catch(() => {});
+  }
+
+  if (warehouseInventoryPanel === 'stockout') {
+    box.innerHTML = `<div class="panel"><h3>Stock out</h3><div id="winv_out"></div></div>`;
+
+    const stockOut = async () => {
+      const rows = await GET('/api/reports/stock-out?limit=20');
+      $('#winv_out', page).innerHTML = table(rows, [
+        { head: 'When', cell: (m) => when(m.at) },
+        { head: 'Product', cell: (m) => esc(m.name) },
+        { head: 'Batch', cell: (m) => `<span class="dim">${esc(m.batch_no)}</span>` },
+        { head: 'Move', cell: (m) => `${esc(m.from_pool || '·')} → ${esc(m.to_pool || 'out')}` },
+        { head: 'Qty', n: true, cell: (m) => count(m.qty) },
+        { head: 'Why', cell: (m) => `<span class="dim">${esc(m.reason)}</span>` },
+        { head: 'Who', cell: (m) => `<span class="dim">${esc(m.actor)}</span>` },
+      ], 'Nothing has shipped yet.');
+    };
+    await stockOut();
+    repeat(stockOut, 15000);
+  }
+
+  if (warehouseInventoryPanel === 'history') {
+    box.innerHTML = `<div class="panel"><h3>Just received</h3><div id="winv_recent"></div></div>`;
+
+    const recent = async () => {
+      const rows = await GET('/api/reports/journal?limit=20');
+      $('#winv_recent', page).innerHTML = table(rows, [
         { head: 'When', cell: (m) => when(m.at) },
         { head: 'Product', cell: (m) => esc(m.name) },
         { head: 'Batch', cell: (m) => `<span class="dim">${esc(m.batch_no)}</span>` },
