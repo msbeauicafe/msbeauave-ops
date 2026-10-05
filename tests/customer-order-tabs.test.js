@@ -594,12 +594,15 @@ test('the four invoice-row buttons do their own four things', () => {
   assert.match(invdoc, /GET\(`\/api\/resellers\/\$\{o\.reseller_id\}\/payments\?order_id=\$\{o\.id\}`\)/,
     'and of the payments made against it, so they show in the form\'s own Payment Details');
   assert.match(invdoc, /showInvoiceDoc\(\{/, 'the shared renderer, reused rather than redrawn');
-  // DATE on the printed document is the invoice's own issued date, not the
-  // order's placement date — those differ once an order sits a while before
-  // being committed/invoiced. Scoped to this screen's own fetch only; other
-  // showInvoiceDoc call sites elsewhere in the file still pass placed_at.
-  assert.match(invdoc, /issuedOn: full\.invoice_issued_on \|\| full\.placed_at/,
-    "the invoice's own issued date, falling back to placed_at only if it's somehow missing");
+  // DATE on the printed document reads the packing list's own issued date
+  // first — the paper normally leaves the day the goods actually went out,
+  // not the day the invoice number was struck — falling back to the
+  // invoice's own issued date, then the order's placement date, only when
+  // there's no packing list date to read. Scoped to this screen's own fetch
+  // only; other showInvoiceDoc call sites elsewhere in the file are untouched.
+  assert.match(invdoc,
+    /issuedOn: full\.packing_list_issued_at \|\| full\.invoice_issued_on \|\| full\.placed_at/,
+    "the packing list's own issued date first, then the invoice's, then placed_at");
 
   // Record payment shows on every row, paid or void included — the owner
   // asked for it there regardless, not only while something is still owed.
