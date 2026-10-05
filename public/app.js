@@ -5578,7 +5578,7 @@ async function openPackingListOrder(id, reload) {
               <span class="val">${esc(o?.[key] || '')}</span></div>`).join('')}
         </div>
         <div style="white-space:nowrap">
-          <div class="lbl">DATE: <span class="val">${onDay(o.placed_at)}</span></div>
+          <div class="lbl">DATE: <span class="val">${onDay(o.packing_list_issued_at || o.placed_at)}</span></div>
           <div class="lbl">${o.pl_no ? 'PACKING LIST NO.' : 'SALES ORDER NO.'}:
             <span class="val">${esc(String(o.pl_no || o.id))}</span></div>
           ${o?.drop_ship ? `<div class="lbl">DS:
