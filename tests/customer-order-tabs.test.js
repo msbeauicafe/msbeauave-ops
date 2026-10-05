@@ -969,27 +969,69 @@ test('every row in the invoice log opens its own Invoice document by its number,
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
   assert.match(fn,
-    /head: 'Invoice no\.', cell: \(i\) => `<button class="nameopen"\s*\n\s*data-cilog-invdoc="\$\{i\.order_id\}"><b>\$\{esc\(i\.si_no \|\| '—'\)\}<\/b><\/button>`/,
-    'the Invoice no. cell itself is the button, carrying its own order');
+    /head: 'Invoice no\.', cell: \(i\) => `<button class="nameopen"\s*\n\s*data-cilog-invdoc="\$\{i\.order_id\}" data-invid="\$\{i\.id\}"><b>\$\{esc\(i\.si_no \|\| '—'\)\}<\/b><\/button>`/,
+    'the Invoice no. cell itself is the button, carrying its own order and invoice id');
   assert.doesNotMatch(fn, /🖨 Invoice<\/button>` \},\s*\n\s*\], 'No invoices yet\.'/,
     'no trailing button column left on this table');
   assert.match(fn, /\$\$\('\[data-cilog-invdoc\]', box\)\.forEach/,
     'wired for every row drawn into the log');
-  assert.match(fn, /showInvoiceDoc\(\{/, 'opens the same document renderer, reused not redrawn');
+  assert.match(fn, /showInvoiceLogDoc\(\{/,
+    "this log's own document renderer — Balance here can mean the Funds a payment overflowed to, which no other screen's blue INVOICE should ever show");
 });
 
 // The document opens over Record payment, not in place of it — its own ✕
 // (or Done) has to come back to the dialog it was opened from, the same
 // "one step back" the dialog stack already gives every other over:true
 // opener, rather than closing out to the list behind everything.
+// showInvoiceLogDoc always opens this way, so it is checked once on the
+// renderer itself rather than on every call site that opens it.
 test("the invoice log's own document closes back onto Record payment, not out to the list", () => {
+  const at = app.indexOf('function showInvoiceLogDoc');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn, /`, 'wide', true\);/,
+    'always opened with over: true, so closing it pops back rather than closing everything');
+});
+
+// Save pays the invoice down first; only real overpayment becomes Funds. So
+// a payment row here can be bigger than anything this invoice ever owed —
+// the Amount printed has to be the real transfer, not just the slice this
+// invoice kept, and Balance, once there is nothing left to collect, says
+// where the rest of it went instead of repeating a Total Due that already
+// reads ₱0.00 above it.
+test("the invoice log's own document shows the real amount paid and, once settled, where any extra went", () => {
+  const at = app.indexOf('function showInvoiceLogDoc');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn, /Amount: \$\{p \? peso\(p\.displayAmount \?\? p\.amount\) : ''\}/,
+    'the row shows the real transfer (applied + whatever of it overflowed), not just what was applied');
+  assert.match(fn,
+    /<span id="iv_bal">\$\{\s*\n?\s*peso\(fundTotal > 0 \? fundTotal : grand - paid\)\}<\/span>/,
+    "Balance reads the Funds total once there's nothing left owed; otherwise it's the ordinary balance due");
+
+  // The shared showInvoiceDoc every other screen opens is untouched —
+  // Balance there only ever means what is still owed.
+  const shared = app.slice(app.indexOf('function showInvoiceDoc('),
+    app.indexOf('function showInvoiceLogDoc'));
+  assert.doesNotMatch(shared, /fundTotal/,
+    'no other screen\'s blue INVOICE is told about Funds overflow at all');
+  assert.match(shared, /<span id="iv_bal">\$\{peso\(grand - paid\)\}<\/span>/,
+    "elsewhere Balance still means what is still owed, never a fund");
+});
+
+test("the invoice log's own click handler matches each overflow to the payment row it came off, by reference no.", () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
   const handlerAt = fn.indexOf("$$('[data-cilog-invdoc]', box)");
   const handler = fn.slice(handlerAt, fn.indexOf('}));', handlerAt));
 
-  assert.match(handler, /showInvoiceDoc\(\{[\s\S]*?over: true,/,
-    'opened with over: true, so closing it pops back rather than closing everything');
+  assert.match(handler,
+    /const myOverflow = \(acct\.overflow \|\| \[\]\)\s*\n\s*\.filter\(\(f\) => String\(f\.source_invoice_id\) === b\.dataset\.invid\);/,
+    "only this invoice's own overflow — acct is already in hand from this same paintLog, no second fetch");
+  assert.match(handler, /\(f\.reference_no \|\| ''\) === \(p\.reference_no \|\| ''\)/,
+    'matched to the payment row that shares its reference no.');
+  assert.match(handler, /displayPayments\.push\(\{\s*\n\s*method: 'FUNDS'/,
+    'overflow with no matching row (paid entirely in FUNDS) still gets a slot of its own, not dropped');
 });
 
 // Purchase order's own billing statement already shows Amount / Paid so far

@@ -6879,6 +6879,73 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
   $('#ivd_done').addEventListener('click', closeDialog);
 }
 
+// Record payment's own Invoice log, and only there: the same blue INVOICE,
+// but a payment row here can carry more than this invoice ever owed — the
+// owner pays down the invoice first and whatever is left over becomes the
+// account's own Funds, so the real bank transfer and what landed on this one
+// invoice are two different numbers. Printed proof of the real transfer
+// shows the real amount, not just the slice this invoice absorbed, and
+// Balance — only once there is nothing left to collect — says where the
+// rest of it went rather than repeating a Total Due already shown above it
+// as ₱0.00. A duplicate of showInvoiceDoc rather than a branch of it: every
+// other screen that opens the blue INVOICE still wants Balance to mean what
+// is still owed, never what overflowed to Funds.
+function showInvoiceLogDoc({ orderId, issuedOn, resellerName, lines, payments = [],
+                             who = {}, shipping = 0, others = 0, invoiceNo = null,
+                             fundTotal = 0 }) {
+  const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const grand = sub + shipping + others;
+  const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
+  const slot = (p) => `
+    <div class="slot">
+      <b>MOP${p && p.method ? ` &nbsp;&nbsp;&nbsp; ${esc(p.method)}` : ''}</b>
+      <div>Details: ${p ? esc(p.payer_details || '') : ''}</div>
+      <div>Reference no.: ${p ? esc(p.reference_no || '') : ''}</div>
+      <div>Date: ${p ? onDay(p.paid_on) : ''}</div>
+      <div>Amount: ${p ? peso(p.displayAmount ?? p.amount) : ''}</div>
+    </div>`;
+  const slots = [...payments.slice(0, 5).map(slot),
+                 ...Array.from({ length: Math.max(0, 5 - payments.length) }, () => slot(null))];
+  dialog(`
+    <div class="doc inv">
+      ${DOC_HEAD}
+      <div class="title inv">INVOICE</div>
+      ${docParty(resellerName, issuedOn, invoiceNo || orderId, who,
+                 invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.')}
+      <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
+      <div style="clear:both"></div>
+      ${docLines(lines)}
+      <div class="foot">
+        <div class="mop">
+          <div class="hd">PAYMENT DETAILS${payments.length ? '' : ' — TO FOLLOW PAYMENT'}</div>
+          ${slots.join('')}
+        </div>
+        <div>
+          <div class="totals">
+            <div><span>Subtotal:</span><span id="iv_sub">${peso(sub)}</span></div>
+            <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
+            <div><span>Others:</span><span>${peso(others)}</span></div>
+            <div class="grand"><span>Grand Total:</span><span id="iv_grand">${peso(grand)}</span></div>
+            <div class="bal"><span>Balance:</span><span id="iv_bal">${
+              peso(fundTotal > 0 ? fundTotal : grand - paid)}</span></div>
+          </div>
+          ${BANK_DETAILS}
+        </div>
+      </div>
+      <div class="sign1">
+        <div class="nm">${esc(user?.name || user?.username || '')}</div>
+        <div>Order Management Coordinator</div>
+        <div class="cap">PREPARED BY:</div>
+      </div>
+    </div>
+    <div class="mt right">
+      <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
+      <button class="btn" id="ivd_done">Done</button></div>`, 'wide', true);
+  wireSave('#ivd_save', '.doc', `${invoiceNo || orderId} INVOICE.jpg`);
+  $('#ivd_done').addEventListener('click', closeDialog);
+}
+
 // The Invoice tab's own Billing statement — the same yellow ledger sheet
 // (.doc.po) Purchase order's bills print, built fresh here rather than
 // called there: that sheet is a supplier billing MS Beau Ave, running the
@@ -9527,7 +9594,7 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
       // the row — same nameopen pattern a reseller's own name already opens
       // their account with, elsewhere.
       { head: 'Invoice no.', cell: (i) => `<button class="nameopen"
-          data-cilog-invdoc="${i.order_id}"><b>${esc(i.si_no || '—')}</b></button>` },
+          data-cilog-invdoc="${i.order_id}" data-invid="${i.id}"><b>${esc(i.si_no || '—')}</b></button>` },
       { head: 'Issued', cell: (i) => onDay(i.issued_on) },
       { head: 'Standing', cell: logStanding },
       { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
@@ -9545,11 +9612,33 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
           GET(`/api/orders/${b.dataset.cilogInvdoc}`),
           GET(`/api/resellers/${resellerId}/payments?order_id=${b.dataset.cilogInvdoc}`).catch(() => []),
         ]);
-        showInvoiceDoc({
+        // What overflowed off this one invoice specifically — acct.overflow
+        // is already in hand from this same paintLog, so no second fetch.
+        // Matched to a payment row by its own reference no., the same
+        // reference the overflow was logged under when Save split the row;
+        // anything left over (a row paid entirely in FUNDS, with nothing of
+        // its own applied here) gets a slot of its own instead of being lost.
+        const myOverflow = (acct.overflow || [])
+          .filter((f) => String(f.source_invoice_id) === b.dataset.invid);
+        const fundTotal = myOverflow.reduce((s, f) => s + Number(f.amount), 0);
+        const claimed = new Set();
+        const displayPayments = payments.map((p) => {
+          const extra = myOverflow
+            .filter((f) => (f.reference_no || '') === (p.reference_no || '') && !claimed.has(f.id))
+            .reduce((s, f) => { claimed.add(f.id); return s + Number(f.amount); }, 0);
+          return { ...p, displayAmount: Number(p.amount) + extra };
+        });
+        for (const f of myOverflow) {
+          if (claimed.has(f.id)) continue;
+          displayPayments.push({
+            method: 'FUNDS', reference_no: f.reference_no, paid_on: f.at,
+            amount: 0, displayAmount: Number(f.amount),
+          });
+        }
+        showInvoiceLogDoc({
           orderId: full.id, issuedOn: full.placed_at, resellerName: full.reseller,
-          payments, who: full, invoiceNo: full.si_no,
+          payments: displayPayments, who: full, invoiceNo: full.si_no, fundTotal,
           shipping: Number(full.shipping || 0), others: Number(full.others || 0),
-          over: true,
           lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
             price: l.unit_price, code: l.price_code, unit: l.unit_type })),
         });
