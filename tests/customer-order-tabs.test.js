@@ -957,12 +957,17 @@ test("the invoice log's Total leaves void invoices out of the sum", () => {
 
 // A row in the account-wide log is a dead end without its own way to open
 // the document it is the record of — the same blue INVOICE the Invoice tab
-// itself opens from, not a redrawn copy.
-test('every row in the invoice log has its own Invoice button', () => {
+// itself opens from, not a redrawn copy. The number itself is the way in,
+// not a separate button column off at the end of the row.
+test('every row in the invoice log opens its own Invoice document by its number, not a separate button column', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
-  assert.match(fn, /data-cilog-invdoc="\$\{i\.order_id\}"/, 'the button names its own order');
+  assert.match(fn,
+    /head: 'Invoice no\.', cell: \(i\) => `<button class="nameopen"\s*\n\s*data-cilog-invdoc="\$\{i\.order_id\}"><b>\$\{esc\(i\.si_no \|\| '—'\)\}<\/b><\/button>`/,
+    'the Invoice no. cell itself is the button, carrying its own order');
+  assert.doesNotMatch(fn, /🖨 Invoice<\/button>` \},\s*\n\s*\], 'No invoices yet\.'/,
+    'no trailing button column left on this table');
   assert.match(fn, /\$\$\('\[data-cilog-invdoc\]', box\)\.forEach/,
     'wired for every row drawn into the log');
   assert.match(fn, /showInvoiceDoc\(\{/, 'opens the same document renderer, reused not redrawn');
@@ -1224,8 +1229,14 @@ test('the Funds log shows which invoice an overflow came from and which it actua
     'the second Date column (when the overflow was applied) is gone — Reason already names the invoice');
   assert.match(funds, /Overpayment of \$\{esc\(f\.source_si_no \|\| '—'\)\}\$\{f\.reference_no \? `-\$\{esc\(f\.reference_no\)\}` : ''\}/,
     'a row with nothing open to reach names the invoice it overpaid and its own reference no., not a generic phrase');
-  assert.match(funds, /data-cifunds-invdoc="\$\{f\.target_order_id\}"/,
-    'its own Invoice button opens the invoice the money actually reached');
+  // The Invoice no. cell itself is the way in now, not a separate button
+  // column — same nameopen pattern the Invoice log above it uses — and it
+  // opens the source invoice shown in the row, not the target named in Reason.
+  assert.match(funds,
+    /head: 'Invoice no\.', cell: \(f\) => `<button class="nameopen"\s*\n\s*data-cifunds-invdoc="\$\{f\.source_order_id\}"><b>\$\{esc\(f\.source_si_no \|\| '—'\)\}<\/b><\/button>`/,
+    'the Invoice no. cell itself is the button, carrying the source order');
+  assert.doesNotMatch(funds, /🖨 Invoice<\/button>` : ''\} \},\s*\n\s*\], 'No overpayment on this account\.'/,
+    'no trailing button column left on this table');
 
   // Written from this one dialog's own save, not reseller_credits or
   // pay_reseller_account, which every other screen already depends on.
