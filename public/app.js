@@ -9108,9 +9108,9 @@ SCREENS.draftorders = async (page) => {
 // same chatBadge every other screen already uses.
 // A proof photo is filed under the reseller's own gallery (the same place
 // Customers shows it), since a payment here has nowhere of its own to keep one.
-async function recordInvoicePayment(invoiceId, resellerName, chatLink, owed, resellerId, orderId, done) {
+async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink, owed, resellerId, orderId, done) {
   dialog(`
-    <h3>Record payment — ${esc(resellerName || `#${invoiceId}`)} ${chatBadge(chatLink)}</h3>
+    <h3>Record payment — ${invoiceNo ? `${esc(invoiceNo)} ` : ''}${esc(resellerName || `#${invoiceId}`)} ${chatBadge(chatLink)}</h3>
 
     <div class="row mt" id="ci_figs">
       <div><div class="dim">Amount</div><b id="ci_amount"></b></div>
@@ -9924,7 +9924,7 @@ SCREENS.coinvoices = async (page) => {
       { head: '', cell: (o) => `
           <div class="inv-actions">
             <button class="btn sm"
-                data-invpay="${o.invoice_id}" data-owed="${o.balance || 0}"
+                data-invpay="${o.invoice_id}" data-invno="${esc(o.si_no || '')}" data-owed="${o.balance || 0}"
                 data-resellername="${esc(o.reseller || '')}" data-chatlink="${esc(o.chat_link || '')}"
                 data-reseller="${o.reseller_id}"
                 data-orderid="${o.id}">Record payment</button>
@@ -9937,7 +9937,7 @@ SCREENS.coinvoices = async (page) => {
     const find = (id) => allRows.find((o) => String(o.id) === id);
 
     $$('[data-invpay]', page).forEach((b) => b.addEventListener('click',
-      () => recordInvoicePayment(b.dataset.invpay, b.dataset.resellername, b.dataset.chatlink,
+      () => recordInvoicePayment(b.dataset.invpay, b.dataset.invno, b.dataset.resellername, b.dataset.chatlink,
         Number(b.dataset.owed), b.dataset.reseller, b.dataset.orderid, load)));
 
     $$('[data-invbill]', page).forEach((b) => b.addEventListener('click', async () => {
