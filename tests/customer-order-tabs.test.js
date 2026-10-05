@@ -576,11 +576,13 @@ test('the four invoice-row buttons do their own four things', () => {
   const screen = app.slice(at, app.indexOf('\n};', at));
 
   assert.match(screen, /recordInvoicePayment\(/, 'Record payment opens its own form');
+  assert.match(screen, /data-invpay="\$\{o\.invoice_id\}" data-invno="\$\{esc\(o\.si_no \|\| ''\)\}"/,
+    'the button carries its own invoice number, read straight off the row');
   assert.match(screen, /data-resellername="\$\{esc\(o\.reseller \|\| ''\)\}" data-chatlink="\$\{esc\(o\.chat_link \|\| ''\)\}"/,
-    'the button carries the reseller\'s own name and chat link, read straight off the row');
+    'and the reseller\'s own name and chat link');
   assert.match(screen,
-    /recordInvoicePayment\(b\.dataset\.invpay, b\.dataset\.resellername, b\.dataset\.chatlink,/,
-    'and hands both into the dialog it opens');
+    /recordInvoicePayment\(b\.dataset\.invpay, b\.dataset\.invno, b\.dataset\.resellername, b\.dataset\.chatlink,/,
+    'and hands all three into the dialog it opens');
   assert.match(screen, /showInvoiceBillingStatement\(/, 'Billing statement prints the yellow ledger, not the blue invoice');
   assert.match(screen, /openInvoiceOrder\(b\.dataset\.invco, load\)/,
     'Customer order opens Invoice tab\'s own dialog, not the shared openOrder');
@@ -863,16 +865,19 @@ test('Record payment has no Pending payment table', () => {
   assert.doesNotMatch(fn, /\/api\/invoices\/\$\{invoiceId\}\/pending-payments/);
 });
 
-// The title reads who this is for, with a way straight into their chat —
-// the same chatBadge every other screen already uses — not the invoice
-// number, which the Invoice log table below already shows per row.
-test('Record payment\'s title reads the reseller\'s name and chat link, not the invoice number', () => {
+// The title now leads with the invoice number this payment is for, then the
+// reseller's name, then a way straight into their chat — the same chatBadge
+// every other screen already uses. The number comes from the Invoice tab's
+// own row (o.si_no), the only place this dialog is opened from, carried in
+// as its own parameter rather than refetched.
+test('Record payment\'s title leads with the invoice number, then the reseller\'s name and chat link', () => {
   const at = app.indexOf('async function recordInvoicePayment');
   const fn = app.slice(at, app.indexOf('\n}\n', at));
 
+  assert.match(fn, /async function recordInvoicePayment\(invoiceId, invoiceNo, resellerName, chatLink,/,
+    'its own parameter, not refetched');
   assert.match(fn,
-    /<h3>Record payment — \$\{esc\(resellerName \|\| `#\$\{invoiceId\}`\)\} \$\{chatBadge\(chatLink\)\}<\/h3>/);
-  assert.doesNotMatch(fn, /esc\(siNo/, 'the invoice number no longer heads the dialog');
+    /<h3>Record payment — \$\{invoiceNo \? `\$\{esc\(invoiceNo\)\} ` : ''\}\$\{esc\(resellerName \|\| `#\$\{invoiceId\}`\)\} \$\{chatBadge\(chatLink\)\}<\/h3>/);
 });
 
 // One reseller's invoices land wherever their own dates put them on the
