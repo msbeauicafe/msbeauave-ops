@@ -706,6 +706,20 @@ test("Packing list's own dialog draws the PACKING LIST sheet, not the customer o
   assert.match(fn, /CHECKED BY:/);
 });
 
+// The paper's own DATE reads when Packing list was pressed, not when the
+// order was placed — same fallback the tab's own table and sort already use
+// (packing_list_issued_at first, placed_at only if it's somehow missing).
+// This dialog builds its own sheet rather than calling the shared
+// showPackingList, so the shared one's DATE is untouched.
+test("Packing list's own dialog prints DATE as when Packing list was pressed", () => {
+  const at = app.indexOf('async function openPackingListOrder');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn,
+    /DATE: <span class="val">\$\{onDay\(o\.packing_list_issued_at \|\| o\.placed_at\)\}<\/span>/,
+    "packing_list_issued_at first, placed_at only as a fallback");
+});
+
 // The Invoice button pushes an order along to Invoice tab and marks it
 // Committed — not something a Draft order, set aside on purpose, is ready
 // for. Removed from Draft's own copy only; Pending customer order's own
