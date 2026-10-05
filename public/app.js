@@ -4640,7 +4640,10 @@ SCREENS.copacking = async (page) => {
       { head: 'Stage', cell: (o) => packingStageTag(o) },
       { head: 'Invoice', cell: (o) => tag(o.invoice_status, 'green') },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
-      { head: 'Placed', cell: (o) => when(o.placed_at) },
+      // Every row here has had Packing list pressed, so the date this
+      // screen's own sort already reads — when that happened, not when the
+      // order was first placed — is the one shown here too.
+      { head: 'Placed', cell: (o) => when(o.packing_list_issued_at || o.placed_at) },
       { head: '', cell: (o) => `<button class="btn sm quiet" data-open="${o.id}">Open</button>` },
     ], 'Nothing has had Packing list pressed yet.');
 

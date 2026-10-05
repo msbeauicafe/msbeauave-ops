@@ -1295,6 +1295,17 @@ test('the packing list screen reads newest-pressed first', () => {
     'descending by packing_list_issued_at, b before a');
 });
 
+// Every row here has had Packing list pressed, so the date shown has to be
+// the one that press happened on — same field the sort just above already
+// reads — not the order's own placement date, which can land on an earlier
+// day entirely once an order sits a while before being packed.
+test("the packing list screen's own Placed column reads when Packing list was pressed, not when the order was placed", () => {
+  const at = app.indexOf('SCREENS.copacking = async');
+  const screen = app.slice(at, app.indexOf('\n};', at));
+  assert.match(screen, /head: 'Placed', cell: \(o\) => when\(o\.packing_list_issued_at \|\| o\.placed_at\)/,
+    "packing_list_issued_at first, placed_at only as a fallback");
+});
+
 // The tab shows only what Packing list has actually been pressed for — paid
 // or not, the press decides. The warehouse's own Pick & send, and the
 // observer's Wholesale, still need every committed order regardless of that
