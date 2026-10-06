@@ -4503,6 +4503,7 @@ SCREENS.inventory = async (page) => {
     ['stockin', 'Stock in'],
     ['stockout', 'Stock out'],
     ['history', 'History'],
+    ['runningstocks', 'Running stocks'],
   ];
   if (!PANELS.some(([id]) => id === inventoryPanel)) inventoryPanel = 'stockin';
   localStorage.setItem('inventoryPanel', inventoryPanel);
@@ -4600,6 +4601,36 @@ SCREENS.inventory = async (page) => {
     };
     await recent();
     repeat(recent, 15000);
+  }
+
+  // Running stocks — the Product list tab's own Quantity figure (free to
+  // sell, same as Product list's own, not the raw physical count Purchase
+  // order's product picker reads — see that screen's own comment on why the
+  // two differ) kept here too, so checking what's actually left on the shelf
+  // doesn't mean leaving Internal Inventory Report for Product list/Brand
+  // list. Its own read of /api/products and its own copy of the one-line
+  // quantity formula, not a call into Product list's own local function.
+  if (inventoryPanel === 'runningstocks') {
+    box.innerHTML = `<div class="panel"><h3>Running stocks</h3><div id="r_running"></div></div>`;
+
+    const available = (p) => Number(p.total_on_hand) - Number(p.committed_shop || 0);
+    const isFreebie = (p) => (p.category || '').trim().toUpperCase() === 'FREEBIES';
+
+    const running = async () => {
+      const rows = await GET('/api/products?prices=1').catch(() => []);
+      rows.sort((a, b) => available(b) - available(a));
+      rows.sort((a, b) => (isFreebie(a) ? 1 : 0) - (isFreebie(b) ? 1 : 0));
+
+      $('#r_running', page).innerHTML = table(rows, [
+        { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
+        { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>` },
+        { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
+        { head: 'Category', cell: (p) => prodCatTag(p.category) },
+        { head: 'Quantity', n: true, cell: (p) => count(available(p)) },
+      ], 'No products yet.');
+    };
+    await running();
+    repeat(running, 30000);
   }
 };
 
