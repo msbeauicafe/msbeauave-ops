@@ -117,6 +117,65 @@ test('an invoice becomes a receivable — even before fulfilment — that its pa
   assert.equal(net, 0, 'a settled invoice leaves nothing owed');
 });
 
+// Record payment (Customer order's Invoice tab, and the account-level
+// "Confirm the bank payment" dialog) has long offered GCash, BDO, BPI and
+// Security Bank as modes of payment — MOP_OPTIONS in app.js — but until now
+// the sweep only ever asked "is this cash or not", so every one of those
+// four piled into the same generic non-cash account. Bank report's own Cash
+// position panel needs them told apart.
+const BANK_ACCOUNT_BY_METHOD = [
+  ['GCASH', 'GCash'],
+  ['BANCO DE ORO (BDO)', 'BDO'],
+  ['BPI', 'BPI'],
+  ['SECURITY BANK', 'Security Bank'],
+];
+
+test('the four named banks exist as their own cash accounts, the same ones Bank report looks for', async () => {
+  const rows = (await db.query(
+    `select title, is_cash from coa_accounts where title in ('GCash','BDO','BPI','Security Bank')`)).rows;
+  assert.equal(rows.length, 4, 'all four were seeded');
+  for (const r of rows) assert.ok(r.is_cash, `${r.title} is marked as a cash account`);
+});
+
+for (const [method, title] of BANK_ACCOUNT_BY_METHOD) {
+  test(`a payment made by ${method} posts to the ${title} account, not a generic bucket`, async () => {
+    const admin = await signIn('admin');
+    const w = await wholesale(2000, 'placed');
+    await sync(admin);
+
+    const pay = (await db.query(
+      `insert into payments (invoice_id, amount, method) values ($1,2000,$2) returning id`,
+      [w.invoice, method])).rows[0].id;
+    await sync(admin);
+
+    const code = (await db.query(`select code from coa_accounts where title = $1`, [title])).rows[0].code;
+    const lines = await linesFor('payment', pay);
+    assert.ok(lines.find((l) => l.account === code && Number(l.debit) === 2000),
+      `the payment landed in ${title} (account ${code}), not somewhere generic`);
+    assert.ok(!lines.find((l) => l.account === '102' && l.account !== code),
+      "and not in Bank, now that this bank has its own account");
+  });
+}
+
+test('cash still posts to Cash On Hand, and an unrecognised or missing method still falls back to Bank, exactly as before', async () => {
+  const admin = await signIn('admin');
+  const w1 = await wholesale(500, 'placed');
+  const w2 = await wholesale(700, 'placed');
+  await sync(admin);
+
+  const cashPay = (await db.query(
+    `insert into payments (invoice_id, amount, method) values ($1,500,'cash') returning id`, [w1.invoice])).rows[0].id;
+  const oddPay = (await db.query(
+    `insert into payments (invoice_id, amount, method) values ($1,700,'cheque') returning id`, [w2.invoice])).rows[0].id;
+  await sync(admin);
+
+  const cashLines = await linesFor('payment', cashPay);
+  assert.ok(cashLines.find((l) => l.account === '103' && Number(l.debit) === 500), 'cash → Cash On Hand, unchanged');
+  const oddLines = await linesFor('payment', oddPay);
+  assert.ok(oddLines.find((l) => l.account === '102' && Number(l.debit) === 700),
+    'a method that names none of the four banks still falls back to Bank, as every non-cash payment always did');
+});
+
 test('the sweep posts each event exactly once, however often it runs', async () => {
   const admin = await signIn('admin');
   const s = await counterSale(750);
