@@ -8458,7 +8458,7 @@ SCREENS.chatorders = async (page) => {
       { head: 'Code', cell: (p) => esc(p.sku || '') },
       { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b> <span class="dim">${esc(p.brand || '')}</span>` },
       { head: 'RS Price', n: true, cell: (p) => peso(rsPrice(p)) },
-      { head: 'Have', n: true, cell: (p) => count(p.available) },
+      { head: 'Available', n: true, cell: (p) => count(p.available) },
       { head: '', cell: (p) => `<button class="btn sm quiet" data-add="${esc(p.sku)}"
           ${p.available <= 0 ? 'disabled' : ''}>Add</button>` },
     ], 'Nothing matches.');
