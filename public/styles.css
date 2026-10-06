@@ -237,6 +237,15 @@ nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--ros
 .tile.bad  { border-left: 4px solid var(--danger); }
 .tile.good { border-left: 4px solid var(--success); }
 .panel { padding: 18px; margin-bottom: 16px; }
+/* Bank report's own Cash position panel — a grid of Books' named cash
+   accounts, read-only, plus the total they add up to. */
+.br-cash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.br-cash-acct { padding: 10px 14px; border: 1px solid var(--rose-soft); border-radius: var(--round); }
+.br-cash-acct .label { text-transform: uppercase; letter-spacing: .02em; }
+.br-cash-acct .big { font-size: 1.15rem; font-weight: 700; color: var(--rose-deep); }
+.br-cash-total { display: flex; justify-content: space-between; align-items: center;
+  margin-top: 12px; padding: 12px 14px; background: var(--rose-blush);
+  border-radius: var(--round); font-size: 1.05rem; }
 /* The product list is a column per tier wide, so it can end up wider than the
    screen. It scrolls sideways inside its own panel rather than dragging the
    whole page along with it, and the headings stay put while it does: Tier 4

@@ -479,6 +479,7 @@ const TABS = {
     ['inventory', '📥', 'Internal Inventory Report'],
     ['purchaseorders', '🧾', 'Purchase order'],
     ['customerorder', '💬', 'Customer order'],
+    ['bankreport', '🏦', 'Bank report'],
     ['warehouseinventory', '📥', 'Warehouse inventory report'],
     ['receivingform', '📦', 'Receiving form'],
     ['releasingform', '📤', 'Releasing form'],
@@ -14243,6 +14244,157 @@ SCREENS.crm = async (page) => {
   });
   await load();
   repeat(load, 30000);
+};
+
+// ===========================================================================
+// Bank report — the owner's own snapshot: what the day/week/month took, what
+// it cost, and where the money actually sits right now.
+//
+// Sales, expenses, net profit and net cash in are finance_summary() under a
+// calendar window instead of Finance's own free From/To — the same figures,
+// read the same way, just asked for a day/week/month at a time. Cash
+// position reads Books' own named cash accounts (GET /api/books/cash) as
+// they stand today; this screen only displays them; it does not add, touch
+// or rename an account — that stays Books' own screen to do. Receivables and
+// Payables are both "right now" totals, not scoped to the chosen period,
+// the same way a bank statement's running balance isn't scoped to one day.
+// ===========================================================================
+const BR_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const BR_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const brParts = (iso) => { const [y, m, d] = iso.split('-').map(Number); return { y, m, d }; };
+const brISO = (y, m, d) => {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${
+    String(dt.getUTCDate()).padStart(2, '0')}`;
+};
+const brRange = (period, anchor) => {
+  const { y, m, d } = brParts(anchor);
+  if (period === 'day') return { from: anchor, to: anchor };
+  if (period === 'week') {
+    // Monday-start, same week the business plans a shift roster against.
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    const mon = brISO(y, m, d - ((dow + 6) % 7));
+    const { y: my, m: mm, d: md } = brParts(mon);
+    return { from: mon, to: brISO(my, mm, md + 6) };
+  }
+  return { from: brISO(y, m, 1), to: brISO(y, m + 1, 0) };
+};
+const brShift = (period, anchor, dir) => {
+  const { y, m, d } = brParts(anchor);
+  if (period === 'day') return brISO(y, m, d + dir);
+  if (period === 'week') return brISO(y, m, d + dir * 7);
+  return brISO(y, m + dir, 1);
+};
+const brLabel = (period, anchor, today) => {
+  const { y, m, d } = brParts(anchor);
+  if (period === 'month') return `${BR_MONTHS[m - 1]} ${y}`;
+  if (period === 'week') {
+    const { from, to } = brRange('week', anchor);
+    const f = brParts(from); const t = brParts(to);
+    return `${BR_MONTHS[f.m - 1]} ${f.d} – ${BR_MONTHS[t.m - 1]} ${t.d}`;
+  }
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const day = `${BR_DAYS[dow]}, ${BR_MONTHS[m - 1]} ${d}`;
+  return anchor === today ? `Today · ${day}` : day;
+};
+
+SCREENS.bankreport = async (page) => {
+  const today = localDay();
+  let period = 'day';
+  let anchor = today;
+
+  page.innerHTML = `
+    <div class="head"><h2>Bank report</h2>
+      <span class="hint">Sales, cash and what's owed, by day, week or month</span></div>
+    <div class="tools">
+      <div class="subtabs" id="br_period">
+        <button data-period="day" class="on">Day</button>
+        <button data-period="week">Week</button>
+        <button data-period="month">Month</button>
+      </div>
+      <button class="btn sm quiet" id="br_prev">‹</button>
+      <b id="br_label"></b>
+      <button class="btn sm quiet" id="br_next">›</button>
+    </div>
+    <div id="br_body"></div>`;
+
+  const load = async () => {
+    const { from, to } = brRange(period, anchor);
+    $('#br_label', page).textContent = brLabel(period, anchor, today);
+    const nextFrom = brRange(period, brShift(period, anchor, 1)).from;
+    $('#br_next', page).disabled = nextFrom > today;
+
+    const [fin, cash, payables] = await Promise.all([
+      GET(`/api/finance?from=${from}&to=${to}`),
+      GET('/api/books/cash'),
+      GET('/api/reports/payables'),
+    ]);
+    const money = (v) => peso(v || 0);
+    const sales = Number(fin.counter.revenue) + Number(fin.wholesale.invoiced);
+    const txns = Number(fin.counter.sales) + Number(fin.wholesale.orders);
+    const expenses = Number(fin.expenses.total) + Number(fin.counter.cost) + Number(fin.wholesale.cost);
+    const cashIn = Number(fin.cash.movement);
+    const receivables = Number(fin.wholesale.outstanding);
+    const payablesTotal = Number(payables.total);
+
+    $('#br_body', page).innerHTML = `
+      <div class="tiles">
+        <div class="tile"><div class="big">${money(sales)}</div>
+          <div class="label">Sales · ${count(txns)} transaction${txns === 1 ? '' : 's'}</div></div>
+        <div class="tile"><div class="big">${money(expenses)}</div>
+          <div class="label">Expenses · incl. cost of goods sold</div></div>
+        <div class="tile ${Number(fin.net) < 0 ? 'bad' : 'good'}"><div class="big">${money(fin.net)}</div>
+          <div class="label">Net profit</div></div>
+        <div class="tile ${cashIn < 0 ? 'bad' : 'good'}"><div class="big">${money(cashIn)}</div>
+          <div class="label">Net cash in${cashIn < 0 ? ' (out)' : ''}</div></div>
+      </div>
+
+      <div class="split">
+        <div class="panel">
+          <h3>Cash position</h3>
+          <div class="br-cash-grid">
+            ${cash.accounts.length ? cash.accounts.map((a) => `
+              <div class="br-cash-acct">
+                <div class="label">${esc(a.title)}</div>
+                <div class="big">${money(a.balance)}</div>
+              </div>`).join('')
+              : '<div class="none">No cash accounts set up in Books yet.</div>'}
+          </div>
+          ${cash.accounts.length ? `
+            <div class="br-cash-total"><span>Total</span><b>${money(cash.total)}</b></div>` : ''}
+          <div class="dim mt">As recorded in Books. Set up or correct an account there,
+            not here.</div>
+        </div>
+
+        <div>
+          <div class="tile good"><div class="big">${money(receivables)}</div>
+            <div class="label">Receivables · customers owe you</div></div>
+          <div class="tile ${payablesTotal > 0 ? 'bad' : ''}" style="margin-top:14px">
+            <div class="big">${money(payablesTotal)}</div>
+            <div class="label">Payables · you owe suppliers</div></div>
+        </div>
+      </div>`;
+  };
+
+  $$('[data-period]', page).forEach((b) => b.addEventListener('click', () => {
+    if (b.classList.contains('on')) return;
+    $$('[data-period]', page).forEach((x) => x.classList.toggle('on', x === b));
+    period = b.dataset.period;
+    anchor = today;
+    load().catch(whoops);
+  }));
+  $('#br_prev', page).addEventListener('click', () => {
+    anchor = brShift(period, anchor, -1);
+    load().catch(whoops);
+  });
+  $('#br_next', page).addEventListener('click', () => {
+    if ($('#br_next', page).disabled) return;
+    anchor = brShift(period, anchor, 1);
+    load().catch(whoops);
+  });
+
+  await load();
 };
 
 // ===========================================================================
