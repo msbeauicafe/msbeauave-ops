@@ -14262,6 +14262,10 @@ SCREENS.crm = async (page) => {
 const BR_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const BR_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// Always these seven boxes, in this order, whether or not Books happens to
+// carry an account by that name yet — a box reads ₱0.00 rather than vanish,
+// so the shape of the panel never shifts as accounts are set up one by one.
+const BR_CASH_BOXES = ['Bank', 'Cash on hand', 'GCash', 'BDO', 'BPI', 'Security Bank', 'Balance'];
 const brParts = (iso) => { const [y, m, d] = iso.split('-').map(Number); return { y, m, d }; };
 const brISO = (y, m, d) => {
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -14354,17 +14358,21 @@ SCREENS.bankreport = async (page) => {
         <div class="panel">
           <h3>Cash position</h3>
           <div class="br-cash-grid">
-            ${cash.accounts.length ? cash.accounts.map((a) => `
+            ${BR_CASH_BOXES.map((label) => {
+              const acct = cash.accounts.find((a) =>
+                a.title.trim().toLowerCase() === label.toLowerCase());
+              return `
               <div class="br-cash-acct">
-                <div class="label">${esc(a.title)}</div>
-                <div class="big">${money(a.balance)}</div>
-              </div>`).join('')
-              : '<div class="none">No cash accounts set up in Books yet.</div>'}
+                <div class="label">${esc(label)}</div>
+                <div class="big">${money(acct?.balance)}</div>
+              </div>`;
+            }).join('')}
           </div>
-          ${cash.accounts.length ? `
-            <div class="br-cash-total"><span>Total</span><b>${money(cash.total)}</b></div>` : ''}
-          <div class="dim mt">As recorded in Books. Set up or correct an account there,
-            not here.</div>
+          <div class="br-cash-total"><span>Total</span><b>${money(
+            BR_CASH_BOXES.reduce((s, label) => s + Number(cash.accounts.find((a) =>
+              a.title.trim().toLowerCase() === label.toLowerCase())?.balance || 0), 0))}</b></div>
+          <div class="dim mt">A box reads ₱0.00 until an account by that exact name exists
+            in Books and carries a balance — set one up or correct it there, not here.</div>
         </div>
 
         <div>
