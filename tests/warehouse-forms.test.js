@@ -122,6 +122,31 @@ test("Warehouse inventory report is its own screen, not a second menu entry for 
   const invAt = app.indexOf('SCREENS.inventory = async');
   assert.match(app.slice(app.lastIndexOf('let inventoryPanel', invAt), invAt), /let inventoryPanel/);
   assert.match(original, /<h2>Inventory<\/h2>/);
+
+  // Running stocks was asked for Internal Inventory Report specifically — it
+  // sits on that screen's own tab list, not this copy's.
+  assert.match(original, /\['runningstocks', 'Running stocks'\]/,
+    "Internal Inventory Report carries the Running stocks tab");
+  assert.doesNotMatch(fn, /runningstocks/,
+    "Warehouse inventory report's own copy never picks it up");
+});
+
+// ---------------------------------------------------------------------------
+// Running stocks — Product list's own Quantity figure, read again on
+// Internal Inventory Report's own tab, with its own copy of the formula
+// ---------------------------------------------------------------------------
+test('Running stocks reads products fresh and keeps its own copy of the quantity formula', () => {
+  const at = app.indexOf('SCREENS.inventory = async');
+  const fn = app.slice(at, app.indexOf('\n};', at));
+
+  assert.match(fn, /if \(inventoryPanel === 'runningstocks'\)/);
+  assert.match(fn, /GET\('\/api\/products\?prices=1'\)/,
+    'the same catalogue read Product list uses, not a narrowed or filtered copy');
+  assert.match(fn, /const available = \(p\) => Number\(p\.total_on_hand\) - Number\(p\.committed_shop \|\| 0\)/,
+    "its own copy of the formula — Product list's own `available` is local to that screen and unreachable from here");
+
+  const headRe = /head: 'Code'[\s\S]*?head: 'Product'[\s\S]*?head: 'Brand'[\s\S]*?head: 'Category'[\s\S]*?head: 'Quantity'/;
+  assert.match(fn, headRe, 'Code, Product, Brand, Category, Quantity, in that order');
 });
 
 // ---------------------------------------------------------------------------
