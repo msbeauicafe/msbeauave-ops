@@ -119,6 +119,22 @@ test('SCREENS.bankreport reads the same finance figures Finance already uses, pl
   assert.doesNotMatch(fn, /POST\(.*\/api\/books/);
 });
 
+// Cash position always shows these seven boxes, whether or not Books
+// happens to carry an account by that name yet — a box reads ₱0.00 rather
+// than disappear, so the panel's shape never shifts as accounts are set up
+// one at a time in Books.
+test('Cash position is a fixed set of seven named boxes, not just whatever Books happens to have today', () => {
+  assert.match(app,
+    /const BR_CASH_BOXES = \['Bank', 'Cash on hand', 'GCash', 'BDO', 'BPI', 'Security Bank', 'Balance'\];/);
+
+  const at = app.indexOf('SCREENS.bankreport = async');
+  const fn = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
+  assert.match(fn, /BR_CASH_BOXES\.map/,
+    "the panel renders the fixed list, not cash.accounts directly");
+  assert.match(fn, /a\.title\.trim\(\)\.toLowerCase\(\) === label\.toLowerCase\(\)/,
+    "each box is matched to a real Books account by its exact name");
+});
+
 test('the Day/Week/Month toggle is a real subtabs control, and the next arrow cannot be pushed into the future', () => {
   const at = app.indexOf('SCREENS.bankreport = async');
   const fn = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
