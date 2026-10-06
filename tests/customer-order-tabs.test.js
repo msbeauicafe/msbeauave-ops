@@ -1483,3 +1483,37 @@ test('the product table leads with the code, ahead of the product itself', () =>
   assert.match(screen, /head: 'Code', cell: \(p\) => esc\(p\.sku \|\| ''\)/,
     'the code column reads the sku plainly, nothing dressed up');
 });
+
+// Pending customer order's printed CUSTOMER ORDER FORM sits in a flex column
+// (co-side) that scrolls when it is too tall, but co-scale (the box holding
+// the sheet, scaled to size by JS) sets overflow: hidden of its own — which,
+// on a flex item, zeroes its automatic minimum height. Past a certain line
+// count co-side's content outgrew its own 78vh ceiling, and flex shrank
+// co-scale below the height scaleCoForm had just given it rather than
+// letting co-side's scrollbar take the overflow: the sheet was clipped
+// mid-row, its bottom lines never visible, however many were actually on
+// the order. openDraftOrder shares this exact same markup and CSS and is
+// left alone — the fix reaches Pending customer order only.
+test('Pending customer order carries its own dialog class, scoped away from the Draft screen that shares its markup', () => {
+  const at = app.indexOf('async function openPendingOrder');
+  const fn = app.slice(at, app.indexOf('\nasync function openDraftOrder'));
+  assert.match(fn, /,\s*'wide co-open pco-open'\);/,
+    "its own class alongside the shared co-open one, not a second door onto it");
+
+  const draftAt = app.indexOf('async function openDraftOrder');
+  const draftFn = app.slice(draftAt, app.indexOf('\nasync function', draftAt + 1));
+  assert.doesNotMatch(draftFn, /pco-open/,
+    "Draft's own copy of this same dialog never picks up Pending customer order's fix");
+});
+
+test('co-scale is held to its full height only inside the pco-open dialog, not everywhere co-scale is used', () => {
+  assert.match(css, /\.dialog\.pco-open \.order-split \.co-scale\s*\{\s*flex-shrink:\s*0;\s*\}/,
+    'scoped under .pco-open, so Purchase order, Receiving form, the Invoice and ' +
+    'Packing list tabs, Chat order and Draft — every other screen built on the ' +
+    'same co-scale — render exactly as they did before');
+
+  // The shared rule itself is untouched — still the one declaration, same as
+  // every other screen built on co-scale still reads it.
+  const sharedCount = [...css.matchAll(/\.order-split \.co-scale\s*\{\s*overflow:\s*hidden;\s*\}/g)].length;
+  assert.equal(sharedCount, 1, 'the shared co-scale rule was not touched, only added to');
+});

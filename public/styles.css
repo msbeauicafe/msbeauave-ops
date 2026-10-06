@@ -345,6 +345,15 @@ textarea.sheet {
 .paytot { font-size: 1.35rem; color: var(--rose-deep); }
 .order-split .edit-side { flex: 1 1 380px; min-width: 380px; }
 .order-split .co-scale { overflow: hidden; }
+/* Pending customer order only: co-scale's height is set in JS to match the
+   scaled sheet (see scaleCoForm in openPendingOrder), but as a flex item
+   with overflow set, its automatic minimum height is zero — so once an
+   order carries enough lines to run past co-side's own 78vh ceiling, flex
+   quietly squeezed co-scale shorter than that JS height instead of letting
+   co-side's own scrollbar take the overflow, and the sheet's bottom rows
+   were clipped off, unscrollable, never reflected on screen. Holding
+   co-scale to its full height here is what lets co-side scroll to them. */
+.dialog.pco-open .order-split .co-scale { flex-shrink: 0; }
 @media (max-width: 900px) {
   .dialog.co-open { width: 96vw; }
   .order-split .co-side, .order-split .edit-side { flex: 1 1 auto; width: 100%; max-width: 100%; min-width: 0; }

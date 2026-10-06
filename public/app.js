@@ -5147,7 +5147,7 @@ async function openPendingOrder(id, reload, page) {
       </div>
     </div>
       </div>
-    </div>`, 'wide co-open');
+    </div>`, 'wide co-open pco-open');
 
   wireSave('#pco_jpeg', '.co-side .doc', `${o.co_no || o.id}.jpg`);
 
