@@ -181,3 +181,47 @@ test('"They have left" takes the real last day and why, and can be undone', asyn
   // Pressed with nothing chosen still works, dated today, as it always did.
   assert.equal((await call('POST', `/api/team/${id}/left`, {})).status, 200);
 });
+
+async function signInAs(role) {
+  const username = `${role}-201-${process.pid}-${Date.now()}`;
+  await db.query(
+    `insert into app_users (username, display_name, password_hash, role)
+     values ($1,$1,$2,$3)`, [username, hashPassword('secret123'), role]);
+  const res = await fetch(`${base}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password: 'secret123' }),
+  });
+  return (res.headers.getSetCookie?.()[0] ?? res.headers.get('set-cookie')).split(';')[0];
+}
+
+test('somebody who left stays in the 201 file, with their final pay', async () => {
+  const { from, to } = cutoff();
+  const id = await person('Filed away');
+  await db.query("update employees set started_on = $2 where id = $1", [id, `${year}-01-06`]);
+  await worked(id, `${year}-03-11`, `${year}-03-12`);
+  const opened = await call('POST', '/api/payroll', { company: 'BOA', starts_on: from, ends_on: to });
+  assert.equal(opened.status, 200);
+  assert.equal((await call('POST', `/api/team/${id}/left`,
+    { on: `${year}-03-12`, reason: 'terminated' })).status, 200);
+
+  const list = await call('GET', '/api/hr/201');
+  const row = list.data.people.find((p) => Number(p.id) === id);
+  assert.ok(row, 'still on the 201 list after leaving');
+  assert.equal(row.here, false);
+  assert.equal(row.separation_reason, 'terminated');
+
+  const file = await call('GET', `/api/hr/201/${id}`);
+  assert.equal(file.status, 200, JSON.stringify(file.data));
+  assert.equal(String(file.data.person.ended_on).slice(0, 10), `${year}-03-12`);
+  const slip = file.data.payslips.find((s) => Number(s.period_id) === opened.data.id);
+  assert.ok(slip, 'their final cutoff is on their file');
+  assert.equal(Number(slip.days_present), 2);
+
+  const hr = await signInAs('hr');
+  const asHr = await fetch(`${base}/api/hr/201/${id}`, { headers: { Cookie: hr } });
+  assert.equal(asHr.status, 200, 'HR reads the 201 file');
+  const cashier = await signInAs('cashier');
+  const asCashier = await fetch(`${base}/api/hr/201/${id}`, { headers: { Cookie: cashier } });
+  assert.notEqual(asCashier.status, 200, 'a cashier does not');
+});

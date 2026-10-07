@@ -1948,3 +1948,7 @@ input.n { text-align: right; }
 .dialog.po-open .order-split .edit-side .po-lines-table td:nth-child(1) .dim {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
 }
+
+/* A 201 file's facts: label over value, as many across as fit. */
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 20px; }
+.facts > div { min-width: 0; overflow-wrap: anywhere; }
