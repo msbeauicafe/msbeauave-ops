@@ -14882,12 +14882,82 @@ const wirePeople = (root) => $$('[data-person]', root).forEach((el) => {
   el.addEventListener('click', () => openProfile(el.dataset.person));
 });
 
+// Which HR tab is showing — kept across a visit like Internal Inventory
+// Report's own.
+let hrPanel = localStorage.getItem('hrPanel') || 'overview';
+
 SCREENS.hr = async (page) => {
   // Two shops on one list read as one shop with a muddle in it. Tapped rather
   // than typed, like the category chips, and kept across a draw so approving
   // somebody's leave does not throw the list back to Both.
   let shop = '';
+  const PANELS = [['overview', 'Overview'], ['file201', '201 file']];
+  if (!PANELS.some(([id]) => id === hrPanel)) hrPanel = 'overview';
+  const tabs = () => `<div class="subtabs">${PANELS.map(([id, label]) =>
+    `<button data-hrtab="${id}" class="${id === hrPanel ? 'on' : ''}">${esc(label)}</button>`).join('')}</div>`;
+  const wireTabs = () => $$('[data-hrtab]', page).forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.hrtab === hrPanel) return;
+    hrPanel = b.dataset.hrtab;
+    try { localStorage.setItem('hrPanel', hrPanel); } catch {}
+    page.innerHTML = '';
+    load().catch(whoops);
+  }));
+
+  // -------------------------------------------------------------------------
+  // 201 file — everybody who has ever worked here. Leaving dates a person and
+  // never takes them off this list: their record, payslips and final pay stay
+  // the company's to keep.
+  // -------------------------------------------------------------------------
+  let f201Show = 'all';
+  const draw201 = async () => {
+    if (!$('#f201_list', page)) {
+      page.innerHTML = `
+        <div class="head"><h2>Human resources</h2>
+          <span class="hint">Everyone who has worked here, the ones who left included</span></div>
+        ${tabs()}
+        <div class="tools">
+          <input type="search" id="f201_find" placeholder="Search by name or position…">
+          <span class="chips" id="f201_chips">
+            <button class="btn sm" data-f201="all">All</button>
+            <button class="btn line sm" data-f201="active">Active</button>
+            <button class="btn line sm" data-f201="left">Separated</button>
+          </span>
+        </div>
+        <div class="dim">Tap a name to open their 201 file: their record, every
+          payslip, loans, leave and reviews — and for somebody who left, their
+          last day, why, and their final pay.</div>
+        <div class="panel mt" id="f201_list"></div>`;
+      wireTabs();
+      $('#f201_find', page).addEventListener('input', () => draw201().catch(whoops));
+      $$('[data-f201]', page).forEach((b) => b.addEventListener('click', () => {
+        f201Show = b.dataset.f201;
+        $$('[data-f201]', page).forEach((x) => { x.className = x === b ? 'btn sm' : 'btn line sm'; });
+        draw201().catch(whoops);
+      }));
+    }
+    const { people } = await GET('/api/hr/201');
+    const q = ($('#f201_find', page)?.value || '').trim().toLowerCase();
+    const rows = people.filter((p) => (f201Show === 'all'
+        || (f201Show === 'active' ? p.here : !p.here))
+      && (!q || `${p.name} ${p.position || ''}`.toLowerCase().includes(q)));
+    $('#f201_list', page).innerHTML = table(rows, [
+      { head: '', cell: (p) => faceOf(p) },
+      { head: 'Name', cell: (p) => `<button class="nameopen" data-f201open="${p.id}"
+          ><b>${esc(p.name)}</b></button><div class="dim">${esc(p.position || '')}</div>` },
+      { head: 'Status', cell: (p) => (p.here ? tag('Active', 'green')
+          : tag(`Separated${p.separation_reason ? ' · ' + (LEFT_BECAUSE[p.separation_reason] || '') : ''}`, 'grey')) },
+      { head: 'Company', cell: (p) => esc(p.company || '—') },
+      { head: 'Shop', cell: (p) => esc(p.branch || '—') },
+      { head: 'Started', cell: (p) => onDay(p.started_on) },
+      { head: 'Last day', cell: (p) => (p.ended_on ? onDay(p.ended_on) : '<span class="dim">—</span>') },
+      { head: 'Service', cell: (p) => serviceLength(p.started_on, p.ended_on) },
+    ], q || f201Show !== 'all' ? 'Nobody matches that.' : 'Nobody on file yet.');
+    $$('[data-f201open]', page).forEach((b) => b.addEventListener('click',
+      () => open201(Number(b.dataset.f201open)).catch(whoops)));
+  };
+
   const load = async () => {
+    if (hrPanel === 'file201') return draw201();
     const d = await GET('/api/hr');
     const waiting = d.leave.filter((l) => l.status === 'pending');
     const hiring = d.pipeline.filter((a) => !['hired', 'rejected'].includes(a.pipeline_stage));
@@ -14895,6 +14965,7 @@ SCREENS.hr = async (page) => {
     page.innerHTML = `
       <div class="head"><h2>Human resources</h2>
         <span class="hint">${count(d.figures.headcount)} people, two shops</span></div>
+      ${tabs()}
 
       <div class="tiles">
         <div class="tile"><div class="big">${count(d.figures.headcount)}</div>
@@ -15037,11 +15108,118 @@ SCREENS.hr = async (page) => {
     $('#add_cand', page).addEventListener('click', () => candidateDialog(load));
     $('#add_note', page).addEventListener('click', () => announcementDialog(load));
     wirePeople(page);
+    wireTabs();
   };
 
   await load();
   repeat(load, 60000);
 };
+
+// How long somebody worked here — to today, or to their last day.
+const serviceLength = (from, to) => {
+  if (!from) return '<span class="dim">—</span>';
+  const a = new Date(from), b = to ? new Date(to) : new Date();
+  let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  if (b.getDate() < a.getDate()) months -= 1;
+  if (months < 1) return 'under a month';
+  const y = Math.floor(months / 12), m = months % 12;
+  return [y ? `${y} yr${y === 1 ? '' : 's'}` : '', m ? `${m} mo` : ''].filter(Boolean).join(' ');
+};
+
+// One person's 201 file. Its own dialog, not the HR person profile's — that
+// one is opened from Payroll and the HR list too, and this is only wanted here.
+async function open201(id) {
+  const f = await GET(`/api/hr/201/${id}`);
+  const p = f.person;
+  const money = (v) => peso(Number(v || 0));
+  const left = !p.here;
+  // The cutoff their last day falls in is the one that pays them last.
+  const final = left ? f.payslips.find((s) =>
+    String(s.starts_on).slice(0, 10) <= String(p.ended_on).slice(0, 10)
+    && String(s.ends_on).slice(0, 10) >= String(p.ended_on).slice(0, 10)) : null;
+  const owed = f.loans.reduce((sum, l) => sum + Math.max(0, Number(l.balance || 0)), 0);
+  const rate = p.pay_basis === 'monthly' ? `${money(p.monthly_rate)} a month`
+    : p.pay_basis === 'hourly' ? `${money(p.hourly_rate)} an hour`
+    : `${money(p.daily_rate)} a day`;
+  const loanName = (l) => (l.kind === 'ca' ? 'Cash advance'
+    : `${l.kind === 'sss' ? 'SSS' : 'Pag-IBIG'} loan${l.loan_type ? ' · ' + esc(l.loan_type) : ''}`);
+  const fact = (label, value) => `<div><div class="dim">${esc(label)}</div><div>${value}</div></div>`;
+
+  dialog(`
+    <div class="row" style="align-items:center">
+      <div style="flex:0 0 auto">${faceOf(p, 56)}</div>
+      <div><h3 style="margin:0">${esc(p.name)}</h3>
+        <div class="dim">201 file · ${esc(p.position || '')}</div></div>
+      <div style="flex:0 0 auto">${left
+        ? tag(`Separated${p.separation_reason ? ' · ' + (LEFT_BECAUSE[p.separation_reason] || '') : ''}`, 'grey')
+        : tag('Active', 'green')}</div>
+    </div>
+
+    ${left ? `
+    <div class="panel mt"><h3>Separation</h3>
+      <div class="facts">
+        ${fact('Last day', onDay(p.ended_on))}
+        ${fact('Why', esc(LEFT_BECAUSE[p.separation_reason] || 'Not recorded'))}
+        ${fact('Final pay', final
+          ? `${money(final.net_pay)} net · ${onDay(final.starts_on)} to ${onDay(final.ends_on)} · ${
+              final.status === 'closed' ? tag('closed', 'grey') : tag('open', 'green')}`
+          : '<span class="dim">Not on a payroll cutoff yet — Payroll → ＋ Add someone</span>')}
+        ${fact('Loans and advances still owed', owed > 0
+          ? `<b>${money(owed)}</b>` : '<span class="dim">None</span>')}
+      </div></div>` : ''}
+
+    <div class="panel mt"><h3>Employment</h3>
+      <div class="facts">
+        ${fact('Employee no.', `#${p.id}`)}
+        ${fact('Company', esc(p.company || '—'))}
+        ${fact('Shop', esc(p.branch || '—'))}
+        ${fact('Department', esc(p.department || '—'))}
+        ${fact('Started', onDay(p.started_on))}
+        ${fact(left ? 'Served' : 'Service so far', serviceLength(p.started_on, p.ended_on))}
+        ${fact('Phone', esc(p.phone || '—'))}
+        ${fact('Email', esc(p.email || '—'))}
+        ${fact('Paid', esc(rate))}
+      </div></div>
+
+    <div class="panel mt"><h3>Payslips</h3>
+      ${table(f.payslips, [
+        { head: 'Cutoff', cell: (s) => `${onDay(s.starts_on)} to ${onDay(s.ends_on)}${
+            final && s.period_id === final.period_id ? ' ' + tag('final pay', 'amber') : ''}` },
+        { head: 'Paid', cell: (s) => onDay(s.paid_on) },
+        { head: 'Days', n: true, cell: (s) => count(s.days_present) },
+        { head: 'Earnings', n: true, cell: (s) => money(s.total_earnings) },
+        { head: 'Deductions', n: true, cell: (s) => money(s.total_deductions) },
+        { head: 'Net', n: true, cell: (s) => `<b>${money(s.net_pay)}</b>` },
+        { head: '', cell: (s) => (s.status === 'closed' ? tag('closed', 'grey') : tag('open', 'green')) },
+      ], 'No payslips yet.')}</div>
+
+    <div class="panel mt"><h3>Loans and cash advances</h3>
+      ${table(f.loans, [
+        { head: 'What', cell: (l) => loanName(l) },
+        { head: 'Started', cell: (l) => onDay(l.started_on) },
+        { head: 'Borrowed', n: true, cell: (l) => money(l.principal) },
+        { head: 'Paid', n: true, cell: (l) => money(l.paid) },
+        { head: 'Still owed', n: true, cell: (l) => (Number(l.balance) > 0
+            ? `<b>${money(l.balance)}</b>` : '<span class="dim">settled</span>') },
+      ], 'Never borrowed.')}</div>
+
+    <div class="panel mt"><h3>Leave</h3>
+      ${table(f.leave, [
+        { head: 'Kind', cell: (l) => esc(LEAVE_KINDS[l.leave_type] ?? l.leave_type) },
+        { head: 'From', cell: (l) => onDay(l.start_date) },
+        { head: 'To', cell: (l) => onDay(l.end_date) },
+        { head: 'Days', n: true, cell: (l) => count(l.days) },
+        { head: 'Status', cell: (l) => esc(l.status) },
+      ], 'No leave on file.')}</div>
+
+    <div class="panel mt"><h3>Reviews</h3>
+      ${table(f.appraisals, [
+        { head: 'Period', cell: (a) => esc(a.period) },
+        { head: 'Rating', cell: (a) => stars(a.rating) },
+        { head: 'Strengths', cell: (a) => esc(a.strengths || '—') },
+        { head: 'To work on', cell: (a) => esc(a.improvements || '—') },
+      ], 'No reviews on file.')}</div>`, 'wide');
+}
 
 function employmentDialog(person, done) {
   if (!person) return;
