@@ -179,6 +179,9 @@ node --test tests/ios.test.js
 echo "==> bank report: a day/week/month snapshot, reusing finance_summary"
 node --test tests/bank-report.test.js
 
+echo "==> payroll still pays somebody who left during the cutoff"
+node --test tests/payroll-leavers.test.js
+
 echo "==> going live"
 TEST_DATABASE_URL="postgresql://postgres@localhost:$PGPORT/msbeauave_golive?host=$WORK" \
   node --test tests/golive.test.js

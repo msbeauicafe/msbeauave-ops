@@ -15531,6 +15531,7 @@ SCREENS.payroll = async (page) => {
         <span id="pr_state"></span>
         <span class="tools-gap"></span>
         <button class="btn" id="pr_new">＋ New cutoff</button>
+        <button class="btn line" id="pr_add" hidden>＋ Add someone</button>
         ${owner ? '<button class="btn line" id="pr_close">Close this cutoff</button>' : ''}
       </div>
       <div class="tiles" id="pr_tiles"></div>
@@ -15615,6 +15616,10 @@ SCREENS.payroll = async (page) => {
         ? 'Reopen this cutoff' : 'Close this cutoff';
       closeBtn.disabled = !picked;
     }
+    // Only while the cutoff is open and somebody who belongs on it is not —
+    // a person who left during a cutoff opened before leavers were kept, or
+    // somebody added to the team after it opened.
+    $('#pr_add', page).hidden = !(picked?.status === 'open' && (data.addable || []).length);
     draw();
     if (tab === 'slips') drawSlips();
   };
@@ -15648,8 +15653,12 @@ SCREENS.payroll = async (page) => {
       : money(r[field]);
 
     $('#pr_list', page).innerHTML = table(rows, [
+      // Somebody who has left is still here for the days they worked; the
+      // tag says this cutoff is their final pay, so it is not mistaken for a
+      // name that should have dropped off.
       { head: 'Name', cell: (r) => `<button class="nameopen" data-person="${r.employee_id}"
-          ><b>${esc(r.name)}</b></button><div class="dim">${esc(r.position || '')}</div>` },
+          ><b>${esc(r.name)}</b></button><div class="dim">${esc(r.position || '')}</div>${
+          r.left_on ? `<div>${tag(`Left ${onDay(r.left_on)} · final pay`, 'amber')}</div>` : ''}` },
       // How somebody is paid, said rather than left to be worked out from a
       // rate of nothing. The rate columns that are not theirs are dimmed —
       // a monthly person's rate per day, an hourly person's rate per day and
@@ -16318,6 +16327,31 @@ SCREENS.payroll = async (page) => {
         notice('Cutoff opened 🌸', 'good');
         closeDialog();
         await load(out.id);
+      } catch (err) { whoops(err); }
+    });
+  });
+
+  // Picked from a list, never typed: only the people who can go on this
+  // cutoff are offered, and the database checks the same rule again.
+  $('#pr_add', page).addEventListener('click', () => {
+    const who = data.addable || [];
+    if (!picked || !who.length) return;
+    dialog(`
+      <h3>Add someone to this cutoff</h3>
+      <div class="dim">Their days are counted from the clock for ${onDay(picked.starts_on)}
+        to ${onDay(picked.ends_on)}, and any cash advance or loan due this cutoff
+        comes off, the same as everybody already on it.</div>
+      <div class="mt"><label for="pa_who">Who</label>
+        <select id="pa_who">${who.map((p) => `<option value="${p.id}">${esc(p.name)}${
+          p.left_on ? ` — left ${esc(onDay(p.left_on))}` : ''}</option>`).join('')}</select></div>
+      <div class="mt right"><button class="btn" id="pa_go">Add to this cutoff</button></div>`);
+    $('#pa_go').addEventListener('click', async () => {
+      try {
+        const out = await POST(`/api/payroll/${picked.id}/people`,
+          { employee_id: Number($('#pa_who').value) });
+        notice(`${out.added} added to this cutoff`, 'good');
+        closeDialog();
+        await load(picked.id);
       } catch (err) { whoops(err); }
     });
   });
