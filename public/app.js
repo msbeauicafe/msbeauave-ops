@@ -13346,6 +13346,16 @@ const hoursOf = (interval) => {
   return mins >= 1 ? `${mins}m` : 'just started';
 };
 
+// Why somebody left, in the shop's words. The keys are what the database
+// keeps; the 201 file and payroll read the same ones.
+const LEFT_BECAUSE = {
+  resigned: 'Resigned',
+  terminated: 'Terminated',
+  end_of_contract: 'End of contract',
+  awol: 'AWOL',
+  retired: 'Retired',
+};
+
 SCREENS.team = async (page) => {
   const owner = user.role === 'admin' || user.role === 'hr';
   page.innerHTML = `
@@ -13404,7 +13414,9 @@ SCREENS.team = async (page) => {
           ? `<img class="thumb" style="width:34px;height:34px" src="/api/team/${p.id}/photo" alt="">`
           : `<span class="thumb none-photo" style="width:34px;height:34px">🧑</span>` },
       { head: 'Name', cell: (p) => `<b>${esc(p.name)}</b>`
-          + (p.here ? '' : ' ' + tag('left', 'grey')) },
+          + (p.here ? '' : ' ' + tag(p.ended_on ? `left ${onDay(p.ended_on)}${
+              p.separation_reason ? ' · ' + (LEFT_BECAUSE[p.separation_reason] || '') : ''}`
+            : 'left', 'grey')) },
       { head: 'Position', cell: (p) => esc(p.position) },
       { head: 'Branch', cell: (p) => `<span class="dim">${esc(p.branch || '')}</span>` },
       { head: 'Signs in as', cell: (p) => p.signs_in_as
@@ -13416,7 +13428,10 @@ SCREENS.team = async (page) => {
       { head: 'Now', cell: (p) => p.on_shift
           ? `${tag('on shift', 'green')} <span class="dim">since ${when(p.since)}</span>`
           : (p.here ? '<span class="dim">off</span>' : '') },
-      { head: '', cell: (p) => !p.here ? '' : `
+      // Somebody who left gets no clock button, only the way back — for a
+      // "They have left" pressed on the wrong name.
+      { head: '', cell: (p) => !p.here ? (owner ? `<button class="btn sm quiet"
+            data-back="${p.id}" data-who="${esc(p.name)}">Undo — still here</button>` : '') : `
           <button class="btn sm ${p.on_shift ? 'stop' : 'go'}"
             data-clock="${p.id}" data-dir="${p.on_shift ? 'out' : 'in'}">
             ${p.on_shift ? 'Clock out' : 'Clock in'}</button>
@@ -13450,6 +13465,17 @@ SCREENS.team = async (page) => {
 
     $$('[data-edit]', page).forEach((b) => b.addEventListener('click', () =>
       openPerson(data.team.find((p) => String(p.id) === b.dataset.edit))));
+
+    $$('[data-back]', page).forEach((b) => b.addEventListener('click', async () => {
+      if (!await askFirst(`Put ${b.dataset.who} back on the team?`,
+        'Their leaving date and reason are cleared, as if "They have left" was never pressed.',
+        'Put them back', 'Cancel')) return;
+      try {
+        const r = await POST(`/api/team/${b.dataset.back}/back`, {});
+        notice(`${r.back} is back on the team`, 'good');
+        load();
+      } catch (e) { whoops(e); }
+    }));
 
     // Two different things get called "remove", so the dialog says which this
     // is and where the other one lives.
@@ -13719,13 +13745,35 @@ SCREENS.team = async (page) => {
         e.target.value = '';
       });
 
-      $('#t_left')?.addEventListener('click', async () => {
-        try {
-          await POST(`/api/team/${p.id}/left`, {});
-          closeDialog();
-          notice('Recorded — their hours stay on the books', 'good');
-          load();
-        } catch (err) { whoops(err); }
+      // The real last day, not the day somebody got round to pressing this —
+      // it decides which cutoff still owes them. And why, picked not typed.
+      $('#t_left')?.addEventListener('click', () => {
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+        dialog(`
+          <h3>${esc(p.name)} has left</h3>
+          <div class="dim">Their hours, pay and payslips all stay. Any payroll
+            cutoff their last day falls in still pays them for the days they
+            worked — it shows as their final pay.</div>
+          <div class="row mt">
+            <div><label for="tl_on">Last day</label>
+              <input id="tl_on" type="date" value="${today}" max="${today}"></div>
+            <div><label for="tl_why">Why</label>
+              <select id="tl_why">${Object.entries(LEFT_BECAUSE).map(([k, v]) =>
+                `<option value="${k}">${esc(v)}</option>`).join('')}</select></div>
+          </div>
+          <div class="mt right">
+            <button class="btn quiet" id="tl_no">Cancel</button>
+            <button class="btn warn" id="tl_yes">Record that they left</button></div>`);
+        $('#tl_no').addEventListener('click', closeDialog);
+        $('#tl_yes').addEventListener('click', async () => {
+          try {
+            await POST(`/api/team/${p.id}/left`,
+              { on: $('#tl_on').value || null, reason: $('#tl_why').value });
+            closeDialog();
+            notice(`${p.name} recorded as left — their hours stay on the books`, 'good');
+            load();
+          } catch (err) { whoops(err); }
+        });
       });
     }
 

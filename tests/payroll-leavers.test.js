@@ -149,3 +149,35 @@ test('the cutoff opening picks up leavers through the one shared rule', async ()
   assert.match(sql, /perform payroll_take_on\(v_id, null\)/, 'open_payroll goes through payroll_take_on');
   assert.match(sql, /perform payroll_take_on\(p_period, p_employee\)/, 'and so does add_to_payroll');
 });
+
+test('"They have left" takes the real last day and why, and can be undone', async () => {
+  const id = await person('Walked out');
+  const day = '2026-10-01';
+  await db.query("update employees set started_on = '2025-01-06' where id = $1", [id]);
+
+  const left = await call('POST', `/api/team/${id}/left`, { on: day, reason: 'resigned' });
+  assert.equal(left.status, 200, JSON.stringify(left.data));
+  let row = (await db.query('select ended_on::text, separation_reason from employees where id = $1', [id])).rows[0];
+  assert.equal(row.ended_on, day, 'the day picked, not today');
+  assert.equal(row.separation_reason, 'resigned');
+
+  const team = await call('GET', '/api/team');
+  const shown = team.data.team.find((p) => Number(p.id) === id);
+  assert.equal(shown.separation_reason, 'resigned', 'the Team list is told why');
+
+  const typed = await call('POST', `/api/team/${id}/left`, { on: day, reason: 'aaaaa' });
+  assert.notEqual(typed.status, 200, 'a reason not on the list is refused');
+  const early = await call('POST', `/api/team/${id}/left`, { on: '2024-01-01', reason: 'resigned' });
+  assert.notEqual(early.status, 200, 'cannot leave before they started');
+
+  const back = await call('POST', `/api/team/${id}/back`, {});
+  assert.equal(back.status, 200, JSON.stringify(back.data));
+  row = (await db.query('select ended_on, separation_reason from employees where id = $1', [id])).rows[0];
+  assert.equal(row.ended_on, null, 'back on the team');
+  assert.equal(row.separation_reason, null);
+  assert.notEqual((await call('POST', `/api/team/${id}/back`, {})).status, 200,
+    'nothing to undo for somebody still here');
+
+  // Pressed with nothing chosen still works, dated today, as it always did.
+  assert.equal((await call('POST', `/api/team/${id}/left`, {})).status, 200);
+});
