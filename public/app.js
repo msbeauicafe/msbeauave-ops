@@ -4610,15 +4610,46 @@ SCREENS.inventory = async (page) => {
   // doesn't mean leaving Internal Inventory Report for Product list/Brand
   // list. Its own read of /api/products and its own copy of the one-line
   // quantity formula, not a call into Product list's own local function.
+  //
+  // Product list's toolbar — search, a brand dropdown, the category chips
+  // and Quantity (not its New product) — as this tab's own copy with
+  // its own rs_ ids, so nothing on Product list is touched to have it here.
+  // Quantity starts on, since this tab has always opened most-stocked first;
+  // a tap puts it back to A–Z by name.
   if (inventoryPanel === 'runningstocks') {
-    box.innerHTML = `<div class="panel"><h3>Running stocks</h3><div id="r_running"></div></div>`;
+    box.innerHTML = `
+      <div class="tools">
+        <input type="search" id="rs_find" placeholder="Search by code, name or brand…">
+        <select id="rs_brand"><option value="">Every brand</option></select>
+        ${catChips('cat_rs')}
+        <button class="btn sm" id="rs_qty">Quantity</button>
+      </div>
+      <div class="panel mt"><h3>Running stocks</h3><div id="r_running"></div></div>`;
 
     const available = (p) => Number(p.total_on_hand) - Number(p.committed_shop || 0);
     const isFreebie = (p) => (p.category || '').trim().toUpperCase() === 'FREEBIES';
+    let rsCat = '';
+    let rsBrand = '';
+    let rsQty = true;
+    let brandsFilled = false;
 
     const running = async () => {
-      const rows = await GET('/api/products?prices=1').catch(() => []);
-      rows.sort((a, b) => available(b) - available(a));
+      const all = await GET('/api/products?prices=1').catch(() => []);
+      // Every brand in the catalogue, filled once — the dropdown holds all of
+      // them whatever the search has narrowed the table to.
+      if (!brandsFilled && all.length) {
+        brandsFilled = true;
+        const brands = [...new Set(all.map((p) => p.brand).filter(Boolean))].sort();
+        $('#rs_brand', page).innerHTML = '<option value="">Every brand</option>'
+          + brands.map((b) => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+      }
+      const term = ($('#rs_find', page)?.value || '').trim().toLowerCase();
+      const rows = all.filter((p) => (!term
+          || [p.sku, p.name, p.brand].some((v) => (v || '').toLowerCase().includes(term)))
+        && (!rsCat || (p.category || '').trim().toLowerCase() === rsCat)
+        && (!rsBrand || (p.brand || '') === rsBrand));
+      if (rsQty) rows.sort((a, b) => available(b) - available(a));
+      else rows.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       rows.sort((a, b) => (isFreebie(a) ? 1 : 0) - (isFreebie(b) ? 1 : 0));
 
       $('#r_running', page).innerHTML = table(rows, [
@@ -4627,8 +4658,19 @@ SCREENS.inventory = async (page) => {
         { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
         { head: 'Category', cell: (p) => prodCatTag(p.category) },
         { head: 'Quantity', n: true, cell: (p) => count(available(p)) },
-      ], 'No products yet.');
+      ], term || rsCat || rsBrand ? 'No products match that.' : 'No products yet.');
     };
+
+    $('#rs_find', page).addEventListener('input', () => running().catch(whoops));
+    $('#rs_brand', page).addEventListener('change', (e) => {
+      rsBrand = e.target.value; running().catch(whoops);
+    });
+    wireCatChips(page, 'cat_rs', (c) => { rsCat = c; running().catch(whoops); });
+    $('#rs_qty', page).addEventListener('click', (e) => {
+      rsQty = !rsQty;
+      e.target.className = rsQty ? 'btn sm' : 'btn line sm';
+      running().catch(whoops);
+    });
     await running();
     repeat(running, 30000);
   }

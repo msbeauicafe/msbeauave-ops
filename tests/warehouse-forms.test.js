@@ -149,6 +149,27 @@ test('Running stocks reads products fresh and keeps its own copy of the quantity
   assert.match(fn, headRe, 'Code, Product, Brand, Category, Quantity, in that order');
 });
 
+test("Running stocks carries Product list's toolbar as its own copy", () => {
+  const at = app.indexOf('SCREENS.inventory = async');
+  const fn = app.slice(at, app.indexOf('\n};', at));
+
+  // Search, brand dropdown, the category chips, Quantity — in the order
+  // Product list shows them, under this tab's own rs_ ids. No New product:
+  // the owner asked for that one left off.
+  assert.match(fn, /id="rs_find"[\s\S]*?id="rs_brand"[\s\S]*?catChips\('cat_rs'\)[\s\S]*?id="rs_qty"/);
+  assert.match(fn, /wireCatChips\(page, 'cat_rs'/);
+
+  // Product list's own toolbar is untouched and still its own.
+  const plAt = app.indexOf('id="pt_brand"');
+  const pl = app.slice(plAt, app.indexOf('</div>', plAt));
+  assert.match(pl, /id="brand_find"[\s\S]*?id="brand_filter"[\s\S]*?id="add2"[\s\S]*?catChips\('cat_prod'\)[\s\S]*?id="qty_filter"/);
+  assert.doesNotMatch(pl, /rs_/);
+
+  // Warehouse inventory report never picks it up.
+  const wAt = app.indexOf('SCREENS.warehouseinventory = async');
+  assert.doesNotMatch(app.slice(wAt, app.indexOf('\n};', wAt)), /rs_find|cat_rs/);
+});
+
 // ---------------------------------------------------------------------------
 // Receiving form — the existing receiving_forms list, promoted to its own
 // screen, Warehouse receiving's own copy untouched
