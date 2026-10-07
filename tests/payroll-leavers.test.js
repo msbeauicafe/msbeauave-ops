@@ -225,3 +225,12 @@ test('somebody who left stays in the 201 file, with their final pay', async () =
   const asCashier = await fetch(`${base}/api/hr/201/${id}`, { headers: { Cookie: cashier } });
   assert.notEqual(asCashier.status, 200, 'a cashier does not');
 });
+
+test('the 201 file list has its own branch dropdown, filled from the people on file', async () => {
+  const fs = await import('node:fs');
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const at = app.indexOf('const draw201 = async');
+  const fn = app.slice(at, app.indexOf('const load = async', at));
+  assert.match(fn, /<select id="f201_branch"><option value="">Every branch<\/option><\/select>/);
+  assert.match(fn, /\(!branch \|\| p\.branch === branch\)/, 'the list narrows to the branch picked');
+});

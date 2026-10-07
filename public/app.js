@@ -14917,6 +14917,7 @@ SCREENS.hr = async (page) => {
         ${tabs()}
         <div class="tools">
           <input type="search" id="f201_find" placeholder="Search by name or position…">
+          <select id="f201_branch"><option value="">Every branch</option></select>
           <span class="chips" id="f201_chips">
             <button class="btn sm" data-f201="all">All</button>
             <button class="btn line sm" data-f201="active">Active</button>
@@ -14929,6 +14930,7 @@ SCREENS.hr = async (page) => {
         <div class="panel mt" id="f201_list"></div>`;
       wireTabs();
       $('#f201_find', page).addEventListener('input', () => draw201().catch(whoops));
+      $('#f201_branch', page).addEventListener('change', () => draw201().catch(whoops));
       $$('[data-f201]', page).forEach((b) => b.addEventListener('click', () => {
         f201Show = b.dataset.f201;
         $$('[data-f201]', page).forEach((x) => { x.className = x === b ? 'btn sm' : 'btn line sm'; });
@@ -14936,9 +14938,17 @@ SCREENS.hr = async (page) => {
       }));
     }
     const { people } = await GET('/api/hr/201');
+    // Every branch anybody on file has ever been at, picked rather than
+    // typed; the choice survives the list being redrawn.
+    const pick = $('#f201_branch', page);
+    const branch = pick.value;
+    const branches = [...new Set(people.map((p) => p.branch).filter(Boolean))].sort();
+    pick.innerHTML = '<option value="">Every branch</option>' + branches.map((b) =>
+      `<option value="${esc(b)}"${b === branch ? ' selected' : ''}>${esc(b)}</option>`).join('');
     const q = ($('#f201_find', page)?.value || '').trim().toLowerCase();
     const rows = people.filter((p) => (f201Show === 'all'
         || (f201Show === 'active' ? p.here : !p.here))
+      && (!branch || p.branch === branch)
       && (!q || `${p.name} ${p.position || ''}`.toLowerCase().includes(q)));
     $('#f201_list', page).innerHTML = table(rows, [
       { head: '', cell: (p) => faceOf(p) },
@@ -14951,7 +14961,7 @@ SCREENS.hr = async (page) => {
       { head: 'Started', cell: (p) => onDay(p.started_on) },
       { head: 'Last day', cell: (p) => (p.ended_on ? onDay(p.ended_on) : '<span class="dim">—</span>') },
       { head: 'Service', cell: (p) => serviceLength(p.started_on, p.ended_on) },
-    ], q || f201Show !== 'all' ? 'Nobody matches that.' : 'Nobody on file yet.');
+    ], q || branch || f201Show !== 'all' ? 'Nobody matches that.' : 'Nobody on file yet.');
     $$('[data-f201open]', page).forEach((b) => b.addEventListener('click',
       () => open201(Number(b.dataset.f201open)).catch(whoops)));
   };
