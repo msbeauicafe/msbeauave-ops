@@ -938,7 +938,9 @@ test('the invoice log reads the same four Standing words the Invoice tab does', 
   const logStandingAt = fn.indexOf('const logStanding');
   const logStanding = fn.slice(logStandingAt, fn.indexOf('const paintLog', logStandingAt));
 
-  assert.match(logStanding, /if \(i\.status === 'paid'\) return tag\('paid', 'green'\);/);
+  assert.match(logStanding,
+    /return tag\(funded\.has\(String\(i\.id\)\) \? 'paid with funds' : 'paid', 'green'\);/,
+    'a paid invoice reads "paid with funds" when the account\'s Funds went onto it');
   assert.match(logStanding, /if \(i\.status === 'void'\) return tag\('void', 'grey'\);/);
   assert.match(logStanding,
     /const label = Number\(i\.balance\) < Number\(i\.amount\) \? 'paid w\/bal' : 'unpaid';/);
@@ -1528,4 +1530,40 @@ test('co-scale is held to its full height only inside the pco-open dialog, not e
   // every other screen built on co-scale still reads it.
   const sharedCount = [...css.matchAll(/\.order-split \.co-scale\s*\{\s*overflow:\s*hidden;\s*\}/g)].length;
   assert.equal(sharedCount, 1, 'the shared co-scale rule was not touched, only added to');
+});
+
+// Record payment, three owner asks in one pass, all inside this one dialog:
+// two entry rows instead of five, "paid with funds" in the Invoice log, and
+// the Funds log's Sales amount column with Amount renamed Funds.
+test('Record payment: two entry rows, paid with funds, and the Funds log reads Sales amount then Funds', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  assert.match(fn, /<div id="ci_rows">\$\{\[0, 1\]\.map\(\(n\) =>/, 'two rows');
+  assert.match(fn, /Up to two payments at once/);
+  assert.doesNotMatch(fn, /Up to five payments at once/);
+  assert.match(fn, /<h3 class="mt">Payments on file<\/h3>/, 'Payments on file stays');
+
+  // Every Funds draw leaves a negative reseller_credits row naming the invoice.
+  assert.match(fn, /\.filter\(\(c\) => Number\(c\.amount\) < 0\)/);
+  assert.match(fn, /\/invoice #\(\\d\+\)\/i\.exec\(c\.reason/);
+  assert.match(fn, /head: 'Standing', cell: \(i\) => logStanding\(i, funded\)/);
+
+  const funds = fn.slice(fn.indexOf("$('#ci_funds')"));
+  const reason = funds.indexOf("head: 'Reason'");
+  const sales = funds.indexOf("head: 'Sales amount'");
+  const fundsCol = funds.indexOf("head: 'Funds'");
+  assert.ok(reason > 0 && sales > reason && fundsCol > sales, 'Reason, then Sales amount, then Funds');
+  assert.doesNotMatch(funds, /head: 'Amount', n: true, cell: \(f\)/, 'Amount is renamed Funds');
+  assert.match(funds, /String\(f\.target_invoice_id \?\? f\.source_invoice_id\)/);
+});
+
+// Kept out of every other screen: the shared reseller account fetch and the
+// Customers payment form are not where these changes live.
+test('the Record payment changes stay inside Record payment', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const end = app.indexOf('\n}\n', at);
+  const outside = app.slice(0, at) + app.slice(end);
+  assert.doesNotMatch(outside, /'paid with funds'/);
+  assert.doesNotMatch(outside, /head: 'Sales amount'/);
 });

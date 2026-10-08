@@ -9647,8 +9647,8 @@ SCREENS.draftorders = async (page) => {
 
 // A duplicate of the reseller account's own payment form and of a purchase
 // order bill's own (billPaymentForm), kept apart so a change meant for this
-// row cannot alter either. Five blank rows because a reseller settles in
-// instalments — BDO, then GCash, then BPI is three rows, not one. The title
+// row cannot alter either. Two blank rows — the owner had three of the five
+// taken off; a split payment still has a second row to go in. The title
 // reads the reseller's own name and chat link, not the invoice number — the
 // same chatBadge every other screen already uses.
 // A proof photo is filed under the reseller's own gallery (the same place
@@ -9666,9 +9666,9 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
     <h3 class="mt">Payments on file</h3>
     <div class="filegrid" id="ci_prior"><div class="dim">Loading…</div></div>
 
-    <div class="dim mt">Up to five payments at once — fill in as many rows
+    <div class="dim mt">Up to two payments at once — fill in as many rows
       as have actually landed.</div>
-    <div id="ci_rows">${[0, 1, 2, 3, 4].map((n) => `
+    <div id="ci_rows">${[0, 1].map((n) => `
       <div class="row payrow">
         <div><label${n ? ' class="sr"' : ''}>Amount paid</label>
           <input class="ci_amt" type="text" inputmode="decimal"
@@ -9710,8 +9710,14 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
   // them, next to nobody else's.
   // This log's own copy of the four-word Standing — same words the Invoice
   // tab reads, not the old paid/open/past due/void this table used to show.
-  const logStanding = (i) => {
-    if (i.status === 'paid') return tag('paid', 'green');
+  // "paid with funds" when the account's own Funds went onto it — every draw
+  // leaves a negative reseller_credits row naming "invoice #<id>"
+  // (raise_invoice, apply_credit_to_invoice). Read off the credits this
+  // dialog's account fetch already carries, the newest twenty.
+  const logStanding = (i, funded) => {
+    if (i.status === 'paid') {
+      return tag(funded.has(String(i.id)) ? 'paid with funds' : 'paid', 'green');
+    }
     if (i.status === 'void') return tag('void', 'grey');
     const label = Number(i.balance) < Number(i.amount) ? 'paid w/bal' : 'unpaid';
     return tag(label, label === 'unpaid' && i.overdue ? 'red' : 'amber');
@@ -9733,6 +9739,10 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
     // owner reads "latest" everywhere else in this dialog. This dialog's
     // own sort, ahead of its own table, not a change to the order the
     // shared account fetch itself returns.
+    const funded = new Set((acct.credits || [])
+      .filter((c) => Number(c.amount) < 0)
+      .map((c) => /invoice #(\d+)/i.exec(c.reason || '')?.[1])
+      .filter(Boolean));
     const sortedInvoices = [...acct.invoices].sort((a, b) =>
       (new Date(b.issued_on) - new Date(a.issued_on)) || (b.id - a.id));
     box.innerHTML = table(sortedInvoices, [
@@ -9742,7 +9752,7 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
       { head: 'Invoice no.', cell: (i) => `<button class="nameopen"
           data-cilog-invdoc="${i.order_id}" data-invid="${i.id}"><b>${esc(i.si_no || '—')}</b></button>` },
       { head: 'Issued', cell: (i) => onDay(i.issued_on) },
-      { head: 'Standing', cell: logStanding },
+      { head: 'Standing', cell: (i) => logStanding(i, funded) },
       { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
       { head: 'Bal', n: true, cell: (i) => peso(i.balance) },
     ], 'No invoices yet.');
@@ -9867,7 +9877,14 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
         { head: 'Reason', cell: (f) => f.target_si_no
           ? `Applied to invoice ${esc(f.target_si_no)}`
           : `Overpayment of ${esc(f.source_si_no || '—')}${f.reference_no ? `-${esc(f.reference_no)}` : ''}` },
-        { head: 'Amount', n: true, cell: (f) => `<b>${peso(fundsRunning.get(f.id))}</b>` },
+        // The sale itself — the invoice the row names: where the money went
+        // when it was applied, where it came in with otherwise.
+        { head: 'Sales amount', n: true, cell: (f) => {
+          const inv = acct.invoices.find((i) => String(i.id)
+            === String(f.target_invoice_id ?? f.source_invoice_id));
+          return inv ? peso(inv.amount) : '—';
+        } },
+        { head: 'Funds', n: true, cell: (f) => `<b>${peso(fundsRunning.get(f.id))}</b>` },
       ], 'No overpayment on this account.');
 
       // The same blue INVOICE the Invoice log's own row opens, from this
