@@ -1028,8 +1028,8 @@ test("the invoice log's own click handler matches each overflow to the payment r
   const handler = fn.slice(handlerAt, fn.indexOf('}));', handlerAt));
 
   assert.match(handler,
-    /const myOverflow = \(acct\.overflow \|\| \[\]\)\s*\n\s*\.filter\(\(f\) => String\(f\.source_invoice_id\) === b\.dataset\.invid\);/,
-    "only this invoice's own overflow — acct is already in hand from this same paintLog, no second fetch");
+    /const myOverflow = \(acct\.overflow \|\| \[\]\)\s*\n\s*\.filter\(\(f\) => String\(f\.source_invoice_id\) === b\.dataset\.invid && !f\.target_invoice_id\);/,
+    "only this invoice's own overpayment — a Funds draw (target set) is not one — and acct is already in hand, no second fetch");
   assert.match(handler, /\(f\.reference_no \|\| ''\) === \(p\.reference_no \|\| ''\)/,
     'matched to the payment row that shares its reference no.');
   assert.match(handler, /displayPayments\.push\(\{\s*\n\s*method: 'FUNDS'/,
@@ -1566,4 +1566,29 @@ test('the Record payment changes stay inside Record payment', () => {
   const outside = app.slice(0, at) + app.slice(end);
   assert.doesNotMatch(outside, /'paid with funds'/);
   assert.doesNotMatch(outside, /head: 'Sales amount'/);
+});
+
+// SI26_10_032, paid from Funds: a FUNDS row writes the payment (no MOP) and a
+// Funds log draw for the same money. Counted as overflow, the draw doubled the
+// Amount (₱2,290 shown as ₱4,580) and showed again as a red Balance. Now the
+// payment prints as FUNDS, its Amount is the Funds balance it was drawn from,
+// and Balance is what Funds had left — in the Invoice log's own handler only.
+test("the Invoice log's invoice shows a Funds payment as the Funds it was drawn from", () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const handlerAt = fn.indexOf("$$('[data-cilog-invdoc]', box)");
+  const handler = fn.slice(handlerAt, fn.indexOf('}));', handlerAt));
+
+  assert.match(handler, /\.filter\(\(f\) => String\(f\.target_invoice_id\) === b\.dataset\.invid\)/,
+    "this invoice's own Funds draws");
+  assert.match(handler, /const fundsDrift = Number\(acct\.credit \|\| 0\) - fundsLast;/,
+    'anchored to the real credit, the same as the Funds log');
+  assert.match(handler, /return \{ \.\.\.p, method: 'FUNDS', displayAmount: after \+ Number\(draw\.amount\) \};/,
+    'Amount is the Funds balance before the draw');
+  assert.match(handler, /: Math\.max\(lastDrawAfter \?\? 0, 0\);/, 'Balance is what Funds had left');
+  assert.match(handler, /showInvoiceLogDoc\(\{/);
+
+  // The Funds log's own copy is left exactly as it was.
+  const funds = fn.slice(fn.indexOf("$('#ci_funds')"));
+  assert.doesNotMatch(funds, /lastDrawAfter|myDraws/);
 });
