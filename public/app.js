@@ -2337,6 +2337,15 @@ function editProduct(p, reload, { newTitle = 'New product' } = {}) {
       .filter((r) => String(r.name).startsWith('CODE:') && r.amount !== '')
       .map((r, i) => ({ code: String(r.name).slice(5), price: Number(r.amount) || 0, position: i }));
 
+    // "Pick a category…" saved as a blank, and a blank category is an empty
+    // chip in the customer shop. A product already blank has to be given one
+    // the next time it is edited, which is how the old ones get cleaned up.
+    if (!$('#f_cat').value.trim()) {
+      notice('Pick a category before saving.', 'bad');
+      $('#f_cat').focus();
+      return;
+    }
+
     try {
       // Each row under a picked name saves itself — this button is hidden
       // whenever one is, so reaching here means it wasn't.
