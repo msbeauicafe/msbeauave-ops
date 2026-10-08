@@ -9931,16 +9931,47 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
           ]);
           // The same reading the Invoice log's row does: what overflowed off
           // this invoice is added back onto the payment it came in with.
+          //
+          // This log's own copy of the Invoice log's Funds-draw rule: a FUNDS
+          // row on Save writes the payment (no MOP) and a draw (target set)
+          // for the same money. Counted as overflow, the draw doubled the
+          // Amount (SI26_10_037's ₱23,800 shown as ₱47,600) and came back as a
+          // red Balance. Kept out here; the payment prints as FUNDS with the
+          // Funds balance it was drawn from, and Balance is what was left.
           const myOverflow = (acct.overflow || [])
-            .filter((f) => String(f.source_invoice_id) === b.dataset.invid);
-          const fundTotal = myOverflow.reduce((s, f) => s + Number(f.amount), 0);
+            .filter((f) => String(f.source_invoice_id) === b.dataset.invid && !f.target_invoice_id);
+          const drawAfter = new Map();
+          let drawLast = 0;
+          [...(acct.overflow || [])].sort((x, y) => x.id - y.id).forEach((f) => {
+            drawLast += f.target_invoice_id ? -Number(f.amount) : Number(f.amount);
+            drawAfter.set(f.id, drawLast);
+          });
+          const drawDrift = Number(acct.credit || 0) - drawLast;
+          const theseDraws = (acct.overflow || [])
+            .filter((f) => String(f.target_invoice_id) === b.dataset.invid)
+            .sort((x, y) => x.id - y.id);
+          const drawTaken = new Set();
+          let leftAfterDraw = null;
           const claimed = new Set();
           const displayPayments = payments.map((p) => {
+            if (!p.method) {
+              const draw = theseDraws.find((f) => !drawTaken.has(f.id)
+                && Number(f.amount) === Number(p.amount));
+              if (draw) {
+                drawTaken.add(draw.id);
+                const left = drawAfter.get(draw.id) + drawDrift;
+                leftAfterDraw = left;
+                return { ...p, method: 'FUNDS', displayAmount: left + Number(draw.amount) };
+              }
+            }
             const extra = myOverflow
               .filter((f) => (f.reference_no || '') === (p.reference_no || '') && !claimed.has(f.id))
               .reduce((s, f) => { claimed.add(f.id); return s + Number(f.amount); }, 0);
             return { ...p, displayAmount: Number(p.amount) + extra };
           });
+          const fundTotal = myOverflow.length
+            ? myOverflow.reduce((s, f) => s + Number(f.amount), 0)
+            : Math.max(leftAfterDraw ?? 0, 0);
           for (const f of myOverflow) {
             if (claimed.has(f.id)) continue;
             displayPayments.push({
