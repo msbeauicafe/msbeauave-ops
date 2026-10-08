@@ -7099,12 +7099,21 @@ function showFundsLogDoc({ orderId, issuedOn, resellerName, lines, payments = []
 // is the reseller here, not "MS BEAU AVE", and the reference number is the
 // customer order, not a purchase order. The blue INVOICE document above
 // this one is a different paper for a different question and stays as it is.
-function showInvoiceBillingStatement(order, payments = []) {
+// `overflow` is the part of a payment that went on to Funds rather than onto
+// this invoice (same reference no.): CO26_10_035's BDO 5989 was ₱85,000, of
+// which ₱61,200 paid SI26_10_036 and ₱23,800 went to Funds. CREDITS shows the
+// whole ₱85,000 that arrived, and a row of its own moves the extra to Funds,
+// so ACCOUNT BALANCE still ends on what this invoice is actually owed.
+function showInvoiceBillingStatement(order, payments = [], overflow = []) {
   const field = (label, value) => `
     <div class="fld"><span>${label}</span><b>${esc(value || '')}</b></div>`;
 
   const amount = Number(order.invoice_amount ?? order.total ?? 0);
   let running = amount;
+  // A balance below nothing is money held for the account, written the way
+  // a ledger writes a credit — in brackets — not as ₱-23,800.00.
+  const bal = (v) => (v < 0 ? `(${peso(-v)})` : peso(v));
+  const claimed = new Set();
   const charge = `<tr>
       <td>${onDay(order.invoice_issued_on || order.placed_at)}</td>
       <td>INVOICE</td>
@@ -7112,19 +7121,37 @@ function showInvoiceBillingStatement(order, payments = []) {
       <td class="c">${peso(amount)}</td><td class="c"></td>
       <td class="c">${peso(running)}</td>
     </tr>`;
+  let rowCount = 1;
   const credits = payments.map((p) => {
-    running -= Number(p.amount);
-    return `<tr>
+    const extra = overflow
+      .filter((f) => (f.reference_no || '') === (p.reference_no || '') && !claimed.has(f.id))
+      .reduce((s, f) => { claimed.add(f.id); return s + Number(f.amount); }, 0);
+    const received = Number(p.amount) + extra;
+    running -= received;
+    rowCount += 1;
+    let html = `<tr>
         <td>${onDay(p.paid_on)}</td>
         <td>${esc(p.method ? `${p.method} PAYMENT` : 'PAYMENT')}</td>
         <td class="refno">${esc(p.note || p.reference_no || '')}</td>
-        <td class="c"></td><td class="c">${peso(p.amount)}</td>
-        <td class="c">${peso(running)}</td>
+        <td class="c"></td><td class="c">${peso(received)}</td>
+        <td class="c">${bal(running)}</td>
       </tr>`;
+    if (extra > 0) {
+      running += extra;
+      rowCount += 1;
+      html += `<tr>
+        <td>${onDay(p.paid_on)}</td>
+        <td>EXCESS TO FUNDS</td>
+        <td class="refno">${esc(p.reference_no || '')}</td>
+        <td class="c">${peso(extra)}</td><td class="c"></td>
+        <td class="c">${bal(running)}</td>
+      </tr>`;
+    }
+    return html;
   }).join('');
   // 7 rows total — data rows plus just enough blanks to round it out, not
   // a wall of empty boxes trying to fill a printed page.
-  const BLANKS = Math.max(0, 7 - (1 + payments.length));
+  const BLANKS = Math.max(0, 7 - rowCount);
 
   const ledger = `
       <table class="lines ledger-split">
@@ -7138,7 +7165,7 @@ function showInvoiceBillingStatement(order, payments = []) {
             () => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}
         </tbody>
         <tfoot><tr>
-          <td colspan="5">CURRENT BAL:</td><td class="c">${peso(running)}</td>
+          <td colspan="5">CURRENT BAL:</td><td class="c">${bal(running)}</td>
         </tr></tfoot>
       </table>`;
 
@@ -10640,11 +10667,16 @@ SCREENS.coinvoices = async (page) => {
     $$('[data-invbill]', page).forEach((b) => b.addEventListener('click', async () => {
       const o = find(b.dataset.invbill);
       try {
-        const [full, payments] = await Promise.all([
+        const [full, payments, acct] = await Promise.all([
           GET(`/api/orders/${o.id}`),
           GET(`/api/resellers/${o.reseller_id}/payments?order_id=${o.id}`).catch(() => []),
+          GET(`/api/resellers/${o.reseller_id}`).catch(() => null),
         ]);
-        showInvoiceBillingStatement(full, payments);
+        // What of this invoice's payments went on to Funds — overpayment
+        // only; a Funds draw (target set) is money coming the other way.
+        const overflow = (acct?.overflow || []).filter((f) =>
+          String(f.source_invoice_id) === String(o.invoice_id) && !f.target_invoice_id);
+        showInvoiceBillingStatement(full, payments, overflow);
       } catch (e) { whoops(e); }
     }));
 
