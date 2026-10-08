@@ -1171,8 +1171,19 @@ test('Payments on file still reads a real thumbnail; a Save-row\'s own proof goe
 
   assert.match(prior, /p\.file_ids\?\.length/,
     'a payment with a file on file is told apart from one with none');
-  assert.match(prior, /src="\/api\/invoice-payment-files\/\$\{p\.file_ids\[0\]\}"/,
+  assert.match(prior, /`\/api\/invoice-payment-files\/\$\{p\.file_ids\[0\]\}`/,
     'the real photo is read back, not just its presence noted');
+  // A Save-row's proof lives in the account's drawer, labelled with this
+  // invoice and its reference — found there so the card shows it and zooms.
+  assert.match(prior, /f\.category === 'payment_proof'/);
+  assert.match(prior, /f\.label === `Invoice #\$\{invoiceId\}\$\{p\.reference_no \? ` · \$\{p\.reference_no\}` : ''\}`/,
+    'the same label Save files it under');
+  assert.match(prior, /`\/api\/reseller-files\/\$\{proof\.id\}`/);
+  assert.match(prior, /data-zoom="\$\{src\}"/, 'and it opens full size');
+  // The card's amount is the real transfer: what went on to Funds off the
+  // same reference is added back (₱61,200 + ₱23,800 = ₱85,000).
+  assert.match(prior, /String\(f\.source_invoice_id\) === String\(invoiceId\) && !f\.target_invoice_id/);
+  assert.match(prior, /<b>\$\{esc\(peso\(amount\)\)\}<\/b>/);
 
   const saveAt = fn.indexOf('const save = async');
   const save = fn.slice(saveAt, fn.indexOf('$(\'#ci_go2\')', saveAt));

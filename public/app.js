@@ -9969,22 +9969,49 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
   const paintPrior = async () => {
     const grid = $('#ci_prior');
     if (!grid) return;
-    const prior = await GET(`/api/resellers/${resellerId}/payments?order_id=${orderId}`).catch(() => []);
-    grid.innerHTML = prior.length ? prior.map((p) => `
+    const [prior, acct] = await Promise.all([
+      GET(`/api/resellers/${resellerId}/payments?order_id=${orderId}`).catch(() => []),
+      GET(`/api/resellers/${resellerId}`).catch(() => null),
+    ]);
+    // The real transfer, not only the slice this invoice absorbed: whatever
+    // of the same payment (same reference no.) Save banked as Funds is added
+    // back — ₱61,200 on the invoice + ₱23,800 to Funds is the ₱85,000 that
+    // actually arrived. A Funds draw (target set) is not part of it.
+    const myOverflow = (acct?.overflow || []).filter((f) =>
+      String(f.source_invoice_id) === String(invoiceId) && !f.target_invoice_id);
+    const claimed = new Set();
+    const total = (p) => Number(p.amount) + myOverflow
+      .filter((f) => (f.reference_no || '') === (p.reference_no || '') && !claimed.has(f.id))
+      .reduce((s, f) => { claimed.add(f.id); return s + Number(f.amount); }, 0);
+    // Save files the proof photo in the reseller's own gallery, labelled
+    // with this invoice and the reference — not against the payment — so
+    // file_ids is empty and the card showed 🧾 with nothing to open. Found
+    // by that label instead (newest first, as the gallery is listed). The
+    // gallery's own photos are served to the owner's role only, so anybody
+    // else keeps the 🧾 rather than a broken picture.
+    const proofOf = (p) => user?.role === 'admin' && (acct?.files || []).find((f) => f.category === 'payment_proof'
+      && f.label === `Invoice #${invoiceId}${p.reference_no ? ` · ${p.reference_no}` : ''}`);
+    grid.innerHTML = prior.length ? prior.map((p) => {
+      const amount = total(p);
+      const proof = !p.file_ids?.length ? proofOf(p) : null;
+      const src = p.file_ids?.length ? `/api/invoice-payment-files/${p.file_ids[0]}`
+        : proof ? `/api/reseller-files/${proof.id}` : null;
+      return `
       <figure class="filecard">
-        ${p.file_ids?.length
-          ? `<img class="filethumb" src="/api/invoice-payment-files/${p.file_ids[0]}"
-               alt="" loading="lazy" data-zoom="/api/invoice-payment-files/${p.file_ids[0]}"
-               data-zoom-cap="${esc(p.method || '')} · ${esc(peso(p.amount))}">`
+        ${src
+          ? `<img class="filethumb" src="${src}"
+               alt="" loading="lazy" data-zoom="${src}"
+               data-zoom-cap="${esc(p.method || '')} · ${esc(peso(amount))}">`
           : `<span class="filethumb none-photo" style="width:132px;height:96px;
                display:flex;align-items:center;justify-content:center;
                border-radius:8px;background:var(--rose-blush);
                border:1px solid var(--rose-soft)">🧾</span>`}
-        <figcaption><b>${esc(peso(p.amount))}</b><br>
+        <figcaption><b>${esc(peso(amount))}</b><br>
           <span class="dim">${onDay(p.paid_on)}${p.method ? ` · ${esc(p.method)}` : ''}${
             p.reference_no ? ` · ${esc(p.reference_no)}` : ''}</span>
         </figcaption>
-      </figure>`).join('') : '<div class="dim">None recorded yet.</div>';
+      </figure>`;
+    }).join('') : '<div class="dim">None recorded yet.</div>';
   };
   await paintPrior();
 
