@@ -1603,3 +1603,21 @@ test("the Invoice log's invoice shows a Funds payment as the Funds it was drawn 
   const funds = fn.slice(fn.indexOf("$('#ci_funds')"));
   assert.doesNotMatch(funds, /lastDrawAfter|myDraws/);
 });
+
+// SI26_10_037, opened from the Funds log: ₱23,800 from Funds + ₱200 BDO. The
+// Funds log's own handler counted the Funds draw as overflow too, so the
+// FUNDS payment read ₱47,600. Its own copy of the Invoice log's rule now —
+// matching what the Invoice log shows for the same invoice.
+test("the Funds log's invoice shows a Funds payment the way the Invoice log does", () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  const funds = fn.slice(fn.indexOf("$$('[data-cifunds-invdoc]', fundsBox)"));
+  const handler = funds.slice(0, funds.indexOf('}));'));
+
+  assert.match(handler, /String\(f\.source_invoice_id\) === b\.dataset\.invid && !f\.target_invoice_id/,
+    'a Funds draw is not overflow');
+  assert.match(handler, /\.filter\(\(f\) => String\(f\.target_invoice_id\) === b\.dataset\.invid\)/);
+  assert.match(handler, /return \{ \.\.\.p, method: 'FUNDS', displayAmount: left \+ Number\(draw\.amount\) \};/);
+  assert.match(handler, /: Math\.max\(leftAfterDraw \?\? 0, 0\);/);
+  assert.match(handler, /showFundsLogDoc\(\{/, 'still its own copy of the document');
+});
