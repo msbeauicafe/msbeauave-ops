@@ -68,6 +68,9 @@ node --test tests/shop-by-house.test.js
 echo "==> the shop window shows the whole shop"
 node --test tests/shop-shows-everything.test.js
 
+echo "==> the shop draws no chip for a blank category"
+node --test tests/shop-blank-category.test.js
+
 echo "==> an eye on every password box"
 node --test tests/reveal.test.js
 
