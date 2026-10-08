@@ -1621,3 +1621,23 @@ test("the Funds log's invoice shows a Funds payment the way the Invoice log does
   assert.match(handler, /: Math\.max\(leftAfterDraw \?\? 0, 0\);/);
   assert.match(handler, /showFundsLogDoc\(\{/, 'still its own copy of the document');
 });
+
+// CO26_10_035's Billing statement: BDO 5989 was ₱85,000 — ₱61,200 onto
+// SI26_10_036 and ₱23,800 to Funds. CREDITS shows the whole ₱85,000 and an
+// EXCESS TO FUNDS row moves the extra on, so CURRENT BAL still ends on what
+// the invoice is owed. Invoice tab's own statement and button only.
+test("the Invoice tab's Billing statement credits the whole transfer and moves the excess to Funds", () => {
+  const at = app.indexOf('function showInvoiceBillingStatement(');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  assert.match(fn, /function showInvoiceBillingStatement\(order, payments = \[\], overflow = \[\]\)/);
+  assert.match(fn, /const received = Number\(p\.amount\) \+ extra;/);
+  assert.match(fn, /<td class="c"><\/td><td class="c">\$\{peso\(received\)\}<\/td>/, 'CREDITS is the whole transfer');
+  assert.match(fn, /<td>EXCESS TO FUNDS<\/td>/);
+  assert.match(fn, /const bal = \(v\) => \(v < 0 \? `\(\$\{peso\(-v\)\}\)` : peso\(v\)\);/, 'a credit balance in brackets');
+
+  const btn = app.slice(app.indexOf("$$('[data-invbill]', page)"));
+  const handler = btn.slice(0, btn.indexOf('}));'));
+  assert.match(handler, /String\(f\.source_invoice_id\) === String\(o\.invoice_id\) && !f\.target_invoice_id/);
+  assert.match(handler, /showInvoiceBillingStatement\(full, payments, overflow\);/);
+  assert.equal((app.match(/showInvoiceBillingStatement\(/g) || []).length, 2, 'still one caller');
+});
