@@ -216,7 +216,7 @@ function homeView() {
     <div class="sh-wallet">
       <div><b>Free</b><span>skin check in store</span></div>
       <div><b>GCash · Maya</b><span>+ cash at the counter</span></div>
-      <div><b>9am – 7pm</b><span>Bayan Bayanan, Marikina</span></div>
+      <div><b>Mon–Sat · 10am – 7pm</b><span>Bayan Bayanan, Marikina</span></div>
     </div>
 
     ${term ? '' : promos.length ? `
@@ -493,7 +493,7 @@ function visitPanels() {
 
     <div class="sh-panel">
       <h4>When we are open</h4>
-      <p><b>9am – 7pm</b>, every day.</p>
+      <p><b>10am – 7pm</b>, Monday to Saturday.</p>
     </div>
 
     <div class="sh-panel">
