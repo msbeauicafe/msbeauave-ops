@@ -1294,7 +1294,7 @@ test('the Funds log shows which invoice an overflow came from and which it actua
   // column — same nameopen pattern the Invoice log above it uses — and it
   // opens the source invoice shown in the row, not the target named in Reason.
   assert.match(funds,
-    /head: 'Invoice no\.', cell: \(f\) => `<button class="nameopen"\s*\n\s*data-cifunds-invdoc="\$\{f\.source_order_id\}"><b>\$\{esc\(f\.source_si_no \|\| '—'\)\}<\/b><\/button>`/,
+    /head: 'Invoice no\.', cell: \(f\) => `<button class="nameopen"\s*\n\s*data-cifunds-invdoc="\$\{f\.source_order_id\}" data-invid="\$\{f\.source_invoice_id\}"><b>\$\{esc\(f\.source_si_no \|\| '—'\)\}<\/b><\/button>`/,
     'the Invoice no. cell itself is the button, carrying the source order');
   assert.doesNotMatch(funds, /🖨 Invoice<\/button>` : ''\} \},\s*\n\s*\], 'No overpayment on this account\.'/,
     'no trailing button column left on this table');
@@ -1308,10 +1308,22 @@ test('the Funds log shows which invoice an overflow came from and which it actua
   assert.match(save, /\/api\/invoices\/\$\{invoiceId\}\/overflow-log/);
   assert.match(save, /target_invoice_id: null, amount: r\.amount/);
 
-  // The same blue INVOICE document, reused rather than redrawn — its own
-  // fetch, the same shape the Invoice log's own button just above it uses.
+  // The same blue INVOICE the Invoice log's row opens, with the same
+  // figures — the real transfer amount and what went on to Funds — from the
+  // Funds log's own copy of that document, not the shared showInvoiceDoc,
+  // which printed only the slice this invoice absorbed and Balance ₱0.00.
   assert.match(funds, /\$\$\('\[data-cifunds-invdoc\]', fundsBox\)\.forEach/);
-  assert.match(funds, /showInvoiceDoc\(\{/);
+  assert.match(funds, /showFundsLogDoc\(\{/);
+  assert.doesNotMatch(funds, /showInvoiceDoc\(\{/,
+    'the shared invoice paper is left to the screens that still use it');
+  assert.match(funds, /String\(f\.source_invoice_id\) === b\.dataset\.invid/);
+  assert.match(funds, /displayAmount: Number\(p\.amount\) \+ extra/);
+  assert.match(funds, /payments: displayPayments, who: full, invoiceNo: full\.si_no, fundTotal/);
+
+  const doc = app.slice(app.indexOf('function showFundsLogDoc('));
+  const docFn = doc.slice(0, doc.indexOf('\n}\n'));
+  assert.match(docFn, /peso\(p\.displayAmount \?\? p\.amount\)/, 'Amount is the real transfer');
+  assert.match(docFn, /peso\(fundTotal > 0 \? fundTotal : grand - paid\)/, 'Balance is what went to Funds');
 });
 
 // The Amount column reads as a running balance — what Funds stood at right

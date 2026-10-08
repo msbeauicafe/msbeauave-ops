@@ -7029,6 +7029,69 @@ function showInvoiceLogDoc({ orderId, issuedOn, resellerName, lines, payments = 
   $('#ivd_done').addEventListener('click', closeDialog);
 }
 
+// Record payment's Funds log, and only there: a copy of showInvoiceLogDoc
+// rather than a second caller of it, so the Invoice log's paper and this
+// one can each be changed on their own. Opening an invoice from the Funds
+// log used to go through the shared showInvoiceDoc and printed only the
+// slice of the transfer this invoice absorbed (₱20,400 of a ₱45,000 BDO
+// payment) with Balance ₱0.00, while the Invoice log's copy of the very
+// same invoice showed the real ₱45,000 and the ₱24,600 that went to Funds.
+function showFundsLogDoc({ orderId, issuedOn, resellerName, lines, payments = [],
+                             who = {}, shipping = 0, others = 0, invoiceNo = null,
+                             fundTotal = 0 }) {
+  const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const grand = sub + shipping + others;
+  const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
+  const slot = (p) => `
+    <div class="slot">
+      <b>MOP${p && p.method ? ` &nbsp;&nbsp;&nbsp; ${esc(p.method)}` : ''}</b>
+      <div>Details: ${p ? esc(p.payer_details || '') : ''}</div>
+      <div>Reference no.: ${p ? esc(p.reference_no || '') : ''}</div>
+      <div>Date: ${p ? onDay(p.paid_on) : ''}</div>
+      <div>Amount: ${p ? peso(p.displayAmount ?? p.amount) : ''}</div>
+    </div>`;
+  const slots = [...payments.slice(0, 5).map(slot),
+                 ...Array.from({ length: Math.max(0, 5 - payments.length) }, () => slot(null))];
+  dialog(`
+    <div class="doc inv">
+      ${DOC_HEAD}
+      <div class="title inv">INVOICE</div>
+      ${docParty(resellerName, issuedOn, invoiceNo || orderId, who,
+                 invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.')}
+      <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
+      <div style="clear:both"></div>
+      ${docLines(lines)}
+      <div class="foot">
+        <div class="mop">
+          <div class="hd">PAYMENT DETAILS${payments.length ? '' : ' — TO FOLLOW PAYMENT'}</div>
+          ${slots.join('')}
+        </div>
+        <div>
+          <div class="totals">
+            <div><span>Subtotal:</span><span id="iv_sub">${peso(sub)}</span></div>
+            <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
+            <div><span>Others:</span><span>${peso(others)}</span></div>
+            <div class="grand"><span>Grand Total:</span><span id="iv_grand">${peso(grand)}</span></div>
+            <div class="bal"><span>Balance:</span><span id="iv_bal">${
+              peso(fundTotal > 0 ? fundTotal : grand - paid)}</span></div>
+          </div>
+          ${BANK_DETAILS}
+        </div>
+      </div>
+      <div class="sign1">
+        <div class="nm">${esc(user?.name || user?.username || '')}</div>
+        <div>Order Management Coordinator</div>
+        <div class="cap">PREPARED BY:</div>
+      </div>
+    </div>
+    <div class="mt right">
+      <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
+      <button class="btn" id="ivd_done">Done</button></div>`, 'wide', true);
+  wireSave('#ivd_save', '.doc', `${invoiceNo || orderId} INVOICE.jpg`);
+  $('#ivd_done').addEventListener('click', closeDialog);
+}
+
 // The Invoice tab's own Billing statement — the same yellow ledger sheet
 // (.doc.po) Purchase order's bills print, built fresh here rather than
 // called there: that sheet is a supplier billing MS Beau Ave, running the
@@ -9799,7 +9862,7 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
         // uses. This opens the source invoice shown here, not whichever one
         // it was later applied to (named, not opened, in Reason).
         { head: 'Invoice no.', cell: (f) => `<button class="nameopen"
-            data-cifunds-invdoc="${f.source_order_id}"><b>${esc(f.source_si_no || '—')}</b></button>` },
+            data-cifunds-invdoc="${f.source_order_id}" data-invid="${f.source_invoice_id}"><b>${esc(f.source_si_no || '—')}</b></button>` },
         { head: 'Date', cell: (f) => onDay(f.source_issued_on) },
         { head: 'Reason', cell: (f) => f.target_si_no
           ? `Applied to invoice ${esc(f.target_si_no)}`
@@ -9807,18 +9870,36 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
         { head: 'Amount', n: true, cell: (f) => `<b>${peso(fundsRunning.get(f.id))}</b>` },
       ], 'No overpayment on this account.');
 
-      // The same blue INVOICE document the Invoice log's own row opens —
-      // reused rather than redrawn, only the fetch that hands it its data is
-      // this table's own, same as the Invoice log's copy right above it.
+      // The same blue INVOICE the Invoice log's own row opens, from this
+      // log's own copy of it (showFundsLogDoc), with the same figures.
       $$('[data-cifunds-invdoc]', fundsBox).forEach((b) => b.addEventListener('click', async () => {
         try {
           const [full, payments] = await Promise.all([
             GET(`/api/orders/${b.dataset.cifundsInvdoc}`),
             GET(`/api/resellers/${resellerId}/payments?order_id=${b.dataset.cifundsInvdoc}`).catch(() => []),
           ]);
-          showInvoiceDoc({
+          // The same reading the Invoice log's row does: what overflowed off
+          // this invoice is added back onto the payment it came in with.
+          const myOverflow = (acct.overflow || [])
+            .filter((f) => String(f.source_invoice_id) === b.dataset.invid);
+          const fundTotal = myOverflow.reduce((s, f) => s + Number(f.amount), 0);
+          const claimed = new Set();
+          const displayPayments = payments.map((p) => {
+            const extra = myOverflow
+              .filter((f) => (f.reference_no || '') === (p.reference_no || '') && !claimed.has(f.id))
+              .reduce((s, f) => { claimed.add(f.id); return s + Number(f.amount); }, 0);
+            return { ...p, displayAmount: Number(p.amount) + extra };
+          });
+          for (const f of myOverflow) {
+            if (claimed.has(f.id)) continue;
+            displayPayments.push({
+              method: 'FUNDS', reference_no: f.reference_no, paid_on: f.at,
+              amount: 0, displayAmount: Number(f.amount),
+            });
+          }
+          showFundsLogDoc({
             orderId: full.id, issuedOn: full.placed_at, resellerName: full.reseller,
-            payments, who: full, invoiceNo: full.si_no,
+            payments: displayPayments, who: full, invoiceNo: full.si_no, fundTotal,
             shipping: Number(full.shipping || 0), others: Number(full.others || 0),
             lines: full.lines.map((l) => ({ id: l.id, sku: l.sku, name: l.name, qty: l.qty,
               price: l.unit_price, code: l.price_code, unit: l.unit_type })),
