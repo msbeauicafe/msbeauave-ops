@@ -196,10 +196,14 @@ function wire() {
     // Coming back to a tab should not still be filtered by whatever was tapped
     // on the way out.
     if (view !== 'shop') category = '';
-    // Walking away by the bar is walking away from the search as well.
+    // Walking away by the bar is walking away from the search as well — and
+    // from its results. Clearing the word without fetching again left the
+    // Shop tab showing "Everything we stock: 1", the one thing last searched.
+    const searched = term !== '';
     term = '';
     window.scrollTo(0, 0);
-    draw();
+    if (searched) load().catch(oops);
+    else draw();
   }));
 }
 
