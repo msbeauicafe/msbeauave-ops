@@ -25,10 +25,10 @@ const pages = fs.readdirSync(pub, { withFileTypes: true })
   .flatMap((d) => (d.isDirectory() && fs.existsSync(path.join(pub, d.name, 'index.html'))
     ? [[`${d.name}/index.html`, path.join(pub, d.name, 'index.html')]] : []))
   .concat([['index.html', path.join(pub, 'index.html')]])
-  // The download page and the claim pages are read once in a browser; they are
-  // not something anybody keeps on a home screen.
-  .filter(([name]) => !['get/index.html', 'join/index.html', 'apply/index.html']
-    .includes(name));
+  // The download page, the claim pages and the landing page are read once in
+  // a browser; they are not something anybody keeps on a home screen.
+  .filter(([name]) => !['get/index.html', 'join/index.html', 'apply/index.html',
+    'welcome/index.html'].includes(name));
 
 for (const [name, file] of pages) {
   const html = fs.readFileSync(file, 'utf8');
