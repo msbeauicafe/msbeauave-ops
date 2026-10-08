@@ -511,6 +511,12 @@ function visitPanels() {
     <div class="sh-panel">
       <h4>A free skin check</h4>
       <p>Come in any time we are open. No appointment needed.</p>
+    </div>
+
+    <div class="sh-panel">
+      <h4>Own a beauty shop?</h4>
+      <p>Stock your shelves with us at wholesale prices.</p>
+      <a class="sh-map" href="/welcome">Become a reseller</a>
     </div>`;
 }
 
