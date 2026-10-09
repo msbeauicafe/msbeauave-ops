@@ -337,7 +337,7 @@ async function start() {
   try {
     const { user: me } = await GET('/api/me');
     user = me;
-    if (me) drawFrame(); else drawSignIn();
+    if (me) { await markIt(); drawFrame(); } else drawSignIn();
   } catch {
     drawSignIn();
   }
@@ -452,6 +452,7 @@ function drawSignIn() {
       const { user: me } = await POST('/api/login',
         { username: $('#who').value, password: $('#secret').value });
       user = me;
+      await markIt();
       drawFrame();
     } catch (err) {
       whoops(err);
@@ -662,8 +663,21 @@ const roleName = (r) => ({
   orderdesk: 'Order desk', datacoord: 'Data coordinator', hr: 'HR / Operations',
 }[r] ?? r);
 
+// IT is one admin, not every admin (db/182). Asked once per sign-in, so the
+// menu can put IT support on top for them and draw the dashboard.
+async function markIt() {
+  if (user && user.role === 'admin') {
+    user.it = (await GET('/api/it/whoami').catch(() => ({ it: false }))).it === true;
+  }
+}
+
 function drawFrame() {
-  const tabs = TABS[user.role] ?? [];
+  let tabs = TABS[user.role] ?? [];
+  // For the IT person, IT support goes to the top of the menu, above
+  // Dashboard; for everybody else it stays at the foot.
+  if (user.it) {
+    tabs = [...tabs.filter(([id]) => id === 'itsupport'), ...tabs.filter(([id]) => id !== 'itsupport')];
+  }
   tab = tabs.some(([id]) => id === tab) ? tab : tabs[0][0];
   localStorage.setItem('tab', tab);
   $('#app').innerHTML = `
@@ -731,7 +745,7 @@ let itTimer = null;
 let itSeen = null;
 function watchItQueue() {
   clearInterval(itTimer);
-  if (user?.role !== 'admin') return;
+  if (!user?.it) return;
   const check = async () => {
     const { waiting } = await GET('/api/it/waiting');
     const badge = $('#itBadge');
@@ -15794,7 +15808,7 @@ const itReplyBox = (t, label) => `
   </div>`;
 
 SCREENS.itsupport = async (page) => {
-  const isIT = user.role === 'admin';
+  const isIT = user.it === true;
   // IT works the queue and files concerns for others; everybody else files
   // their own and follows them. Two views either way, one switch.
   const views = isIT ? [['dash', 'IT Dashboard'], ['file', 'File Concern']]
