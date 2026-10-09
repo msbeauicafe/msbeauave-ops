@@ -57,6 +57,14 @@ async function signIn(role) {
   return (res.headers.getSetCookie?.()[0] ?? res.headers.get('set-cookie')).split(';')[0];
 }
 
+// The IT person: an admin whose sign-in is marked IT (db/182).
+async function signInIT() {
+  const cookie = await signIn('admin');
+  const who = Buffer.from(cookie.split('=')[1].split('.')[0], 'base64url').toString();
+  await db.query('update app_users set is_it = true where username = $1', [JSON.parse(who).username]);
+  return cookie;
+}
+
 async function asRole(role, actor, sql, params = []) {
   const client = await db.connect();
   try {
@@ -73,7 +81,7 @@ async function asRole(role, actor, sql, params = []) {
 
 test('a staff member sends a concern, IT answers and resolves it, and the staff member sees it', async () => {
   const staff = await signIn('employee');
-  const it = await signIn('admin');
+  const it = await signInIT();
 
   const sent = await POST(staff, '/api/it/tickets', {
     name: 'Jasmine', department: 'Office', category: 'hardware',
@@ -148,7 +156,7 @@ test('IT support sits at the foot of every staff menu, and not on the others', (
 
 test('the form\'s dropdowns: departments for everybody, the team for IT only', async () => {
   const staff = await signIn('employee');
-  const it = await signIn('admin');
+  const it = await signInIT();
   const mine = (await GET(staff, '/api/it/choices')).data;
   assert.ok(Array.isArray(mine.departments));
   assert.deepEqual(mine.people, [], 'staff are not handed the team list');
@@ -163,4 +171,31 @@ test('the Department dropdown is the company\'s own six departments', () => {
   assert.match(app,
     /const IT_DEPARTMENTS = \['Marketing', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'Other'\];/);
   assert.doesNotMatch(app, /IT_DEPARTMENTS = \[[^\]]*'Shop'/, 'there is no Shop department');
+});
+
+test('IT is one admin, not every admin', async () => {
+  const it = await signInIT();
+  const other = await signIn('admin');
+  assert.equal((await GET(it, '/api/it/whoami')).data.it, true);
+  assert.equal((await GET(other, '/api/it/whoami')).data.it, false);
+
+  // Refused by the database, which the app reports in plain words.
+  const q = await GET(other, '/api/it/queue');
+  assert.notEqual(q.status, 200, 'another admin does not get the queue');
+  assert.match(q.data.error, /does not allow/);
+  assert.notEqual((await GET(other, '/api/it/waiting')).status, 200);
+  const { id } = (await POST(other, '/api/it/tickets',
+    { issue: 'Monitor flickers', urgency: 'low', category: 'hardware' })).data;
+  assert.ok(id, 'but files concerns like everybody else');
+  assert.notEqual((await PUT(other, `/api/it/tickets/${id}/status`, { status: 'resolved' })).status, 200);
+  assert.deepEqual((await GET(other, '/api/it/choices')).data.people, []);
+
+  assert.ok((await GET(it, '/api/it/queue')).data.some((t) => t.id === id), 'it reaches IT');
+  // Past the router: admin alone is not enough.
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select it_queue()'), /FORBIDDEN/);
+});
+
+test('for the IT person, IT support goes to the top of the menu', () => {
+  assert.match(app, /if \(user\.it\) \{\s*\n\s*tabs = \[\.\.\.tabs\.filter\(\(\[id\]\) => id === 'itsupport'\)/);
+  assert.match(app, /const isIT = user\.it === true;/);
 });
