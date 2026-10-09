@@ -158,3 +158,9 @@ test('the form\'s dropdowns: departments for everybody, the team for IT only', a
   const bad = await POST(staff, '/api/it/tickets', { issue: 'x', urgency: 'low', category: 'coffee' });
   assert.notEqual(bad.status, 200, 'a category that is not on the list is refused');
 });
+
+test('the Department dropdown is the company\'s own six departments', () => {
+  assert.match(app,
+    /const IT_DEPARTMENTS = \['Marketing', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'Other'\];/);
+  assert.doesNotMatch(app, /IT_DEPARTMENTS = \[[^\]]*'Shop'/, 'there is no Shop department');
+});
