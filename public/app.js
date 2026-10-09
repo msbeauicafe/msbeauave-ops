@@ -13781,12 +13781,12 @@ SCREENS.team = async (page) => {
             placeholder="Where their payslip is sent">
           <div class="dim" id="t_email_saved" style="font-size:.72rem;margin-top:2px">${
             p?.email ? `Saved — ${esc(p.email)}` : ''}</div></div>
-        <div><label>Signs in as</label>
+        ${user?.role === 'admin' ? `<div><label>Signs in as</label>
           <select id="t_user">
             ${options.map((o) => `<option value="${esc(String(o.id))}"
               ${p?.user_id && o.id === p.user_id ? 'selected' : ''}>
               ${esc(o.display_name)}</option>`).join('')}
-          </select></div>
+          </select></div>` : ''}
         ${isNew ? '<div><label>Started</label><input id="t_from" type="date"></div>' : ''}
         ${isNew && branches.length > 1 ? `<div><label>Branch</label>
           <select id="t_new_branch">${branchOptions()}</select></div>` : ''}
@@ -14028,7 +14028,10 @@ SCREENS.team = async (page) => {
     }
 
     $('#t_save').addEventListener('click', async () => {
-      const chosen = $('#t_user').value;
+      // Only the owner hands out sign-ins. HR is never sent the list, so for
+      // HR the box is not drawn and nothing is sent — the server keeps the
+      // person's own sign-in (db/179) rather than wiping it to "No sign-in".
+      const chosen = $('#t_user')?.value || '';
       const body = {
         name: $('#t_name').value,
         position: $('#t_pos').value,
