@@ -15773,6 +15773,11 @@ SCREENS.myleave = async (page) => {
 const IT_URGENCY = { high: ['High', 'red'], medium: ['Medium', 'amber'], low: ['Low', 'grey'] };
 const IT_STATUS = { pending: ['Pending', 'amber'], in_progress: ['In progress', 'pink'],
   resolved: ['Resolved', 'green'] };
+const IT_CATEGORY = { hardware: 'Hardware', software: 'Software', network: 'Network / Internet',
+  printer: 'Printer', account: 'Account / Password', other: 'Other' };
+// Used only when HR has not filed anybody under a department yet, so the
+// dropdown is never empty.
+const IT_DEPARTMENTS = ['Admin', 'Office', 'Shop', 'Warehouse', 'HR', 'Other'];
 
 // One ticket's conversation, oldest first. IT's replies are marked as IT's.
 const itThread = (t) => `
@@ -15780,7 +15785,7 @@ const itThread = (t) => `
     <div class="itmsg ${m.from_it ? 'it' : ''}">
       <div class="post-by">${m.from_it ? '🖥️ IT' : esc(t.name)}
         <span class="dim">${when(m.at)}</span></div>
-      <div>${esc(m.body)}</div>
+      <div style="white-space:pre-line">${esc(m.body)}</div>
     </div>`).join('')}</div>`;
 
 const itReplyBox = (t, label) => `
@@ -15791,42 +15796,38 @@ const itReplyBox = (t, label) => `
 
 SCREENS.itsupport = async (page) => {
   const isIT = user.role === 'admin';
-  let filters = { status: '', urgency: '', q: '' };
+  // IT works the queue and files concerns for others; everybody else files
+  // their own and follows them. Two views either way, one switch.
+  const views = isIT ? [['dash', 'IT Dashboard'], ['file', 'File Concern']]
+    : [['file', 'File Concern'], ['mine', 'My requests']];
+  let view = views[0][0];
+  const filters = { status: '', urgency: '', q: '' };
+  let tickets = [];
+  const choices = await GET('/api/it/choices').catch(() => ({ departments: [], people: [] }));
+  const departments = choices.departments?.length ? choices.departments : IT_DEPARTMENTS;
 
   page.innerHTML = `
-    <div class="head"><h2>IT support</h2>
-      <span class="hint">Desktop support and hardware fixes${isIT
-        ? ' — every concern sent in' : ' — tell IT what is wrong and follow the replies here'}</span></div>
-    ${isIT ? `
-      <div class="panel row">
-        <div><label>Status</label><select id="it_fs">
-          <option value="">All</option>${Object.entries(IT_STATUS).map(([k, [l]]) =>
-            `<option value="${k}">${l}</option>`).join('')}</select></div>
-        <div><label>Urgency</label><select id="it_fu">
-          <option value="">All</option>${Object.entries(IT_URGENCY).map(([k, [l]]) =>
-            `<option value="${k}">${l}</option>`).join('')}</select></div>
-        <div style="flex:2"><label>Search</label>
-          <input id="it_fq" type="search" placeholder="Name, department, desk or problem"></div>
-      </div>` : `
-      <div class="panel">
-        <h3>Send a concern to IT</h3>
-        <div class="row">
-          <div><label>Your name</label><input id="it_name" type="text" value="${esc(user.name || '')}"></div>
-          <div><label>Department</label><input id="it_dept" type="text" placeholder="Warehouse, Office, Shop…"></div>
-          <div><label>Desk / location</label><input id="it_desk" type="text" placeholder="Front counter, PC 2…"></div>
-          <div><label>Urgency</label><select id="it_urg">
-            <option value="low">Low</option><option value="medium" selected>Medium</option>
-            <option value="high">High</option></select></div>
-        </div>
-        <label>What is wrong?</label>
-        <textarea id="it_issue" rows="3"
-          placeholder="e.g. Desktop won't turn on · Printer says paper jam · No internet"></textarea>
-        <div class="mt right"><button class="btn" id="it_go">Send to IT</button></div>
-      </div>
-      <h3 class="mt">My requests</h3>`}
-    <div id="it_list"><div class="dim">Loading…</div></div>`;
+    <div class="ithead">
+      <div class="head" style="margin:0"><h2>🖥️ IT support</h2>
+        <span class="tag pink">1-Man IT Office</span>
+        <span class="hint">Desktop support and hardware fixes</span></div>
+      <div class="itswitch" role="tablist">${views.map(([k, l]) => `
+        <button data-itview="${k}" role="tab">${l}</button>`).join('')}</div>
+    </div>
+    <div class="itstats panel">
+      <div><span>Total logs</span><b id="it_total">0</b></div>
+      <div><span>Active backlog</span><b id="it_active" class="amber">0</b></div>
+      <div><span>Critical tasks</span><b id="it_critical" class="red">0</b></div>
+    </div>
+    <div id="it_body"></div>`;
 
-  const list = $('#it_list');
+  const body = $('#it_body');
+
+  const stats = () => {
+    $('#it_total').textContent = tickets.length;
+    $('#it_active').textContent = tickets.filter((t) => t.status !== 'resolved').length;
+    $('#it_critical').textContent = tickets.filter((t) => t.status !== 'resolved' && t.urgency === 'high').length;
+  };
 
   const card = (t) => {
     const [ul, uk] = IT_URGENCY[t.urgency] || [t.urgency, 'grey'];
@@ -15835,7 +15836,7 @@ SCREENS.itsupport = async (page) => {
       <div class="panel itcard">
         <div class="row" style="align-items:center">
           <div style="flex:3"><b>${esc(t.name)}</b>
-            <span class="dim">${[t.department, t.desk].filter(Boolean).map(esc).join(' · ')}</span>
+            <span class="dim">${[t.department, IT_CATEGORY[t.category]].filter(Boolean).map(esc).join(' · ')}</span>
             <div class="dim" style="font-size:.78rem">Ticket #${t.id} · opened ${when(t.opened_at)}</div></div>
           <div style="flex:0 0 auto">${tag(ul, uk)} ${tag(sl, sk)}</div>
         </div>
@@ -15847,13 +15848,79 @@ SCREENS.itsupport = async (page) => {
       </div>`;
   };
 
-  const draw = (tickets) => {
+  const drawForm = () => {
+    body.innerHTML = `
+      <div class="panel itform">
+        <h3>Summon IT support</h3>
+        <div class="dim">A direct line to our IT officer for desktop and hardware help.</div>
+        <div class="itgrid mt">
+          <div><label>${isIT ? 'Employee' : 'Your name'}</label>
+            ${isIT ? `<select id="it_name">${(choices.people || []).map((n) =>
+              `<option>${esc(n)}</option>`).join('')}</select>`
+            : `<input id="it_name" type="text" value="${esc(user.name || '')}" readonly>`}</div>
+          <div><label>Concern category</label><select id="it_cat">${Object.entries(IT_CATEGORY)
+            .map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></div>
+          <div class="wide"><label>What needs fixing?</label>
+            <input id="it_issue" type="text"
+              placeholder="Brief description (e.g. Desktop won't turn on, printer says paper jam)"></div>
+          <div><label>Urgency</label><select id="it_urg">
+            <option value="low">Low</option><option value="medium" selected>Medium</option>
+            <option value="high">High</option></select></div>
+          <div><label>${isIT ? 'Their department' : 'Your department'}</label><select id="it_dept">
+            ${departments.map((d) => `<option>${esc(d)}</option>`).join('')}</select></div>
+          <div class="wide"><label>Elaborate or leave a message</label>
+            <textarea id="it_details" rows="3"
+              placeholder="Any details — error codes, which desk or PC, what you already tried…"></textarea></div>
+        </div>
+        <button class="btn itsendbig mt" id="it_go">Send help message</button>
+      </div>`;
+    $('#it_go').addEventListener('click', async () => {
+      if (!$('#it_issue').value.trim()) return notice('Say what needs fixing before sending.', 'bad');
+      $('#it_go').disabled = true;
+      try {
+        await POST('/api/it/tickets', {
+          name: $('#it_name').value, department: $('#it_dept').value,
+          category: $('#it_cat').value, issue: $('#it_issue').value,
+          urgency: $('#it_urg').value, details: $('#it_details').value,
+        });
+        notice(isIT ? 'Logged 🖥️' : 'Sent to IT 🖥️ — follow the replies in My requests', 'good');
+        await load();
+        show(isIT ? 'dash' : 'mine');
+        if (isIT) watchItQueue();
+      } catch (e) { whoops(e); $('#it_go').disabled = false; }
+    });
+  };
+
+  const drawList = () => {
     // A refresh must not throw away a reply somebody is halfway through.
-    const drafts = Object.fromEntries($$('[data-itdraft]', list).map((el) => [el.dataset.itdraft, el.value]));
+    const old = $('#it_list');
+    const drafts = old ? Object.fromEntries($$('[data-itdraft]', old).map((el) => [el.dataset.itdraft, el.value])) : {};
     const focused = document.activeElement?.dataset?.itdraft;
+    if (!old) {
+      body.innerHTML = `${isIT ? `
+        <div class="panel row">
+          <div><label>Status</label><select id="it_fs">
+            <option value="">All</option>${Object.entries(IT_STATUS).map(([k, [l]]) =>
+              `<option value="${k}"${filters.status === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div><label>Urgency</label><select id="it_fu">
+            <option value="">All</option>${Object.entries(IT_URGENCY).map(([k, [l]]) =>
+              `<option value="${k}"${filters.urgency === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div style="flex:2"><label>Search</label>
+            <input id="it_fq" type="search" value="${esc(filters.q)}"
+              placeholder="Name, department or problem"></div>
+        </div>` : ''}<div id="it_list"></div>`;
+      if (isIT) {
+        $('#it_fs').addEventListener('change', (e) => { filters.status = e.target.value; drawList(); });
+        $('#it_fu').addEventListener('change', (e) => { filters.urgency = e.target.value; drawList(); });
+        $('#it_fq').addEventListener('input', (e) => { filters.q = e.target.value; drawList(); });
+      }
+    }
+    const list = $('#it_list');
     const q = filters.q.trim().toLowerCase();
-    const shown = q ? tickets.filter((t) => [t.name, t.department, t.desk, t.issue]
-      .some((v) => (v || '').toLowerCase().includes(q))) : tickets;
+    const shown = tickets.filter((t) => (!filters.status || t.status === filters.status)
+      && (!filters.urgency || t.urgency === filters.urgency)
+      && (!q || [t.name, t.department, IT_CATEGORY[t.category], t.issue, t.details]
+        .some((v) => (v || '').toLowerCase().includes(q))));
     list.innerHTML = shown.length ? shown.map(card).join('')
       : `<div class="panel none">${isIT ? 'No tickets match.' : 'Nothing sent to IT yet.'}</div>`;
     for (const [id, v] of Object.entries(drafts)) {
@@ -15885,34 +15952,21 @@ SCREENS.itsupport = async (page) => {
     }));
   };
 
-  const load = async () => {
-    const tickets = isIT
-      ? await GET(`/api/it/queue?status=${filters.status}&urgency=${filters.urgency}`)
-      : await GET('/api/it/mine');
-    draw(tickets || []);
+  const show = (v) => {
+    view = v;
+    $$('[data-itview]', page).forEach((b) => b.classList.toggle('on', b.dataset.itview === v));
+    if (v === 'file') drawForm();
+    else { body.innerHTML = ''; drawList(); }
   };
 
-  if (isIT) {
-    $('#it_fs').addEventListener('change', (e) => { filters.status = e.target.value; load().catch(whoops); });
-    $('#it_fu').addEventListener('change', (e) => { filters.urgency = e.target.value; load().catch(whoops); });
-    $('#it_fq').addEventListener('input', (e) => { filters.q = e.target.value; load().catch(whoops); });
-  } else {
-    $('#it_go').addEventListener('click', async () => {
-      if (!$('#it_issue').value.trim()) return notice('Say what is wrong before sending.', 'bad');
-      $('#it_go').disabled = true;
-      try {
-        await POST('/api/it/tickets', {
-          name: $('#it_name').value, department: $('#it_dept').value,
-          desk: $('#it_desk').value, issue: $('#it_issue').value, urgency: $('#it_urg').value,
-        });
-        $('#it_issue').value = '';
-        notice('Sent to IT 🖥️ — replies will show here', 'good');
-        await load();
-      } catch (e) { whoops(e); }
-      $('#it_go').disabled = false;
-    });
-  }
+  const load = async () => {
+    tickets = (await GET(isIT ? '/api/it/queue' : '/api/it/mine')) || [];
+    stats();
+    if (view !== 'file') drawList();
+  };
 
+  $$('[data-itview]', page).forEach((b) => b.addEventListener('click', () => show(b.dataset.itview)));
+  show(view);
   await load();
   repeat(load, 20000);
 };
