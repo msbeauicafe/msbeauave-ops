@@ -5,7 +5,7 @@
 * { box-sizing:border-box; margin:0 }
 html { scroll-behavior:smooth }
 body { background:var(--bg); color:var(--ink);
-  font:16px/1.6 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+  font:16px/1.6 Poppins,system-ui,-apple-system,"Segoe UI",sans-serif;
   -webkit-text-size-adjust:100% }
 a { color:var(--deep) }
 h1, h2 { font-family:Georgia,"Times New Roman",serif; color:var(--deep); line-height:1.2 }
