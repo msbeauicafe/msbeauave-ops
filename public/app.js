@@ -9688,6 +9688,7 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
       <div><div class="dim">Amount</div><b id="ci_amount"></b></div>
       <div><div class="dim">Paid so far</div><b id="ci_paidsofar"></b></div>
       <div><div class="dim">Still owed</div><b id="ci_owed">${peso(owed)}</b></div>
+      <div><div class="dim">Estimated balance</div><b id="ci_est">${peso(0)}</b></div>
     </div>
 
     <h3 class="mt">Payments on file</h3>
@@ -9748,6 +9749,19 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
     if (i.status === 'void') return tag('void', 'grey');
     const label = Number(i.balance) < Number(i.amount) ? 'paid w/bal' : 'unpaid';
     return tag(label, label === 'unpaid' && i.overdue ? 'red' : 'amber');
+  };
+
+  // Estimated balance: what this invoice will still owe once the rows being
+  // typed are saved — Still owed less every amount in them, FUNDS rows
+  // included, never below ₱0.00 (anything past that goes to Funds). The
+  // first row arrives pre-filled with what is owed, so it opens on ₱0.00 —
+  // the owner's choice — and moves as soon as an amount is changed.
+  // Recomputed on every keystroke, and whenever Still owed itself moves.
+  let estBase = Number(owed || 0);
+  const showEstimate = () => {
+    const typed = $$('.ci_amt', $('#ci_rows')).reduce((s, el) => s + num(el.value), 0);
+    const est = $('#ci_est');
+    if (est) est.textContent = peso(Math.max(estBase - typed, 0));
   };
 
   // Read by the Funds readout below, set each time paintLog refreshes —
@@ -9881,6 +9895,8 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
       $('#ci_amount').textContent = peso(mine.amount);
       $('#ci_paidsofar').textContent = peso(mine.paid);
       $('#ci_owed').textContent = peso(mine.balance);
+      estBase = Number(mine.balance || 0);
+      showEstimate();
     }
 
     // Right under the rows a payment is typed into — the account's own
@@ -10073,7 +10089,10 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
   };
   await paintPrior();
 
-  $$('.ci_amt', $('#ci_rows')).forEach((el) => el.addEventListener('input', () => comma(el)));
+  $$('.ci_amt', $('#ci_rows')).forEach((el) => el.addEventListener('input', () => {
+    comma(el);
+    showEstimate();
+  }));
 
   // The rows reset rather than the dialog closing — recording a payment does
   // not mean somebody is finished with this invoice, the same way saving a
