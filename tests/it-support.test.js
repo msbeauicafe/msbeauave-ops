@@ -76,15 +76,16 @@ test('a staff member sends a concern, IT answers and resolves it, and the staff 
   const it = await signIn('admin');
 
   const sent = await POST(staff, '/api/it/tickets', {
-    name: 'Jasmine', department: 'Office', desk: 'Front counter PC',
-    issue: "Desktop won't turn on", urgency: 'high' });
+    name: 'Jasmine', department: 'Office', category: 'hardware',
+    issue: "Desktop won't turn on", urgency: 'high', details: 'Front counter PC, no lights.' });
   assert.equal(sent.status, 200, JSON.stringify(sent.data));
   const id = sent.data.id;
 
   const queue = await GET(it, '/api/it/queue?status=pending&urgency=high');
   const mine = queue.data.find((t) => t.id === id);
   assert.ok(mine, 'IT sees the new ticket in the pending, high queue');
-  assert.equal(mine.desk, 'Front counter PC');
+  assert.equal(mine.category, 'hardware');
+  assert.equal(mine.details, 'Front counter PC, no lights.');
 
   const waiting = await GET(it, '/api/it/waiting');
   assert.ok(waiting.data.waiting >= 1, 'and it counts towards the menu badge');
@@ -99,13 +100,14 @@ test('a staff member sends a concern, IT answers and resolves it, and the staff 
   const last = back.messages.at(-1);
   assert.equal(last.from_it, true, 'the reply reads as IT\'s');
   assert.match(last.body, /power strip/);
-  assert.equal(back.messages[0].body, "Desktop won't turn on", 'the concern itself opens the thread');
+  assert.equal(back.messages[0].body, "Desktop won't turn on\nFront counter PC, no lights.",
+    'the concern and its details open the thread');
 });
 
 test('nobody sees, or writes on, somebody else\'s ticket', async () => {
   const a = await signIn('cashier');
   const b = await signIn('warehouse');
-  const { id } = (await POST(a, '/api/it/tickets', { issue: 'Printer error', urgency: 'low' })).data;
+  const { id } = (await POST(a, '/api/it/tickets', { issue: 'Printer error', urgency: 'low', category: 'printer' })).data;
 
   assert.ok(!(await GET(b, '/api/it/mine')).data.some((t) => t.id === id), 'not in their list');
   const r = await POST(b, `/api/it/tickets/${id}/messages`, { body: 'not mine' });
@@ -114,7 +116,7 @@ test('nobody sees, or writes on, somebody else\'s ticket', async () => {
 
 test('only IT reads the queue or moves a status', async () => {
   const staff = await signIn('employee');
-  const { id } = (await POST(staff, '/api/it/tickets', { issue: 'No internet', urgency: 'medium' })).data;
+  const { id } = (await POST(staff, '/api/it/tickets', { issue: 'No internet', urgency: 'medium', category: 'network' })).data;
   assert.equal((await GET(staff, '/api/it/queue')).status, 403);
   assert.equal((await PUT(staff, `/api/it/tickets/${id}/status`, { status: 'resolved' })).status, 403);
   // Past the router too.
@@ -124,7 +126,7 @@ test('only IT reads the queue or moves a status', async () => {
 
 test('a reseller, the door tablet and view-only are not on IT support', async () => {
   for (const role of ['reseller', 'timekeeper', 'observer']) {
-    await assert.rejects(asRole(role, 'someone', "select it_submit('x','','','broken','low')"),
+    await assert.rejects(asRole(role, 'someone', "select it_submit('x','','hardware','broken','low','')"),
       /FORBIDDEN/, `${role} refused past the router`);
     await assert.rejects(asRole(role, 'someone', 'select it_my_tickets()'), /FORBIDDEN/);
   }
@@ -142,4 +144,17 @@ test('IT support sits at the foot of every staff menu, and not on the others', (
   for (const role of ['observer', 'reseller']) {
     assert.ok(!menu(role).includes('itsupport'), `${role}: not on the menu`);
   }
+});
+
+test('the form\'s dropdowns: departments for everybody, the team for IT only', async () => {
+  const staff = await signIn('employee');
+  const it = await signIn('admin');
+  const mine = (await GET(staff, '/api/it/choices')).data;
+  assert.ok(Array.isArray(mine.departments));
+  assert.deepEqual(mine.people, [], 'staff are not handed the team list');
+  const its = (await GET(it, '/api/it/choices')).data;
+  assert.ok(Array.isArray(its.people));
+  await assert.rejects(asRole('employee', 'someone', 'select it_people()'), /FORBIDDEN/);
+  const bad = await POST(staff, '/api/it/tickets', { issue: 'x', urgency: 'low', category: 'coffee' });
+  assert.notEqual(bad.status, 200, 'a category that is not on the list is refused');
 });
