@@ -804,3 +804,32 @@ test('a note under the Email box confirms what was actually saved, not just type
   assert.match(save, /if \(note\) note\.textContent = typed \? `Saved — \$\{typed\}` : '';/,
     'updated only after the save call above it succeeds, not on every keystroke');
 });
+
+// HR saving somebody from Team used to send "No sign-in" — HR is never handed
+// the sign-ins — and update_employee wrote it, unlinking forty-five people
+// between 26 September and 5 October. Who signs in as whom is the owner's: an
+// HR save keeps the person's own sign-in, past the router as well.
+test('HR saving a person on Team keeps the sign-in they already have', async () => {
+  const hr = await signIn('hr');
+  const login = unique('staff');
+  const u = (await db.query(
+    `insert into app_users (username, display_name, password_hash, role)
+     values ($1,$1,$2,'employee') returning id`, [login, hashPassword('secret123')])).rows[0].id;
+  const e = (await db.query(
+    `insert into employees (name, position, user_id, branch_id)
+     values ($1,'Cashier',$2,(select min(id) from branches)) returning id`,
+    [unique('Linked Person'), u])).rows[0].id;
+
+  // What the form sends for HR: no user_id at all, and an explicit null too.
+  for (const body of [{ name: 'Renamed By HR', position: 'Cashier' },
+                      { name: 'Renamed By HR', position: 'Cashier', user_id: null }]) {
+    const r = await PUT(hr, `/api/team/${e}`, body);
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    const row = (await db.query('select user_id, name from employees where id = $1', [e])).rows[0];
+    assert.equal(String(row.user_id), String(u), 'the sign-in stays linked');
+    assert.equal(row.name, 'Renamed By HR', 'the rest of the save still lands');
+  }
+
+  // The Team form does not even offer HR the box.
+  assert.match(app, /\$\{user\?\.role === 'admin' \? `<div><label>Signs in as<\/label>/);
+});
