@@ -18,7 +18,7 @@
 body {
   background: var(--rose-blush);
   color: var(--ink);
-  font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 15px/1.5 Poppins, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-text-size-adjust: 100%;
 }
 
