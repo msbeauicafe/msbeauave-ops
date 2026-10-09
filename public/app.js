@@ -15775,9 +15775,8 @@ const IT_STATUS = { pending: ['Pending', 'amber'], in_progress: ['In progress', 
   resolved: ['Resolved', 'green'] };
 const IT_CATEGORY = { hardware: 'Hardware', software: 'Software', network: 'Network / Internet',
   printer: 'Printer', account: 'Account / Password', other: 'Other' };
-// Used only when HR has not filed anybody under a department yet, so the
-// dropdown is never empty.
-const IT_DEPARTMENTS = ['Admin', 'Office', 'Shop', 'Warehouse', 'HR', 'Other'];
+// The company's departments, as the owner named them. Picked, never typed.
+const IT_DEPARTMENTS = ['Marketing', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'Other'];
 
 // One ticket's conversation, oldest first. IT's replies are marked as IT's.
 const itThread = (t) => `
@@ -15804,7 +15803,7 @@ SCREENS.itsupport = async (page) => {
   const filters = { status: '', urgency: '', q: '' };
   let tickets = [];
   const choices = await GET('/api/it/choices').catch(() => ({ departments: [], people: [] }));
-  const departments = choices.departments?.length ? choices.departments : IT_DEPARTMENTS;
+  const departments = IT_DEPARTMENTS;
 
   page.innerHTML = `
     <div class="ithead">
