@@ -195,7 +195,7 @@ test('IT is one admin, not every admin', async () => {
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select it_queue()'), /FORBIDDEN/);
 });
 
-test('for the IT person, IT support goes to the top of the menu', () => {
-  assert.match(app, /if \(user\.it\) \{\s*\n\s*tabs = \[\.\.\.tabs\.filter\(\(\[id\]\) => id === 'itsupport'\)/);
+test('for every admin, IT support goes to the top of the menu; only IT gets the dashboard', () => {
+  assert.match(app, /if \(user\.role === 'admin'\) \{\s*\n\s*tabs = \[\.\.\.tabs\.filter\(\(\[id\]\) => id === 'itsupport'\)/);
   assert.match(app, /const isIT = user\.it === true;/);
 });

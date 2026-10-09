@@ -673,9 +673,11 @@ async function markIt() {
 
 function drawFrame() {
   let tabs = TABS[user.role] ?? [];
-  // For the IT person, IT support goes to the top of the menu, above
-  // Dashboard; for everybody else it stays at the foot.
-  if (user.it) {
+  // For every admin, IT support goes to the top of the menu, above Dashboard
+  // — the owner's choice. Only the IT person gets the dashboard behind it
+  // (user.it); the other admins get the form. Everybody else keeps it at
+  // the foot.
+  if (user.role === 'admin') {
     tabs = [...tabs.filter(([id]) => id === 'itsupport'), ...tabs.filter(([id]) => id !== 'itsupport')];
   }
   tab = tabs.some(([id]) => id === tab) ? tab : tabs[0][0];
