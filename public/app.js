@@ -815,30 +815,162 @@ const SCREENS = {};
 // ===========================================================================
 // Dashboard
 // ===========================================================================
+// The owner's dashboard: the accounting picture first — what was sold, what is
+// owed, who is buying, the invoices and the stock — and what needs a decision
+// today underneath it. Everything is read live; nothing here is kept in the
+// browser. Somebody who may only look is sent no money at all, so the money
+// cards simply do not draw for them.
+const DASH_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const pesoShort = (v) => {
+  const n = Number(v || 0);
+  if (n >= 1e6) return `₱${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M`;
+  if (n >= 1e3) return `₱${Math.round(n / 1e3)}k`;
+  return `₱${Math.round(n)}`;
+};
+const pesoWhole = (v) => '₱' + Math.round(Number(v || 0)).toLocaleString('en-PH');
+
+// Sales by month: one series, one axis, thin bars from a single baseline, the
+// current month in full colour and labelled; every bar answers on hover.
+function dashChart(rows) {
+  const W = 620, H = 230, pl = 46, pb = 26, pt = 18;
+  const vals = rows.map((r) => Number(r.total));
+  const top = Math.max(...vals, 1);
+  const step0 = 10 ** Math.floor(Math.log10(top));
+  const tick = [1, 2, 2.5, 5, 10].map((m) => m * step0).find((t) => top / t <= 5) || step0 * 10;
+  const max = Math.ceil(top / tick) * tick;
+  const y = (v) => H - pb - (v / max) * (H - pb - pt);
+  const slot = (W - pl - 8) / rows.length;
+  const bw = Math.min(24, slot * 0.6);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Sales by month, last 12 months">`;
+  for (let t = 0; t <= max; t += tick) {
+    svg += `<line x1="${pl}" x2="${W - 4}" y1="${y(t)}" y2="${y(t)}" stroke="#f1e4ea"/>
+      <text x="${pl - 6}" y="${y(t) + 4}" font-size="10" fill="#92707F" text-anchor="end">${pesoShort(t)}</text>`;
+  }
+  rows.forEach((r, i) => {
+    const v = Number(r.total);
+    const x = pl + i * slot + (slot - bw) / 2;
+    const yy = y(v);
+    const h = H - pb - yy;
+    const last = i === rows.length - 1;
+    const [yr, mo] = r.month.split('-');
+    const name = `${DASH_MONTHS[Number(mo) - 1]} ${yr}`;
+    svg += `<g class="dashbar">
+      <rect x="${pl + i * slot}" y="${pt}" width="${slot}" height="${H - pb - pt}" fill="transparent"/>
+      ${h > 0 ? `<path d="M${x},${H - pb} V${yy + Math.min(4, h)} q0,-${Math.min(4, h)} ${Math.min(4, h)},-${Math.min(4, h)}
+        h${bw - 2 * Math.min(4, h)} q${Math.min(4, h)},0 ${Math.min(4, h)},${Math.min(4, h)} V${H - pb} Z"
+        fill="#C2457A" opacity="${last ? 1 : 0.55}"/>` : ''}
+      <title>${name}: ${peso(v)}</title>
+      <text x="${x + bw / 2}" y="${H - 8}" font-size="10" fill="#92707F" text-anchor="middle">${DASH_MONTHS[Number(mo) - 1]}</text>
+      ${last ? `<text x="${x + bw / 2}" y="${yy - 6}" font-size="11" font-weight="600" fill="#45303C" text-anchor="middle">${pesoShort(v)}</text>` : ''}
+    </g>`;
+  });
+  return `${svg}</svg>`;
+}
+
 SCREENS.dashboard = async (page) => {
+  let invFilter = '';
+  let stockFilter = '';
+  let stockQ = '';
+  let stockAll = false;
+  let d = null;
+  const STANDING = { paid: ['Paid', 'green'], pending: ['Pending', 'amber'], overdue: ['Overdue', 'red'] };
+  const stockState = (r) => (r.units <= 0 ? ['Out of stock', 'red', 'out']
+    : r.units <= r.low_at ? ['⚠ Low stock', 'amber', 'low'] : ['In stock', 'green', 'in']);
+
+  const drawInvoices = () => {
+    const box = $('#dash_inv');
+    if (!box) return;
+    const rows = d.invoices.filter((i) => !invFilter || i.standing === invFilter);
+    box.innerHTML = table(rows.slice(0, 10), [
+      { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no)}</b>` },
+      { head: 'Distributor', cell: (i) => esc(i.reseller) },
+      { head: 'Issued', cell: (i) => onDay(i.issued_on) },
+      { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
+      { head: 'Status', cell: (i) => tag(...STANDING[i.standing]) },
+    ], invFilter ? `No ${STANDING[invFilter][0].toLowerCase()} invoices 🌸` : 'No invoices yet.');
+  };
+
+  const drawStock = () => {
+    const box = $('#dash_stock');
+    if (!box) return;
+    const q = stockQ.trim().toLowerCase();
+    // Out of stock and low first — those are the rows somebody acts on.
+    const order = { out: 0, low: 1, in: 2 };
+    const rows = d.stock.filter((r) => (!stockFilter || stockState(r)[2] === stockFilter)
+      && (!q || `${r.sku} ${r.name} ${r.category || ''}`.toLowerCase().includes(q)))
+      .sort((x, y) => order[stockState(x)[2]] - order[stockState(y)[2]] || x.name.localeCompare(y.name));
+    const shown = stockAll ? rows : rows.slice(0, 12);
+    const cols = [
+      { head: 'SKU', cell: (r) => `<span class="dim">${esc(r.sku)}</span>` },
+      { head: 'Product', cell: (r) => esc(r.name) },
+      { head: 'Category', cell: (r) => esc(r.category || '—') },
+      { head: 'Stock (units)', n: true, cell: (r) => count(r.units) },
+      ...(d.stock[0] && 'wholesale_price' in d.stock[0]
+        ? [{ head: 'Wholesale price', n: true, cell: (r) => peso(r.wholesale_price) }] : []),
+      { head: 'Status', cell: (r) => tag(stockState(r)[0], stockState(r)[1]) },
+    ];
+    box.innerHTML = table(shown, cols, 'No products match.')
+      + (rows.length > shown.length ? `<div class="right mt"><button class="btn sm quiet" id="dash_more">
+          Show all ${count(rows.length)}</button></div>` : '');
+    $('#dash_more')?.addEventListener('click', () => { stockAll = true; drawStock(); });
+  };
+
+  const chips = (id, opts, on) => `<div class="dashchips" id="${id}">${opts.map(([k, l]) =>
+    `<button data-v="${k}" class="${on === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+
   const load = async () => {
-    const d = await GET('/api/dashboard');
+    // A redraw while somebody is typing in the stock search would take the
+    // box away from under them.
+    if (document.activeElement?.id === 'dash_q') return;
+    d = await GET('/api/dashboard');
+    const money = d.sales !== null && d.sales !== undefined;
+    const lowN = d.stock.filter((r) => stockState(r)[2] === 'low').length;
+    const outN = d.stock.filter((r) => stockState(r)[2] === 'out').length;
+    let vs = '';
+    if (money && Number(d.sales.last_month_to_date) > 0) {
+      const pct = Math.round((Number(d.sales.month) / Number(d.sales.last_month_to_date) - 1) * 100);
+      vs = `<span class="${pct >= 0 ? 'dashup' : 'dashdown'}">${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}%</span> vs same days last month`;
+    }
+    const today = new Date().toLocaleDateString('en-PH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: TZ });
+
     page.innerHTML = `
       <div class="head"><h2>Dashboard</h2>
-        <span class="hint">Updates on its own</span></div>
+        <span class="hint">${today} · updates on its own</span></div>
 
-      <div class="tiles">
-        ${d.takings ? `
-        <div class="tile good"><div class="big">${peso(d.takings.total)}</div>
-          <div class="label">Taken at the till today (${d.takings.sales} sale${d.takings.sales === 1 ? '' : 's'})</div></div>`
-        : ''}
-        <div class="tile"><div class="big">${d.waitingOrders}</div>
-          <div class="label">Wholesale orders waiting</div></div>
-        <div class="tile ${d.reorder.length ? 'bad' : 'good'}"><div class="big">${d.reorder.length}</div>
-          <div class="label">Products to reorder</div></div>
-        <div class="tile ${d.overdue.length ? 'bad' : 'good'}"><div class="big">${d.overdue.length}</div>
-          <div class="label">Invoices past due</div></div>
-        <div class="tile ${d.ageing.length ? 'warn' : 'good'}"><div class="big">${d.ageing.length}</div>
-          <div class="label">Batches near expiry</div></div>
-        <div class="tile ${d.shelf.length ? 'warn' : 'good'}"><div class="big">${d.shelf.length}</div>
-          <div class="label">Shop shelves running low</div></div>
+      ${money ? `
+      <div class="dashkpis">
+        <div class="dashkpi"><span>Sales today</span><b>${pesoWhole(d.sales.today)}</b>
+          <small>${d.sales.today_n} invoice${d.sales.today_n === 1 ? '' : 's'}</small></div>
+        <div class="dashkpi"><span>Sales this month</span><b>${pesoWhole(d.sales.month)}</b>
+          <small>${vs || 'Invoiced since the 1st'}</small></div>
+        <div class="dashkpi"><span>Sales year-to-date</span><b>${pesoWhole(d.sales.ytd)}</b>
+          <small>Jan – ${DASH_MONTHS[new Date().getMonth()]} ${new Date().getFullYear()}</small></div>
+        <div class="dashkpi ar"><span>Accounts receivable</span><b>${pesoWhole(d.receivable.owed)}</b>
+          <small>${Number(d.receivable.past_due) > 0
+            ? `${pesoWhole(d.receivable.past_due)} past due · ${d.receivable.past_due_n} invoice${d.receivable.past_due_n === 1 ? '' : 's'}`
+            : `${d.receivable.open_n} open invoice${d.receivable.open_n === 1 ? '' : 's'} · none past due`}</small></div>
+        <div class="dashkpi"><span>Active distributors</span><b>${count(d.distributors.active)}</b>
+          <small>invoiced this month · ${count(d.distributors.on_file)} on file</small></div>
       </div>
 
+      <div class="dashgrid">
+        <div class="panel"><h3>Sales by month</h3>${dashChart(d.monthly)}</div>
+        <div class="panel"><div class="dashhd"><h3>Recent invoices</h3>
+          ${chips('dash_invf', [['', 'All'], ['paid', 'Paid'], ['pending', 'Pending'], ['overdue', 'Overdue']], invFilter)}</div>
+          <div id="dash_inv"></div></div>
+      </div>` : `
+      <div class="dashkpis"><div class="dashkpi"><span>Active distributors</span><b>${count(d.distributors.active)}</b>
+        <small>invoiced this month · ${count(d.distributors.on_file)} on file</small></div></div>`}
+
+      <div class="panel"><div class="dashhd"><h3>Product stock</h3>
+        <div class="row" style="flex:0 1 auto;align-items:center;gap:10px">
+          <input id="dash_q" type="search" placeholder="Search SKU or product" value="${esc(stockQ)}" style="max-width:240px">
+          ${chips('dash_stf', [['', 'All'], ['low', `Low stock (${count(lowN)})`], ['out', `Out of stock (${count(outN)})`]], stockFilter)}
+        </div></div>
+        <div id="dash_stock"></div></div>
+
+      <h3 class="dashattn">Needs attention
+        <span class="hint">${count(d.waitingOrders)} wholesale order${d.waitingOrders === 1 ? '' : 's'} waiting</span></h3>
       ${d.exposure.length ? `<div class="banner bad">⚠️ ${d.exposure.map((e) =>
         `<b>${esc(e.name)}</b> owes ${(e.share * 100).toFixed(0)}% of everything outstanding (${peso(e.owed)})`
         ).join(' · ')}</div>` : ''}
@@ -848,14 +980,6 @@ SCREENS.dashboard = async (page) => {
       ${d.expired.length ? `<div class="banner warn">☠️ ${d.expired.length} expired batch line(s) still on the books — write them off in the Stockroom.</div>` : ''}
 
       <div class="split">
-        <div class="panel"><h3>🔥 Order these now</h3>
-          ${table(d.reorder, [
-            { head: 'Product', cell: (r) => `<b>${esc(r.name)}</b>` },
-            { head: 'In stock', n: true, cell: (r) => count(r.in_stock) },
-            { head: 'Reorder at', n: true, cell: (r) => count(r.reorder_at) },
-            { head: 'Order', n: true, cell: (r) => `<b>${count(Math.round(r.suggested_order))}</b>` },
-          ], 'Nothing needs reordering 🌸')}</div>
-
         <div class="panel"><h3>💸 Past due</h3>
           ${table(d.overdue, [
             { head: 'Reseller', cell: (r) => esc(r.name) },
@@ -863,6 +987,14 @@ SCREENS.dashboard = async (page) => {
             { head: 'Days', n: true, cell: (r) => r.days_late },
             { head: 'Owed', n: true, cell: (r) => peso(r.balance) },
           ], 'Everyone is up to date 🌸')}</div>
+
+        <div class="panel"><h3>🔥 Order these now</h3>
+          ${table(d.reorder, [
+            { head: 'Product', cell: (r) => `<b>${esc(r.name)}</b>` },
+            { head: 'In stock', n: true, cell: (r) => count(r.in_stock) },
+            { head: 'Reorder at', n: true, cell: (r) => count(r.reorder_at) },
+            { head: 'Order', n: true, cell: (r) => `<b>${count(Math.round(r.suggested_order))}</b>` },
+          ], 'Nothing needs reordering 🌸')}</div>
 
         <div class="panel"><h3>⏳ Near expiry — clear these</h3>
           ${table(d.ageing, [
@@ -872,8 +1004,7 @@ SCREENS.dashboard = async (page) => {
             { head: 'Days', n: true, cell: (r) => r.days_left },
             { head: 'Qty', n: true, cell: (r) => count(r.qty) },
             { head: 'Value', n: true, cell: (r) => peso(r.value_at_risk) },
-          ], 'Nothing within six months of expiry 🌸')}
-          ${d.ageing.length ? '<div class="dim mt">Worth bundling, discounting, or turning into testers.</div>' : ''}</div>
+          ], 'Nothing within six months of expiry 🌸')}</div>
 
         <div class="panel"><h3>🛎️ Bring stock to the shop</h3>
           ${table(d.restock, [
@@ -882,9 +1013,24 @@ SCREENS.dashboard = async (page) => {
             { head: 'Raised', cell: (r) => when(r.raised_at) },
           ], 'The shop shelves are stocked 🌸')}</div>
       </div>`;
+
+    if (money) drawInvoices();
+    drawStock();
+    $$('#dash_invf button', page).forEach((b) => b.addEventListener('click', () => {
+      invFilter = b.dataset.v;
+      $$('#dash_invf button', page).forEach((x) => x.classList.toggle('on', x === b));
+      drawInvoices();
+    }));
+    $$('#dash_stf button', page).forEach((b) => b.addEventListener('click', () => {
+      stockFilter = b.dataset.v;
+      stockAll = false;
+      $$('#dash_stf button', page).forEach((x) => x.classList.toggle('on', x === b));
+      drawStock();
+    }));
+    $('#dash_q').addEventListener('input', (e) => { stockQ = e.target.value; stockAll = false; drawStock(); });
   };
   await load();
-  repeat(load, 12000);
+  repeat(load, 30000);
 };
 
 // ===========================================================================
