@@ -1641,3 +1641,20 @@ test("the Invoice tab's Billing statement credits the whole transfer and moves t
   assert.match(handler, /showInvoiceBillingStatement\(full, payments, overflow\);/);
   assert.equal((app.match(/showInvoiceBillingStatement\(/g) || []).length, 2, 'still one caller');
 });
+
+// Estimated balance sits right after Still owed: Still owed less whatever is
+// in the rows, live, never below ₱0.00 — anything past that is Funds. The
+// first row keeps its pre-filled owed amount (the owner's choice), so it
+// opens on ₱0.00 and moves as soon as an amount is changed.
+test('Record payment shows an Estimated balance next to Still owed, live as amounts are typed', () => {
+  const at = app.indexOf('async function recordInvoicePayment');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+
+  const owedAt = fn.indexOf('id="ci_owed"');
+  const estAt = fn.indexOf('<div><div class="dim">Estimated balance</div><b id="ci_est">');
+  assert.ok(owedAt > 0 && estAt > owedAt, 'right after Still owed');
+  assert.match(fn, /est\.textContent = peso\(Math\.max\(estBase - typed, 0\)\)/);
+  assert.match(fn, /comma\(el\);\s*\n\s*showEstimate\(\);/, 'recomputed on every keystroke');
+  assert.match(fn, /estBase = Number\(mine\.balance \|\| 0\);\s*\n\s*showEstimate\(\);/,
+    'and whenever Still owed moves');
+});
