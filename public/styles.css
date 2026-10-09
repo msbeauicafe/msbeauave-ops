@@ -1979,3 +1979,28 @@ input.n { text-align: right; }
 .itstatus .btn { flex: 0 0 auto; }
 #itBadge { margin-left: 4px; font-size: .7rem; padding: 0 6px; }
 @media (max-width: 640px) { .itgrid { grid-template-columns: 1fr; } }
+
+/* The dashboard: five figures, a chart beside the latest invoices, the
+   stock list, and what needs attention underneath. */
+.dashkpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 16px; }
+.dashkpi { background: #fff; border: 1px solid var(--rose-soft); border-radius: 14px; padding: 16px 18px; }
+.dashkpi span { display: block; color: var(--muted); font-size: .8rem; }
+.dashkpi b { display: block; font-size: 1.55rem; margin-top: 4px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.dashkpi small { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
+.dashkpi.ar b { color: var(--danger); }
+.dashup { color: var(--success); font-weight: 600; }
+.dashdown { color: var(--danger); font-weight: 600; }
+.dashgrid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
+/* A grid cell will not shrink below its widest table without this, which
+   pushed the page sideways on a phone. */
+.dashgrid > *, .dashkpis > * { min-width: 0; }
+.dashhd { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.dashhd h3 { margin: 0; }
+.dashchips { display: flex; gap: 6px; flex-wrap: wrap; }
+.dashchips button { border: 1px solid var(--rose-soft); background: #fff; border-radius: 999px; padding: 3px 12px;
+  font: inherit; font-size: .78rem; color: var(--muted); cursor: pointer; }
+.dashchips button.on { background: var(--rose-deep); border-color: var(--rose-deep); color: #fff; }
+.dashbar:hover path { opacity: 1; }
+.dashattn { color: var(--rose-deep); margin: 8px 0 10px; display: flex; gap: 10px; align-items: baseline; }
+@media (max-width: 1200px) { .dashkpis { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px) { .dashkpis { grid-template-columns: repeat(2, 1fr); } .dashgrid { grid-template-columns: 1fr; } }

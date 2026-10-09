@@ -146,6 +146,9 @@ node --test tests/hr-role.test.js
 echo "==> IT support: own tickets for staff, the whole queue for IT"
 node --test tests/it-support.test.js
 
+echo "==> the dashboard: sales, receivables, invoices and stock; no money for view-only"
+node --test tests/dashboard.test.js
+
 echo "==> the books: double-entry, and the owner\'s alone"
 node --test tests/books.test.js
 
