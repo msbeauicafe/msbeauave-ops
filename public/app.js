@@ -492,6 +492,7 @@ const TABS = {
     ['stockroom', '🔀', 'Stockroom'],
     ['people', '👥', 'Sign-ins'],
     ['me', '🪪', 'My record'],
+    ['itsupport', '🖥️', 'IT support'],
   ],
   warehouse: [
     ['workspace', '🗂️', 'Workspace'],
@@ -503,6 +504,7 @@ const TABS = {
     ['clock', '⏱️', 'Time clock'],
     ['restock', '🛎️', 'Shelf tasks'],
     ['reorder', '📈', 'Reordering'],
+    ['itsupport', '🖥️', 'IT support'],
   ],
   cashier: [
     ['till', '🛍️', 'Till'],
@@ -513,6 +515,7 @@ const TABS = {
     ['workspace', '🗂️', 'Workspace'],
     ['tillreturns', '↩️', 'Returns'],
     ['closeday', '🌙', 'Close of day'],
+    ['itsupport', '🖥️', 'IT support'],
   ],
   // A supervisor runs a floor: the till and the stockroom, plus the day their
   // own shop had. No pricing, no company money, no sign-ins.
@@ -530,6 +533,7 @@ const TABS = {
     ['shopday', '📊', "Shop's day"],
     ['clock', '⏱️', 'Time clock'],
     ['workspace', '🗂️', 'Workspace'],
+    ['itsupport', '🖥️', 'IT support'],
   ],
   // The office: the till and the stockroom, both. Not the shop's takings —
   // that is the supervisor's, who answers for the shop.
@@ -547,6 +551,7 @@ const TABS = {
     ['closeday', '🌙', 'Close of day'],
     ['clock', '⏱️', 'Time clock'],
     ['workspace', '🗂️', 'Workspace'],
+    ['itsupport', '🖥️', 'IT support'],
   ],
   // The data coordinator: keeps the catalogue and the stock records current.
   // The product catalogue, the buying half in the order the work happens, and
@@ -563,6 +568,7 @@ const TABS = {
     ['me', '🪪', 'My record'],
     ['myleave', '🌴', 'My leave'],
     ['notices', '📢', 'Noticeboard'],
+    ['itsupport', '🖥️', 'IT support'],
   ],
   // The order desk: whoever takes the reseller orders. Customer order, which
   // is the job, and the same three screens about themselves that everybody
@@ -574,6 +580,7 @@ const TABS = {
     ['me', '🪪', 'My record'],
     ['myleave', '🌴', 'My leave'],
     ['notices', '📢', 'Noticeboard'],
+    ['itsupport', '🖥️', 'IT support'],
   ],
   // HR and the operations manager. Four screens: who works here, HR, the
   // cutoff, and their own record. Both of them were admin until this existed,
@@ -588,6 +595,7 @@ const TABS = {
     ['payroll', '🧮', 'Payroll'],
     ['attendance', '🕒', 'Attendance'],
     ['me', '🪪', 'My record'],
+    ['itsupport', '🖥️', 'IT support'],
   ],
   // Somebody who works here and nothing else. Three screens, all of them
   // about themselves, and no way to reach a fourth.
@@ -595,6 +603,7 @@ const TABS = {
     ['me', '🪪', 'My record'],
     ['myleave', '🌴', 'My leave'],
     ['notices', '📢', 'Noticeboard'],
+    ['itsupport', '🖥️', 'IT support'],
   ],
   // Somebody who may look and not touch. The same screens an owner opens, less
   // Finance, less the till, and less anything whose only purpose is to change
@@ -674,7 +683,8 @@ function drawFrame() {
       <nav class="tabs" id="tabs">
         ${tabs.map(([id, icon, label]) => `
           <button class="${id === tab ? 'on' : ''}" data-tab="${esc(id)}">
-            <span aria-hidden="true">${icon}</span> ${esc(label)}</button>`).join('')}
+            <span aria-hidden="true">${icon}</span> ${esc(label)}${
+            id === 'itsupport' ? ' <span class="tag red" id="itBadge" hidden></span>' : ''}</button>`).join('')}
       </nav>
       <div class="pagearea">
         ${user.role === 'observer' ? `
@@ -710,6 +720,31 @@ function drawFrame() {
   clearInterval(refreshTimer);
   closeAllDialogs();
   SCREENS[tab]?.($('#page')).catch(whoops);
+  watchItQueue();
+}
+
+// IT's own notification. The owner's sign-in is IT: the menu carries how many
+// tickets nobody has started on, and a new one arriving pops a notice on
+// whatever screen is open — checked every minute, on its own timer so a
+// screen's refresh does not stop it.
+let itTimer = null;
+let itSeen = null;
+function watchItQueue() {
+  clearInterval(itTimer);
+  if (user?.role !== 'admin') return;
+  const check = async () => {
+    const { waiting } = await GET('/api/it/waiting');
+    const badge = $('#itBadge');
+    if (badge) { badge.hidden = !waiting; badge.textContent = waiting; }
+    if (itSeen !== null && waiting > itSeen) {
+      notice(`🖥️ ${waiting - itSeen} new IT ticket${waiting - itSeen === 1 ? '' : 's'} waiting`, 'good');
+    } else if (itSeen === null && waiting) {
+      notice(`🖥️ ${waiting} IT ticket${waiting === 1 ? '' : 's'} waiting for you`, 'good');
+    }
+    itSeen = waiting;
+  };
+  check().catch(() => {});
+  itTimer = setInterval(() => check().catch(() => {}), 60000);
 }
 
 // Everybody's own password, from the header, on every screen there is.
@@ -15723,6 +15758,163 @@ SCREENS.myleave = async (page) => {
     }));
   };
   await load();
+};
+
+// ---------------------------------------------------------------------------
+// IT support — desktop support and hardware fixes
+//
+// One person does the IT. Everybody else writes the problem down here once —
+// name, department, desk, what is wrong, how urgent — and follows the replies
+// on the same ticket. The owner's sign-in is IT and gets the whole queue
+// instead: filter it, move a ticket Pending → In progress → Resolved, and
+// answer on it. Kept in the database, not the browser, so a ticket sent from
+// the warehouse PC is the one that arrives on IT's.
+// ---------------------------------------------------------------------------
+const IT_URGENCY = { high: ['High', 'red'], medium: ['Medium', 'amber'], low: ['Low', 'grey'] };
+const IT_STATUS = { pending: ['Pending', 'amber'], in_progress: ['In progress', 'pink'],
+  resolved: ['Resolved', 'green'] };
+
+// One ticket's conversation, oldest first. IT's replies are marked as IT's.
+const itThread = (t) => `
+  <div class="itthread">${(t.messages || []).map((m) => `
+    <div class="itmsg ${m.from_it ? 'it' : ''}">
+      <div class="post-by">${m.from_it ? '🖥️ IT' : esc(t.name)}
+        <span class="dim">${when(m.at)}</span></div>
+      <div>${esc(m.body)}</div>
+    </div>`).join('')}</div>`;
+
+const itReplyBox = (t, label) => `
+  <div class="row mt itreply">
+    <input type="text" data-itdraft="${t.id}" placeholder="${esc(label)}">
+    <button class="btn sm" data-itsend="${t.id}">Send</button>
+  </div>`;
+
+SCREENS.itsupport = async (page) => {
+  const isIT = user.role === 'admin';
+  let filters = { status: '', urgency: '', q: '' };
+
+  page.innerHTML = `
+    <div class="head"><h2>IT support</h2>
+      <span class="hint">Desktop support and hardware fixes${isIT
+        ? ' — every concern sent in' : ' — tell IT what is wrong and follow the replies here'}</span></div>
+    ${isIT ? `
+      <div class="panel row">
+        <div><label>Status</label><select id="it_fs">
+          <option value="">All</option>${Object.entries(IT_STATUS).map(([k, [l]]) =>
+            `<option value="${k}">${l}</option>`).join('')}</select></div>
+        <div><label>Urgency</label><select id="it_fu">
+          <option value="">All</option>${Object.entries(IT_URGENCY).map(([k, [l]]) =>
+            `<option value="${k}">${l}</option>`).join('')}</select></div>
+        <div style="flex:2"><label>Search</label>
+          <input id="it_fq" type="search" placeholder="Name, department, desk or problem"></div>
+      </div>` : `
+      <div class="panel">
+        <h3>Send a concern to IT</h3>
+        <div class="row">
+          <div><label>Your name</label><input id="it_name" type="text" value="${esc(user.name || '')}"></div>
+          <div><label>Department</label><input id="it_dept" type="text" placeholder="Warehouse, Office, Shop…"></div>
+          <div><label>Desk / location</label><input id="it_desk" type="text" placeholder="Front counter, PC 2…"></div>
+          <div><label>Urgency</label><select id="it_urg">
+            <option value="low">Low</option><option value="medium" selected>Medium</option>
+            <option value="high">High</option></select></div>
+        </div>
+        <label>What is wrong?</label>
+        <textarea id="it_issue" rows="3"
+          placeholder="e.g. Desktop won't turn on · Printer says paper jam · No internet"></textarea>
+        <div class="mt right"><button class="btn" id="it_go">Send to IT</button></div>
+      </div>
+      <h3 class="mt">My requests</h3>`}
+    <div id="it_list"><div class="dim">Loading…</div></div>`;
+
+  const list = $('#it_list');
+
+  const card = (t) => {
+    const [ul, uk] = IT_URGENCY[t.urgency] || [t.urgency, 'grey'];
+    const [sl, sk] = IT_STATUS[t.status] || [t.status, 'grey'];
+    return `
+      <div class="panel itcard">
+        <div class="row" style="align-items:center">
+          <div style="flex:3"><b>${esc(t.name)}</b>
+            <span class="dim">${[t.department, t.desk].filter(Boolean).map(esc).join(' · ')}</span>
+            <div class="dim" style="font-size:.78rem">Ticket #${t.id} · opened ${when(t.opened_at)}</div></div>
+          <div style="flex:0 0 auto">${tag(ul, uk)} ${tag(sl, sk)}</div>
+        </div>
+        ${isIT ? `<div class="row mt itstatus">${Object.entries(IT_STATUS).map(([k, [l]]) => `
+          <button class="btn sm ${t.status === k ? '' : 'quiet'}" data-itstatus="${t.id}"
+            data-to="${k}" ${t.status === k ? 'disabled' : ''}>${l}</button>`).join('')}</div>` : ''}
+        ${itThread(t)}
+        ${itReplyBox(t, isIT ? 'Quick reply to the employee…' : 'Add a message for IT…')}
+      </div>`;
+  };
+
+  const draw = (tickets) => {
+    // A refresh must not throw away a reply somebody is halfway through.
+    const drafts = Object.fromEntries($$('[data-itdraft]', list).map((el) => [el.dataset.itdraft, el.value]));
+    const focused = document.activeElement?.dataset?.itdraft;
+    const q = filters.q.trim().toLowerCase();
+    const shown = q ? tickets.filter((t) => [t.name, t.department, t.desk, t.issue]
+      .some((v) => (v || '').toLowerCase().includes(q))) : tickets;
+    list.innerHTML = shown.length ? shown.map(card).join('')
+      : `<div class="panel none">${isIT ? 'No tickets match.' : 'Nothing sent to IT yet.'}</div>`;
+    for (const [id, v] of Object.entries(drafts)) {
+      const el = $(`[data-itdraft="${id}"]`, list);
+      if (el) el.value = v;
+    }
+    if (focused) $(`[data-itdraft="${focused}"]`, list)?.focus();
+
+    $$('[data-itsend]', list).forEach((b) => b.addEventListener('click', async () => {
+      const box = $(`[data-itdraft="${b.dataset.itsend}"]`, list);
+      if (!box.value.trim()) return;
+      b.disabled = true;
+      try {
+        await POST(`/api/it/tickets/${b.dataset.itsend}/messages`, { body: box.value });
+        box.value = '';
+        await load();
+      } catch (e) { whoops(e); b.disabled = false; }
+    }));
+    $$('[data-itdraft]', list).forEach((el) => el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $(`[data-itsend="${el.dataset.itdraft}"]`, list).click();
+    }));
+    $$('[data-itstatus]', list).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await PUT(`/api/it/tickets/${b.dataset.itstatus}/status`, { status: b.dataset.to });
+        notice(`Ticket #${b.dataset.itstatus} — ${IT_STATUS[b.dataset.to][0]}`, 'good');
+        await load();
+        watchItQueue();
+      } catch (e) { whoops(e); }
+    }));
+  };
+
+  const load = async () => {
+    const tickets = isIT
+      ? await GET(`/api/it/queue?status=${filters.status}&urgency=${filters.urgency}`)
+      : await GET('/api/it/mine');
+    draw(tickets || []);
+  };
+
+  if (isIT) {
+    $('#it_fs').addEventListener('change', (e) => { filters.status = e.target.value; load().catch(whoops); });
+    $('#it_fu').addEventListener('change', (e) => { filters.urgency = e.target.value; load().catch(whoops); });
+    $('#it_fq').addEventListener('input', (e) => { filters.q = e.target.value; load().catch(whoops); });
+  } else {
+    $('#it_go').addEventListener('click', async () => {
+      if (!$('#it_issue').value.trim()) return notice('Say what is wrong before sending.', 'bad');
+      $('#it_go').disabled = true;
+      try {
+        await POST('/api/it/tickets', {
+          name: $('#it_name').value, department: $('#it_dept').value,
+          desk: $('#it_desk').value, issue: $('#it_issue').value, urgency: $('#it_urg').value,
+        });
+        $('#it_issue').value = '';
+        notice('Sent to IT 🖥️ — replies will show here', 'good');
+        await load();
+      } catch (e) { whoops(e); }
+      $('#it_go').disabled = false;
+    });
+  }
+
+  await load();
+  repeat(load, 20000);
 };
 
 SCREENS.notices = async (page) => {

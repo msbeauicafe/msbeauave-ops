@@ -473,8 +473,8 @@ test('the order desk menu is the job and their own record, and nothing else', ()
   const menu = app.slice(at, app.indexOf('\n  ],', at));
   const ids = [...menu.matchAll(/\['([a-z]+)',/g)].map((m) => m[1]);
 
-  assert.deepEqual(ids, ['customerorder', 'me', 'myleave', 'notices'],
-    'the job, then the three screens everybody who works here has');
+  assert.deepEqual(ids, ['customerorder', 'me', 'myleave', 'notices', 'itsupport'],
+    'the job, the three screens everybody who works here has, and IT support');
 
   for (const gone of ['pricelists', 'finance', 'hr', 'products', 'people',
     'receive', 'inventory', 'purchaseorders', 'reports', 'crm', 'customers']) {
@@ -532,6 +532,7 @@ test('every screen on the order desk menu answers when it is opened', async () =
     me: '/api/my',
     myleave: '/api/my',
     notices: '/api/noticeboard',
+    itsupport: '/api/it/mine',
   };
 
   for (const id of ids) {
