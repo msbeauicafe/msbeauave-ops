@@ -1952,3 +1952,13 @@ input.n { text-align: right; }
 /* A 201 file's facts: label over value, as many across as fit. */
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 20px; }
 .facts > div { min-width: 0; overflow-wrap: anywhere; }
+
+/* IT support — a ticket's conversation, IT's replies set apart. */
+.itthread { margin-top: 10px; display: grid; gap: 8px; }
+.itmsg { background: var(--rose-blush); border-radius: 10px; padding: 8px 12px; font-size: .9rem;
+  max-width: 80%; }
+.itmsg.it { background: #e8eef8; justify-self: end; }
+.itreply input { flex: 1; }
+.itreply .btn { flex: 0 0 auto; align-self: end; }
+.itstatus .btn { flex: 0 0 auto; }
+#itBadge { margin-left: 4px; font-size: .7rem; padding: 0 6px; }

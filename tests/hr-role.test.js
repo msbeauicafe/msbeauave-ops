@@ -85,7 +85,7 @@ test('the menu is those four screens and nothing else', () => {
   assert.ok(at > 0, 'the role has a menu');
   const menu = app.slice(at, app.indexOf('\n  ],', at));
   const ids = [...menu.matchAll(/\['([a-z]+)',/g)].map((m) => m[1]);
-  assert.deepEqual(ids, ['team', 'hr', 'payroll', 'attendance', 'me']);
+  assert.deepEqual(ids, ['team', 'hr', 'payroll', 'attendance', 'me', 'itsupport']);
 });
 
 test('the Payroll table has an Other charges column, after CA and the six named loans', () => {

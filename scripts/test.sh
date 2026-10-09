@@ -143,6 +143,9 @@ node --test tests/data-coordinator.test.js
 echo "==> HR and the operations manager: people and pay, and nothing else"
 node --test tests/hr-role.test.js
 
+echo "==> IT support: own tickets for staff, the whole queue for IT"
+node --test tests/it-support.test.js
+
 echo "==> the books: double-entry, and the owner\'s alone"
 node --test tests/books.test.js
 

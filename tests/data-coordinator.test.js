@@ -241,7 +241,7 @@ test('the data coordinator menu is the stock work and their own record', () => {
   const ids = [...menu.matchAll(/\['([a-z]+)',/g)].map((m) => m[1]);
 
   assert.deepEqual(ids, ['products', 'purchaseorders', 'receive', 'inventory',
-    'stockroom', 'reorder', 'me', 'myleave', 'notices']);
+    'stockroom', 'reorder', 'me', 'myleave', 'notices', 'itsupport']);
 
   for (const gone of ['pricelists', 'finance', 'hr', 'people', 'customers',
     'customerorder', 'till', 'closeday']) {
