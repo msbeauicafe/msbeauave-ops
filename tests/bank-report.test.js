@@ -207,3 +207,66 @@ test("a cashier sign-in cannot read Bank report's lists", async () => {
     assert.notEqual((await GET(cashier, p)).status, 200, p);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Bank → Bank transactions: the statement's own lines, one reference once
+// ---------------------------------------------------------------------------
+async function asRole(role, actor, sql, params = []) {
+  const client = await db.connect();
+  try {
+    await client.query('begin');
+    await client.query("select set_config('app.role',$1,true)", [role]);
+    await client.query("select set_config('app.actor',$1,true)", [actor]);
+    await client.query('set local role app_client');
+    return await client.query(sql, params);
+  } finally {
+    await client.query('rollback').catch(() => {});
+    client.release();
+  }
+}
+
+test('a bank transaction is recorded and read back; the same reference on the same account is refused', async () => {
+  const admin = await signIn('admin');
+  const reference = unique('REF');
+  const line = { txn_on: '2026-10-10', account: 'BDO', kind: 'instapay', direction: 'in',
+    party: 'Bella Skin Manila', amount: 24900, reference, note: '' };
+  const first = await POST(admin, '/api/bank-report/transactions', line);
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+
+  const list = (await GET(admin, '/api/bank-report/transactions')).data;
+  const mine = list.find((t) => t.reference === reference);
+  assert.ok(mine, 'read back');
+  assert.equal(Number(mine.amount), 24900);
+  assert.equal(mine.kind, 'instapay');
+
+  const again = await POST(admin, '/api/bank-report/transactions', { ...line, reference: ` ${reference.toLowerCase()} ` });
+  assert.notEqual(again.status, 200);
+  assert.match(JSON.stringify(again.data), /already on file for BDO/);
+
+  // The same number on a different account is a different transfer.
+  const other = await POST(admin, '/api/bank-report/transactions', { ...line, account: 'BPI' });
+  assert.equal(other.status, 200, JSON.stringify(other.data));
+});
+
+test('a bank transaction needs a type, an account, an amount and a reference — picked, not typed', async () => {
+  const admin = await signIn('admin');
+  const ok = { txn_on: '2026-10-10', account: 'BDO', kind: 'pesonet', direction: 'out',
+    party: 'Glow Pack Supplies', amount: 100, reference: unique('REF') };
+  for (const bad of [{ kind: 'wire' }, { account: 'aaaaa' }, { direction: 'sideways' },
+    { amount: 0 }, { reference: '  ' }, { party: '' }]) {
+    const r = await POST(admin, '/api/bank-report/transactions', { ...ok, ...bad });
+    assert.notEqual(r.status, 200, JSON.stringify(bad));
+  }
+});
+
+test("bank transactions are the owner's book: refused to a cashier at the route and past it", async () => {
+  const cashier = await signIn('cashier');
+  assert.notEqual((await GET(cashier, '/api/bank-report/transactions')).status, 200);
+  assert.notEqual((await POST(cashier, '/api/bank-report/transactions', {})).status, 200);
+  for (const role of ['cashier', 'hr', 'observer', 'employee']) {
+    await assert.rejects(asRole(role, 'someone', 'select bank_txn_list()'), /FORBIDDEN/);
+    await assert.rejects(asRole(role, 'someone',
+      "select bank_txn_record(current_date,'BDO','instapay','in','x',1,'r1','')"), /FORBIDDEN/);
+  }
+  await assert.rejects(asRole('admin', 'someone', 'select * from bank_transactions'));
+});
