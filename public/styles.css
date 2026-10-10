@@ -2025,3 +2025,9 @@ input.n { text-align: right; }
 @media (max-width: 600px) { .brgrid { grid-template-columns: 1fr; } }
 .brhd { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .brhd h3 { margin: 0; }
+/* Bank report's Dashboard header — a heading, not a button. */
+.brheader { display: flex; align-items: center; gap: 12px; padding: 18px 20px; margin-bottom: 12px; max-width: 980px;
+  box-sizing: border-box; background: var(--rose-soft); border-radius: 12px; font-weight: 700; font-size: 1rem;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--rose-deep); cursor: default; }
+.brheader svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; }
