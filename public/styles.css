@@ -2031,3 +2031,7 @@ input.n { text-align: right; }
   letter-spacing: .04em; text-transform: uppercase; color: var(--rose-deep); cursor: default; }
 .brheader svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
   stroke-linecap: round; stroke-linejoin: round; }
+/* Bank report → Sales: the four boxes are buttons. */
+.tile.brsf { font: inherit; text-align: left; cursor: pointer; width: 100%; display: flex; flex-direction: column; justify-content: flex-start; }
+.tile.brsf:hover { border-color: var(--rose-deep); }
+.tile.brsf.on { outline: 2px solid var(--rose-deep); outline-offset: -2px; background: #fff7fa; }
