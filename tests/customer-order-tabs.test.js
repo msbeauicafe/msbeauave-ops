@@ -1664,7 +1664,7 @@ test('Record payment shows an Estimated balance next to Still owed, live as amou
 // the shelf minimum (ten where none is set), in stock above. That tab only.
 test('Running stocks shows Cost price and a Status', () => {
   const at = app.indexOf("if (inventoryPanel === 'runningstocks')");
-  const block = app.slice(at, app.indexOf('\n};\n', at));
+  const block = app.slice(at, app.indexOf('\n  }\n', at));
   const heads = [...block.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
   assert.deepEqual(heads, ['Code', 'Product', 'Brand', 'Category', 'Cost price', 'Quantity', 'Status']);
   assert.match(block, /peso\(p\.unit_cost\)/);
@@ -1680,7 +1680,7 @@ test('Running stocks shows Cost price and a Status', () => {
 // dashboard's, and nowhere in Warehouse inventory report.
 test('Running stocks has its own status counter', () => {
   const at = app.indexOf("if (inventoryPanel === 'runningstocks')");
-  const block = app.slice(at, app.indexOf('\n};\n', at));
+  const block = app.slice(at, app.indexOf('\n  }\n', at));
   assert.match(block, /class="rschips" id="rs_stf"/);
   assert.match(block, /\[\['os', 'Out of stock'\], \['is', 'In stock'\], \['cs', 'Critical stocks'\]\]/);
   // All and Promo live on the category row, with their counts — its own
@@ -1701,4 +1701,25 @@ test('the dashboard has no Product stock table', () => {
   const fn = app.slice(at, app.indexOf('\n};\n', at));
   assert.doesNotMatch(fn, /Product stock|dash_stock|dash_stf|dash_q|drawStock/);
   assert.match(fn, /Recent invoices/, 'the rest of the dashboard stays');
+});
+
+// Internal Inventory Report's Inventory stock value report: its own tab next
+// to Running stocks, its own copy of the code, quantity × cost price.
+test('Inventory stock value report sits after Running stocks with its own columns', () => {
+  assert.match(app, /\['runningstocks', 'Running stocks'\],\n    \['stockvalue', 'Inventory stock value report'\],/);
+  const at = app.indexOf("if (inventoryPanel === 'stockvalue')");
+  const block = app.slice(at, app.indexOf('\n  }\n', at));
+  const heads = [...block.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['Code', 'Product', 'Brand', 'Quantity', 'Cost price', 'Value', 'Status']);
+  assert.match(block, /const worth = \(p\) => Math\.max\(available\(p\), 0\) \* Number\(p\.unit_cost \|\| 0\)/);
+  assert.doesNotMatch(block, /rs_find|cat_rs|rs_stf/, 'its own ids, not Running stocks\'');
+  const wh = app.slice(app.indexOf('SCREENS.warehouseinventory = async'));
+  assert.doesNotMatch(wh.slice(0, wh.indexOf('\n};\n')), /stockvalue/, 'Warehouse inventory report is untouched');
+});
+
+test('Inventory stock value report ends with Download and the total value', () => {
+  const at = app.indexOf("if (inventoryPanel === 'stockvalue')");
+  const block = app.slice(at, app.indexOf('\n  }\n', at));
+  assert.match(block, /<div id="r_value"><\/div>\s*<div class="svfoot"><button class="btn sm" id="sv_dl">⬇ Download<\/button>\s*<span>Total value/);
+  assert.match(block, /a\.download = `inventory-stock-value-\$\{localDay\(\)\}\.csv`/);
 });

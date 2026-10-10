@@ -4660,6 +4660,7 @@ SCREENS.inventory = async (page) => {
     ['stockout', 'Stock out'],
     ['history', 'History'],
     ['runningstocks', 'Running stocks'],
+    ['stockvalue', 'Inventory stock value report'],
   ];
   if (!PANELS.some(([id]) => id === inventoryPanel)) inventoryPanel = 'stockin';
   localStorage.setItem('inventoryPanel', inventoryPanel);
@@ -4866,6 +4867,112 @@ SCREENS.inventory = async (page) => {
     await running();
     repeat(running, 30000);
   }
+  // Inventory stock value report — Running stocks' own copy, with what the
+  // stock is worth: quantity on hand × the Product list's Cost price. Its own
+  // sv_ ids and its own code, so neither tab moves the other.
+  if (inventoryPanel === 'stockvalue') {
+    box.innerHTML = `
+      <div class="tools">
+        <input type="search" id="sv_find" placeholder="Search by code, name or brand…">
+        <select id="sv_brand"><option value="">Every brand</option></select>
+        <span class="chips" id="cat_sv">
+          <button class="btn sm" data-cat="">All (<span id="sv_n_all">0</span>)</button>
+          <button class="btn line sm" data-cat="promo">Promo (<span id="sv_n_promo">0</span>)</button>
+          <button class="btn line sm" data-cat="freebies">Freebies (<span id="sv_n_freebies">0</span>)</button>
+          <button class="btn line sm" data-cat="product">Product (<span id="sv_n_product">0</span>)</button>
+        </span>
+      </div>
+      <div class="panel mt"><div class="rshd"><h3>Inventory stock value report</h3>
+          <div class="rschips" id="sv_stf"></div></div>
+        <div id="r_value"></div>
+        <div class="svfoot"><button class="btn sm" id="sv_dl">⬇ Download</button>
+          <span>Total value <span class="dim" id="sv_count"></span></span><b id="sv_total">₱0.00</b></div>
+        </div>`;
+
+    const available = (p) => Number(p.total_on_hand) - Number(p.committed_shop || 0);
+    // Nothing on hand is worth nothing — a shortfall is not a negative value.
+    const worth = (p) => Math.max(available(p), 0) * Number(p.unit_cost || 0);
+    const svState = (p) => {
+      const q = available(p);
+      if (q <= 0) return 'os';
+      return q <= (Number(p.shelf_min) > 0 ? Number(p.shelf_min) : 10) ? 'cs' : 'is';
+    };
+    const SV_TAGS = { os: ['Out of stock', 'red'], cs: ['Critical stocks', 'amber'], is: ['In stock', 'green'] };
+    let svCat = '';
+    let svBrand = '';
+    let svStf = '';
+    let brandsFilled = false;
+    let svShown = [];
+
+    const valued = async () => {
+      const all = await GET('/api/products?prices=1').catch(() => []);
+      if (!brandsFilled && all.length) {
+        brandsFilled = true;
+        const brands = [...new Set(all.map((p) => p.brand).filter(Boolean))].sort();
+        $('#sv_brand', page).innerHTML = '<option value="">Every brand</option>'
+          + brands.map((b) => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+      }
+      const term = ($('#sv_find', page)?.value || '').trim().toLowerCase();
+      let rows = all.filter((p) => (!term
+          || [p.sku, p.name, p.brand].some((v) => (v || '').toLowerCase().includes(term)))
+        && (!svBrand || (p.brand || '') === svBrand));
+      $('#sv_n_all', page).textContent = count(rows.length);
+      ['promo', 'freebies', 'product'].forEach((c) => {
+        $(`#sv_n_${c}`, page).textContent = count(rows.filter((p) =>
+          (p.category || '').trim().toLowerCase() === c).length);
+      });
+      rows = rows.filter((p) => !svCat || (p.category || '').trim().toLowerCase() === svCat);
+      const n = { os: 0, is: 0, cs: 0 };
+      rows.forEach((p) => { n[svState(p)] += 1; });
+      $('#sv_stf', page).innerHTML = [['os', 'Out of stock'], ['is', 'In stock'], ['cs', 'Critical stocks']]
+        .map(([k, l]) => `<button data-v="${k}" class="${svStf === k ? 'on' : ''}">${l} (${count(n[k])})</button>`).join('');
+      rows = rows.filter((p) => !svStf || svState(p) === svStf);
+      // Worth most first — the rows a value report is read for.
+      rows.sort((a, b) => worth(b) - worth(a) || available(b) - available(a));
+
+      svShown = rows;
+      $('#sv_total', page).textContent = peso(rows.reduce((t, p) => t + worth(p), 0));
+      $('#sv_count', page).textContent = `· ${count(rows.length)} product${rows.length === 1 ? '' : 's'}`;
+      $('#r_value', page).innerHTML = table(rows, [
+        { head: 'Code', cell: (p) => `<span class="dim">${esc(p.sku)}</span>` },
+        { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>` },
+        { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
+        { head: 'Quantity', n: true, cell: (p) => count(available(p)) },
+        { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
+        { head: 'Value', n: true, cell: (p) => `<b>${peso(worth(p))}</b>` },
+        { head: 'Status', cell: (p) => tag(...SV_TAGS[svState(p)]) },
+      ], term || svCat || svBrand || svStf ? 'No products match that.' : 'No products yet.');
+    };
+
+    // Download: the rows on screen as a CSV that opens in Excel, the total
+    // value as its last line.
+    $('#sv_dl', page).addEventListener('click', () => {
+      const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const lines = [['Code', 'Product', 'Brand', 'Quantity', 'Cost price', 'Value', 'Status'].map(cell).join(',')];
+      svShown.forEach((p) => lines.push([p.sku, p.name, p.brand || '', available(p),
+        Number(p.unit_cost || 0).toFixed(2), worth(p).toFixed(2), SV_TAGS[svState(p)][0]].map(cell).join(',')));
+      lines.push(['', '', '', '', 'Total value', svShown.reduce((t, p) => t + worth(p), 0).toFixed(2), ''].map(cell).join(','));
+      const url = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventory-stock-value-${localDay()}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    });
+    $('#sv_find', page).addEventListener('input', () => valued().catch(whoops));
+    $('#sv_brand', page).addEventListener('change', (e) => {
+      svBrand = e.target.value; valued().catch(whoops);
+    });
+    wireCatChips(page, 'cat_sv', (c) => { svCat = c; if (!c) svStf = ''; valued().catch(whoops); });
+    $('#sv_stf', page).addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-v]');
+      if (!b) return;
+      svStf = svStf === b.dataset.v ? '' : b.dataset.v; valued().catch(whoops);
+    });
+    await valued();
+    repeat(valued, 30000);
+  }
+
 };
 
 // ===========================================================================
