@@ -1,7 +1,8 @@
 // The owner's dashboard, accounting first: sales today / this month / this
 // year, accounts receivable, active distributors, twelve months of sales,
-// the latest invoices with Paid / Pending / Overdue, and stock with In stock /
-// Low stock / Out of stock. Read live off invoices and stock, void left out.
+// and the latest invoices with Paid / Pending / Overdue. Read live off
+// invoices, void left out. No stock list: the Product stock table went, and
+// the full product list it read went with it.
 // Somebody who may only look is sent none of the money.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,7 +43,7 @@ const GET = async (cookie, p) => {
   return { status: res.status, data: await res.json() };
 };
 
-test('the owner sees the accounting figures, twelve months, invoices and stock', async () => {
+test('the owner sees the accounting figures, twelve months and invoices, no stock list', async () => {
   const admin = await signIn('admin');
   const { status, data } = await GET(admin, '/api/dashboard');
   assert.equal(status, 200, JSON.stringify(data));
@@ -54,13 +55,10 @@ test('the owner sees the accounting figures, twelve months, invoices and stock',
   assert.equal(data.monthly.length, 12, 'twelve months, oldest first');
   assert.ok(Array.isArray(data.invoices));
   for (const i of data.invoices) assert.ok(['paid', 'pending', 'overdue'].includes(i.standing));
-  assert.ok(Array.isArray(data.stock));
-  for (const r of data.stock.slice(0, 5)) {
-    for (const k of ['sku', 'name', 'category', 'units', 'low_at', 'wholesale_price']) assert.ok(k in r, `stock.${k}`);
-  }
+  assert.ok(!('stock' in data), 'the product list is no longer sent');
 });
 
-test('view-only is sent no money, and no wholesale price', async () => {
+test('view-only is sent no money', async () => {
   const viewer = await signIn('observer');
   const { status, data } = await GET(viewer, '/api/dashboard');
   assert.equal(status, 200);
@@ -68,5 +66,5 @@ test('view-only is sent no money, and no wholesale price', async () => {
   assert.equal(data.receivable, null);
   assert.deepEqual(data.monthly, []);
   assert.deepEqual(data.invoices, []);
-  for (const r of data.stock) assert.ok(!('wholesale_price' in r), 'no wholesale price for view-only');
+  assert.ok(!('stock' in data));
 });

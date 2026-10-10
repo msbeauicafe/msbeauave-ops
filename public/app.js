@@ -869,13 +869,8 @@ function dashChart(rows) {
 
 SCREENS.dashboard = async (page) => {
   let invFilter = '';
-  let stockFilter = '';
-  let stockQ = '';
-  let stockAll = false;
   let d = null;
   const STANDING = { paid: ['Paid', 'green'], pending: ['Pending', 'amber'], overdue: ['Overdue', 'red'] };
-  const stockState = (r) => (r.units <= 0 ? ['Out of stock', 'red', 'out']
-    : r.units <= r.low_at ? ['⚠ Low stock', 'amber', 'low'] : ['In stock', 'green', 'in']);
 
   const drawInvoices = () => {
     const box = $('#dash_inv');
@@ -890,42 +885,12 @@ SCREENS.dashboard = async (page) => {
     ], invFilter ? `No ${STANDING[invFilter][0].toLowerCase()} invoices 🌸` : 'No invoices yet.');
   };
 
-  const drawStock = () => {
-    const box = $('#dash_stock');
-    if (!box) return;
-    const q = stockQ.trim().toLowerCase();
-    // Out of stock and low first — those are the rows somebody acts on.
-    const order = { out: 0, low: 1, in: 2 };
-    const rows = d.stock.filter((r) => (!stockFilter || stockState(r)[2] === stockFilter)
-      && (!q || `${r.sku} ${r.name} ${r.category || ''}`.toLowerCase().includes(q)))
-      .sort((x, y) => order[stockState(x)[2]] - order[stockState(y)[2]] || x.name.localeCompare(y.name));
-    const shown = stockAll ? rows : rows.slice(0, 12);
-    const cols = [
-      { head: 'SKU', cell: (r) => `<span class="dim">${esc(r.sku)}</span>` },
-      { head: 'Product', cell: (r) => esc(r.name) },
-      { head: 'Category', cell: (r) => esc(r.category || '—') },
-      { head: 'Stock (units)', n: true, cell: (r) => count(r.units) },
-      ...(d.stock[0] && 'wholesale_price' in d.stock[0]
-        ? [{ head: 'Wholesale price', n: true, cell: (r) => peso(r.wholesale_price) }] : []),
-      { head: 'Status', cell: (r) => tag(stockState(r)[0], stockState(r)[1]) },
-    ];
-    box.innerHTML = table(shown, cols, 'No products match.')
-      + (rows.length > shown.length ? `<div class="right mt"><button class="btn sm quiet" id="dash_more">
-          Show all ${count(rows.length)}</button></div>` : '');
-    $('#dash_more')?.addEventListener('click', () => { stockAll = true; drawStock(); });
-  };
-
   const chips = (id, opts, on) => `<div class="dashchips" id="${id}">${opts.map(([k, l]) =>
     `<button data-v="${k}" class="${on === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 
   const load = async () => {
-    // A redraw while somebody is typing in the stock search would take the
-    // box away from under them.
-    if (document.activeElement?.id === 'dash_q') return;
     d = await GET('/api/dashboard');
     const money = d.sales !== null && d.sales !== undefined;
-    const lowN = d.stock.filter((r) => stockState(r)[2] === 'low').length;
-    const outN = d.stock.filter((r) => stockState(r)[2] === 'out').length;
     let vs = '';
     if (money && Number(d.sales.last_month_to_date) > 0) {
       const pct = Math.round((Number(d.sales.month) / Number(d.sales.last_month_to_date) - 1) * 100);
@@ -961,13 +926,6 @@ SCREENS.dashboard = async (page) => {
       </div>` : `
       <div class="dashkpis"><div class="dashkpi"><span>Active distributors</span><b>${count(d.distributors.active)}</b>
         <small>invoiced this month · ${count(d.distributors.on_file)} on file</small></div></div>`}
-
-      <div class="panel"><div class="dashhd"><h3>Product stock</h3>
-        <div class="row" style="flex:0 1 auto;align-items:center;gap:10px">
-          <input id="dash_q" type="search" placeholder="Search SKU or product" value="${esc(stockQ)}" style="max-width:240px">
-          ${chips('dash_stf', [['', 'All'], ['low', `Low stock (${count(lowN)})`], ['out', `Out of stock (${count(outN)})`]], stockFilter)}
-        </div></div>
-        <div id="dash_stock"></div></div>
 
       <h3 class="dashattn">Needs attention
         <span class="hint">${count(d.waitingOrders)} wholesale order${d.waitingOrders === 1 ? '' : 's'} waiting</span></h3>
@@ -1015,19 +973,11 @@ SCREENS.dashboard = async (page) => {
       </div>`;
 
     if (money) drawInvoices();
-    drawStock();
     $$('#dash_invf button', page).forEach((b) => b.addEventListener('click', () => {
       invFilter = b.dataset.v;
       $$('#dash_invf button', page).forEach((x) => x.classList.toggle('on', x === b));
       drawInvoices();
     }));
-    $$('#dash_stf button', page).forEach((b) => b.addEventListener('click', () => {
-      stockFilter = b.dataset.v;
-      stockAll = false;
-      $$('#dash_stf button', page).forEach((x) => x.classList.toggle('on', x === b));
-      drawStock();
-    }));
-    $('#dash_q').addEventListener('input', (e) => { stockQ = e.target.value; stockAll = false; drawStock(); });
   };
   await load();
   repeat(load, 30000);
