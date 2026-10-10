@@ -15069,12 +15069,11 @@ SCREENS.bankreport = async (page) => {
         </div>
         <div class="panel">${table(groups[brSalesFilter][0], [
           { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no)}</b>` },
-          { head: 'Distributor', cell: (i) => esc(i.reseller) },
+          { head: 'Client name', cell: (i) => esc(i.reseller) },
           { head: 'Issued', cell: (i) => onDay(i.issued_on) },
-          { head: 'Due', cell: (i) => onDay(i.due_on) },
           { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
-          { head: 'Balance', n: true, cell: (i) => peso(i.balance) },
           { head: 'Status', cell: (i) => tag(...BR_STANDING[i.standing]) },
+          { head: 'Balance', n: true, cell: (i) => peso(i.balance) },
         ], brSalesFilter === 'all' ? 'No invoices in this period.' : 'None of those in this period.')}</div>`;
         $$('[data-sf]', body).forEach((b) => b.addEventListener('click', () => {
           brSalesFilter = b.dataset.sf;

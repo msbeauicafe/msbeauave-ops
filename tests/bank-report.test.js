@@ -288,3 +288,10 @@ test('Sales shows Total order amounts, Paid, Unpaid and Balance transactions', (
   assert.match(block, /<button class="tile brsf/);
   assert.match(block, /table\(groups\[brSalesFilter\]\[0\]/);
 });
+
+test("Sales' columns: Invoice no., Client name, Issued, Amount, Status, Balance", () => {
+  const at = app.indexOf("if (view === 'sales')");
+  const block = app.slice(at, app.indexOf("if (view === 'purchases')", at));
+  const heads = [...block.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['Invoice no.', 'Client name', 'Issued', 'Amount', 'Status', 'Balance']);
+});
