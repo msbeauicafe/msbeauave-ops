@@ -1664,7 +1664,7 @@ test('Record payment shows an Estimated balance next to Still owed, live as amou
 // the shelf minimum (ten where none is set), in stock above. That tab only.
 test('Running stocks shows Cost price and a Status', () => {
   const at = app.indexOf("if (inventoryPanel === 'runningstocks')");
-  const block = app.slice(at, app.indexOf('\n};\n', at));
+  const block = app.slice(at, app.indexOf('\n  }\n', at));
   const heads = [...block.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
   assert.deepEqual(heads, ['Code', 'Product', 'Brand', 'Category', 'Cost price', 'Quantity', 'Status']);
   assert.match(block, /peso\(p\.unit_cost\)/);
@@ -1680,7 +1680,7 @@ test('Running stocks shows Cost price and a Status', () => {
 // dashboard's, and nowhere in Warehouse inventory report.
 test('Running stocks has its own status counter', () => {
   const at = app.indexOf("if (inventoryPanel === 'runningstocks')");
-  const block = app.slice(at, app.indexOf('\n};\n', at));
+  const block = app.slice(at, app.indexOf('\n  }\n', at));
   assert.match(block, /class="rschips" id="rs_stf"/);
   assert.match(block, /\[\['os', 'Out of stock'\], \['is', 'In stock'\], \['cs', 'Critical stocks'\]\]/);
   // All and Promo live on the category row, with their counts — its own
@@ -1715,4 +1715,11 @@ test('Inventory stock value report sits after Running stocks with its own column
   assert.doesNotMatch(block, /rs_find|cat_rs|rs_stf/, 'its own ids, not Running stocks\'');
   const wh = app.slice(app.indexOf('SCREENS.warehouseinventory = async'));
   assert.doesNotMatch(wh.slice(0, wh.indexOf('\n};\n')), /stockvalue/, 'Warehouse inventory report is untouched');
+});
+
+test('Inventory stock value report ends with Download and the total value', () => {
+  const at = app.indexOf("if (inventoryPanel === 'stockvalue')");
+  const block = app.slice(at, app.indexOf('\n  }\n', at));
+  assert.match(block, /<div id="r_value"><\/div>\s*<div class="svfoot"><button class="btn sm" id="sv_dl">⬇ Download<\/button>\s*<span>Total value/);
+  assert.match(block, /a\.download = `inventory-stock-value-\$\{localDay\(\)\}\.csv`/);
 });

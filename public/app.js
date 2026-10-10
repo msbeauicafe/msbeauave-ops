@@ -4884,9 +4884,10 @@ SCREENS.inventory = async (page) => {
       </div>
       <div class="panel mt"><div class="rshd"><h3>Inventory stock value report</h3>
           <div class="rschips" id="sv_stf"></div></div>
-        <div class="svtotal">Total stock value <b id="sv_total">₱0.00</b>
-          <span class="dim" id="sv_count"></span></div>
-        <div id="r_value"></div></div>`;
+        <div id="r_value"></div>
+        <div class="svfoot"><button class="btn sm" id="sv_dl">⬇ Download</button>
+          <span>Total value <span class="dim" id="sv_count"></span></span><b id="sv_total">₱0.00</b></div>
+        </div>`;
 
     const available = (p) => Number(p.total_on_hand) - Number(p.committed_shop || 0);
     // Nothing on hand is worth nothing — a shortfall is not a negative value.
@@ -4901,6 +4902,7 @@ SCREENS.inventory = async (page) => {
     let svBrand = '';
     let svStf = '';
     let brandsFilled = false;
+    let svShown = [];
 
     const valued = async () => {
       const all = await GET('/api/products?prices=1').catch(() => []);
@@ -4928,6 +4930,7 @@ SCREENS.inventory = async (page) => {
       // Worth most first — the rows a value report is read for.
       rows.sort((a, b) => worth(b) - worth(a) || available(b) - available(a));
 
+      svShown = rows;
       $('#sv_total', page).textContent = peso(rows.reduce((t, p) => t + worth(p), 0));
       $('#sv_count', page).textContent = `· ${count(rows.length)} product${rows.length === 1 ? '' : 's'}`;
       $('#r_value', page).innerHTML = table(rows, [
@@ -4941,6 +4944,21 @@ SCREENS.inventory = async (page) => {
       ], term || svCat || svBrand || svStf ? 'No products match that.' : 'No products yet.');
     };
 
+    // Download: the rows on screen as a CSV that opens in Excel, the total
+    // value as its last line.
+    $('#sv_dl', page).addEventListener('click', () => {
+      const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const lines = [['Code', 'Product', 'Brand', 'Quantity', 'Cost price', 'Value', 'Status'].map(cell).join(',')];
+      svShown.forEach((p) => lines.push([p.sku, p.name, p.brand || '', available(p),
+        Number(p.unit_cost || 0).toFixed(2), worth(p).toFixed(2), SV_TAGS[svState(p)][0]].map(cell).join(',')));
+      lines.push(['', '', '', '', 'Total value', svShown.reduce((t, p) => t + worth(p), 0).toFixed(2), ''].map(cell).join(','));
+      const url = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventory-stock-value-${localDay()}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    });
     $('#sv_find', page).addEventListener('input', () => valued().catch(whoops));
     $('#sv_brand', page).addEventListener('change', (e) => {
       svBrand = e.target.value; valued().catch(whoops);
