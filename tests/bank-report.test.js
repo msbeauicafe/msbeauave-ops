@@ -326,6 +326,8 @@ test('Bank report Dashboard: Daily/Monthly, a date bar and six figures above the
   const labels = [...fn.matchAll(/figure\('([^']+)'/g)].map((m) => m[1]);
   assert.deepEqual(labels, ['Total sales', 'Total bank balance', 'Outstanding AR', 'Outstanding AP',
     'Gross profit', 'Operating expenses']);
+  assert.match(fn, /figure\('Total sales', invoices\.reduce\(\(t, i\) => t \+ Number\(i\.amount\), 0\)\)/,
+    "Total sales is the Sales tile's own Total order amounts");
   assert.match(fn, /fin\.gross_margin/);
   assert.match(fn, /fin\.expenses\.total/);
 });

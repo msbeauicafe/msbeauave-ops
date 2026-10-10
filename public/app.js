@@ -15009,9 +15009,9 @@ SCREENS.bankreport = async (page) => {
   let dashAnchor = today;
 
   // Six figures under the Dashboard header for the day or month picked:
-  // sales and gross profit and running costs off finance_summary() — the
-  // same figures Finance reads — and what sits in the bank, what customers
-  // owe and what we owe suppliers, as they stand right now.
+  // Total sales is the Sales tile's own Total order amounts (every invoice
+  // by its packing list date); gross profit and running costs come off
+  // finance_summary(); the bank, AR and AP stand as they are right now.
   const drawDash = async () => {
     const box = $('#br_dash', page);
     if (!box) return;
@@ -15020,10 +15020,11 @@ SCREENS.bankreport = async (page) => {
     $('#brd_label', page).textContent = dashPeriod === 'month'
       ? `${BR_MONTHS_LONG[m - 1]} ${y}` : `${BR_MONTHS_LONG[m - 1]} ${d}, ${y}`;
     $('#brd_next', page).disabled = brRange(dashPeriod, brShift(dashPeriod, dashAnchor, 1)).from > today;
-    const [fin, cash, payables] = await Promise.all([
+    const [fin, cash, payables, invoices] = await Promise.all([
       GET(`/api/finance?from=${from}&to=${to}`),
       GET('/api/books/cash'),
       GET('/api/reports/payables'),
+      GET(`/api/bank-report/sales?from=${from}&to=${to}`),
     ]);
     if (view || !$('#br_dash', page)) return;
     const bank = BR_CASH_BOXES.reduce((t, label) => t + Number(cash.accounts.find((a) =>
@@ -15031,7 +15032,7 @@ SCREENS.bankreport = async (page) => {
     const figure = (label, amount, kind = '') => `
       <div class="tile ${kind}"><div class="label">${label}</div><div class="big">${peso(amount || 0)}</div></div>`;
     box.innerHTML = `
-      ${figure('Total sales', Number(fin.counter.revenue) + Number(fin.wholesale.invoiced))}
+      ${figure('Total sales', invoices.reduce((t, i) => t + Number(i.amount), 0))}
       ${figure('Total bank balance', bank)}
       ${figure('Outstanding AR', fin.wholesale.outstanding, 'good')}
       ${figure('Outstanding AP', payables.total, Number(payables.total) > 0 ? 'bad' : '')}
