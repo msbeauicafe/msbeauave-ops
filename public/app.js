@@ -14892,6 +14892,8 @@ SCREENS.bankreport = async (page) => {
   let period = 'day';
   let anchor = today;
   let view = '';
+  // Which of Sales' four boxes is picked; it stays picked across periods.
+  let brSalesFilter = 'all';
 
   const menu = () => {
     view = '';
@@ -15051,18 +15053,21 @@ SCREENS.bankreport = async (page) => {
       const unpaid = rows.filter((i) => Number(i.balance) > 0 && paidSoFar(i) <= 0);
       const part = rows.filter((i) => Number(i.balance) > 0 && paidSoFar(i) > 0);
       const n = (list) => `${count(list.length)} invoice${list.length === 1 ? '' : 's'}`;
-      body.innerHTML = `
-        <div class="tiles">
-          <div class="tile"><div class="big">${money(sum(rows, (i) => i.amount))}</div>
-            <div class="label">Total order amounts · ${n(rows)}</div></div>
-          <div class="tile good"><div class="big">${money(sum(paid, (i) => i.amount))}</div>
-            <div class="label">Paid transactions · ${n(paid)}</div></div>
-          <div class="tile bad"><div class="big">${money(sum(unpaid, (i) => i.amount))}</div>
-            <div class="label">Unpaid transactions · ${n(unpaid)}</div></div>
-          <div class="tile warn"><div class="big">${money(sum(part, (i) => i.balance))}</div>
-            <div class="label">Balance transactions · ${n(part)} part-paid</div></div>
+      const groups = {
+        all: [rows, 'Total order amounts', '', sum(rows, (i) => i.amount), n(rows)],
+        paid: [paid, 'Paid transactions', 'good', sum(paid, (i) => i.amount), n(paid)],
+        unpaid: [unpaid, 'Unpaid transactions', 'bad', sum(unpaid, (i) => i.amount), n(unpaid)],
+        part: [part, 'Balance transactions', 'warn', sum(part, (i) => i.balance), `${n(part)} part-paid`],
+      };
+      // A box is a button: it narrows the list below to its own invoices.
+      // Total order amounts brings the whole period back.
+      const drawSales = () => {
+        body.innerHTML = `
+        <div class="tiles">${Object.entries(groups).map(([k, [, label, kind, amt, sub]]) => `
+          <button class="tile brsf ${kind} ${brSalesFilter === k ? 'on' : ''}" data-sf="${k}">
+            <div class="big">${money(amt)}</div><div class="label">${label} · ${sub}</div></button>`).join('')}
         </div>
-        <div class="panel">${table(rows, [
+        <div class="panel">${table(groups[brSalesFilter][0], [
           { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no)}</b>` },
           { head: 'Distributor', cell: (i) => esc(i.reseller) },
           { head: 'Issued', cell: (i) => onDay(i.issued_on) },
@@ -15070,7 +15075,13 @@ SCREENS.bankreport = async (page) => {
           { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
           { head: 'Balance', n: true, cell: (i) => peso(i.balance) },
           { head: 'Status', cell: (i) => tag(...BR_STANDING[i.standing]) },
-        ], 'No invoices in this period.')}</div>`;
+        ], brSalesFilter === 'all' ? 'No invoices in this period.' : 'None of those in this period.')}</div>`;
+        $$('[data-sf]', body).forEach((b) => b.addEventListener('click', () => {
+          brSalesFilter = b.dataset.sf;
+          drawSales();
+        }));
+      };
+      drawSales();
       return;
     }
 

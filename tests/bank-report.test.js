@@ -277,11 +277,14 @@ test('Sales shows Total order amounts, Paid, Unpaid and Balance transactions', (
   const at = app.indexOf("if (view === 'sales')");
   const block = app.slice(at, app.indexOf("if (view === 'purchases')", at));
   for (const l of ['Total order amounts', 'Paid transactions', 'Unpaid transactions', 'Balance transactions']) {
-    assert.ok(block.includes(`${l} · `), l);
+    assert.ok(block.includes(`'${l}'`), l);
   }
   assert.doesNotMatch(block, /Invoiced · /);
   assert.match(block, /const paid = rows\.filter\(\(i\) => Number\(i\.balance\) <= 0\)/);
   assert.match(block, /const unpaid = rows\.filter\(\(i\) => Number\(i\.balance\) > 0 && paidSoFar\(i\) <= 0\)/);
   assert.match(block, /const part = rows\.filter\(\(i\) => Number\(i\.balance\) > 0 && paidSoFar\(i\) > 0\)/);
   assert.match(block, /sum\(part, \(i\) => i\.balance\)/);
+  // Each box is a button narrowing the list to its own invoices.
+  assert.match(block, /<button class="tile brsf/);
+  assert.match(block, /table\(groups\[brSalesFilter\]\[0\]/);
 });
