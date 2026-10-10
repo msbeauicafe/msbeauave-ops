@@ -4834,6 +4834,14 @@ SCREENS.inventory = async (page) => {
 
     const available = (p) => Number(p.total_on_hand) - Number(p.committed_shop || 0);
     const isFreebie = (p) => (p.category || '').trim().toUpperCase() === 'FREEBIES';
+    // Out of stock at nothing left; critical at or below the product's own
+    // shelf minimum, or ten units where none has been set; in stock above.
+    const rsStatus = (p) => {
+      const q = available(p);
+      if (q <= 0) return tag('Out of stock', 'red');
+      if (q <= (Number(p.shelf_min) > 0 ? Number(p.shelf_min) : 10)) return tag('Critical stocks', 'amber');
+      return tag('In stock', 'green');
+    };
     let rsCat = '';
     let rsBrand = '';
     let rsQty = true;
@@ -4863,7 +4871,10 @@ SCREENS.inventory = async (page) => {
         { head: 'Product', cell: (p) => `<b>${esc(p.name)}</b>` },
         { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
         { head: 'Category', cell: (p) => prodCatTag(p.category) },
+        // The Product list's own Cost price, read off the same row.
+        { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
         { head: 'Quantity', n: true, cell: (p) => count(available(p)) },
+        { head: 'Status', cell: (p) => rsStatus(p) },
       ], term || rsCat || rsBrand ? 'No products match that.' : 'No products yet.');
     };
 

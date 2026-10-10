@@ -1658,3 +1658,19 @@ test('Record payment shows an Estimated balance next to Still owed, live as amou
   assert.match(fn, /estBase = Number\(mine\.balance \|\| 0\);\s*\n\s*showEstimate\(\);/,
     'and whenever Still owed moves');
 });
+
+// Internal Inventory Report's Running stocks: Cost price between Category
+// and Quantity, and a Status after it — out of stock, critical at or below
+// the shelf minimum (ten where none is set), in stock above. That tab only.
+test('Running stocks shows Cost price and a Status', () => {
+  const at = app.indexOf("if (inventoryPanel === 'runningstocks')");
+  const block = app.slice(at, app.indexOf('\n};\n', at));
+  const heads = [...block.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['Code', 'Product', 'Brand', 'Category', 'Cost price', 'Quantity', 'Status']);
+  assert.match(block, /peso\(p\.unit_cost\)/);
+  assert.match(block, /tag\('Out of stock', 'red'\)/);
+  assert.match(block, /Number\(p\.shelf_min\) > 0 \? Number\(p\.shelf_min\) : 10/);
+  assert.match(block, /tag\('Critical stocks', 'amber'\)/);
+  const wh = app.slice(app.indexOf('SCREENS.warehouseinventory = async'));
+  assert.doesNotMatch(wh.slice(0, wh.indexOf('\n};\n')), /Critical stocks/, 'Warehouse inventory report is untouched');
+});
