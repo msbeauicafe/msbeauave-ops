@@ -169,19 +169,19 @@ test('a cashier sign-in cannot read the payables total — owner only, same as R
 // ---------------------------------------------------------------------------
 // The tile menu — Bank report opens on seven tiles, each its own page
 // ---------------------------------------------------------------------------
-test('Bank report opens on Dashboard alone, the six tiles sit inside it, and each has a way back', () => {
+test('Bank report opens on a Dashboard header with the six tiles under it, and each has a way back', () => {
   assert.match(app, /const BR_TILES = \[\['dashboard', 'Dashboard'\], \['bank', 'Bank'\], \['sales', 'Sales'\],\s*\['purchases', 'Purchases'\], \['expenses', 'Expenses'\], \['payable', 'Accounts payable'\],\s*\['receivable', 'Accounts receivable'\]\];/);
   const at = app.indexOf('SCREENS.bankreport = async');
   const fn = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
   assert.match(app, /const brTiles = \(keys\) => `<div class="brgrid">/);
   assert.match(fn, /id="br_back"/);
-  // The menu holds Dashboard alone; the other six sit inside Dashboard and
-  // come back to it.
-  assert.match(app, /const BR_MENU = \['dashboard'\];/);
+  // The menu: Dashboard is a header, not a button, with the six tiles
+  // under it; each of them comes back to the menu.
+  assert.match(fn, /<div class="brheader">/);
+  assert.doesNotMatch(fn, /data-br="dashboard"|view === 'dashboard'/);
   assert.match(app, /const BR_INSIDE = \['sales', 'bank', 'expenses', 'purchases', 'receivable', 'payable'\];/);
-  assert.match(fn, /\$\{brTiles\(BR_MENU\)\}/);
   assert.match(fn, /\$\{brTiles\(BR_INSIDE\)\}/);
-  assert.match(fn, /BR_INSIDE\.includes\(key\) \? open\('dashboard'\) : menu\(\)/);
+  assert.match(fn, /\$\('#br_back', page\)\.addEventListener\('click', menu\)/);
   assert.match(fn, /\n  menu\(\);\n\};\n/, 'it opens on the menu');
 });
 

@@ -14874,14 +14874,13 @@ const BR_ICONS = {
 const BR_TILES = [['dashboard', 'Dashboard'], ['bank', 'Bank'], ['sales', 'Sales'],
   ['purchases', 'Purchases'], ['expenses', 'Expenses'], ['payable', 'Accounts payable'],
   ['receivable', 'Accounts receivable']];
-// The menu shows Dashboard alone; the other six are tiles inside Dashboard,
-// and each of them comes back to Dashboard rather than the menu.
-const BR_MENU = ['dashboard'];
+// The menu: a Dashboard header that is not a button, and the six tiles
+// under it. Each of the six comes back to this menu.
 const BR_INSIDE = ['sales', 'bank', 'expenses', 'purchases', 'receivable', 'payable'];
 const brTiles = (keys) => `<div class="brgrid">${keys.map((k) => `<button class="brtile" data-br="${k}">
   <svg viewBox="0 0 24 24">${BR_ICONS[k]}</svg>${esc(BR_TILES.find(([x]) => x === k)[1])}</button>`).join('')}</div>`;
 // Which tiles read a day / week / month; the rest stand as they are today.
-const BR_PERIODIC = ['dashboard', 'sales', 'purchases', 'expenses'];
+const BR_PERIODIC = ['sales', 'purchases', 'expenses'];
 // Bank transactions: the accounts a line can sit on, and its four kinds.
 const BR_BT_ACCOUNTS = ['BDO', 'BPI', 'Security Bank', 'GCash', 'Bank', 'Cash on hand'];
 const BR_BT_KINDS = { instapay: ['InstaPay', 'green'], pesonet: ['PESONet', 'amber'],
@@ -14898,7 +14897,8 @@ SCREENS.bankreport = async (page) => {
     view = '';
     page.innerHTML = `
       <div class="head"><h2>Bank report</h2><span class="hint">Pick what to look at</span></div>
-      ${brTiles(BR_MENU)}`;
+      <div class="brheader"><svg viewBox="0 0 24 24">${BR_ICONS.dashboard}</svg>Dashboard</div>
+      ${brTiles(BR_INSIDE)}`;
     $$('[data-br]', page).forEach((b) => b.addEventListener('click', () => open(b.dataset.br)));
   };
 
@@ -14907,7 +14907,7 @@ SCREENS.bankreport = async (page) => {
     const label = BR_TILES.find(([k]) => k === key)[1];
     const periodic = BR_PERIODIC.includes(key);
     page.innerHTML = `
-      <div class="head"><button class="btn sm quiet" id="br_back">‹ ${BR_INSIDE.includes(key) ? 'Dashboard' : 'Bank report'}</button>
+      <div class="head"><button class="btn sm quiet" id="br_back">‹ Bank report</button>
         <h2>${esc(label)}</h2></div>
       ${periodic ? `<div class="tools">
         <div class="subtabs" id="br_period">
@@ -14919,7 +14919,7 @@ SCREENS.bankreport = async (page) => {
         <button class="btn sm quiet" id="br_next">›</button>
       </div>` : ''}
       <div id="br_body"></div>`;
-    $('#br_back', page).addEventListener('click', () => (BR_INSIDE.includes(key) ? open('dashboard') : menu()));
+    $('#br_back', page).addEventListener('click', menu);
     if (periodic) {
       $$('[data-period]', page).forEach((b) => b.addEventListener('click', () => {
         if (b.classList.contains('on')) return;
@@ -14950,29 +14950,6 @@ SCREENS.bankreport = async (page) => {
       $('#br_next', page).disabled = brRange(period, brShift(period, anchor, 1)).from > today;
     }
     const money = (v) => peso(v || 0);
-
-    if (view === 'dashboard') {
-      const fin = await GET(`/api/finance?from=${from}&to=${to}`);
-      const sales = Number(fin.counter.revenue) + Number(fin.wholesale.invoiced);
-      const txns = Number(fin.counter.sales) + Number(fin.wholesale.orders);
-      const expenses = Number(fin.expenses.total) + Number(fin.counter.cost) + Number(fin.wholesale.cost);
-      const cashIn = Number(fin.cash.movement);
-
-      body.innerHTML = `
-        <div class="tiles">
-          <div class="tile"><div class="big">${money(sales)}</div>
-            <div class="label">Sales · ${count(txns)} transaction${txns === 1 ? '' : 's'}</div></div>
-          <div class="tile"><div class="big">${money(expenses)}</div>
-            <div class="label">Expenses · incl. cost of goods sold</div></div>
-          <div class="tile ${Number(fin.net) < 0 ? 'bad' : 'good'}"><div class="big">${money(fin.net)}</div>
-            <div class="label">Net profit</div></div>
-          <div class="tile ${cashIn < 0 ? 'bad' : 'good'}"><div class="big">${money(cashIn)}</div>
-            <div class="label">Net cash in${cashIn < 0 ? ' (out)' : ''}</div></div>
-        </div>
-        ${brTiles(BR_INSIDE)}`;
-      $$('[data-br]', body).forEach((b) => b.addEventListener('click', () => open(b.dataset.br)));
-      return;
-    }
 
     if (view === 'bank') {
       const cash = await GET('/api/books/cash');
