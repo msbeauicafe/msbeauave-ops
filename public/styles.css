@@ -2035,3 +2035,6 @@ input.n { text-align: right; }
 .tile.brsf { font: inherit; text-align: left; cursor: pointer; width: 100%; display: flex; flex-direction: column; justify-content: flex-start; }
 .tile.brsf:hover { border-color: var(--rose-deep); }
 .tile.brsf.on { outline: 2px solid var(--rose-deep); outline-offset: -2px; background: #fff7fa; }
+/* Inventory stock value report's own total line. */
+.svtotal { margin: 0 0 10px; color: var(--muted); }
+.svtotal b { color: var(--rose-deep); font-size: 1.25rem; margin-left: 6px; font-variant-numeric: tabular-nums; }
