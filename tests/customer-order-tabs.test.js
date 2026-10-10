@@ -1682,7 +1682,12 @@ test('Running stocks has its own status counter', () => {
   const at = app.indexOf("if (inventoryPanel === 'runningstocks')");
   const block = app.slice(at, app.indexOf('\n};\n', at));
   assert.match(block, /class="rschips" id="rs_stf"/);
-  assert.match(block, /\[\['', 'All'\], \['promo', 'Promo'\], \['os', 'Out of stock'\],\s*\['is', 'In stock'\], \['cs', 'Critical stocks'\]\]/);
+  assert.match(block, /\[\['os', 'Out of stock'\], \['is', 'In stock'\], \['cs', 'Critical stocks'\]\]/);
+  // All and Promo live on the category row, with their counts — its own
+  // copy of the chips, not the shared catChips.
+  assert.match(block, /All \(<span id="rs_n_all">/);
+  assert.match(block, /Promo \(<span id="rs_n_promo">/);
+  assert.doesNotMatch(block, /catChips\('cat_rs'\)/);
   assert.match(block, /\$\{l\} \(\$\{count\(n\[k\]\)\}\)/);
   assert.doesNotMatch(block, /dashchips/);
   const wh = app.slice(app.indexOf('SCREENS.warehouseinventory = async'));

@@ -4827,7 +4827,12 @@ SCREENS.inventory = async (page) => {
       <div class="tools">
         <input type="search" id="rs_find" placeholder="Search by code, name or brand…">
         <select id="rs_brand"><option value="">Every brand</option></select>
-        ${catChips('cat_rs')}
+        <span class="chips" id="cat_rs">
+          <button class="btn sm" data-cat="">All (<span id="rs_n_all">0</span>)</button>
+          <button class="btn line sm" data-cat="promo">Promo (<span id="rs_n_promo">0</span>)</button>
+          <button class="btn line sm" data-cat="freebies">Freebies</button>
+          <button class="btn line sm" data-cat="product">Product</button>
+        </span>
         <button class="btn sm" id="rs_qty">Quantity</button>
       </div>
       <div class="panel mt"><div class="rshd"><h3>Running stocks</h3><div class="rschips" id="rs_stf"></div></div>
@@ -4868,20 +4873,20 @@ SCREENS.inventory = async (page) => {
       const term = ($('#rs_find', page)?.value || '').trim().toLowerCase();
       let rows = all.filter((p) => (!term
           || [p.sku, p.name, p.brand].some((v) => (v || '').toLowerCase().includes(term)))
-        && (!rsCat || (p.category || '').trim().toLowerCase() === rsCat)
         && (!rsBrand || (p.brand || '') === rsBrand));
-      // The counter above the table: every product the search, brand and
-      // category leave, split by Promo and by status. A chip narrows further.
-      const n = { '': rows.length, promo: 0, os: 0, is: 0, cs: 0 };
-      rows.forEach((p) => {
-        n[rsState(p)] += 1;
-        if ((p.category || '').trim().toUpperCase() === 'PROMO') n.promo += 1;
-      });
-      $('#rs_stf', page).innerHTML = [['', 'All'], ['promo', 'Promo'], ['os', 'Out of stock'],
-        ['is', 'In stock'], ['cs', 'Critical stocks']].map(([k, l]) =>
-        `<button data-v="${k}" class="${rsStf === k ? 'on' : ''}">${l} (${count(n[k])})</button>`).join('');
-      rows = rows.filter((p) => !rsStf
-        || (rsStf === 'promo' ? (p.category || '').trim().toUpperCase() === 'PROMO' : rsState(p) === rsStf));
+      // All and Promo, on the category row, count what the search and brand
+      // leave.
+      $('#rs_n_all', page).textContent = count(rows.length);
+      $('#rs_n_promo', page).textContent = count(rows.filter((p) =>
+        (p.category || '').trim().toLowerCase() === 'promo').length);
+      rows = rows.filter((p) => !rsCat || (p.category || '').trim().toLowerCase() === rsCat);
+      // The status counter above the table: what the category leaves, split
+      // by status. A chip narrows the table to it; tapped again, it lets go.
+      const n = { os: 0, is: 0, cs: 0 };
+      rows.forEach((p) => { n[rsState(p)] += 1; });
+      $('#rs_stf', page).innerHTML = [['os', 'Out of stock'], ['is', 'In stock'], ['cs', 'Critical stocks']]
+        .map(([k, l]) => `<button data-v="${k}" class="${rsStf === k ? 'on' : ''}">${l} (${count(n[k])})</button>`).join('');
+      rows = rows.filter((p) => !rsStf || rsState(p) === rsStf);
       if (rsQty) rows.sort((a, b) => available(b) - available(a));
       else rows.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       rows.sort((a, b) => (isFreebie(a) ? 1 : 0) - (isFreebie(b) ? 1 : 0));
@@ -4902,11 +4907,12 @@ SCREENS.inventory = async (page) => {
     $('#rs_brand', page).addEventListener('change', (e) => {
       rsBrand = e.target.value; running().catch(whoops);
     });
-    wireCatChips(page, 'cat_rs', (c) => { rsCat = c; running().catch(whoops); });
+    // All lets go of a status chip too: it is where the whole list starts.
+    wireCatChips(page, 'cat_rs', (c) => { rsCat = c; if (!c) rsStf = ''; running().catch(whoops); });
     $('#rs_stf', page).addEventListener('click', (e) => {
       const b = e.target.closest('button[data-v]');
       if (!b) return;
-      rsStf = b.dataset.v; running().catch(whoops);
+      rsStf = rsStf === b.dataset.v ? '' : b.dataset.v; running().catch(whoops);
     });
     $('#rs_qty', page).addEventListener('click', (e) => {
       rsQty = !rsQty;
