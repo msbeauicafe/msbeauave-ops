@@ -14882,6 +14882,10 @@ const brTiles = (keys) => `<div class="brgrid">${keys.map((k) => `<button class=
   <svg viewBox="0 0 24 24">${BR_ICONS[k]}</svg>${esc(BR_TILES.find(([x]) => x === k)[1])}</button>`).join('')}</div>`;
 // Which tiles read a day / week / month; the rest stand as they are today.
 const BR_PERIODIC = ['dashboard', 'sales', 'purchases', 'expenses'];
+// Bank transactions: the accounts a line can sit on, and its four kinds.
+const BR_BT_ACCOUNTS = ['BDO', 'BPI', 'Security Bank', 'GCash', 'Bank', 'Cash on hand'];
+const BR_BT_KINDS = { instapay: ['InstaPay', 'green'], pesonet: ['PESONet', 'amber'],
+  otc: ['OTC cash deposit', 'pink'], check: ['Check', 'grey'] };
 const BR_STANDING = { paid: ['Paid', 'green'], pending: ['Pending', 'amber'], overdue: ['Overdue', 'red'] };
 
 SCREENS.bankreport = async (page) => {
@@ -14985,7 +14989,77 @@ SCREENS.bankreport = async (page) => {
             BR_CASH_BOXES.reduce((t, label) => t + Number(bal(label) || 0), 0))}</b></div>
           <div class="dim mt">A box reads ₱0.00 until an account by that exact name exists
             in Books and carries a balance — set one up or correct it there, not here.</div>
-        </div>`;
+        </div>
+        <div class="panel mt"><div class="brhd"><h3>Bank transactions</h3>
+          <button class="btn sm" id="bt_new">＋ Record bank transaction</button></div>
+          <div class="tools">
+            <input type="search" id="bt_q" placeholder="Search reference, name…" style="max-width:260px">
+            <select id="bt_acct"><option value="">Every account</option>
+              ${BR_BT_ACCOUNTS.map((x) => `<option>${esc(x)}</option>`).join('')}</select>
+            <select id="bt_kind"><option value="">Every type</option>
+              ${Object.entries(BR_BT_KINDS).map(([k, [l]]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+          </div>
+          <div id="bt_list"></div></div>`;
+      let txns = await GET('/api/bank-report/transactions');
+      const drawTxns = () => {
+        const q = $('#bt_q', body).value.trim().toLowerCase();
+        const acct = $('#bt_acct', body).value;
+        const kind = $('#bt_kind', body).value;
+        const rows = txns.filter((t) => (!acct || t.account === acct) && (!kind || t.kind === kind)
+          && (!q || `${t.reference} ${t.party} ${t.note || ''}`.toLowerCase().includes(q)));
+        $('#bt_list', body).innerHTML = table(rows, [
+          { head: 'Date', cell: (t) => onDay(t.txn_on) },
+          { head: 'Account', cell: (t) => esc(t.account) },
+          { head: 'Type', cell: (t) => tag(...BR_BT_KINDS[t.kind]) },
+          { head: 'From / to', cell: (t) => `<b>${esc(t.party)}</b>${t.note ? `<div class="dim">${esc(t.note)}</div>` : ''}` },
+          { head: 'Reference no.', cell: (t) => `<span class="dim">${esc(t.reference)}</span>` },
+          { head: 'Money in', n: true, cell: (t) => (t.direction === 'in' ? peso(t.amount) : '') },
+          { head: 'Money out', n: true, cell: (t) => (t.direction === 'out' ? peso(t.amount) : '') },
+        ], txns.length ? 'Nothing matches that.' : 'No bank transactions recorded yet.');
+      };
+      drawTxns();
+      ['#bt_q', '#bt_acct', '#bt_kind'].forEach((id) =>
+        $(id, body).addEventListener(id === '#bt_q' ? 'input' : 'change', drawTxns));
+      $('#bt_new', body).addEventListener('click', () => {
+        dialog(`
+          <h3>Record bank transaction</h3>
+          <div class="row">
+            <div><label>Date</label><input id="bt_on" type="date" value="${today}" max="${today}"></div>
+            <div><label>Account</label><select id="bt_account">
+              ${BR_BT_ACCOUNTS.map((x) => `<option>${esc(x)}</option>`).join('')}</select></div>
+          </div>
+          <div class="row">
+            <div><label>Type</label><select id="bt_type">
+              ${Object.entries(BR_BT_KINDS).map(([k, [l]]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></div>
+            <div><label>Money</label><select id="bt_dir">
+              <option value="in">In — received</option><option value="out">Out — paid</option></select></div>
+          </div>
+          <div class="row"><div><label>From / to</label>
+            <input id="bt_party" type="text" placeholder="Who sent it, or who it went to"></div></div>
+          <div class="row">
+            <div><label>Amount</label><input id="bt_amt" type="text" inputmode="decimal" placeholder="0.00"></div>
+            <div><label>Bank reference no.</label><input id="bt_ref" type="text" placeholder="e.g. 2026101012345678"></div>
+          </div>
+          <div class="row"><div><label>Note</label><input id="bt_note" type="text" placeholder="Optional"></div></div>
+          <div class="dim mt">A reference number already on file for the same account is refused,
+            so the same transfer can't be entered twice.</div>
+          <div class="mt right"><button class="btn" id="bt_go">Save</button></div>`);
+        $('#bt_amt').addEventListener('input', (e) => comma(e.target));
+        $('#bt_go').addEventListener('click', async () => {
+          try {
+            await POST('/api/bank-report/transactions', {
+              txn_on: $('#bt_on').value || null, account: $('#bt_account').value,
+              kind: $('#bt_type').value, direction: $('#bt_dir').value,
+              party: $('#bt_party').value, amount: num($('#bt_amt').value),
+              reference: $('#bt_ref').value, note: $('#bt_note').value,
+            });
+            closeDialog();
+            notice('Recorded 🌸', 'good');
+            txns = await GET('/api/bank-report/transactions');
+            drawTxns();
+          } catch (e) { whoops(e); }
+        });
+      });
       return;
     }
 
