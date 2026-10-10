@@ -288,3 +288,27 @@ test('Sales shows Total order amounts, Paid, Unpaid and Balance transactions', (
   assert.match(block, /<button class="tile brsf/);
   assert.match(block, /table\(groups\[brSalesFilter\]\[0\]/);
 });
+
+test("Sales' columns: Invoice no., Client name, Issued date (the packing list's), Amount, Status, Balance", () => {
+  const at = app.indexOf("if (view === 'sales')");
+  const block = app.slice(at, app.indexOf("if (view === 'purchases')", at));
+  const heads = [...block.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['Invoice no.', 'Client name', 'Issued date', 'Amount', 'Status', 'Balance']);
+  // Issued date is the packing list's own date, not the invoice's.
+  assert.match(block, /onDay\(i\.packing_list_on\)/);
+});
+
+test("Sales' period follows the packing list's date, the same one Issued date shows", async () => {
+  const admin = await signIn('admin');
+  const pl = `to_char(coalesce((coalesce(o.packing_list_issued_at, o.placed_at) at time zone 'Asia/Manila')::date,
+                       i.issued_on), 'YYYY-MM-DD')`;
+  const r = await db.query(`select i.id, ${pl} as day from invoices i left join orders o on o.id = i.order_id
+                             where i.status <> 'void' limit 1`);
+  if (!r.rows.length) return;
+  const { day } = r.rows[0];
+  const { data } = await GET(admin, `/api/bank-report/sales?from=${day}&to=${day}`);
+  assert.ok(data.some((x) => Number(x.id) === Number(r.rows[0].id)), 'found on its packing list date');
+  const days = await db.query(`select distinct ${pl} as day from invoices i left join orders o on o.id = i.order_id
+                                where i.id = any($1::bigint[])`, [data.map((x) => x.id)]);
+  assert.deepEqual(days.rows.map((x) => x.day), [day], 'nothing from another day');
+});
