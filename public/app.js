@@ -4830,7 +4830,8 @@ SCREENS.inventory = async (page) => {
         ${catChips('cat_rs')}
         <button class="btn sm" id="rs_qty">Quantity</button>
       </div>
-      <div class="panel mt"><h3>Running stocks</h3><div id="r_running"></div></div>`;
+      <div class="panel mt"><div class="rshd"><h3>Running stocks</h3><div class="rschips" id="rs_stf"></div></div>
+        <div id="r_running"></div></div>`;
 
     const available = (p) => Number(p.total_on_hand) - Number(p.committed_shop || 0);
     const isFreebie = (p) => (p.category || '').trim().toUpperCase() === 'FREEBIES';
@@ -4842,8 +4843,15 @@ SCREENS.inventory = async (page) => {
       if (q <= (Number(p.shelf_min) > 0 ? Number(p.shelf_min) : 10)) return tag('Critical stocks', 'amber');
       return tag('In stock', 'green');
     };
+    // Which of Out of stock / Critical stocks / In stock a product is, as a key.
+    const rsState = (p) => {
+      const q = available(p);
+      if (q <= 0) return 'os';
+      return q <= (Number(p.shelf_min) > 0 ? Number(p.shelf_min) : 10) ? 'cs' : 'is';
+    };
     let rsCat = '';
     let rsBrand = '';
+    let rsStf = '';
     let rsQty = true;
     let brandsFilled = false;
 
@@ -4858,10 +4866,22 @@ SCREENS.inventory = async (page) => {
           + brands.map((b) => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
       }
       const term = ($('#rs_find', page)?.value || '').trim().toLowerCase();
-      const rows = all.filter((p) => (!term
+      let rows = all.filter((p) => (!term
           || [p.sku, p.name, p.brand].some((v) => (v || '').toLowerCase().includes(term)))
         && (!rsCat || (p.category || '').trim().toLowerCase() === rsCat)
         && (!rsBrand || (p.brand || '') === rsBrand));
+      // The counter above the table: every product the search, brand and
+      // category leave, split by Promo and by status. A chip narrows further.
+      const n = { '': rows.length, promo: 0, os: 0, is: 0, cs: 0 };
+      rows.forEach((p) => {
+        n[rsState(p)] += 1;
+        if ((p.category || '').trim().toUpperCase() === 'PROMO') n.promo += 1;
+      });
+      $('#rs_stf', page).innerHTML = [['', 'All'], ['promo', 'Promo'], ['os', 'Out of stock'],
+        ['is', 'In stock'], ['cs', 'Critical stocks']].map(([k, l]) =>
+        `<button data-v="${k}" class="${rsStf === k ? 'on' : ''}">${l} (${count(n[k])})</button>`).join('');
+      rows = rows.filter((p) => !rsStf
+        || (rsStf === 'promo' ? (p.category || '').trim().toUpperCase() === 'PROMO' : rsState(p) === rsStf));
       if (rsQty) rows.sort((a, b) => available(b) - available(a));
       else rows.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       rows.sort((a, b) => (isFreebie(a) ? 1 : 0) - (isFreebie(b) ? 1 : 0));
@@ -4875,7 +4895,7 @@ SCREENS.inventory = async (page) => {
         { head: 'Cost price', n: true, cell: (p) => peso(p.unit_cost) },
         { head: 'Quantity', n: true, cell: (p) => count(available(p)) },
         { head: 'Status', cell: (p) => rsStatus(p) },
-      ], term || rsCat || rsBrand ? 'No products match that.' : 'No products yet.');
+      ], term || rsCat || rsBrand || rsStf ? 'No products match that.' : 'No products yet.');
     };
 
     $('#rs_find', page).addEventListener('input', () => running().catch(whoops));
@@ -4883,6 +4903,11 @@ SCREENS.inventory = async (page) => {
       rsBrand = e.target.value; running().catch(whoops);
     });
     wireCatChips(page, 'cat_rs', (c) => { rsCat = c; running().catch(whoops); });
+    $('#rs_stf', page).addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-v]');
+      if (!b) return;
+      rsStf = b.dataset.v; running().catch(whoops);
+    });
     $('#rs_qty', page).addEventListener('click', (e) => {
       rsQty = !rsQty;
       e.target.className = rsQty ? 'btn sm' : 'btn line sm';

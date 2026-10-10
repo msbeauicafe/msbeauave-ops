@@ -1674,3 +1674,17 @@ test('Running stocks shows Cost price and a Status', () => {
   const wh = app.slice(app.indexOf('SCREENS.warehouseinventory = async'));
   assert.doesNotMatch(wh.slice(0, wh.indexOf('\n};\n')), /Critical stocks/, 'Warehouse inventory report is untouched');
 });
+
+// A counter over Running stocks — All, Promo, Out of stock, In stock,
+// Critical stocks, each with its number — on its own chips, not the
+// dashboard's, and nowhere in Warehouse inventory report.
+test('Running stocks has its own status counter', () => {
+  const at = app.indexOf("if (inventoryPanel === 'runningstocks')");
+  const block = app.slice(at, app.indexOf('\n};\n', at));
+  assert.match(block, /class="rschips" id="rs_stf"/);
+  assert.match(block, /\[\['', 'All'\], \['promo', 'Promo'\], \['os', 'Out of stock'\],\s*\['is', 'In stock'\], \['cs', 'Critical stocks'\]\]/);
+  assert.match(block, /\$\{l\} \(\$\{count\(n\[k\]\)\}\)/);
+  assert.doesNotMatch(block, /dashchips/);
+  const wh = app.slice(app.indexOf('SCREENS.warehouseinventory = async'));
+  assert.doesNotMatch(wh.slice(0, wh.indexOf('\n};\n')), /rschips/);
+});
