@@ -4830,10 +4830,9 @@ SCREENS.inventory = async (page) => {
         <span class="chips" id="cat_rs">
           <button class="btn sm" data-cat="">All (<span id="rs_n_all">0</span>)</button>
           <button class="btn line sm" data-cat="promo">Promo (<span id="rs_n_promo">0</span>)</button>
-          <button class="btn line sm" data-cat="freebies">Freebies</button>
-          <button class="btn line sm" data-cat="product">Product</button>
+          <button class="btn line sm" data-cat="freebies">Freebies (<span id="rs_n_freebies">0</span>)</button>
+          <button class="btn line sm" data-cat="product">Product (<span id="rs_n_product">0</span>)</button>
         </span>
-        <button class="btn sm" id="rs_qty">Quantity</button>
       </div>
       <div class="panel mt"><div class="rshd"><h3>Running stocks</h3><div class="rschips" id="rs_stf"></div></div>
         <div id="r_running"></div></div>`;
@@ -4857,7 +4856,6 @@ SCREENS.inventory = async (page) => {
     let rsCat = '';
     let rsBrand = '';
     let rsStf = '';
-    let rsQty = true;
     let brandsFilled = false;
 
     const running = async () => {
@@ -4874,11 +4872,12 @@ SCREENS.inventory = async (page) => {
       let rows = all.filter((p) => (!term
           || [p.sku, p.name, p.brand].some((v) => (v || '').toLowerCase().includes(term)))
         && (!rsBrand || (p.brand || '') === rsBrand));
-      // All and Promo, on the category row, count what the search and brand
-      // leave.
+      // The category row counts what the search and brand leave.
       $('#rs_n_all', page).textContent = count(rows.length);
-      $('#rs_n_promo', page).textContent = count(rows.filter((p) =>
-        (p.category || '').trim().toLowerCase() === 'promo').length);
+      ['promo', 'freebies', 'product'].forEach((c) => {
+        $(`#rs_n_${c}`, page).textContent = count(rows.filter((p) =>
+          (p.category || '').trim().toLowerCase() === c).length);
+      });
       rows = rows.filter((p) => !rsCat || (p.category || '').trim().toLowerCase() === rsCat);
       // The status counter above the table: what the category leaves, split
       // by status. A chip narrows the table to it; tapped again, it lets go.
@@ -4887,8 +4886,8 @@ SCREENS.inventory = async (page) => {
       $('#rs_stf', page).innerHTML = [['os', 'Out of stock'], ['is', 'In stock'], ['cs', 'Critical stocks']]
         .map(([k, l]) => `<button data-v="${k}" class="${rsStf === k ? 'on' : ''}">${l} (${count(n[k])})</button>`).join('');
       rows = rows.filter((p) => !rsStf || rsState(p) === rsStf);
-      if (rsQty) rows.sort((a, b) => available(b) - available(a));
-      else rows.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      // Most on hand first — the Quantity button is gone, its order stays.
+      rows.sort((a, b) => available(b) - available(a));
       rows.sort((a, b) => (isFreebie(a) ? 1 : 0) - (isFreebie(b) ? 1 : 0));
 
       $('#r_running', page).innerHTML = table(rows, [
@@ -4913,11 +4912,6 @@ SCREENS.inventory = async (page) => {
       const b = e.target.closest('button[data-v]');
       if (!b) return;
       rsStf = rsStf === b.dataset.v ? '' : b.dataset.v; running().catch(whoops);
-    });
-    $('#rs_qty', page).addEventListener('click', (e) => {
-      rsQty = !rsQty;
-      e.target.className = rsQty ? 'btn sm' : 'btn line sm';
-      running().catch(whoops);
     });
     await running();
     repeat(running, 30000);

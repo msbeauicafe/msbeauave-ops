@@ -153,11 +153,13 @@ test("Running stocks carries Product list's toolbar as its own copy", () => {
   const at = app.indexOf('SCREENS.inventory = async');
   const fn = app.slice(at, app.indexOf('\n};', at));
 
-  // Search, brand dropdown, the category chips (its own copy now, with All
-  // and Promo counted), Quantity — in the order
-  // Product list shows them, under this tab's own rs_ ids. No New product:
-  // the owner asked for that one left off.
-  assert.match(fn, /id="rs_find"[\s\S]*?id="rs_brand"[\s\S]*?id="cat_rs"[\s\S]*?id="rs_qty"/);
+  // Search, brand dropdown, the category chips (its own copy now, each one
+  // counted) — in the order Product list shows them, under this tab's own
+  // rs_ ids. No New product and no Quantity button: the owner asked for both
+  // left off; the table still lists most on hand first.
+  assert.match(fn, /id="rs_find"[\s\S]*?id="rs_brand"[\s\S]*?id="cat_rs"/);
+  assert.doesNotMatch(fn, /id="rs_qty"/);
+  for (const c of ['all', 'promo', 'freebies', 'product']) assert.match(fn, new RegExp(`id="rs_n_${c}"`));
   assert.match(fn, /wireCatChips\(page, 'cat_rs'/);
 
   // Product list's own toolbar is untouched and still its own.
