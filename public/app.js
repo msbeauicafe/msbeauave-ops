@@ -14925,6 +14925,8 @@ SCREENS.crm = async (page) => {
 // ===========================================================================
 const BR_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const BR_MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                        'August', 'September', 'October', 'November', 'December'];
 const BR_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // Always these seven boxes, in this order, whether or not Books happens to
 // carry an account by that name yet — a box reads ₱0.00 rather than vanish,
@@ -15002,13 +15004,75 @@ SCREENS.bankreport = async (page) => {
   // Which of Sales' four boxes is picked; it stays picked across periods.
   let brSalesFilter = 'all';
 
+  // The Dashboard's own day or month, separate from the tiles' period.
+  let dashPeriod = 'day';
+  let dashAnchor = today;
+
+  // Six figures under the Dashboard header for the day or month picked:
+  // Total sales is the Sales tile's own Total order amounts (every invoice
+  // by its packing list date); gross profit and running costs come off
+  // finance_summary(); the bank, AR and AP stand as they are right now.
+  const drawDash = async () => {
+    const box = $('#br_dash', page);
+    if (!box) return;
+    const { from, to } = brRange(dashPeriod, dashAnchor);
+    const { y, m, d } = brParts(dashAnchor);
+    $('#brd_label', page).textContent = dashPeriod === 'month'
+      ? `${BR_MONTHS_LONG[m - 1]} ${y}` : `${BR_MONTHS_LONG[m - 1]} ${d}, ${y}`;
+    $('#brd_next', page).disabled = brRange(dashPeriod, brShift(dashPeriod, dashAnchor, 1)).from > today;
+    const [fin, cash, payables, invoices] = await Promise.all([
+      GET(`/api/finance?from=${from}&to=${to}`),
+      GET('/api/books/cash'),
+      GET('/api/reports/payables'),
+      GET(`/api/bank-report/sales?from=${from}&to=${to}`),
+    ]);
+    if (view || !$('#br_dash', page)) return;
+    const bank = BR_CASH_BOXES.reduce((t, label) => t + Number(cash.accounts.find((a) =>
+      a.title.trim().toLowerCase() === label.toLowerCase())?.balance || 0), 0);
+    const figure = (label, amount, kind = '') => `
+      <div class="tile ${kind}"><div class="label">${label}</div><div class="big">${peso(amount || 0)}</div></div>`;
+    box.innerHTML = `
+      ${figure('Total sales', invoices.reduce((t, i) => t + Number(i.amount), 0))}
+      ${figure('Total bank balance', bank)}
+      ${figure('Outstanding AR', fin.wholesale.outstanding, 'good')}
+      ${figure('Outstanding AP', payables.total, Number(payables.total) > 0 ? 'bad' : '')}
+      ${figure('Gross profit', fin.gross_margin, Number(fin.gross_margin) < 0 ? 'bad' : 'good')}
+      ${figure('Operating expenses', fin.expenses.total)}`;
+  };
+
   const menu = () => {
     view = '';
     page.innerHTML = `
       <div class="head"><h2>Bank report</h2><span class="hint">Pick what to look at</span></div>
       <div class="brheader"><svg viewBox="0 0 24 24">${BR_ICONS.dashboard}</svg>Dashboard</div>
+      <div class="brdash">
+        <div class="subtabs" id="brd_period">
+          <button data-dp="day" class="${dashPeriod === 'day' ? 'on' : ''}">Daily</button>
+          <button data-dp="month" class="${dashPeriod === 'month' ? 'on' : ''}">Monthly</button>
+        </div>
+        <div class="brdate"><button class="btn sm quiet" id="brd_prev">‹</button>
+          <b id="brd_label"></b><button class="btn sm quiet" id="brd_next">›</button></div>
+        <div class="brfigs" id="br_dash"></div>
+      </div>
       ${brTiles(BR_INSIDE)}`;
     $$('[data-br]', page).forEach((b) => b.addEventListener('click', () => open(b.dataset.br)));
+    $$('[data-dp]', page).forEach((b) => b.addEventListener('click', () => {
+      if (b.classList.contains('on')) return;
+      $$('[data-dp]', page).forEach((x) => x.classList.toggle('on', x === b));
+      dashPeriod = b.dataset.dp;
+      dashAnchor = today;
+      drawDash().catch(whoops);
+    }));
+    $('#brd_prev', page).addEventListener('click', () => {
+      dashAnchor = brShift(dashPeriod, dashAnchor, -1);
+      drawDash().catch(whoops);
+    });
+    $('#brd_next', page).addEventListener('click', () => {
+      if ($('#brd_next', page).disabled) return;
+      dashAnchor = brShift(dashPeriod, dashAnchor, 1);
+      drawDash().catch(whoops);
+    });
+    drawDash().catch(whoops);
   };
 
   const open = (key) => {

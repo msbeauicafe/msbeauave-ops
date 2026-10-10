@@ -2039,3 +2039,11 @@ input.n { text-align: right; }
 .svfoot { display: flex; justify-content: flex-end; align-items: center; gap: 14px; margin-top: 12px;
   padding-top: 10px; border-top: 2px solid var(--rose-soft); color: var(--muted); }
 .svfoot b { color: var(--rose-deep); font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+/* Bank report's Dashboard: Daily/Monthly, the date bar and six figures. */
+.brdash { max-width: 980px; margin-bottom: 16px; }
+.brdate { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 14px;
+  padding: 10px 14px; background: #fff; border: 1px solid var(--rose-soft); border-radius: 12px; }
+.brdate b { font-size: 1.05rem; letter-spacing: .03em; text-transform: uppercase; color: var(--ink); }
+.brfigs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.brfigs .tile .label { font-size: .85rem; margin-bottom: 4px; }
+@media (max-width: 600px) { .brfigs { grid-template-columns: 1fr; } }
