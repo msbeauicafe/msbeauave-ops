@@ -312,3 +312,20 @@ test("Sales' period follows the packing list's date, the same one Issued date sh
                                 where i.id = any($1::bigint[])`, [data.map((x) => x.id)]);
   assert.deepEqual(days.rows.map((x) => x.day), [day], 'nothing from another day');
 });
+
+// The Dashboard under the header: Daily / Monthly, a date bar, and six
+// figures — the hand-drawn layout — before the six tiles.
+test('Bank report Dashboard: Daily/Monthly, a date bar and six figures above the tiles', () => {
+  const at = app.indexOf('SCREENS.bankreport = async');
+  const fn = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
+  const menu = fn.slice(fn.indexOf('const menu = () => {'));
+  assert.ok(menu.indexOf('class="brheader"') < menu.indexOf('class="brdash"'));
+  assert.ok(menu.indexOf('class="brdash"') < menu.indexOf('${brTiles(BR_INSIDE)}'));
+  assert.match(menu, /data-dp="day"[^>]*>Daily<\/button>/);
+  assert.match(menu, /data-dp="month"[^>]*>Monthly<\/button>/);
+  const labels = [...fn.matchAll(/figure\('([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(labels, ['Total sales', 'Total bank balance', 'Outstanding AR', 'Outstanding AP',
+    'Gross profit', 'Operating expenses']);
+  assert.match(fn, /fin\.gross_margin/);
+  assert.match(fn, /fin\.expenses\.total/);
+});
