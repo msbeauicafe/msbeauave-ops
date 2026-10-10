@@ -14860,106 +14860,216 @@ const brLabel = (period, anchor, today) => {
   return anchor === today ? `Today · ${day}` : day;
 };
 
+// The tile menu Bank report opens on. Line icons drawn here, for this
+// screen alone.
+const BR_ICONS = {
+  dashboard: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  bank: '<path d="M3 21h18M5 21V10M9 21V10M15 21V10M19 21V10M2 10l10-6 10 6z"/>',
+  sales: '<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  purchases: '<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L22 7H6"/>',
+  expenses: '<path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15v4"/><path d="M3 5v14a2 2 0 0 0 2 2h15v-5"/><path d="M17 12h5v4h-5a2 2 0 0 1 0-4z"/>',
+  payable: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
+  receivable: '<path d="M11 14h2a2 2 0 0 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 16"/><path d="m7 20 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.8-2.8l-4.2 3.9"/><circle cx="16" cy="6" r="3"/>',
+};
+const BR_TILES = [['dashboard', 'Dashboard'], ['bank', 'Bank'], ['sales', 'Sales'],
+  ['purchases', 'Purchases'], ['expenses', 'Expenses'], ['payable', 'Accounts payable'],
+  ['receivable', 'Accounts receivable']];
+// Which tiles read a day / week / month; the rest stand as they are today.
+const BR_PERIODIC = ['dashboard', 'sales', 'purchases', 'expenses'];
+const BR_STANDING = { paid: ['Paid', 'green'], pending: ['Pending', 'amber'], overdue: ['Overdue', 'red'] };
+
 SCREENS.bankreport = async (page) => {
   const today = localDay();
   let period = 'day';
   let anchor = today;
+  let view = '';
 
-  page.innerHTML = `
-    <div class="head"><h2>Bank report</h2>
-      <span class="hint">Sales, cash and what's owed, by day, week or month</span></div>
-    <div class="tools">
-      <div class="subtabs" id="br_period">
-        <button data-period="day" class="on">Day</button>
-        <button data-period="week">Week</button>
-        <button data-period="month">Month</button>
-      </div>
-      <button class="btn sm quiet" id="br_prev">‹</button>
-      <b id="br_label"></b>
-      <button class="btn sm quiet" id="br_next">›</button>
-    </div>
-    <div id="br_body"></div>`;
-
-  const load = async () => {
-    const { from, to } = brRange(period, anchor);
-    $('#br_label', page).textContent = brLabel(period, anchor, today);
-    const nextFrom = brRange(period, brShift(period, anchor, 1)).from;
-    $('#br_next', page).disabled = nextFrom > today;
-
-    const [fin, cash, payables] = await Promise.all([
-      GET(`/api/finance?from=${from}&to=${to}`),
-      GET('/api/books/cash'),
-      GET('/api/reports/payables'),
-    ]);
-    const money = (v) => peso(v || 0);
-    const sales = Number(fin.counter.revenue) + Number(fin.wholesale.invoiced);
-    const txns = Number(fin.counter.sales) + Number(fin.wholesale.orders);
-    const expenses = Number(fin.expenses.total) + Number(fin.counter.cost) + Number(fin.wholesale.cost);
-    const cashIn = Number(fin.cash.movement);
-    const receivables = Number(fin.wholesale.outstanding);
-    const payablesTotal = Number(payables.total);
-
-    $('#br_body', page).innerHTML = `
-      <div class="tiles">
-        <div class="tile"><div class="big">${money(sales)}</div>
-          <div class="label">Sales · ${count(txns)} transaction${txns === 1 ? '' : 's'}</div></div>
-        <div class="tile"><div class="big">${money(expenses)}</div>
-          <div class="label">Expenses · incl. cost of goods sold</div></div>
-        <div class="tile ${Number(fin.net) < 0 ? 'bad' : 'good'}"><div class="big">${money(fin.net)}</div>
-          <div class="label">Net profit</div></div>
-        <div class="tile ${cashIn < 0 ? 'bad' : 'good'}"><div class="big">${money(cashIn)}</div>
-          <div class="label">Net cash in${cashIn < 0 ? ' (out)' : ''}</div></div>
-      </div>
-
-      <div class="split">
-        <div class="panel">
-          <h3>Cash position</h3>
-          <div class="br-cash-grid">
-            ${BR_CASH_BOXES.map((label) => {
-              const acct = cash.accounts.find((a) =>
-                a.title.trim().toLowerCase() === label.toLowerCase());
-              return `
-              <div class="br-cash-acct">
-                <div class="label">${esc(label)}</div>
-                <div class="big">${money(acct?.balance)}</div>
-              </div>`;
-            }).join('')}
-          </div>
-          <div class="br-cash-total"><span>Total</span><b>${money(
-            BR_CASH_BOXES.reduce((s, label) => s + Number(cash.accounts.find((a) =>
-              a.title.trim().toLowerCase() === label.toLowerCase())?.balance || 0), 0))}</b></div>
-          <div class="dim mt">A box reads ₱0.00 until an account by that exact name exists
-            in Books and carries a balance — set one up or correct it there, not here.</div>
-        </div>
-
-        <div>
-          <div class="tile good"><div class="big">${money(receivables)}</div>
-            <div class="label">Receivables · customers owe you</div></div>
-          <div class="tile ${payablesTotal > 0 ? 'bad' : ''}" style="margin-top:14px">
-            <div class="big">${money(payablesTotal)}</div>
-            <div class="label">Payables · you owe suppliers</div></div>
-        </div>
-      </div>`;
+  const menu = () => {
+    view = '';
+    page.innerHTML = `
+      <div class="head"><h2>Bank report</h2><span class="hint">Pick what to look at</span></div>
+      <div class="brgrid">${BR_TILES.map(([k, l]) => `<button class="brtile" data-br="${k}">
+        <svg viewBox="0 0 24 24">${BR_ICONS[k]}</svg>${esc(l)}</button>`).join('')}</div>`;
+    $$('[data-br]', page).forEach((b) => b.addEventListener('click', () => open(b.dataset.br)));
   };
 
-  $$('[data-period]', page).forEach((b) => b.addEventListener('click', () => {
-    if (b.classList.contains('on')) return;
-    $$('[data-period]', page).forEach((x) => x.classList.toggle('on', x === b));
-    period = b.dataset.period;
-    anchor = today;
+  const open = (key) => {
+    view = key;
+    const label = BR_TILES.find(([k]) => k === key)[1];
+    const periodic = BR_PERIODIC.includes(key);
+    page.innerHTML = `
+      <div class="head"><button class="btn sm quiet" id="br_back">‹ Bank report</button>
+        <h2>${esc(label)}</h2></div>
+      ${periodic ? `<div class="tools">
+        <div class="subtabs" id="br_period">
+          ${['day', 'week', 'month'].map((x) => `<button data-period="${x}" class="${period === x ? 'on' : ''}">${
+            x[0].toUpperCase() + x.slice(1)}</button>`).join('')}
+        </div>
+        <button class="btn sm quiet" id="br_prev">‹</button>
+        <b id="br_label"></b>
+        <button class="btn sm quiet" id="br_next">›</button>
+      </div>` : ''}
+      <div id="br_body"></div>`;
+    $('#br_back', page).addEventListener('click', menu);
+    if (periodic) {
+      $$('[data-period]', page).forEach((b) => b.addEventListener('click', () => {
+        if (b.classList.contains('on')) return;
+        $$('[data-period]', page).forEach((x) => x.classList.toggle('on', x === b));
+        period = b.dataset.period;
+        anchor = today;
+        load().catch(whoops);
+      }));
+      $('#br_prev', page).addEventListener('click', () => {
+        anchor = brShift(period, anchor, -1);
+        load().catch(whoops);
+      });
+      $('#br_next', page).addEventListener('click', () => {
+        if ($('#br_next', page).disabled) return;
+        anchor = brShift(period, anchor, 1);
+        load().catch(whoops);
+      });
+    }
     load().catch(whoops);
-  }));
-  $('#br_prev', page).addEventListener('click', () => {
-    anchor = brShift(period, anchor, -1);
-    load().catch(whoops);
-  });
-  $('#br_next', page).addEventListener('click', () => {
-    if ($('#br_next', page).disabled) return;
-    anchor = brShift(period, anchor, 1);
-    load().catch(whoops);
-  });
+  };
 
-  await load();
+  const load = async () => {
+    const body = $('#br_body', page);
+    if (!body) return;
+    const { from, to } = brRange(period, anchor);
+    if (BR_PERIODIC.includes(view)) {
+      $('#br_label', page).textContent = brLabel(period, anchor, today);
+      $('#br_next', page).disabled = brRange(period, brShift(period, anchor, 1)).from > today;
+    }
+    const money = (v) => peso(v || 0);
+
+    if (view === 'dashboard') {
+      const fin = await GET(`/api/finance?from=${from}&to=${to}`);
+      const sales = Number(fin.counter.revenue) + Number(fin.wholesale.invoiced);
+      const txns = Number(fin.counter.sales) + Number(fin.wholesale.orders);
+      const expenses = Number(fin.expenses.total) + Number(fin.counter.cost) + Number(fin.wholesale.cost);
+      const cashIn = Number(fin.cash.movement);
+
+      body.innerHTML = `
+        <div class="tiles">
+          <div class="tile"><div class="big">${money(sales)}</div>
+            <div class="label">Sales · ${count(txns)} transaction${txns === 1 ? '' : 's'}</div></div>
+          <div class="tile"><div class="big">${money(expenses)}</div>
+            <div class="label">Expenses · incl. cost of goods sold</div></div>
+          <div class="tile ${Number(fin.net) < 0 ? 'bad' : 'good'}"><div class="big">${money(fin.net)}</div>
+            <div class="label">Net profit</div></div>
+          <div class="tile ${cashIn < 0 ? 'bad' : 'good'}"><div class="big">${money(cashIn)}</div>
+            <div class="label">Net cash in${cashIn < 0 ? ' (out)' : ''}</div></div>
+        </div>`;
+      return;
+    }
+
+    if (view === 'bank') {
+      const cash = await GET('/api/books/cash');
+      const bal = (label) => cash.accounts.find((a) =>
+        a.title.trim().toLowerCase() === label.toLowerCase())?.balance;
+      body.innerHTML = `
+        <div class="panel"><h3>Cash position</h3>
+          <div class="br-cash-grid">
+            ${BR_CASH_BOXES.map((label) => `
+              <div class="br-cash-acct"><div class="label">${esc(label)}</div>
+                <div class="big">${money(bal(label))}</div></div>`).join('')}
+          </div>
+          <div class="br-cash-total"><span>Total</span><b>${money(
+            BR_CASH_BOXES.reduce((t, label) => t + Number(bal(label) || 0), 0))}</b></div>
+          <div class="dim mt">A box reads ₱0.00 until an account by that exact name exists
+            in Books and carries a balance — set one up or correct it there, not here.</div>
+        </div>`;
+      return;
+    }
+
+    if (view === 'sales') {
+      const rows = await GET(`/api/bank-report/sales?from=${from}&to=${to}`);
+      const total = rows.reduce((t, i) => t + Number(i.amount), 0);
+      body.innerHTML = `
+        <div class="tiles"><div class="tile"><div class="big">${money(total)}</div>
+          <div class="label">Invoiced · ${count(rows.length)} invoice${rows.length === 1 ? '' : 's'}</div></div></div>
+        <div class="panel">${table(rows, [
+          { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no)}</b>` },
+          { head: 'Distributor', cell: (i) => esc(i.reseller) },
+          { head: 'Issued', cell: (i) => onDay(i.issued_on) },
+          { head: 'Due', cell: (i) => onDay(i.due_on) },
+          { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
+          { head: 'Balance', n: true, cell: (i) => peso(i.balance) },
+          { head: 'Status', cell: (i) => tag(...BR_STANDING[i.standing]) },
+        ], 'No invoices in this period.')}</div>`;
+      return;
+    }
+
+    if (view === 'purchases') {
+      const rows = await GET(`/api/bank-report/purchases?from=${from}&to=${to}`);
+      const total = rows.filter((o) => o.status !== 'cancelled').reduce((t, o) => t + Number(o.total), 0);
+      body.innerHTML = `
+        <div class="tiles"><div class="tile"><div class="big">${money(total)}</div>
+          <div class="label">Ordered · ${count(rows.length)} purchase order${rows.length === 1 ? '' : 's'}</div></div></div>
+        <div class="panel">${table(rows, [
+          { head: 'PO no.', cell: (o) => `<b>${esc(o.po_no || `#${o.id}`)}</b>` },
+          { head: 'Supplier', cell: (o) => esc(o.supplier) },
+          { head: 'Ordered', cell: (o) => onDay(o.ordered_on) },
+          { head: 'Amount', n: true, cell: (o) => peso(o.total) },
+          { head: 'Status', cell: (o) => tag(String(o.status || '').replace(/_/g, ' '),
+            o.status === 'cancelled' ? 'red' : o.status === 'received' ? 'green' : 'amber') },
+        ], 'No purchase orders in this period.')}</div>`;
+      return;
+    }
+
+    if (view === 'expenses') {
+      const fin = await GET(`/api/finance?from=${from}&to=${to}`);
+      const rows = (fin.entries || []).filter((e) => !e.voided);
+      const total = rows.reduce((t, e) => t + Number(e.amount), 0);
+      body.innerHTML = `
+        <div class="tiles"><div class="tile"><div class="big">${money(total)}</div>
+          <div class="label">Spent · ${count(rows.length)} expense${rows.length === 1 ? '' : 's'}</div></div></div>
+        <div class="panel">${table(rows, [
+          { head: 'Date', cell: (e) => onDay(e.spent_on) },
+          { head: 'Kind', cell: (e) => tag(esc(e.kind), 'grey') },
+          { head: 'Description', cell: (e) => esc(e.description || '') },
+          { head: 'Paid by', cell: (e) => esc(e.method || '') },
+          { head: 'Amount', n: true, cell: (e) => peso(e.amount) },
+        ], 'No expenses in this period.')}</div>`;
+      return;
+    }
+
+    if (view === 'payable') {
+      const rows = await GET('/api/bank-report/payables');
+      const total = rows.reduce((t, r) => t + Number(r.balance), 0);
+      body.innerHTML = `
+        <div class="tiles"><div class="tile ${total > 0 ? 'bad' : ''}"><div class="big">${money(total)}</div>
+          <div class="label">You owe suppliers · ${count(rows.length)} bill${rows.length === 1 ? '' : 's'}</div></div></div>
+        <div class="panel">${table(rows, [
+          { head: 'Supplier', cell: (r) => `<b>${esc(r.supplier)}</b>` },
+          { head: 'PO no.', cell: (r) => esc(r.po_no || '') },
+          { head: 'Their invoice', cell: (r) => esc(r.invoice_no || '—') },
+          { head: 'Due', cell: (r) => r.due_date ? onDay(r.due_date) : '<span class="dim">—</span>' },
+          { head: 'Billed', n: true, cell: (r) => peso(r.amount) },
+          { head: 'Paid', n: true, cell: (r) => peso(r.paid) },
+          { head: 'Balance', n: true, cell: (r) => `<b>${peso(r.balance)}</b>` },
+        ], 'Nothing owed to suppliers 🌸')}</div>`;
+      return;
+    }
+
+    if (view === 'receivable') {
+      const { ageing } = await GET('/api/reports/receivables');
+      const total = ageing.reduce((t, r) => t + Number(r.total_owed), 0);
+      body.innerHTML = `
+        <div class="tiles"><div class="tile good"><div class="big">${money(total)}</div>
+          <div class="label">Customers owe you · ${count(ageing.length)} account${ageing.length === 1 ? '' : 's'}</div></div></div>
+        <div class="panel">${table(ageing, [
+          { head: 'Customer', cell: (r) => `<b>${esc(r.name)}</b>` },
+          { head: 'Not yet due', n: true, cell: (r) => peso(r.not_yet_due) },
+          { head: '1–30 days late', n: true, cell: (r) => peso(r.overdue_1_30) },
+          { head: '31–60 days late', n: true, cell: (r) => peso(r.overdue_31_60) },
+          { head: '60+ days late', n: true, cell: (r) => peso(r.overdue_60_plus) },
+          { head: 'Total owed', n: true, cell: (r) => `<b>${peso(r.total_owed)}</b>` },
+        ], 'Everyone is paid up 🌸')}</div>`;
+    }
+  };
+
+  menu();
 };
 
 // ===========================================================================
