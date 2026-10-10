@@ -15042,10 +15042,26 @@ SCREENS.bankreport = async (page) => {
 
     if (view === 'sales') {
       const rows = await GET(`/api/bank-report/sales?from=${from}&to=${to}`);
-      const total = rows.reduce((t, i) => t + Number(i.amount), 0);
+      // Four boxes over the period's invoices: everything ordered, the fully
+      // paid, the ones with nothing paid yet, and the part-paid with a
+      // balance still open (shown as what is still owed on them).
+      const sum = (list, f) => list.reduce((t, i) => t + Number(f(i)), 0);
+      const paidSoFar = (i) => Number(i.amount) - Number(i.balance);
+      const paid = rows.filter((i) => Number(i.balance) <= 0);
+      const unpaid = rows.filter((i) => Number(i.balance) > 0 && paidSoFar(i) <= 0);
+      const part = rows.filter((i) => Number(i.balance) > 0 && paidSoFar(i) > 0);
+      const n = (list) => `${count(list.length)} invoice${list.length === 1 ? '' : 's'}`;
       body.innerHTML = `
-        <div class="tiles"><div class="tile"><div class="big">${money(total)}</div>
-          <div class="label">Invoiced · ${count(rows.length)} invoice${rows.length === 1 ? '' : 's'}</div></div></div>
+        <div class="tiles">
+          <div class="tile"><div class="big">${money(sum(rows, (i) => i.amount))}</div>
+            <div class="label">Total order amounts · ${n(rows)}</div></div>
+          <div class="tile good"><div class="big">${money(sum(paid, (i) => i.amount))}</div>
+            <div class="label">Paid transactions · ${n(paid)}</div></div>
+          <div class="tile bad"><div class="big">${money(sum(unpaid, (i) => i.amount))}</div>
+            <div class="label">Unpaid transactions · ${n(unpaid)}</div></div>
+          <div class="tile warn"><div class="big">${money(sum(part, (i) => i.balance))}</div>
+            <div class="label">Balance transactions · ${n(part)} part-paid</div></div>
+        </div>
         <div class="panel">${table(rows, [
           { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no)}</b>` },
           { head: 'Distributor', cell: (i) => esc(i.reseller) },
