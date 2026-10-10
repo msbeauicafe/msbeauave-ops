@@ -99,7 +99,7 @@ test('Bank report sits right after Customer order in the admin menu, nowhere els
 // ---------------------------------------------------------------------------
 // The screen itself — reads real figures, touches no shared formula
 // ---------------------------------------------------------------------------
-test('SCREENS.bankreport reads the same finance figures Finance already uses, plus Books cash and the new payables total', () => {
+test('SCREENS.bankreport reads the same finance figures Finance already uses, plus Books cash and its own lists', () => {
   assert.match(app, /SCREENS\.bankreport = async/);
   const at = app.indexOf('SCREENS.bankreport = async');
   const fn = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
@@ -108,10 +108,10 @@ test('SCREENS.bankreport reads the same finance figures Finance already uses, pl
     "the same finance_summary() figures Finance's own screen reads, not a second formula");
   assert.match(fn, /GET\('\/api\/books\/cash'\)/,
     "Cash position reads Books' own cash accounts, the exact route Books' own Cash screen reads");
-  assert.match(fn, /GET\('\/api\/reports\/payables'\)/);
-
-  assert.match(fn, /fin\.wholesale\.outstanding/,
-    "Receivables reuses finance_summary()'s own outstanding figure rather than a second query");
+  for (const route of ['/api/bank-report/sales?from=', '/api/bank-report/purchases?from=',
+    "/api/bank-report/payables'", "/api/reports/receivables'"]) {
+    assert.ok(fn.includes(route), `reads ${route}`);
+  }
 
   // This screen only displays Books' cash accounts — no button or call here
   // ever creates, marks or renames one; that stays Books' own screen's job.
@@ -138,10 +138,8 @@ test('Cash position is a fixed set of seven named boxes, not just whatever Books
 test('the Day/Week/Month toggle is a real subtabs control, and the next arrow cannot be pushed into the future', () => {
   const at = app.indexOf('SCREENS.bankreport = async');
   const fn = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
-  assert.match(fn, /data-period="day"/);
-  assert.match(fn, /data-period="week"/);
-  assert.match(fn, /data-period="month"/);
-  assert.match(fn, /br_next.*\.disabled = nextFrom > today/s,
+  assert.match(fn, /\['day', 'week', 'month'\]\.map\(\(x\) => `<button data-period="\$\{x\}"/);
+  assert.match(fn, /\$\('#br_next', page\)\.disabled = brRange\(period, brShift\(period, anchor, 1\)\)\.from > today/,
     "the next arrow is disabled once the next period would start after today");
 });
 
@@ -166,4 +164,39 @@ test('a cashier sign-in cannot read the payables total — owner only, same as R
   const cashier = await signIn('cashier');
   const r = await GET(cashier, '/api/reports/payables');
   assert.notEqual(r.status, 200, JSON.stringify(r.data));
+});
+
+// ---------------------------------------------------------------------------
+// The tile menu — Bank report opens on seven tiles, each its own page
+// ---------------------------------------------------------------------------
+test('Bank report opens on the tile menu, and each tile has a way back', () => {
+  assert.match(app, /const BR_TILES = \[\['dashboard', 'Dashboard'\], \['bank', 'Bank'\], \['sales', 'Sales'\],\s*\['purchases', 'Purchases'\], \['expenses', 'Expenses'\], \['payable', 'Accounts payable'\],\s*\['receivable', 'Accounts receivable'\]\];/);
+  const at = app.indexOf('SCREENS.bankreport = async');
+  const fn = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
+  assert.match(fn, /class="brgrid"/);
+  assert.match(fn, /id="br_back"/);
+  assert.match(fn, /\n  menu\(\);\n\};\n/, 'it opens on the menu');
+});
+
+test("Bank report's own lists: sales and purchases by period, unpaid supplier bills", async () => {
+  const admin = await signIn('admin');
+  const bill = await newPOBill(admin, 1234);
+  const owed = (await GET(admin, '/api/bank-report/payables')).data;
+  assert.ok(owed.some((r) => Number(r.id) === Number(bill) && Number(r.balance) === 1234), JSON.stringify(owed).slice(0, 300));
+  for (const r of owed) assert.ok(Number(r.balance) > 0, 'only what is still owed');
+
+  const sales = await GET(admin, '/api/bank-report/sales?from=2000-01-01&to=2100-01-01');
+  assert.equal(sales.status, 200);
+  for (const i of sales.data) assert.ok(['paid', 'pending', 'overdue'].includes(i.standing));
+  const pos = await GET(admin, '/api/bank-report/purchases?from=2000-01-01&to=2100-01-01');
+  assert.equal(pos.status, 200);
+  assert.ok(pos.data.length > 0 && 'total' in pos.data[0] && 'supplier' in pos.data[0]);
+});
+
+test("a cashier sign-in cannot read Bank report's lists", async () => {
+  const cashier = await signIn('cashier');
+  for (const p of ['/api/bank-report/sales?from=2000-01-01&to=2100-01-01',
+    '/api/bank-report/purchases?from=2000-01-01&to=2100-01-01', '/api/bank-report/payables']) {
+    assert.notEqual((await GET(cashier, p)).status, 200, p);
+  }
 });

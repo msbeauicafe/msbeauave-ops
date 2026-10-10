@@ -2013,3 +2013,13 @@ input.n { text-align: right; }
 .rschips button { border: 1px solid var(--rose-soft); background: #fff; border-radius: 999px; padding: 3px 12px;
   font: inherit; font-size: .78rem; color: var(--muted); cursor: pointer; }
 .rschips button.on { background: var(--rose-deep); border-color: var(--rose-deep); color: #fff; }
+
+/* Bank report's tile menu — this screen's own. */
+.brgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 980px; }
+.brtile { display: flex; align-items: center; gap: 12px; padding: 18px 20px; background: #fff;
+  border: 1px solid var(--rose-soft); border-radius: 12px; font: inherit; font-weight: 600; font-size: .95rem;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--ink); cursor: pointer; text-align: left; }
+.brtile:hover { border-color: var(--rose-deep); box-shadow: 0 2px 10px rgba(160, 80, 110, .12); }
+.brtile svg { width: 22px; height: 22px; flex: none; fill: none; stroke: var(--rose-deep); stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 600px) { .brgrid { grid-template-columns: 1fr; } }
