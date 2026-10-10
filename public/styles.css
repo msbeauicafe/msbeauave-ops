@@ -2004,3 +2004,12 @@ input.n { text-align: right; }
 .dashattn { color: var(--rose-deep); margin: 8px 0 10px; display: flex; gap: 10px; align-items: baseline; }
 @media (max-width: 1200px) { .dashkpis { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 900px) { .dashkpis { grid-template-columns: repeat(2, 1fr); } .dashgrid { grid-template-columns: 1fr; } }
+
+/* Running stocks' own counter (Internal Inventory Report) — a copy of the
+   dashboard's chips, kept separate so neither screen moves the other. */
+.rshd { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.rshd h3 { margin: 0; }
+.rschips { display: flex; gap: 6px; flex-wrap: wrap; }
+.rschips button { border: 1px solid var(--rose-soft); background: #fff; border-radius: 999px; padding: 3px 12px;
+  font: inherit; font-size: .78rem; color: var(--muted); cursor: pointer; }
+.rschips button.on { background: var(--rose-deep); border-color: var(--rose-deep); color: #fff; }
