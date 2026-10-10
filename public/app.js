@@ -14874,6 +14874,12 @@ const BR_ICONS = {
 const BR_TILES = [['dashboard', 'Dashboard'], ['bank', 'Bank'], ['sales', 'Sales'],
   ['purchases', 'Purchases'], ['expenses', 'Expenses'], ['payable', 'Accounts payable'],
   ['receivable', 'Accounts receivable']];
+// The menu shows Dashboard alone; the other six are tiles inside Dashboard,
+// and each of them comes back to Dashboard rather than the menu.
+const BR_MENU = ['dashboard'];
+const BR_INSIDE = ['sales', 'bank', 'expenses', 'purchases', 'receivable', 'payable'];
+const brTiles = (keys) => `<div class="brgrid">${keys.map((k) => `<button class="brtile" data-br="${k}">
+  <svg viewBox="0 0 24 24">${BR_ICONS[k]}</svg>${esc(BR_TILES.find(([x]) => x === k)[1])}</button>`).join('')}</div>`;
 // Which tiles read a day / week / month; the rest stand as they are today.
 const BR_PERIODIC = ['dashboard', 'sales', 'purchases', 'expenses'];
 const BR_STANDING = { paid: ['Paid', 'green'], pending: ['Pending', 'amber'], overdue: ['Overdue', 'red'] };
@@ -14888,8 +14894,7 @@ SCREENS.bankreport = async (page) => {
     view = '';
     page.innerHTML = `
       <div class="head"><h2>Bank report</h2><span class="hint">Pick what to look at</span></div>
-      <div class="brgrid">${BR_TILES.map(([k, l]) => `<button class="brtile" data-br="${k}">
-        <svg viewBox="0 0 24 24">${BR_ICONS[k]}</svg>${esc(l)}</button>`).join('')}</div>`;
+      ${brTiles(BR_MENU)}`;
     $$('[data-br]', page).forEach((b) => b.addEventListener('click', () => open(b.dataset.br)));
   };
 
@@ -14898,7 +14903,7 @@ SCREENS.bankreport = async (page) => {
     const label = BR_TILES.find(([k]) => k === key)[1];
     const periodic = BR_PERIODIC.includes(key);
     page.innerHTML = `
-      <div class="head"><button class="btn sm quiet" id="br_back">‹ Bank report</button>
+      <div class="head"><button class="btn sm quiet" id="br_back">‹ ${BR_INSIDE.includes(key) ? 'Dashboard' : 'Bank report'}</button>
         <h2>${esc(label)}</h2></div>
       ${periodic ? `<div class="tools">
         <div class="subtabs" id="br_period">
@@ -14910,7 +14915,7 @@ SCREENS.bankreport = async (page) => {
         <button class="btn sm quiet" id="br_next">›</button>
       </div>` : ''}
       <div id="br_body"></div>`;
-    $('#br_back', page).addEventListener('click', menu);
+    $('#br_back', page).addEventListener('click', () => (BR_INSIDE.includes(key) ? open('dashboard') : menu()));
     if (periodic) {
       $$('[data-period]', page).forEach((b) => b.addEventListener('click', () => {
         if (b.classList.contains('on')) return;
@@ -14959,7 +14964,9 @@ SCREENS.bankreport = async (page) => {
             <div class="label">Net profit</div></div>
           <div class="tile ${cashIn < 0 ? 'bad' : 'good'}"><div class="big">${money(cashIn)}</div>
             <div class="label">Net cash in${cashIn < 0 ? ' (out)' : ''}</div></div>
-        </div>`;
+        </div>
+        ${brTiles(BR_INSIDE)}`;
+      $$('[data-br]', body).forEach((b) => b.addEventListener('click', () => open(b.dataset.br)));
       return;
     }
 
