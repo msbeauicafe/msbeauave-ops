@@ -1693,3 +1693,12 @@ test('Running stocks has its own status counter', () => {
   const wh = app.slice(app.indexOf('SCREENS.warehouseinventory = async'));
   assert.doesNotMatch(wh.slice(0, wh.indexOf('\n};\n')), /rschips/);
 });
+
+// The dashboard no longer carries a Product stock table — the owner asked
+// for it gone; Running stocks is where stock is read now.
+test('the dashboard has no Product stock table', () => {
+  const at = app.indexOf('SCREENS.dashboard = async');
+  const fn = app.slice(at, app.indexOf('\n};\n', at));
+  assert.doesNotMatch(fn, /Product stock|dash_stock|dash_stf|dash_q|drawStock/);
+  assert.match(fn, /Recent invoices/, 'the rest of the dashboard stays');
+});
