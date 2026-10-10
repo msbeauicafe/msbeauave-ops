@@ -15070,7 +15070,8 @@ SCREENS.bankreport = async (page) => {
         <div class="panel">${table(groups[brSalesFilter][0], [
           { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no)}</b>` },
           { head: 'Client name', cell: (i) => esc(i.reseller) },
-          { head: 'Issued', cell: (i) => onDay(i.issued_on) },
+          // The packing list's own date, the one printed on it.
+          { head: 'Issued date', cell: (i) => (i.packing_list_on ? onDay(i.packing_list_on) : '<span class="dim">—</span>') },
           { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
           { head: 'Status', cell: (i) => tag(...BR_STANDING[i.standing]) },
           { head: 'Balance', n: true, cell: (i) => peso(i.balance) },
