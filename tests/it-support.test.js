@@ -288,3 +288,17 @@ test("Hardware assets has its own zoomable viewer, not the app-wide lightbox", (
   assert.match(app, /data-itzoom="\/api\/it\/asset-files\/\$\{f\.id\}"/);
   assert.doesNotMatch(app, /data-zoom="\/api\/it\//, 'the shared lightbox is left alone');
 });
+
+test('intake asks for specs and description, not a PO; Supplier is Supplier / store', async () => {
+  assert.match(app, /<label for="as_supplier">Supplier \/ store<\/label>/);
+  assert.match(app, /<label for="as_specs">Specs and description<\/label>/);
+  assert.doesNotMatch(app, /id="as_po"/, 'the purchase order box is gone');
+
+  const it = await signInIT();
+  const { id } = (await POST(it, '/api/it/assets', {
+    kind: 'desktop', tag: `MSBA-DESK-${process.pid}${seq++}`, brand: 'Asus',
+    model: 'AIO M3402WFA', supplier: 'PC Express', specs: 'Ryzen 5 7520U, 8GB RAM, 512GB SSD',
+  })).data;
+  const row = (await GET(it, '/api/it/assets')).data.find((a) => a.id === id);
+  assert.equal(row.specs, 'Ryzen 5 7520U, 8GB RAM, 512GB SSD');
+});
