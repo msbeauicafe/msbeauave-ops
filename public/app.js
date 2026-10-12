@@ -16292,6 +16292,19 @@ const IT_CATEGORY = { hardware: 'Hardware', software: 'Software', network: 'Netw
 // The company's departments, as the owner named them. Picked, never typed.
 const IT_DEPARTMENTS = ['Marketing', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'Other'];
 
+// IT's hardware masterlist (db/184). The tag prefix is the shop's own
+// convention — MSBA-LAP-001, MSBA-DESK-054 — so the next tag can be offered.
+const IT_KINDS = {
+  laptop: ['Laptop', 'LAP'], desktop: ['Desktop', 'DESK'], smartphone: ['Smartphone', 'PHN'],
+  monitor: ['Monitor', 'MON'], peripheral: ['Peripherals', 'PER'],
+};
+const IT_ASSET_STATUS = {
+  storage: ['In storage (unboxed)', 'grey'], assigned: ['Assigned to employee', 'green'],
+  repair: ['Under repair', 'amber'], retired: ['Disposed / retired', 'red'],
+};
+const IT_CONDITION = { brand_new: 'Brand new', sealed: 'Sealed', unboxed: 'Unboxed',
+  missing_items: 'Missing items' };
+
 // One ticket's conversation, oldest first. IT's replies are marked as IT's.
 const itThread = (t) => `
   <div class="itthread">${(t.messages || []).map((m) => `
@@ -16311,7 +16324,7 @@ SCREENS.itsupport = async (page) => {
   const isIT = user.it === true;
   // IT works the queue and files concerns for others; everybody else files
   // their own and follows them. Two views either way, one switch.
-  const views = isIT ? [['dash', 'IT Dashboard'], ['file', 'File Concern']]
+  const views = isIT ? [['dash', 'IT Dashboard'], ['file', 'File Concern'], ['assets', 'Hardware assets']]
     : [['file', 'File Concern'], ['mine', 'My requests']];
   let view = views[0][0];
   const filters = { status: '', urgency: '', q: '' };
@@ -16327,7 +16340,7 @@ SCREENS.itsupport = async (page) => {
       <div class="itswitch" role="tablist">${views.map(([k, l]) => `
         <button data-itview="${k}" role="tab">${l}</button>`).join('')}</div>
     </div>
-    <div class="itstats panel">
+    <div class="itstats panel" id="it_stats">
       <div><span>Total logs</span><b id="it_total">0</b></div>
       <div><span>Active backlog</span><b id="it_active" class="amber">0</b></div>
       <div><span>Critical tasks</span><b id="it_critical" class="red">0</b></div>
@@ -16465,17 +16478,212 @@ SCREENS.itsupport = async (page) => {
     }));
   };
 
+  // -------------------------------------------------------------------------
+  // Hardware assets — IT only. Receive, unbox, tag, log: one form that keeps
+  // the delivery's details for the next unit out of the same box, and the
+  // masterlist under it. A row opens a drawer to say who has it now.
+  // -------------------------------------------------------------------------
+  let assets = [];
+  const af = { q: '', kind: '', brand: '', status: '' };
+  const nextTag = (kind) => {
+    const pre = `MSBA-${IT_KINDS[kind][1]}-`;
+    const top = assets.reduce((n, a) => (String(a.tag).toUpperCase().startsWith(pre)
+      ? Math.max(n, Number(String(a.tag).slice(pre.length)) || 0) : n), 0);
+    return pre + String(top + 1).padStart(3, '0');
+  };
+  const described = (a) => [a.brand, a.model].filter(Boolean).join(' ');
+
+  const drawAssets = async () => {
+    assets = (await GET('/api/it/assets')) || [];
+    if (!$('#as_list', body)) {
+      body.innerHTML = `
+        <div class="panel">
+          <div class="itsteps"><span>📦 Receive</span><span>✂️ Unbox</span>
+            <span>🏷️ Asset-tag</span><span>📋 Log</span></div>
+          <h3 class="mt">Intake &amp; unboxing</h3>
+          <div class="dim">Enter on any box adds the unit and clears for the next one.
+            Type, brand, supplier and PO stay filled — the next unit is usually from
+            the same delivery.</div>
+          <form id="as_form" class="asgrid mt" autocomplete="off">
+            <div><label for="as_kind">Hardware type</label><select id="as_kind">${
+              Object.entries(IT_KINDS).map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select></div>
+            <div><label for="as_tag">Asset tag ID</label><input id="as_tag" type="text"></div>
+            <div><label for="as_brand">Manufacturer / brand</label>
+              <input id="as_brand" type="text" list="as_brands" placeholder="Dell, Lenovo, Epson…">
+              <datalist id="as_brands"></datalist></div>
+            <div><label for="as_model">Model no.</label><input id="as_model" type="text"></div>
+            <div><label for="as_serial">Serial no. (S/N)</label><input id="as_serial" type="text"></div>
+            <div><label for="as_supplier">Supplier</label>
+              <input id="as_supplier" type="text" list="as_suppliers">
+              <datalist id="as_suppliers"></datalist></div>
+            <div><label for="as_po">Purchase order ID</label><input id="as_po" type="text"></div>
+            <div class="wide"><label>Physical condition</label>
+              <div class="ascheck">${Object.entries(IT_CONDITION).map(([k, l]) => `
+                <label><input type="checkbox" data-ascond="${k}"> ${l}</label>`).join('')}</div></div>
+            <div class="wide"><button class="btn itsendbig" id="as_go" type="submit">⚡ Quick add &amp; clear</button></div>
+          </form>
+        </div>
+
+        <div class="itstats panel" id="as_counts"></div>
+
+        <div class="panel">
+          <h3>Masterlist</h3>
+          <div class="tools">
+            <input type="search" id="as_q" placeholder="Search tag, serial, brand, model, person…">
+            <select id="as_fkind"><option value="">Every type</option>${Object.entries(IT_KINDS)
+              .map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select>
+            <select id="as_fbrand"><option value="">Every brand</option></select>
+            <select id="as_fstatus"><option value="">Every status</option>${Object.entries(IT_ASSET_STATUS)
+              .map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select>
+          </div>
+          <div id="as_list" class="mt"></div>
+        </div>`;
+
+      const kind = $('#as_kind', body);
+      kind.addEventListener('change', () => { $('#as_tag', body).value = nextTag(kind.value); });
+      $('#as_form', body).addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const go = $('#as_go', body);
+        go.disabled = true;
+        try {
+          const tagNow = $('#as_tag', body).value.trim();
+          await POST('/api/it/assets', {
+            kind: kind.value, tag: tagNow, brand: $('#as_brand', body).value,
+            model: $('#as_model', body).value, serial_no: $('#as_serial', body).value,
+            supplier: $('#as_supplier', body).value, po_ref: $('#as_po', body).value,
+            condition: $$('[data-ascond]', body).filter((c) => c.checked).map((c) => c.dataset.ascond),
+          });
+          notice(`${tagNow.toUpperCase()} logged 🏷️`, 'good');
+          // The unit is on the list; the box is cleared for the next one.
+          $('#as_model', body).value = '';
+          $('#as_serial', body).value = '';
+          $$('[data-ascond]', body).forEach((c) => { c.checked = false; });
+          await drawAssets();
+          $('#as_tag', body).value = nextTag(kind.value);
+          $('#as_serial', body).focus();
+        } catch (err) { whoops(err); } finally { go.disabled = false; }
+      });
+      $('#as_q', body).addEventListener('input', (e) => { af.q = e.target.value; drawMasterlist(); });
+      $('#as_fkind', body).addEventListener('change', (e) => { af.kind = e.target.value; drawMasterlist(); });
+      $('#as_fbrand', body).addEventListener('change', (e) => { af.brand = e.target.value; drawMasterlist(); });
+      $('#as_fstatus', body).addEventListener('change', (e) => { af.status = e.target.value; drawMasterlist(); });
+      $('#as_tag', body).value = nextTag(kind.value);
+    }
+    drawMasterlist();
+  };
+
+  const drawMasterlist = () => {
+    const brands = [...new Set(assets.map((a) => a.brand).filter(Boolean))].sort();
+    const suppliers = [...new Set(assets.map((a) => a.supplier).filter(Boolean))].sort();
+    $('#as_brands', body).innerHTML = brands.map((b) => `<option value="${esc(b)}">`).join('');
+    $('#as_suppliers', body).innerHTML = suppliers.map((b) => `<option value="${esc(b)}">`).join('');
+    $('#as_fbrand', body).innerHTML = '<option value="">Every brand</option>' + brands.map((b) =>
+      `<option value="${esc(b)}"${b === af.brand ? ' selected' : ''}>${esc(b)}</option>`).join('');
+
+    const n = (st) => assets.filter((a) => a.status === st).length;
+    $('#as_counts', body).style.gridTemplateColumns = 'repeat(5, 1fr)';
+    $('#as_counts', body).innerHTML = `
+      <div><span>On the masterlist</span><b>${assets.length}</b></div>
+      <div><span>In storage</span><b>${n('storage')}</b></div>
+      <div><span>Assigned</span><b>${n('assigned')}</b></div>
+      <div><span>Under repair</span><b class="amber">${n('repair')}</b></div>
+      <div><span>Retired</span><b class="red">${n('retired')}</b></div>`;
+
+    const q = af.q.trim().toLowerCase();
+    const rows = assets.filter((a) => (!af.kind || a.kind === af.kind)
+      && (!af.brand || a.brand === af.brand) && (!af.status || a.status === af.status)
+      && (!q || [a.tag, a.serial_no, a.brand, a.model, a.assigned_to, a.supplier, a.po_ref]
+        .some((v) => String(v || '').toLowerCase().includes(q))));
+    $('#as_list', body).innerHTML = table(rows, [
+      { head: 'Asset tag', cell: (a) => `<button class="nameopen" data-asopen="${a.id}"><b>${esc(a.tag)}</b></button>` },
+      { head: 'Category', cell: (a) => esc((IT_KINDS[a.kind] || [a.kind])[0]) },
+      { head: 'Item description', cell: (a) => `${esc(described(a))}${(a.condition || []).includes('missing_items')
+          ? ' ' + tag('missing items', 'red') : ''}` },
+      { head: 'Serial no.', cell: (a) => (a.serial_no ? `<code>${esc(a.serial_no)}</code>` : '<span class="dim">—</span>') },
+      { head: 'Date logged', cell: (a) => onDay(a.logged_at) },
+      { head: 'Status', cell: (a) => {
+          const [l, k] = IT_ASSET_STATUS[a.status] || [a.status, 'grey'];
+          return `${tag(l, k)}${a.assigned_to ? `<div class="dim">${esc(a.assigned_to)}${
+            a.department ? ' · ' + esc(a.department) : ''}</div>` : ''}`; } },
+      { head: '', cell: (a) => `<button class="btn line sm" data-asopen="${a.id}">Assign / update</button>` },
+    ], q || af.kind || af.brand || af.status ? 'Nothing matches that.' : 'Nothing logged yet — add the first unit above.');
+    $$('[data-asopen]', body).forEach((b) => b.addEventListener('click',
+      () => assetDrawer(assets.find((a) => String(a.id) === b.dataset.asopen))));
+  };
+
+  // The side drawer: who has this unit now.
+  const assetDrawer = (a) => {
+    if (!a) return;
+    $('#as_drawer')?.remove();
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+    const people = choices.people || [];
+    const wrap = document.createElement('div');
+    wrap.id = 'as_drawer';
+    wrap.className = 'asveil';
+    wrap.innerHTML = `
+      <aside class="asdrawer" role="dialog" aria-label="Assign ${esc(a.tag)}">
+        <div class="row" style="align-items:center">
+          <div><h3 style="margin:0">${esc(a.tag)}</h3>
+            <div class="dim">${esc(described(a))}${a.serial_no ? ' · S/N ' + esc(a.serial_no) : ''}</div></div>
+          <button class="dialog-x" id="asd_x" aria-label="Close">✕</button>
+        </div>
+        <div class="mt"><label for="asd_status">Status</label>
+          <select id="asd_status">${Object.entries(IT_ASSET_STATUS).map(([k, [l]]) =>
+            `<option value="${k}"${k === (a.status === 'storage' ? 'assigned' : a.status) ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="mt"><label for="asd_who">Assigned employee</label>
+          <select id="asd_who"><option value="">— pick somebody —</option>${
+            [...new Set([...(a.assigned_to ? [a.assigned_to] : []), ...people])].map((n) =>
+              `<option${n === a.assigned_to ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+        <div class="mt"><label for="asd_dept">Department</label>
+          <select id="asd_dept"><option value="">—</option>${IT_DEPARTMENTS.map((d) =>
+            `<option${d === a.department ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select></div>
+        <div class="mt"><label for="asd_on">Deployment date</label>
+          <input id="asd_on" type="date" value="${esc(String(a.deployed_on || today).slice(0, 10))}"></div>
+        <div class="mt"><label for="asd_notes">IT notes</label>
+          <textarea id="asd_notes" rows="4" placeholder="e.g. Configured with the accounting system and Epson printer drivers">${esc(a.notes || '')}</textarea></div>
+        <div class="dim mt">Logged ${when(a.logged_at)} by ${esc(a.logged_by)}${a.supplier ? ` · from ${esc(a.supplier)}` : ''}${
+          a.po_ref ? ` · PO ${esc(a.po_ref)}` : ''}${(a.condition || []).length ? ` · ${a.condition.map((c) => IT_CONDITION[c] || c).join(', ')}` : ''}</div>
+        <button class="btn itsendbig mt" id="asd_save">Save</button>
+      </aside>`;
+    document.body.append(wrap);
+    const close = () => wrap.remove();
+    const sync = () => {
+      const on = ['assigned', 'repair'].includes($('#asd_status').value);
+      ['#asd_who', '#asd_dept', '#asd_on'].forEach((sel) => { $(sel).disabled = !on; });
+    };
+    sync();
+    $('#asd_status').addEventListener('change', sync);
+    $('#asd_x').addEventListener('click', close);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    $('#asd_save').addEventListener('click', async () => {
+      try {
+        await PUT(`/api/it/assets/${a.id}`, {
+          status: $('#asd_status').value, assigned_to: $('#asd_who').value,
+          department: $('#asd_dept').value, deployed_on: $('#asd_on').value,
+          notes: $('#asd_notes').value,
+        });
+        notice(`${a.tag} — ${IT_ASSET_STATUS[$('#asd_status').value][0]}`, 'good');
+        close();
+        await drawAssets();
+      } catch (err) { whoops(err); }
+    });
+    $('#asd_status').focus();
+  };
+
   const show = (v) => {
     view = v;
     $$('[data-itview]', page).forEach((b) => b.classList.toggle('on', b.dataset.itview === v));
+    // The ticket counts belong to the queue, not the hardware.
+    $('#it_stats', page).style.display = v === 'assets' ? 'none' : '';
     if (v === 'file') drawForm();
+    else if (v === 'assets') { body.innerHTML = ''; drawAssets().catch(whoops); }
     else { body.innerHTML = ''; drawList(); }
   };
 
   const load = async () => {
     tickets = (await GET(isIT ? '/api/it/queue' : '/api/it/mine')) || [];
     stats();
-    if (view !== 'file') drawList();
+    if (view === 'dash' || view === 'mine') drawList();
   };
 
   $$('[data-itview]', page).forEach((b) => b.addEventListener('click', () => show(b.dataset.itview)));
