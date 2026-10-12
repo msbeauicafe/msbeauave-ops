@@ -11065,13 +11065,20 @@ SCREENS.coinvoices = async (page) => {
   // re-filter and redraw on every keystroke without asking the server again
   // — only an actual reload (a payment recorded, a dialog closed) re-fetches.
   let allRows = [];
+  // Date range: the invoice issued date the list shows, From and To picked
+  // under the Date range button; empty means every date.
+  let invFrom = '';
+  let invTo = '';
+  const issuedDay = (o) => new Date(o.invoice_issued_on || o.placed_at)
+    .toLocaleDateString('en-CA', { timeZone: TZ });
 
   const draw = () => {
     const search = ($('#coinv_search', page)?.value || '').trim().toLowerCase();
     const pick = $('#coinv_standing_pick', page)?.value || '';
     const rows = allRows.filter((o) =>
       (!search || (o.reseller || '').toLowerCase().includes(search))
-      && (!pick || standingLabel(o) === pick));
+      && (!pick || standingLabel(o) === pick)
+      && (!invFrom || issuedDay(o) >= invFrom) && (!invTo || issuedDay(o) <= invTo));
 
     $('#coinv_list', page).innerHTML = table(rows, [
       { head: 'Customer order no.', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
@@ -11181,10 +11188,45 @@ SCREENS.coinvoices = async (page) => {
           <option value="unpaid">unpaid</option>
           <option value="void">void</option>
         </select></div>
+      <div><label for="coinv_range">Date range</label>
+        <span class="coinv-rangewrap"><button type="button" class="coinv-range" id="coinv_range">
+          <span aria-hidden="true">📅</span> <span id="coinv_range_label">From – To</span>
+          <span aria-hidden="true">▾</span></button></span></div>
     </div>
     <div id="coinv_list"></div>`;
   $('#coinv_search', page).addEventListener('input', draw);
   $('#coinv_standing_pick', page).addEventListener('change', draw);
+  // The Invoice tab's own From – To drop-down: two dates, Apply, Clear.
+  $('#coinv_range', page).addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = $('#coinv_rangepop', page);
+    if (open) { open.remove(); return; }
+    const today = localDay();
+    const pop = document.createElement('div');
+    pop.id = 'coinv_rangepop';
+    pop.className = 'coinv-rangepop';
+    pop.innerHTML = `
+      <div><label for="coinv_from">From</label><input id="coinv_from" type="date" value="${invFrom}" max="${today}"></div>
+      <div><label for="coinv_to">To</label><input id="coinv_to" type="date" value="${invTo}" max="${today}"></div>
+      <div class="row"><button type="button" class="btn sm line" id="coinv_clear">Clear</button>
+        <button type="button" class="btn sm" id="coinv_apply">Apply</button></div>`;
+    $('#coinv_range', page).after(pop);
+    const shut = (ev) => {
+      if (!pop.contains(ev.target)) { pop.remove(); document.removeEventListener('click', shut, true); }
+    };
+    setTimeout(() => document.addEventListener('click', shut, true));
+    const set = (from, to) => {
+      [invFrom, invTo] = from && to && from > to ? [to, from] : [from, to];
+      $('#coinv_range_label', page).textContent = invFrom || invTo
+        ? `${invFrom ? onDay(invFrom) : 'Start'} – ${invTo ? onDay(invTo) : 'today'}` : 'From – To';
+      $('#coinv_range', page).classList.toggle('on', !!(invFrom || invTo));
+      pop.remove();
+      document.removeEventListener('click', shut, true);
+      draw();
+    };
+    $('#coinv_apply', pop).addEventListener('click', () => set($('#coinv_from', pop).value, $('#coinv_to', pop).value));
+    $('#coinv_clear', pop).addEventListener('click', () => set('', ''));
+  });
   await load();
 };
 

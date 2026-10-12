@@ -2181,3 +2181,16 @@ input.n { text-align: right; }
 /* The BANK and CASH words over the two columns, larger (owner's ask); the
    subtotal beside each keeps its size. */
 .br-cash-colhd > span:first-child { font-size: 1.45rem; letter-spacing: .06em; }
+
+/* Customer order → Invoice: the Date range button and its drop-down. */
+.coinv-rangewrap { position: relative; display: inline-block; }
+.coinv-range { display: flex; gap: 8px; align-items: center; min-width: 230px; background: #fff;
+  border: 1px solid var(--rose-soft); border-radius: 10px; padding: 9px 12px; font: inherit;
+  color: var(--muted); cursor: pointer; text-align: left; }
+.coinv-range #coinv_range_label { flex: 1; white-space: nowrap; }
+.coinv-range.on { color: var(--ink, inherit); border-color: var(--rose-deep); }
+.coinv-rangepop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; background: #fff;
+  border: 1px solid var(--rose-soft); border-radius: 12px; padding: 12px; width: 260px;
+  box-shadow: 0 12px 30px rgba(60, 20, 40, .16); display: grid; gap: 8px; }
+.coinv-rangepop input { width: 100%; }
+.coinv-rangepop .row { justify-content: flex-end; gap: 8px; }
