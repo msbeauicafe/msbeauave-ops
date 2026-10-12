@@ -418,3 +418,28 @@ test("Cash position's BANK and CASH headings are set larger, their subtotals unc
   const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
   assert.match(css, /\.br-cash-colhd > span:first-child \{ font-size: 1\.45rem;/);
 });
+
+test('Bank Transactions: a payment reads by its SI no. and payor; a PO payment is money out with its PO no. and supplier', async () => {
+  const admin = await signIn('admin');
+
+  // A paid purchase order bill comes through as money out.
+  const billId = await newPOBill(admin, 5000);
+  const paid = await POST(admin, `/api/purchase-order-bills/${billId}/payments`,
+    { amount: 1200, method: 'BANCO DE ORO (BDO)', note: 'First half' });
+  assert.equal(paid.status, 200, JSON.stringify(paid.data));
+  const po = (await GET(admin, '/api/bank-report/po-payments')).data.find((x) => Number(x.id) === paid.data.id);
+  assert.ok(po, 'the PO payment is listed');
+  assert.ok(po.po_no && po.supplier, 'with its PO no. and supplier');
+  assert.equal(Number(po.amount), 1200);
+  assert.equal(po.method, 'BANCO DE ORO (BDO)');
+
+  const cashier = await signIn('cashier');
+  assert.notEqual((await GET(cashier, '/api/bank-report/po-payments')).status, 200);
+
+  // The screen maps the columns as asked.
+  const at = app.indexOf("if (view === 'bank') {");
+  const block = app.slice(at, app.indexOf("if (view === 'sales')", at));
+  assert.match(block, /ref: l\.si_no \|\| l\.entry_no \|\| '', party: l\.payor \|\| l\.memo \|\| ''/);
+  assert.match(block, /ref: x\.po_no,\s*\n\s*party: x\.supplier, account: methodAccount\(x\.method\), dir: 'out'/);
+  assert.match(block, /<option value="po">Purchase order payments<\/option>/);
+});

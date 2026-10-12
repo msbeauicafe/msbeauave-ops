@@ -15396,7 +15396,8 @@ SCREENS.bankreport = async (page) => {
               ${BR_BT_ACCOUNTS.map((x) => `<option>${esc(x)}</option>`).join('')}</select>
             <select id="bt_kind"><option value="">Every type</option>
               ${Object.entries(BR_BT_KINDS).map(([k, [l]]) => `<option value="${k}">${esc(l)}</option>`).join('')}
-              <option value="books">Books entries</option></select>
+              <option value="books">Books entries</option>
+              <option value="po">Purchase order payments</option></select>
             <span class="btrange-wrap"><button type="button" class="btrange" id="bt_range">
               <span aria-hidden="true">📅</span> <span id="bt_range_label">From – To</span> <span aria-hidden="true">▾</span></button></span>
           </div>
@@ -15409,11 +15410,26 @@ SCREENS.bankreport = async (page) => {
       const ledger = await GET('/api/bank-report/ledger').catch(() => []);
       const acctName = (title) => BR_BT_ACCOUNTS.find((x) =>
         x.toLowerCase() === String(title || '').trim().toLowerCase()) || title;
+      // A customer's payment reads by its invoice and who paid it; any other
+      // Books line keeps Books' own entry number and description.
       const booksRows = ledger.map((l) => ({
         src: 'books', key: `b${l.id}`, day: String(l.entry_date).slice(0, 10),
-        ref: l.entry_no || '', party: l.memo || '', account: acctName(l.account),
+        ref: l.si_no || l.entry_no || '', party: l.payor || l.memo || '', account: acctName(l.account),
         dir: Number(l.debit) > 0 ? 'in' : 'out', amount: Number(l.debit) > 0 ? l.debit : l.credit,
         kind: 'books', balance: Number(l.running), note: l.line_memo || '',
+      }));
+      // Money out on purchase orders: the PO no., the supplier, and the
+      // account its payment method names. Not posted to Books, so no Books
+      // balance to show beside it.
+      const poPaid = await GET('/api/bank-report/po-payments').catch(() => []);
+      const methodAccount = (m) => ({
+        cash: 'Cash on hand', gcash: 'GCash', 'banco de oro (bdo)': 'BDO', bdo: 'BDO',
+        bpi: 'BPI', 'security bank': 'Security Bank',
+      })[String(m || '').trim().toLowerCase()] || 'Bank';
+      const poRows = poPaid.map((x) => ({
+        src: 'po', key: `p${x.id}`, day: String(x.paid_on).slice(0, 10), ref: x.po_no,
+        party: x.supplier, account: methodAccount(x.method), dir: 'out', amount: x.amount,
+        kind: 'po', balance: null, note: [x.method, x.note].filter(Boolean).join(' · '),
       }));
       // The period picked under From – To; empty means every date.
       let btFrom = '';
@@ -15442,7 +15458,7 @@ SCREENS.bankreport = async (page) => {
           src: 'stmt', key: `s${t.id}`, day: String(t.txn_on).slice(0, 10), ref: t.reference,
           party: t.party, account: t.account, dir: t.direction, amount: t.amount, kind: t.kind,
           balance: bal.get(t.id) || 0, note: t.note || '',
-        })).concat(booksRows)
+        })).concat(booksRows, poRows)
           .sort((a, b) => b.day.localeCompare(a.day) || (a.src === b.src ? 0 : a.src === 'books' ? 1 : -1));
         const rows = all.filter((t) => (!acct || t.account === acct) && (!kind || t.kind === kind)
           && (!btFrom || t.day >= btFrom) && (!btTo || t.day <= btTo)
@@ -15461,11 +15477,13 @@ SCREENS.bankreport = async (page) => {
             <td>${esc(t.account)}</td>
             <td class="c">${t.dir === 'in'
               ? '<span class="btin" title="Money in">▲</span>' : '<span class="btout" title="Money out">▼</span>'}</td>
-            <td>${t.src === 'books' ? tag('Books', 'grey')
+            <td>${t.src === 'books' ? tag('Books', 'grey') : t.src === 'po' ? tag('Purchase order', 'amber')
               : tag(...(BR_BT_KINDS[t.kind] || [t.kind, 'grey']))}</td>
             <td class="n">${t.dir === 'in' ? peso(t.amount) : ''}</td>
             <td class="n">${t.dir === 'out' ? peso(t.amount) : ''}</td>
-            <td class="n"><b>${peso(t.balance)}</b></td>
+            <td class="n">${t.balance == null
+              ? '<span class="dim" title="Not posted to Books, so no Books balance">—</span>'
+              : `<b>${peso(t.balance)}</b>`}</td>
             <td>${t.note ? esc(t.note) : '<span class="dim">—</span>'}</td></tr>`).join('')
           : `<tr><td colspan="10"><div class="btempty">
               <span class="bticon big" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/>
