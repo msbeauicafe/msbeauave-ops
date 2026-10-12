@@ -11065,12 +11065,18 @@ SCREENS.coinvoices = async (page) => {
   // re-filter and redraw on every keystroke without asking the server again
   // — only an actual reload (a payment recorded, a dialog closed) re-fetches.
   let allRows = [];
-  // Date range: the invoice issued date the list shows, From and To picked
-  // under the Date range button; empty means every date.
+  // Date range: the Packing list issued date the list shows, From and To
+  // picked under the Date range button; empty means every date. An invoice
+  // with no packing list yet has no such date, so a range leaves it out.
   let invFrom = '';
   let invTo = '';
-  const issuedDay = (o) => new Date(o.invoice_issued_on || o.placed_at)
-    .toLocaleDateString('en-CA', { timeZone: TZ });
+  const packedDay = (o) => (o.packing_list_issued_at
+    ? new Date(o.packing_list_issued_at).toLocaleDateString('en-CA', { timeZone: TZ }) : '');
+  const inRange = (o) => {
+    if (!invFrom && !invTo) return true;
+    const d = packedDay(o);
+    return !!d && (!invFrom || d >= invFrom) && (!invTo || d <= invTo);
+  };
 
   const draw = () => {
     const search = ($('#coinv_search', page)?.value || '').trim().toLowerCase();
@@ -11078,7 +11084,7 @@ SCREENS.coinvoices = async (page) => {
     const rows = allRows.filter((o) =>
       (!search || (o.reseller || '').toLowerCase().includes(search))
       && (!pick || standingLabel(o) === pick)
-      && (!invFrom || issuedDay(o) >= invFrom) && (!invTo || issuedDay(o) <= invTo));
+      && inRange(o));
 
     $('#coinv_list', page).innerHTML = table(rows, [
       { head: 'Customer order no.', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
