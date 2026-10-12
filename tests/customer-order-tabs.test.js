@@ -1729,13 +1729,15 @@ test('Inventory stock value report ends with JPEG and PDF downloads and the tota
   assert.match(block, /const svPdf = \(jpegs, pxW, pxH\) =>/);
 });
 
-test("Invoice tab: a Date range after Standing narrows the list by invoice issued date — its own code", () => {
+test("Invoice tab: a Date range after Standing narrows the list by packing list issued date — its own code", () => {
   const at = app.indexOf('SCREENS.coinvoices = async');
   const fn = app.slice(at, app.indexOf('\n};\n', at));
   assert.match(fn, /id="coinv_standing_pick"[\s\S]*?<label for="coinv_range">Date range<\/label>/,
     'Date range sits right after Standing');
-  assert.match(fn, /\(!invFrom \|\| issuedDay\(o\) >= invFrom\) && \(!invTo \|\| issuedDay\(o\) <= invTo\)/);
-  assert.match(fn, /const issuedDay = \(o\) => new Date\(o\.invoice_issued_on \|\| o\.placed_at\)/,
-    'the same date the Invoice issued date column shows');
+  assert.match(fn, /const packedDay = \(o\) => \(o\.packing_list_issued_at/,
+    'the same date the Packing list issued date column shows, not the invoice date');
+  assert.match(fn, /return !!d && \(!invFrom \|\| d >= invFrom\) && \(!invTo \|\| d <= invTo\);/,
+    'no packing list yet means outside any range');
+  assert.doesNotMatch(fn, /issuedDay/);
   assert.doesNotMatch(app.slice(0, at), /coinv_range/, 'nothing outside the Invoice tab');
 });
