@@ -289,11 +289,18 @@ test('Sales shows Total order amounts, Paid, Unpaid and Balance transactions', (
   assert.match(block, /table\(groups\[brSalesFilter\]\[0\]/);
 });
 
-test("Sales' columns: Invoice no., Client name, Issued date (the packing list's), Amount, Status, Balance", () => {
+test("Sales' columns, in the owner's order: the four boxes split row by row, Status last", () => {
   const at = app.indexOf("if (view === 'sales')");
   const block = app.slice(at, app.indexOf("if (view === 'purchases')", at));
   const heads = [...block.matchAll(/head: '([^']*)'/g)].map((m) => m[1]);
-  assert.deepEqual(heads, ['Invoice no.', 'Client name', 'Issued date', 'Amount', 'Status', 'Balance']);
+  assert.deepEqual(heads, ['Invoice no.', 'Client name', 'Issued date', 'Total orders', 'Total paid',
+    'Total unpaid', 'Balance', 'Total balance', 'Status']);
+  // Unpaid and Balance follow the boxes: nothing paid yet, or part-paid.
+  assert.match(block, /head: 'Total unpaid', n: true, cell: \(i\) => \(Number\(i\.balance\) > 0 && paidSoFar\(i\) <= 0/);
+  assert.match(block, /head: 'Balance', n: true, cell: \(i\) => \(Number\(i\.balance\) > 0 && paidSoFar\(i\) > 0/);
+  // Purchases' and Expenses' tables are untouched.
+  const rest = app.slice(app.indexOf("if (view === 'purchases')", at));
+  assert.match(rest, /head: 'PO no\.'[\s\S]*?head: 'Amount'[\s\S]*?head: 'Status'/);
   // Issued date is the packing list's own date, not the invoice's.
   assert.match(block, /onDay\(i\.packing_list_on\)/);
 });
