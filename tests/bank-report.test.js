@@ -413,3 +413,8 @@ test("a box's Books entries come through to the transactions list, with Books' r
   const cashier = await signIn('cashier');
   assert.notEqual((await GET(cashier, '/api/bank-report/ledger')).status, 200, 'the owner\'s book');
 });
+
+test("Cash position's BANK and CASH headings are set larger, their subtotals unchanged", () => {
+  const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  assert.match(css, /\.br-cash-colhd > span:first-child \{ font-size: 1\.45rem;/);
+});

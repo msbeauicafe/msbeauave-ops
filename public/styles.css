@@ -2178,3 +2178,6 @@ input.n { text-align: right; }
 .br-cash-pick:hover, .br-cash-pick:focus-visible { border-color: var(--rose-deep); background: var(--rose-blush); }
 .br-cash-pick.on { border-color: var(--rose-deep); background: var(--rose-blush);
   box-shadow: inset 0 0 0 1px var(--rose-deep); }
+/* The BANK and CASH words over the two columns, larger (owner's ask); the
+   subtotal beside each keeps its size. */
+.br-cash-colhd > span:first-child { font-size: 1.45rem; letter-spacing: .06em; }
