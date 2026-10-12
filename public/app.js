@@ -15466,9 +15466,17 @@ SCREENS.bankreport = async (page) => {
           { head: 'Client name', cell: (i) => esc(i.reseller) },
           // The packing list's own date, the one printed on it.
           { head: 'Issued date', cell: (i) => (i.packing_list_on ? onDay(i.packing_list_on) : '<span class="dim">—</span>') },
-          { head: 'Amount', n: true, cell: (i) => peso(i.amount) },
+          // The four boxes above, row by row: what was ordered, what came in,
+          // and what is still owed — split the way the boxes split it, as
+          // unpaid (nothing in yet) or balance (part-paid), then together.
+          { head: 'Total orders', n: true, cell: (i) => peso(i.amount) },
+          { head: 'Total paid', n: true, cell: (i) => peso(paidSoFar(i)) },
+          { head: 'Total unpaid', n: true, cell: (i) => (Number(i.balance) > 0 && paidSoFar(i) <= 0
+              ? peso(i.balance) : '<span class="dim">—</span>') },
+          { head: 'Balance', n: true, cell: (i) => (Number(i.balance) > 0 && paidSoFar(i) > 0
+              ? peso(i.balance) : '<span class="dim">—</span>') },
+          { head: 'Total balance', n: true, cell: (i) => `<b>${peso(Math.max(Number(i.balance), 0))}</b>` },
           { head: 'Status', cell: (i) => tag(...BR_STANDING[i.standing]) },
-          { head: 'Balance', n: true, cell: (i) => peso(i.balance) },
         ], brSalesFilter === 'all' ? 'No invoices in this period.' : 'None of those in this period.')}</div>`;
         $$('[data-sf]', body).forEach((b) => b.addEventListener('click', () => {
           brSalesFilter = b.dataset.sf;
