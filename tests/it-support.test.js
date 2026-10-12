@@ -199,3 +199,55 @@ test('for every admin, IT support goes to the top of the menu; only IT gets the 
   assert.match(app, /if \(user\.role === 'admin'\) \{\s*\n\s*tabs = \[\.\.\.tabs\.filter\(\(\[id\]\) => id === 'itsupport'\)/);
   assert.match(app, /const isIT = user\.it === true;/);
 });
+
+test("IT's hardware masterlist: intake, no duplicate tags or serials, assigning, IT's alone", async () => {
+  const it = await signInIT();
+  const tag = `MSBA-LAP-${process.pid}${seq++}`;
+  const serial = `SN-${process.pid}-${Date.now()}`;
+
+  const added = await POST(it, '/api/it/assets', {
+    kind: 'laptop', tag: tag.toLowerCase(), brand: 'Lenovo', model: 'ThinkPad E14',
+    serial_no: serial, supplier: 'Octagon', po_ref: 'PO-0912', condition: ['brand_new', 'sealed'],
+  });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+  let row = (await GET(it, '/api/it/assets')).data.find((a) => a.id === added.data.id);
+  assert.equal(row.tag, tag, 'the tag is kept in capitals however it was typed');
+  assert.equal(row.status, 'storage', 'a new unit starts in storage');
+  assert.deepEqual(row.condition, ['brand_new', 'sealed']);
+
+  assert.notEqual((await POST(it, '/api/it/assets', { kind: 'laptop', tag, brand: 'Dell' })).status, 200,
+    'one tag, one unit');
+  assert.notEqual((await POST(it, '/api/it/assets',
+    { kind: 'laptop', tag: `${tag}-B`, brand: 'Dell', serial_no: serial })).status, 200,
+    'two units never share a serial number');
+  assert.notEqual((await POST(it, '/api/it/assets',
+    { kind: 'laptop', tag: `${tag}-C`, brand: 'Dell', condition: ['aaaaa'] })).status, 200,
+    'a condition off the checklist is refused');
+
+  assert.notEqual((await PUT(it, `/api/it/assets/${added.data.id}`, { status: 'assigned' })).status, 200,
+    'assigned means assigned to somebody');
+  const assigned = await PUT(it, `/api/it/assets/${added.data.id}`, {
+    status: 'assigned', assigned_to: 'Maria Santos', department: 'Accounting',
+    deployed_on: '2026-10-12', notes: 'Accounting system and Epson drivers',
+  });
+  assert.equal(assigned.status, 200, JSON.stringify(assigned.data));
+  row = (await GET(it, '/api/it/assets')).data.find((a) => a.id === added.data.id);
+  assert.equal(row.assigned_to, 'Maria Santos');
+  assert.equal(row.department, 'Accounting');
+
+  await PUT(it, `/api/it/assets/${added.data.id}`, { status: 'storage', notes: 'Back from Maria' });
+  row = (await GET(it, '/api/it/assets')).data.find((a) => a.id === added.data.id);
+  assert.equal(row.assigned_to, null, 'back in storage, nobody has it');
+  assert.equal(row.notes, 'Back from Maria');
+
+  const other = await signIn('admin');
+  assert.notEqual((await GET(other, '/api/it/assets')).status, 200, 'another admin does not get it');
+  assert.notEqual((await POST(other, '/api/it/assets', { kind: 'laptop', tag: 'X', brand: 'Y' })).status, 200);
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select it_assets_all()'), /FORBIDDEN/);
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_assets'), /permission denied/);
+});
+
+test('Hardware assets is a third view for IT only', () => {
+  assert.match(app, /const views = isIT \? \[\['dash', 'IT Dashboard'\], \['file', 'File Concern'\], \['assets', 'Hardware assets'\]\]/);
+  assert.match(app, /: \[\['file', 'File Concern'\], \['mine', 'My requests'\]\]/, 'everybody else is unchanged');
+});
