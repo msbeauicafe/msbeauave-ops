@@ -4885,7 +4885,8 @@ SCREENS.inventory = async (page) => {
       <div class="panel mt"><div class="rshd"><h3>Inventory stock value report</h3>
           <div class="rschips" id="sv_stf"></div></div>
         <div id="r_value"></div>
-        <div class="svfoot"><button class="btn sm" id="sv_dl">⬇ Download</button>
+        <div class="svfoot"><button class="btn sm" id="sv_jpg">⬇ JPEG</button>
+          <button class="btn sm" id="sv_pdf">⬇ PDF</button>
           <span>Total value <span class="dim" id="sv_count"></span></span><b id="sv_total">₱0.00</b></div>
         </div>`;
 
@@ -4944,21 +4945,151 @@ SCREENS.inventory = async (page) => {
       ], term || svCat || svBrand || svStf ? 'No products match that.' : 'No products yet.');
     };
 
-    // Download: the rows on screen as a CSV that opens in Excel, the total
-    // value as its last line.
-    $('#sv_dl', page).addEventListener('click', () => {
-      const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const lines = [['Code', 'Product', 'Brand', 'Quantity', 'Cost price', 'Value', 'Status'].map(cell).join(',')];
-      svShown.forEach((p) => lines.push([p.sku, p.name, p.brand || '', available(p),
-        Number(p.unit_cost || 0).toFixed(2), worth(p).toFixed(2), SV_TAGS[svState(p)][0]].map(cell).join(',')));
-      lines.push(['', '', '', '', 'Total value', svShown.reduce((t, p) => t + worth(p), 0).toFixed(2), ''].map(cell).join(','));
-      const url = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv' }));
+    // Download: the report as it stands on screen — the same rows, the same
+    // filters, the total value — as a picture (JPEG) or a document (PDF),
+    // not a spreadsheet. Drawn here, by this tab's own code: nothing shared
+    // with any other screen's export.
+    const svFilters = () => [
+      ($('#sv_find', page)?.value || '').trim() && `Search "${$('#sv_find', page).value.trim()}"`,
+      svBrand && `Brand ${svBrand}`,
+      svCat && `Category ${svCat[0].toUpperCase()}${svCat.slice(1)}`,
+      svStf && ({ os: 'Out of stock', is: 'In stock', cs: 'Critical stocks' })[svStf],
+    ].filter(Boolean).join(' · ') || 'All products';
+
+    // One sheet: the heading, the rows given, and — on the last sheet — the
+    // total value. Width is fixed; the height is what the rows need.
+    const SV_W = 1240;
+    const SV_ROW = 30;
+    const SV_HEAD = 190;
+    const SV_FOOT = 110;
+    const svSheet = (rows, { part, parts, last, height }) => {
+      const font = getComputedStyle(document.body).fontFamily || 'sans-serif';
+      const c = document.createElement('canvas');
+      c.width = SV_W;
+      c.height = height || (SV_HEAD + rows.length * SV_ROW + (last ? SV_FOOT : 40));
+      const g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      const ink = '#3d2a33', soft = '#8a6f7b', line = '#ecd9e1', rose = '#a35b7a';
+      const fit = (text, w) => {
+        let t = String(text ?? '');
+        if (g.measureText(t).width <= w) return t;
+        while (t && g.measureText(t + '…').width > w) t = t.slice(0, -1);
+        return t + '…';
+      };
+      g.fillStyle = rose; g.font = `700 30px ${font}`;
+      g.fillText('MS BEAU AVE — Inventory stock value report', 50, 64);
+      g.fillStyle = soft; g.font = `15px ${font}`;
+      g.fillText(`${new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short', timeZone: TZ })}`
+        + ` · ${svFilters()} · ${count(svShown.length)} products`
+        + (parts > 1 ? ` · page ${part} of ${parts}` : ''), 50, 96);
+      // Columns: x, width, right-aligned.
+      const COLS = [['Code', 50, 130], ['Product', 190, 430], ['Brand', 630, 170],
+        ['Qty', 810, 70, true], ['Cost price', 890, 110, true], ['Value', 1010, 110, true], ['Status', 1135, 90]];
+      g.font = `600 14px ${font}`; g.fillStyle = soft;
+      COLS.forEach(([h, x, w, r]) => { g.textAlign = r ? 'right' : 'left'; g.fillText(h, r ? x + w : x, SV_HEAD - 22); });
+      g.fillStyle = rose; g.fillRect(50, SV_HEAD - 12, SV_W - 100, 2);
+      const STATUS = { os: ['Out of stock', '#b4475a'], cs: ['Critical', '#b07a12'], is: ['In stock', '#3f7d4e'] };
+      rows.forEach((p, i) => {
+        const y = SV_HEAD + i * SV_ROW + 8;
+        const cells = [p.sku, p.name, p.brand || '—', count(available(p)), peso(p.unit_cost), peso(worth(p))];
+        COLS.slice(0, 6).forEach(([, x, w, r], k) => {
+          g.textAlign = r ? 'right' : 'left';
+          g.font = `${k === 1 || k === 5 ? '600 ' : ''}14px ${font}`;
+          g.fillStyle = k === 0 ? soft : ink;
+          g.fillText(fit(cells[k], w - 8), r ? x + w : x, y + 6);
+        });
+        const [st, col] = STATUS[svState(p)];
+        g.textAlign = 'left'; g.font = `600 13px ${font}`; g.fillStyle = col;
+        g.fillText(st, 1135, y + 6);
+        g.fillStyle = line; g.fillRect(50, y + 14, SV_W - 100, 1);
+      });
+      if (last) {
+        const y = SV_HEAD + rows.length * SV_ROW + 50;
+        g.fillStyle = rose; g.fillRect(50, y - 30, SV_W - 100, 2);
+        g.textAlign = 'right';
+        g.font = `16px ${font}`; g.fillStyle = soft;
+        g.fillText(`Total value · ${count(svShown.length)} products`, 930, y + 8);
+        g.font = `700 28px ${font}`; g.fillStyle = rose;
+        g.fillText(peso(svShown.reduce((t, q) => t + worth(q), 0)), SV_W - 50, y + 10);
+      }
+      g.textAlign = 'left';
+      return c;
+    };
+    const svSave = (blob, name) => {
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `inventory-stock-value-${localDay()}.csv`;
-      a.click();
+      a.href = url; a.download = name; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    };
+    const svBlob = (c) => new Promise((done) => c.toBlob(done, 'image/jpeg', 0.8));
+
+    // JPEG: one long picture of the whole report. A browser will not draw a
+    // picture past about 32,000 pixels tall, so a list longer than 1,000
+    // products comes out as more than one picture, numbered.
+    $('#sv_jpg', page).addEventListener('click', async () => {
+      if (!svShown.length) return notice('Nothing to download — no products on the list.', 'bad');
+      const PER = 1000;
+      const parts = Math.ceil(svShown.length / PER);
+      for (let i = 0; i < parts; i += 1) {
+        const c = svSheet(svShown.slice(i * PER, (i + 1) * PER),
+          { part: i + 1, parts, last: i === parts - 1 });
+        svSave(await svBlob(c),
+          `inventory-stock-value-${localDay()}${parts > 1 ? `-part${i + 1}` : ''}.jpg`);
+      }
     });
+
+    // PDF: A4 pages, the rows carried over page to page, the total value on
+    // the last. Each page is drawn as a picture and the pictures put into a
+    // PDF by hand — a few lines here rather than a library for one button.
+    $('#sv_pdf', page).addEventListener('click', async () => {
+      if (!svShown.length) return notice('Nothing to download — no products on the list.', 'bad');
+      const A4_H = Math.round(SV_W * 297 / 210);
+      const PER = Math.floor((A4_H - SV_HEAD - SV_FOOT) / SV_ROW);
+      const parts = Math.max(1, Math.ceil(svShown.length / PER));
+      const pages = [];
+      for (let i = 0; i < parts; i += 1) {
+        const c = svSheet(svShown.slice(i * PER, (i + 1) * PER),
+          { part: i + 1, parts, last: i === parts - 1, height: A4_H });
+        pages.push(new Uint8Array(await (await svBlob(c)).arrayBuffer()));
+      }
+      svSave(svPdf(pages, SV_W, A4_H), `inventory-stock-value-${localDay()}.pdf`);
+    });
+
+    // A PDF of JPEG pages, A4 portrait (595 × 842 points).
+    const svPdf = (jpegs, pxW, pxH) => {
+      const enc = new TextEncoder();
+      const chunks = [];
+      let size = 0;
+      const offsets = [];
+      const put = (part) => {
+        const bytes = typeof part === 'string' ? enc.encode(part) : part;
+        chunks.push(bytes); size += bytes.length;
+      };
+      const obj = (n, body) => { offsets[n] = size; put(`${n} 0 obj\n`); body(); put('\nendobj\n'); };
+      put('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+      const kids = jpegs.map((_, i) => `${3 + i * 3} 0 R`).join(' ');
+      obj(1, () => put('<< /Type /Catalog /Pages 2 0 R >>'));
+      obj(2, () => put(`<< /Type /Pages /Kids [${kids}] /Count ${jpegs.length} >>`));
+      jpegs.forEach((jpg, i) => {
+        const pageN = 3 + i * 3, contentN = pageN + 1, imageN = pageN + 2;
+        const draw = `q 595 0 0 842 0 0 cm /Im${i} Do Q`;
+        obj(pageN, () => put(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] `
+          + `/Resources << /XObject << /Im${i} ${imageN} 0 R >> >> /Contents ${contentN} 0 R >>`));
+        obj(contentN, () => put(`<< /Length ${draw.length} >>\nstream\n${draw}\nendstream`));
+        obj(imageN, () => {
+          put(`<< /Type /XObject /Subtype /Image /Width ${pxW} /Height ${pxH} /ColorSpace /DeviceRGB `
+            + `/BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`);
+          put(jpg);
+          put('\nendstream');
+        });
+      });
+      const total = 3 + jpegs.length * 3;
+      const xref = size;
+      put(`xref\n0 ${total}\n0000000000 65535 f \n`);
+      for (let n = 1; n < total; n += 1) put(`${String(offsets[n]).padStart(10, '0')} 00000 n \n`);
+      put(`trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+      return new Blob(chunks, { type: 'application/pdf' });
+    };
     $('#sv_find', page).addEventListener('input', () => valued().catch(whoops));
     $('#sv_brand', page).addEventListener('change', (e) => {
       svBrand = e.target.value; valued().catch(whoops);

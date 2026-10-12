@@ -1717,9 +1717,14 @@ test('Inventory stock value report sits after Running stocks with its own column
   assert.doesNotMatch(wh.slice(0, wh.indexOf('\n};\n')), /stockvalue/, 'Warehouse inventory report is untouched');
 });
 
-test('Inventory stock value report ends with Download and the total value', () => {
+test('Inventory stock value report ends with JPEG and PDF downloads and the total value', () => {
   const at = app.indexOf("if (inventoryPanel === 'stockvalue')");
   const block = app.slice(at, app.indexOf('\n  }\n', at));
-  assert.match(block, /<div id="r_value"><\/div>\s*<div class="svfoot"><button class="btn sm" id="sv_dl">⬇ Download<\/button>\s*<span>Total value/);
-  assert.match(block, /a\.download = `inventory-stock-value-\$\{localDay\(\)\}\.csv`/);
+  assert.match(block, /<div id="r_value"><\/div>\s*<div class="svfoot"><button class="btn sm" id="sv_jpg">⬇ JPEG<\/button>\s*<button class="btn sm" id="sv_pdf">⬇ PDF<\/button>\s*<span>Total value/);
+  assert.match(block, /`inventory-stock-value-\$\{localDay\(\)\}\$\{parts > 1 \? `-part\$\{i \+ 1\}` : ''\}\.jpg`/);
+  assert.match(block, /`inventory-stock-value-\$\{localDay\(\)\}\.pdf`/);
+  assert.doesNotMatch(block, /\.csv|text\/csv/, 'not a spreadsheet any more');
+  // Its own drawing and PDF code, not anything shared with another screen.
+  assert.match(block, /const svSheet = \(rows,/);
+  assert.match(block, /const svPdf = \(jpegs, pxW, pxH\) =>/);
 });
