@@ -2090,3 +2090,27 @@ input.n { text-align: right; }
 .itzoom-pct { color: #fff; min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
 .asspecs { white-space: pre-line; font-size: .8rem; max-width: 46ch; }
 .asgrid textarea { width: 100%; min-height: 7.5em; resize: vertical; }
+
+/* Bank report: the date opens a calendar under it (Dashboard and Sales). */
+.brpickwrap { position: relative; display: inline-block; }
+.brpick { border: 1px solid transparent; background: transparent; border-radius: 10px; padding: 4px 12px;
+  font: inherit; color: inherit; cursor: pointer; }
+.brpick:hover, .brpick:focus-visible { border-color: var(--rose-soft); background: var(--rose-blush); }
+.brdate .brpick b { font-size: 1.05rem; letter-spacing: .03em; text-transform: uppercase; color: var(--ink); }
+.brcal { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 40;
+  background: #fff; border: 1px solid var(--rose-soft); border-radius: 14px; padding: 12px;
+  box-shadow: 0 12px 30px rgba(60, 20, 40, .16); width: 290px; }
+.brcal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.brcal-head button, .brcal-days button, .brcal-months button { border: 0; background: transparent;
+  font: inherit; cursor: pointer; border-radius: 8px; color: var(--ink, inherit); }
+.brcal-head button { padding: 4px 10px; font-size: 1.1rem; }
+.brcal-head button:disabled, .brcal-days button:disabled, .brcal-months button:disabled { opacity: .3; cursor: default; }
+.brcal-week, .brcal-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.brcal-week span { font-size: .72rem; color: var(--muted); padding: 4px 0; }
+.brcal-days button { padding: 7px 0; font-variant-numeric: tabular-nums; }
+.brcal-days button:hover:not(:disabled), .brcal-months button:hover:not(:disabled) { background: var(--rose-blush); }
+.brcal-days button.today { box-shadow: inset 0 0 0 1px var(--rose-deep); }
+.brcal-days button.on, .brcal-months button.on { background: var(--rose-deep); color: #fff; }
+.brcal-months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.brcal-months button { padding: 10px 0; }
+.brcal-foot { display: flex; justify-content: center; margin-top: 8px; }

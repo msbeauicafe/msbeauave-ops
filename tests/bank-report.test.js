@@ -331,3 +331,16 @@ test('Bank report Dashboard: Daily/Monthly, a date bar and six figures above the
   assert.match(fn, /fin\.gross_margin/);
   assert.match(fn, /fin\.expenses\.total/);
 });
+
+test("the Dashboard's date and Sales' date open Bank report's own calendar; Purchases and Expenses are left as they were", () => {
+  const at = app.indexOf('SCREENS.bankreport = async');
+  const fn = app.slice(at, app.indexOf('\n};\n', at));
+  assert.match(fn, /const brCalendar = \(under, \{ mode, value, onPick \}\) =>/, 'its own calendar, inside this screen');
+  assert.match(fn, /id="brd_pick"[\s\S]*?<b id="brd_label"><\/b>/, 'the Dashboard date is a button');
+  assert.match(fn, /\$\('#brd_pick', page\)\.addEventListener\('click', \(\) => brCalendar\(/);
+  assert.match(fn, /if \(key === 'sales'\) \{\s*\n\s*\$\('#br_label', page\)\.outerHTML/, 'Sales alone gets the picker');
+  assert.match(fn, /<b id="br_label"><\/b>\n\s*<button class="btn sm quiet" id="br_next">/,
+    "the shared header keeps its plain date for Purchases and Expenses");
+  assert.doesNotMatch(app.slice(0, at), /brCalendar/, 'nothing outside Bank report uses it');
+  assert.match(fn, /\$\{iso > today \? 'disabled' : ''\}/, 'no picking a day after today');
+});

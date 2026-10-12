@@ -15139,6 +15139,82 @@ SCREENS.bankreport = async (page) => {
   let dashPeriod = 'day';
   let dashAnchor = today;
 
+  // A calendar that drops down under a date, for jumping straight to a day
+  // (or a month) rather than pressing ‹ thirty times. Bank report's own —
+  // the Dashboard's date and Sales' date use it, nothing outside this screen.
+  // Days after today can't be picked, the same as › stops at today.
+  const brCalendar = (under, { mode, value, onPick }) => {
+    $('#br_cal')?.remove();
+    const { y: vy, m: vm } = brParts(value);
+    let y = vy, m = vm;
+    const t = brParts(today);
+    const pop = document.createElement('div');
+    pop.id = 'br_cal';
+    pop.className = 'brcal';
+    const draw = () => {
+      if (mode === 'month') {
+        pop.innerHTML = `
+          <div class="brcal-head"><button type="button" data-cal="-1" aria-label="Previous year">‹</button>
+            <b>${y}</b><button type="button" data-cal="1" aria-label="Next year"
+              ${y >= t.y ? 'disabled' : ''}>›</button></div>
+          <div class="brcal-months">${BR_MONTHS.map((name, i) => {
+            const future = y > t.y || (y === t.y && i + 1 > t.m);
+            const on = y === vy && i + 1 === vm;
+            return `<button type="button" data-pick="${brISO(y, i + 1, 1)}" class="${on ? 'on' : ''}"
+              ${future ? 'disabled' : ''}>${name}</button>`;
+          }).join('')}</div>`;
+      } else {
+        const first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+        const lead = (first + 6) % 7; // Monday first, like the weeks here
+        const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+        const cells = [];
+        for (let i = 0; i < lead; i += 1) cells.push('<span></span>');
+        for (let d = 1; d <= days; d += 1) {
+          const iso = brISO(y, m, d);
+          const cls = [iso === value ? 'on' : '', iso === today ? 'today' : ''].filter(Boolean).join(' ');
+          cells.push(`<button type="button" data-pick="${iso}" class="${cls}"
+            ${iso > today ? 'disabled' : ''}>${d}</button>`);
+        }
+        pop.innerHTML = `
+          <div class="brcal-head"><button type="button" data-cal="-1" aria-label="Previous month">‹</button>
+            <b>${BR_MONTHS_LONG[m - 1]} ${y}</b><button type="button" data-cal="1" aria-label="Next month"
+              ${y > t.y || (y === t.y && m >= t.m) ? 'disabled' : ''}>›</button></div>
+          <div class="brcal-week">${['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((w) => `<span>${w}</span>`).join('')}</div>
+          <div class="brcal-days">${cells.join('')}</div>`;
+      }
+      pop.insertAdjacentHTML('beforeend',
+        '<div class="brcal-foot"><button type="button" class="btn sm line" data-pick="today">Today</button></div>');
+    };
+    pop.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const step = e.target.closest('[data-cal]');
+      if (step && !step.disabled) {
+        if (mode === 'month') y += Number(step.dataset.cal);
+        else { m += Number(step.dataset.cal); if (m < 1) { m = 12; y -= 1; } if (m > 12) { m = 1; y += 1; } }
+        draw();
+        return;
+      }
+      const pick = e.target.closest('[data-pick]');
+      if (pick && !pick.disabled) {
+        close();
+        onPick(pick.dataset.pick === 'today' ? today : pick.dataset.pick);
+      }
+    });
+    const close = () => {
+      pop.remove();
+      document.removeEventListener('click', away, true);
+      document.removeEventListener('keydown', onKey);
+    };
+    const away = (e) => { if (!pop.contains(e.target) && !under.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    draw();
+    under.after(pop);
+    setTimeout(() => {
+      document.addEventListener('click', away, true);
+      document.addEventListener('keydown', onKey);
+    });
+  };
+
   // Six figures under the Dashboard header for the day or month picked:
   // Total sales is the Sales tile's own Total order amounts (every invoice
   // by its packing list date); gross profit and running costs come off
@@ -15182,7 +15258,9 @@ SCREENS.bankreport = async (page) => {
           <button data-dp="month" class="${dashPeriod === 'month' ? 'on' : ''}">Monthly</button>
         </div>
         <div class="brdate"><button class="btn sm quiet" id="brd_prev">‹</button>
-          <b id="brd_label"></b><button class="btn sm quiet" id="brd_next">›</button></div>
+          <span class="brpickwrap"><button type="button" class="brpick" id="brd_pick"
+            title="Pick a date"><b id="brd_label"></b> <span aria-hidden="true">📅</span></button></span>
+          <button class="btn sm quiet" id="brd_next">›</button></div>
         <div class="brfigs" id="br_dash"></div>
       </div>
       ${brTiles(BR_INSIDE)}`;
@@ -15203,6 +15281,10 @@ SCREENS.bankreport = async (page) => {
       dashAnchor = brShift(dashPeriod, dashAnchor, 1);
       drawDash().catch(whoops);
     });
+    $('#brd_pick', page).addEventListener('click', () => brCalendar($('#brd_pick', page), {
+      mode: dashPeriod === 'month' ? 'month' : 'day', value: dashAnchor,
+      onPick: (iso) => { dashAnchor = iso; drawDash().catch(whoops); },
+    }));
     drawDash().catch(whoops);
   };
 
@@ -15224,6 +15306,16 @@ SCREENS.bankreport = async (page) => {
       </div>` : ''}
       <div id="br_body"></div>`;
     $('#br_back', page).addEventListener('click', menu);
+    // Sales' date opens the calendar; Purchases' and Expenses' stay as they
+    // were — only Sales was asked for.
+    if (key === 'sales') {
+      $('#br_label', page).outerHTML = `<span class="brpickwrap"><button type="button" class="brpick"
+        id="br_pick" title="Pick a date"><b id="br_label"></b> <span aria-hidden="true">📅</span></button></span>`;
+      $('#br_pick', page).addEventListener('click', () => brCalendar($('#br_pick', page), {
+        mode: period === 'month' ? 'month' : 'day', value: anchor,
+        onPick: (iso) => { anchor = iso; load().catch(whoops); },
+      }));
+    }
     if (periodic) {
       $$('[data-period]', page).forEach((b) => b.addEventListener('click', () => {
         if (b.classList.contains('on')) return;
