@@ -15363,8 +15363,9 @@ SCREENS.bankreport = async (page) => {
               <div class="br-cash-col"><div class="br-cash-colhd"><span>${title}</span>
                 <span class="dim">${money(sumOf(list))}</span></div>
                 ${list.map(([acct, shown]) => `
-                  <div class="br-cash-acct"><div class="label">${esc(shown)}</div>
-                    <div class="big">${money(bal(acct))}</div></div>`).join('')}</div>`;
+                  <button type="button" class="br-cash-acct br-cash-pick" data-btacct="${esc(acct)}"
+                    title="Show ${esc(shown)} transactions below"><div class="label">${esc(shown)}</div>
+                    <div class="big">${money(bal(acct))}</div></button>`).join('')}</div>`;
             const bankCol = [['BDO', 'BDO'], ['BPI', 'BPI'], ['Security Bank', 'Security Bank']];
             const cashCol = [['Cash on hand', 'Cash'], ['GCash', 'GCash']];
             // The two accounts the drawing leaves out still count in the
@@ -15453,6 +15454,19 @@ SCREENS.bankreport = async (page) => {
                   : 'Use the filters above or click “Record Bank Transaction” to get started.'}</div></div>
             </div></td></tr>`}</tbody></table></div>`;
       };
+      // A box in Cash position is a way into its own transactions: click BDO
+      // and the list below narrows to BDO; click it again for every account.
+      // The box and the Every account drop-down always agree.
+      const markBox = () => $$('[data-btacct]', body).forEach((b) =>
+        b.classList.toggle('on', b.dataset.btacct === $('#bt_acct', body).value));
+      $$('[data-btacct]', body).forEach((b) => b.addEventListener('click', () => {
+        const pick = $('#bt_acct', body);
+        pick.value = pick.value === b.dataset.btacct ? '' : b.dataset.btacct;
+        markBox();
+        drawTxns();
+        if (pick.value) $('.btpanel', body).scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }));
+      $('#bt_acct', body).addEventListener('change', markBox);
       drawTxns();
       ['#bt_q', '#bt_acct', '#bt_kind'].forEach((id) =>
         $(id, body).addEventListener(id === '#bt_q' ? 'input' : 'change', drawTxns));
