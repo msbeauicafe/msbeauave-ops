@@ -369,7 +369,10 @@ test("Bank's transactions section is laid out as the owner drew it, inside the B
   const heads = [...block.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
   assert.deepEqual(heads, ['Date', 'Reference #', 'Particulars', 'Account', '◆', 'Type',
     'Debit (₱)', 'Credit (₱)', 'Balance (₱)', 'Remarks']);
-  assert.match(block, /Use the filters above or click “Record Bank Transaction” to get started\./);
+  assert.match(block, /Use the filters above or click “Payment Management” to get started\./);
+  assert.match(block, /<button class="btn" id="bt_new">Payment Management<\/button>/, 'the button is named Payment Management');
+  assert.match(block, /<h3>Payment Management<\/h3>/, 'and so is the form it opens');
+  assert.doesNotMatch(block, /Record Bank Transaction|Record bank transaction/);
   // Its own table, not the app-wide helper.
   assert.match(block, /<table class="bttable">/);
   assert.doesNotMatch(app.slice(0, app.indexOf('SCREENS.bankreport = async')), /bttable|bt_range/);

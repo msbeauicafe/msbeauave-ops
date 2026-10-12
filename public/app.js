@@ -15435,7 +15435,7 @@ SCREENS.bankreport = async (page) => {
               <circle cx="4.5" cy="6" r="1.3"/><circle cx="4.5" cy="12" r="1.3"/><circle cx="4.5" cy="18" r="1.3"/></svg></span>
             <div class="bttitle"><h3>Bank Transactions</h3>
               <div class="dim">View and manage all bank transactions, filter by account, type and period.</div></div>
-            <button class="btn" id="bt_new">＋ Record Bank Transaction</button>
+            <button class="btn" id="bt_new">Payment Management</button>
           </div>
           <div class="btfilters">
             <label class="btsearch"><span aria-hidden="true">🔍</span>
@@ -15540,7 +15540,7 @@ SCREENS.bankreport = async (page) => {
                 <path d="M9 8h6M9 12h6M9 16h4"/></svg></span>
               <div><b>${filtered ? 'Nothing matches those filters.' : 'No bank transactions recorded yet.'}</b>
                 <div class="dim">${filtered ? 'Change or clear the filters above to see more.'
-                  : 'Use the filters above or click “Record Bank Transaction” to get started.'}</div></div>
+                  : 'Use the filters above or click “Payment Management” to get started.'}</div></div>
             </div></td></tr>`}</tbody></table></div>`;
       };
       // A box in Cash position is a way into its own transactions: click BDO
@@ -15590,7 +15590,7 @@ SCREENS.bankreport = async (page) => {
       });
       $('#bt_new', body).addEventListener('click', () => {
         dialog(`
-          <h3>Record bank transaction</h3>
+          <h3>Payment Management</h3>
           <div class="row">
             <div><label>Date</label><input id="bt_on" type="date" value="${today}" max="${today}"></div>
             <div><label>Account</label><select id="bt_account">
