@@ -2194,3 +2194,11 @@ input.n { text-align: right; }
   box-shadow: 0 12px 30px rgba(60, 20, 40, .16); display: grid; gap: 8px; }
 .coinv-rangepop input { width: 100%; }
 .coinv-rangepop .row { justify-content: flex-end; gap: 8px; }
+
+/* Payment Management: the Account pick with Rename and Add bank beside it. */
+.btacct-row { display: flex; gap: 6px; align-items: center; }
+.btacct-row select { flex: 1; min-width: 0; }
+.btacct-row .btn { flex: 0 0 auto; white-space: nowrap; }
+.btacct-edit { display: flex; gap: 6px; margin-top: 6px; }
+.btacct-edit input { flex: 1; min-width: 0; }
+.btacct-edit[hidden] { display: none; }

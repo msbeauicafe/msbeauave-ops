@@ -15440,8 +15440,7 @@ SCREENS.bankreport = async (page) => {
           <div class="btfilters">
             <label class="btsearch"><span aria-hidden="true">🔍</span>
               <input type="search" id="bt_q" placeholder="Search reference, name, or particulars…"></label>
-            <select id="bt_acct"><option value="">Every account</option>
-              ${BR_BT_ACCOUNTS.map((x) => `<option>${esc(x)}</option>`).join('')}</select>
+            <select id="bt_acct"><option value="">Every account</option></select>
             <select id="bt_kind"><option value="">Every type</option>
               ${Object.entries(BR_BT_KINDS).map(([k, [l]]) => `<option value="${k}">${esc(l)}</option>`).join('')}
               <option value="books">Books entries</option>
@@ -15451,6 +15450,19 @@ SCREENS.bankreport = async (page) => {
           </div>
           <div id="bt_list"></div></div>`;
       let txns = await GET('/api/bank-report/transactions');
+      // The accounts Payment Management files lines under — a list kept in
+      // the database (db/187) that the form can add to and rename. Books'
+      // own cash accounts are offered in the filter too, so a box's Books
+      // lines can still be picked out after a rename here.
+      let btAccounts = await GET('/api/bank-report/accounts').catch(() => BR_BT_ACCOUNTS);
+      const fillAccountFilter = () => {
+        const pick = $('#bt_acct', body);
+        const was = pick.value;
+        const names = [...new Set([...btAccounts, ...BR_BT_ACCOUNTS])];
+        pick.innerHTML = '<option value="">Every account</option>'
+          + names.map((x) => `<option${x === was ? ' selected' : ''}>${esc(x)}</option>`).join('');
+      };
+      fillAccountFilter();
       // What Books has on the same accounts — the payments and bills behind
       // the Cash position boxes — so a box is never an empty list when it
       // carries a balance. Read-only here; each line keeps Books' own
@@ -15593,8 +15605,14 @@ SCREENS.bankreport = async (page) => {
           <h3>Payment Management</h3>
           <div class="row">
             <div><label>Date</label><input id="bt_on" type="date" value="${today}" max="${today}"></div>
-            <div><label>Account</label><select id="bt_account">
-              ${BR_BT_ACCOUNTS.map((x) => `<option>${esc(x)}</option>`).join('')}</select></div>
+            <div style="flex:2"><label for="bt_account">Account</label>
+              <div class="btacct-row"><select id="bt_account"></select>
+                <button type="button" class="btn sm line" id="bt_acct_rename" title="Rename this account">✎ Rename</button>
+                <button type="button" class="btn sm line" id="bt_acct_add" title="Add a bank to the list">＋ Add bank</button></div>
+              <div class="btacct-edit" id="bt_acct_edit" hidden>
+                <input id="bt_acct_name" type="text" autocomplete="off">
+                <button type="button" class="btn sm" id="bt_acct_save">Save</button>
+                <button type="button" class="btn sm quiet" id="bt_acct_cancel">Cancel</button></div></div>
           </div>
           <div class="row">
             <div><label>Type</label><select id="bt_type">
@@ -15613,6 +15631,48 @@ SCREENS.bankreport = async (page) => {
             so the same transfer can't be entered twice.</div>
           <div class="mt right"><button class="btn" id="bt_go">Save</button></div>`);
         $('#bt_amt').addEventListener('input', (e) => comma(e.target));
+        // The Account list: pick from it, rename the one picked, or add a
+        // bank — each saved at once, the list redrawn with it picked.
+        const fillAccounts = (pickName) => {
+          $('#bt_account').innerHTML = btAccounts.map((x) =>
+            `<option${x === pickName ? ' selected' : ''}>${esc(x)}</option>`).join('');
+        };
+        fillAccounts();
+        let acctMode = '';
+        const openEdit = (mode) => {
+          acctMode = mode;
+          $('#bt_acct_edit').hidden = false;
+          const box = $('#bt_acct_name');
+          box.value = mode === 'rename' ? $('#bt_account').value : '';
+          box.placeholder = mode === 'rename' ? 'New name for this account' : 'Bank name, e.g. Metrobank';
+          $('#bt_acct_save').textContent = mode === 'rename' ? 'Save name' : 'Add bank';
+          box.focus();
+          box.select();
+        };
+        $('#bt_acct_rename').addEventListener('click', () => openEdit('rename'));
+        $('#bt_acct_add').addEventListener('click', () => openEdit('add'));
+        $('#bt_acct_cancel').addEventListener('click', () => { $('#bt_acct_edit').hidden = true; });
+        $('#bt_acct_name').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); $('#bt_acct_save').click(); }
+        });
+        $('#bt_acct_save').addEventListener('click', async () => {
+          const typed = $('#bt_acct_name').value.trim();
+          try {
+            const from = $('#bt_account').value;
+            const out = acctMode === 'rename'
+              ? await PUT('/api/bank-report/accounts', { from, to: typed })
+              : await POST('/api/bank-report/accounts', { name: typed });
+            btAccounts = await GET('/api/bank-report/accounts');
+            fillAccounts(out.name);
+            fillAccountFilter();
+            $('#bt_acct_edit').hidden = true;
+            notice(acctMode === 'rename' ? `${from} renamed to ${out.name}` : `${out.name} added`, 'good');
+            if (acctMode === 'rename') {
+              txns = await GET('/api/bank-report/transactions');
+              drawTxns();
+            }
+          } catch (err) { whoops(err); }
+        });
         $('#bt_go').addEventListener('click', async () => {
           try {
             await POST('/api/bank-report/transactions', {

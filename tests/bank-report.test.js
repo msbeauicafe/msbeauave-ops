@@ -449,3 +449,34 @@ test('Bank Transactions: a payment reads by its SI no. and payor; a PO payment i
   assert.match(block, /note: \[`PO \$\{x\.po_no\}`, x\.method, x\.note\]/, 'the PO no. stays in Remarks');
   assert.match(block, /<option value="po">Purchase order payments<\/option>/);
 });
+
+test("Payment Management's Account list: add a bank, rename it, and the lines follow the new name", async () => {
+  const admin = await signIn('admin');
+  const name = unique('Metrobank');
+  const added = await POST(admin, '/api/bank-report/accounts', { name });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+  assert.ok((await GET(admin, '/api/bank-report/accounts')).data.includes(name), 'on the list');
+  assert.notEqual((await POST(admin, '/api/bank-report/accounts', { name: name.toUpperCase() })).status, 200,
+    'the same name twice is refused, whatever its case');
+  assert.notEqual((await POST(admin, '/api/bank-report/accounts', { name: '  ' })).status, 200);
+
+  const ref = unique('REF');
+  const rec = await POST(admin, '/api/bank-report/transactions', { txn_on: '2026-10-12', account: name,
+    kind: 'instapay', direction: 'in', party: 'Bella Skin', amount: 500, reference: ref });
+  assert.equal(rec.status, 200, JSON.stringify(rec.data));
+
+  const to = unique('Metrobank Ortigas');
+  const renamed = await request(admin, 'PUT', '/api/bank-report/accounts', { from: name, to });
+  assert.equal(renamed.status, 200, JSON.stringify(renamed.data));
+  const list = (await GET(admin, '/api/bank-report/accounts')).data;
+  assert.ok(list.includes(to) && !list.includes(name));
+  const line = (await GET(admin, '/api/bank-report/transactions')).data.find((t) => t.reference === ref);
+  assert.equal(line.account, to, 'the recorded line carries the new name');
+  assert.notEqual((await request(admin, 'PUT', '/api/bank-report/accounts', { from: to, to: 'BDO' })).status, 200,
+    "can't rename onto a name already on the list");
+
+  const cashier = await signIn('cashier');
+  assert.notEqual((await GET(cashier, '/api/bank-report/accounts')).status, 200);
+  assert.notEqual((await POST(cashier, '/api/bank-report/accounts', { name: 'X' })).status, 200);
+  await assert.rejects(asRole('cashier', 'someone', "select bank_acct_add('X')"), /FORBIDDEN/);
+});
