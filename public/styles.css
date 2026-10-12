@@ -2070,3 +2070,21 @@ input.n { text-align: right; }
 .asdrawer .dialog-x { position: static; }
 @media (max-width: 900px) { .asgrid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 560px) { .asgrid { grid-template-columns: 1fr; } }
+
+/* Hardware assets: attachment thumbnails, and its own zoomable viewer. */
+.asthumbs { display: flex; flex-wrap: wrap; gap: 8px; min-height: 42px; align-items: center; }
+.asthumbs img { width: 42px; height: 42px; object-fit: cover; border-radius: 6px; cursor: zoom-in;
+  border: 1px solid var(--rose-soft); }
+.asthumbs.big figure { margin: 0; text-align: center; font-size: .75rem; }
+.asthumbs.big img { width: 84px; height: 84px; display: block; }
+.asthumbs.big figcaption { color: var(--muted); margin-top: 2px; }
+.itzoom { position: fixed; inset: 0; z-index: 100; background: rgba(15, 10, 14, .92);
+  display: flex; flex-direction: column; }
+.itzoom-stage { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  touch-action: none; }
+.itzoom-stage img { max-width: 92vw; max-height: 82vh; transform-origin: center center;
+  transition: transform .08s ease-out; user-select: none; }
+.itzoom-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: rgba(0, 0, 0, .4); }
+.itzoom-bar .cap { color: #fff; margin-right: 8px; }
+.itzoom-pct { color: #fff; min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
