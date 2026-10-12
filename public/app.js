@@ -15427,9 +15427,11 @@ SCREENS.bankreport = async (page) => {
         bpi: 'BPI', 'security bank': 'Security Bank',
       })[String(m || '').trim().toLowerCase()] || 'Bank';
       const poRows = poPaid.map((x) => ({
-        src: 'po', key: `p${x.id}`, day: String(x.paid_on).slice(0, 10), ref: x.po_no,
+        // Reference # is the supplier's invoice no. on the bill, not the PO
+        // no.; the PO no. stays in Remarks so the payment can be traced.
+        src: 'po', key: `p${x.id}`, day: String(x.paid_on).slice(0, 10), ref: x.invoice_no || '—',
         party: x.supplier, account: methodAccount(x.method), dir: 'out', amount: x.amount,
-        kind: 'po', balance: null, note: [x.method, x.note].filter(Boolean).join(' · '),
+        kind: 'po', balance: null, note: [`PO ${x.po_no}`, x.method, x.note].filter(Boolean).join(' · '),
       }));
       // The period picked under From – To; empty means every date.
       let btFrom = '';

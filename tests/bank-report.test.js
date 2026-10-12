@@ -430,6 +430,7 @@ test('Bank Transactions: a payment reads by its SI no. and payor; a PO payment i
   const po = (await GET(admin, '/api/bank-report/po-payments')).data.find((x) => Number(x.id) === paid.data.id);
   assert.ok(po, 'the PO payment is listed');
   assert.ok(po.po_no && po.supplier, 'with its PO no. and supplier');
+  assert.ok('invoice_no' in po, "and the supplier's invoice no. the bill carries");
   assert.equal(Number(po.amount), 1200);
   assert.equal(po.method, 'BANCO DE ORO (BDO)');
 
@@ -440,6 +441,8 @@ test('Bank Transactions: a payment reads by its SI no. and payor; a PO payment i
   const at = app.indexOf("if (view === 'bank') {");
   const block = app.slice(at, app.indexOf("if (view === 'sales')", at));
   assert.match(block, /ref: l\.si_no \|\| l\.entry_no \|\| '', party: l\.payor \|\| l\.memo \|\| ''/);
-  assert.match(block, /ref: x\.po_no,\s*\n\s*party: x\.supplier, account: methodAccount\(x\.method\), dir: 'out'/);
+  assert.match(block, /ref: x\.invoice_no \|\| '—',\s*\n\s*party: x\.supplier, account: methodAccount\(x\.method\), dir: 'out'/,
+    "a PO payment's Reference # is the supplier's invoice no., not the PO no.");
+  assert.match(block, /note: \[`PO \$\{x\.po_no\}`, x\.method, x\.note\]/, 'the PO no. stays in Remarks');
   assert.match(block, /<option value="po">Purchase order payments<\/option>/);
 });
