@@ -15363,36 +15363,111 @@ SCREENS.bankreport = async (page) => {
           <div class="dim mt">A box reads ₱0.00 until an account by that exact name exists
             in Books and carries a balance — set one up or correct it there, not here.</div>
         </div>
-        <div class="panel mt"><div class="brhd"><h3>Bank transactions</h3>
-          <button class="btn sm" id="bt_new">＋ Record bank transaction</button></div>
-          <div class="tools">
-            <input type="search" id="bt_q" placeholder="Search reference, name…" style="max-width:260px">
+        <div class="panel mt btpanel">
+          <div class="bthead">
+            <span class="bticon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/>
+              <circle cx="4.5" cy="6" r="1.3"/><circle cx="4.5" cy="12" r="1.3"/><circle cx="4.5" cy="18" r="1.3"/></svg></span>
+            <div class="bttitle"><h3>Bank Transactions</h3>
+              <div class="dim">View and manage all bank transactions, filter by account, type and period.</div></div>
+            <button class="btn" id="bt_new">＋ Record Bank Transaction</button>
+          </div>
+          <div class="btfilters">
+            <label class="btsearch"><span aria-hidden="true">🔍</span>
+              <input type="search" id="bt_q" placeholder="Search reference, name, or particulars…"></label>
             <select id="bt_acct"><option value="">Every account</option>
               ${BR_BT_ACCOUNTS.map((x) => `<option>${esc(x)}</option>`).join('')}</select>
             <select id="bt_kind"><option value="">Every type</option>
               ${Object.entries(BR_BT_KINDS).map(([k, [l]]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+            <span class="btrange-wrap"><button type="button" class="btrange" id="bt_range">
+              <span aria-hidden="true">📅</span> <span id="bt_range_label">From – To</span> <span aria-hidden="true">▾</span></button></span>
           </div>
           <div id="bt_list"></div></div>`;
       let txns = await GET('/api/bank-report/transactions');
+      // The period picked under From – To; empty means every date.
+      let btFrom = '';
+      let btTo = '';
+      // Each account's running total, oldest first, after each transaction —
+      // worked out over everything recorded, so a filter never changes what
+      // a row's balance says.
+      const running = () => {
+        const sum = new Map();
+        const after = new Map();
+        [...txns].sort((a, b) => String(a.txn_on).localeCompare(String(b.txn_on)) || a.id - b.id)
+          .forEach((t) => {
+            const next = (sum.get(t.account) || 0) + (t.direction === 'in' ? 1 : -1) * Number(t.amount);
+            sum.set(t.account, next);
+            after.set(t.id, next);
+          });
+        return after;
+      };
       const drawTxns = () => {
         const q = $('#bt_q', body).value.trim().toLowerCase();
         const acct = $('#bt_acct', body).value;
         const kind = $('#bt_kind', body).value;
+        const day = (t) => String(t.txn_on).slice(0, 10);
         const rows = txns.filter((t) => (!acct || t.account === acct) && (!kind || t.kind === kind)
+          && (!btFrom || day(t) >= btFrom) && (!btTo || day(t) <= btTo)
           && (!q || `${t.reference} ${t.party} ${t.note || ''}`.toLowerCase().includes(q)));
-        $('#bt_list', body).innerHTML = table(rows, [
-          { head: 'Date', cell: (t) => onDay(t.txn_on) },
-          { head: 'Account', cell: (t) => esc(t.account) },
-          { head: 'Type', cell: (t) => tag(...BR_BT_KINDS[t.kind]) },
-          { head: 'From / to', cell: (t) => `<b>${esc(t.party)}</b>${t.note ? `<div class="dim">${esc(t.note)}</div>` : ''}` },
-          { head: 'Reference no.', cell: (t) => `<span class="dim">${esc(t.reference)}</span>` },
-          { head: 'Money in', n: true, cell: (t) => (t.direction === 'in' ? peso(t.amount) : '') },
-          { head: 'Money out', n: true, cell: (t) => (t.direction === 'out' ? peso(t.amount) : '') },
-        ], txns.length ? 'Nothing matches that.' : 'No bank transactions recorded yet.');
+        const bal = running();
+        const filtered = q || acct || kind || btFrom || btTo;
+        // Its own table rather than the app-wide one: the design's header row,
+        // and an empty state with a line on how to start.
+        $('#bt_list', body).innerHTML = `<div class="btscroll"><table class="bttable">
+          <thead><tr><th>Date</th><th>Reference #</th><th>Particulars</th><th>Account</th>
+            <th class="c" title="Money in or out">◆</th><th>Type</th><th class="n">Debit (₱)</th>
+            <th class="n">Credit (₱)</th><th class="n">Balance (₱)</th><th>Remarks</th></tr></thead>
+          <tbody>${rows.length ? rows.map((t) => `<tr>
+            <td>${onDay(t.txn_on)}</td>
+            <td><span class="dim">${esc(t.reference)}</span></td>
+            <td><b>${esc(t.party)}</b></td>
+            <td>${esc(t.account)}</td>
+            <td class="c">${t.direction === 'in'
+              ? '<span class="btin" title="Money in">▲</span>' : '<span class="btout" title="Money out">▼</span>'}</td>
+            <td>${tag(...(BR_BT_KINDS[t.kind] || [t.kind, 'grey']))}</td>
+            <td class="n">${t.direction === 'in' ? peso(t.amount) : ''}</td>
+            <td class="n">${t.direction === 'out' ? peso(t.amount) : ''}</td>
+            <td class="n"><b>${peso(bal.get(t.id) || 0)}</b></td>
+            <td>${t.note ? esc(t.note) : '<span class="dim">—</span>'}</td></tr>`).join('')
+          : `<tr><td colspan="10"><div class="btempty">
+              <span class="bticon big" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/>
+                <path d="M9 8h6M9 12h6M9 16h4"/></svg></span>
+              <div><b>${filtered ? 'Nothing matches those filters.' : 'No bank transactions recorded yet.'}</b>
+                <div class="dim">${filtered ? 'Change or clear the filters above to see more.'
+                  : 'Use the filters above or click “Record Bank Transaction” to get started.'}</div></div>
+            </div></td></tr>`}</tbody></table></div>`;
       };
       drawTxns();
       ['#bt_q', '#bt_acct', '#bt_kind'].forEach((id) =>
         $(id, body).addEventListener(id === '#bt_q' ? 'input' : 'change', drawTxns));
+      // From – To: two dates in a drop-down under the button, Clear to go
+      // back to every date.
+      $('#bt_range', body).addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = $('#bt_rangepop', body);
+        if (open) { open.remove(); return; }
+        const pop = document.createElement('div');
+        pop.id = 'bt_rangepop';
+        pop.className = 'btrangepop';
+        pop.innerHTML = `
+          <div><label for="bt_from">From</label><input id="bt_from" type="date" value="${btFrom}" max="${today}"></div>
+          <div><label for="bt_to">To</label><input id="bt_to" type="date" value="${btTo}" max="${today}"></div>
+          <div class="row"><button type="button" class="btn sm line" id="bt_clear">Clear</button>
+            <button type="button" class="btn sm" id="bt_apply">Apply</button></div>`;
+        $('#bt_range', body).after(pop);
+        const shut = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); document.removeEventListener('click', shut, true); } };
+        setTimeout(() => document.addEventListener('click', shut, true));
+        const set = (from, to) => {
+          [btFrom, btTo] = from && to && from > to ? [to, from] : [from, to];
+          $('#bt_range_label', body).textContent = btFrom || btTo
+            ? `${btFrom ? onDay(btFrom) : 'Start'} – ${btTo ? onDay(btTo) : 'today'}` : 'From – To';
+          $('#bt_range', body).classList.toggle('on', !!(btFrom || btTo));
+          pop.remove();
+          document.removeEventListener('click', shut, true);
+          drawTxns();
+        };
+        $('#bt_apply', pop).addEventListener('click', () => set($('#bt_from', pop).value, $('#bt_to', pop).value));
+        $('#bt_clear', pop).addEventListener('click', () => set('', ''));
+      });
       $('#bt_new', body).addEventListener('click', () => {
         dialog(`
           <h3>Record bank transaction</h3>

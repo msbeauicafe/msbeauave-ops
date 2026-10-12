@@ -2114,3 +2114,50 @@ input.n { text-align: right; }
 .brcal-months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .brcal-months button { padding: 10px 0; }
 .brcal-foot { display: flex; justify-content: center; margin-top: 8px; }
+
+/* Bank report → Bank: the Bank Transactions section, as the owner drew it. */
+.btpanel { padding: 18px 20px; }
+.bthead { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.bthead .bttitle { flex: 1; min-width: 220px; }
+.bthead h3 { margin: 0; font-size: 1.25rem; }
+.bticon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
+  border-radius: 50%; background: var(--rose-blush); flex: 0 0 auto; }
+.bticon svg { width: 24px; height: 24px; fill: none; stroke: var(--ink, #3d2a33); stroke-width: 1.8;
+  stroke-linecap: round; }
+.bticon circle { fill: var(--ink, #3d2a33); stroke: none; }
+.bticon.big { width: 56px; height: 56px; }
+.btfilters { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; background: #fbf5f8;
+  border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.btfilters select { min-width: 200px; flex: 1; }
+.btsearch { position: relative; flex: 1.5; min-width: 240px; display: flex; align-items: center; margin: 0; }
+.btsearch span { position: absolute; left: 10px; font-size: .85rem; opacity: .6; }
+.btsearch input { width: 100%; padding-left: 32px; }
+.btrange-wrap { position: relative; flex: 1; min-width: 200px; }
+.btrange { width: 100%; text-align: left; display: flex; gap: 8px; align-items: center; background: #fff;
+  border: 1px solid var(--rose-soft); border-radius: 10px; padding: 9px 12px; font: inherit; color: var(--muted);
+  cursor: pointer; }
+.btrange #bt_range_label { flex: 1; }
+.btrange.on { color: var(--ink, inherit); border-color: var(--rose-deep); }
+.btrangepop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; background: #fff;
+  border: 1px solid var(--rose-soft); border-radius: 12px; padding: 12px; width: 260px;
+  box-shadow: 0 12px 30px rgba(60, 20, 40, .16); display: grid; gap: 8px; }
+.btrangepop input { width: 100%; }
+.btrangepop .row { justify-content: flex-end; gap: 8px; }
+.bttable { width: 100%; border-collapse: collapse; }
+.bttable thead th { background: #fbf0f4; text-transform: uppercase; font-size: .74rem; letter-spacing: .06em;
+  color: var(--muted); font-weight: 600; text-align: left; padding: 10px 12px; white-space: nowrap; }
+.bttable thead th:first-child { border-radius: 10px 0 0 10px; }
+.bttable thead th:last-child { border-radius: 0 10px 10px 0; }
+.bttable td { padding: 10px 12px; border-bottom: 1px solid var(--rose-soft); vertical-align: middle; }
+.bttable .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bttable .c { text-align: center; }
+.btin { color: #3f7d4e; } .btout { color: #b4475a; }
+.btempty { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 28px 0; }
+.btempty .dim { font-size: .82rem; margin-top: 2px; }
+.bttable td { font-size: .9rem; }
+.bttable th, .bttable td { padding-left: 9px; padding-right: 9px; }
+.bttable td:nth-child(3), .bttable td:nth-child(10) { min-width: 130px; max-width: 220px; overflow-wrap: anywhere; }
+.btscroll { overflow-x: auto; }
+.bttable td:nth-child(2) { overflow-wrap: anywhere; max-width: 150px; }
+.btrange #bt_range_label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bttable td:first-child { white-space: nowrap; }

@@ -351,3 +351,19 @@ test("the Dashboard's date and Sales' date open Bank report's own calendar; Purc
   assert.doesNotMatch(app.slice(0, at), /brCalendar/, 'nothing outside Bank report uses it');
   assert.match(fn, /\$\{iso > today \? 'disabled' : ''\}/, 'no picking a day after today');
 });
+
+test("Bank's transactions section is laid out as the owner drew it, inside the Bank view only", () => {
+  const at = app.indexOf("if (view === 'bank') {");
+  const block = app.slice(at, app.indexOf("if (view === 'sales')", at));
+  assert.match(block, /<h3>Bank Transactions<\/h3>/);
+  assert.match(block, /View and manage all bank transactions, filter by account, type and period\./);
+  assert.match(block, /placeholder="Search reference, name, or particulars…"/);
+  assert.match(block, /id="bt_range"/, 'a From – To period filter');
+  const heads = [...block.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['Date', 'Reference #', 'Particulars', 'Account', '◆', 'Type',
+    'Debit (₱)', 'Credit (₱)', 'Balance (₱)', 'Remarks']);
+  assert.match(block, /Use the filters above or click “Record Bank Transaction” to get started\./);
+  // Its own table, not the app-wide helper.
+  assert.match(block, /<table class="bttable">/);
+  assert.doesNotMatch(app.slice(0, app.indexOf('SCREENS.bankreport = async')), /bttable|bt_range/);
+});
