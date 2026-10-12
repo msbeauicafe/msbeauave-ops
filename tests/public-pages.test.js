@@ -67,3 +67,12 @@ test('the screen itself is checked for freshness rather than assumed', () => {
   assert.doesNotMatch(cache.value, /immutable/,
     'immutable is the opposite promise: never ask again');
 });
+
+// The server runs next to the database: Supabase is in Singapore
+// (ap-southeast-1), so the functions run in Vercel's Singapore region rather
+// than the default in the United States — every query used to cross the
+// Pacific and back.
+test('the API runs in Singapore, next to the database', () => {
+  const cfg = JSON.parse(fs.readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  assert.deepEqual(cfg.regions, ['sin1']);
+});
