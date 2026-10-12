@@ -129,8 +129,15 @@ test('Cash position is a fixed set of seven named boxes, not just whatever Books
 
   const at = app.indexOf('SCREENS.bankreport = async');
   const fn = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
-  assert.match(fn, /BR_CASH_BOXES\.map/,
-    "the panel renders the fixed list, not cash.accounts directly");
+  // Laid out as the owner drew it: BANK (BDO, BPI, Security Bank) on the
+  // left, CASH (cash on hand, GCash) on the right — and the two accounts the
+  // drawing leaves out named under them, still in the total.
+  assert.match(fn, /const bankCol = \[\['BDO', 'BDO'\], \['BPI', 'BPI'\], \['Security Bank', 'Security Bank'\]\];/);
+  assert.match(fn, /const cashCol = \[\['Cash on hand', 'Cash'\], \['GCash', 'GCash'\]\];/);
+  assert.match(fn, /\$\{column\('Bank', bankCol\)\}\$\{column\('Cash', cashCol\)\}/);
+  assert.match(fn, /Also in the total:/);
+  assert.match(fn, /BR_CASH_BOXES\.reduce\(\(t, label\) => t \+ Number\(bal\(label\) \|\| 0\), 0\)/,
+    'the total still counts all seven, the same as the Dashboard');
   assert.match(fn, /a\.title\.trim\(\)\.toLowerCase\(\) === label\.toLowerCase\(\)/,
     "each box is matched to a real Books account by its exact name");
 });
