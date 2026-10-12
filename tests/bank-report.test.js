@@ -386,3 +386,30 @@ test("a Cash position box opens its own account's transactions, in the Bank view
     assert.match(app, new RegExp(`const BR_BT_ACCOUNTS = \\[[^\\]]*'${acct}'`), `${acct} is in the account filter`);
   }
 });
+
+test("a box's Books entries come through to the transactions list, with Books' running balance", async () => {
+  const admin = await signIn('admin');
+  // A BDO account in Books, made here if this database has none yet.
+  await db.query(`insert into coa_accounts (code, title, type, normal_side)
+                  values ('TBDO', 'BDO', 'Asset', 'debit') on conflict do nothing`);
+  const code = (await db.query("select code from coa_accounts where lower(title) = 'bdo'")).rows[0].code;
+  await db.query(`insert into coa_accounts (code, title, type, normal_side)
+                  values ('TSALES', 'Test sales ${process.pid}', 'Revenue', 'credit') on conflict do nothing`);
+  const before = (await GET(admin, '/api/bank-report/ledger')).data.filter((l) => l.account === 'BDO');
+  const start = before.length ? Number(before[0].running) : 0;
+  const memo = unique('Payment from Bella Skin');
+  const e = await db.query(`insert into journal_entries (entry_no, entry_date, memo)
+                            values ($1, '2099-01-02', $2) returning id`, [unique('JE'), memo]);
+  await db.query(`insert into journal_lines (entry_id, account, debit) values ($1, $2, 1500)`, [e.rows[0].id, code]);
+  await db.query(`insert into journal_lines (entry_id, account, credit) values ($1, 'TSALES', 1500)`, [e.rows[0].id]);
+
+  const after = (await GET(admin, '/api/bank-report/ledger')).data;
+  const line = after.find((l) => l.memo === memo && l.account === 'BDO');
+  assert.ok(line, 'the Books line on BDO is in the list');
+  assert.equal(Number(line.debit), 1500);
+  assert.equal(Number(line.running), start + 1500, "Books' own running balance, ending where the box does");
+  assert.ok(!after.some((l) => l.account === `Test sales ${process.pid}`), 'only the cash accounts');
+
+  const cashier = await signIn('cashier');
+  assert.notEqual((await GET(cashier, '/api/bank-report/ledger')).status, 200, 'the owner\'s book');
+});
