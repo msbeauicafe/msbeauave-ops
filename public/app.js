@@ -15395,12 +15395,26 @@ SCREENS.bankreport = async (page) => {
             <select id="bt_acct"><option value="">Every account</option>
               ${BR_BT_ACCOUNTS.map((x) => `<option>${esc(x)}</option>`).join('')}</select>
             <select id="bt_kind"><option value="">Every type</option>
-              ${Object.entries(BR_BT_KINDS).map(([k, [l]]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+              ${Object.entries(BR_BT_KINDS).map(([k, [l]]) => `<option value="${k}">${esc(l)}</option>`).join('')}
+              <option value="books">Books entries</option></select>
             <span class="btrange-wrap"><button type="button" class="btrange" id="bt_range">
               <span aria-hidden="true">📅</span> <span id="bt_range_label">From – To</span> <span aria-hidden="true">▾</span></button></span>
           </div>
           <div id="bt_list"></div></div>`;
       let txns = await GET('/api/bank-report/transactions');
+      // What Books has on the same accounts — the payments and bills behind
+      // the Cash position boxes — so a box is never an empty list when it
+      // carries a balance. Read-only here; each line keeps Books' own
+      // running balance, the one the box shows.
+      const ledger = await GET('/api/bank-report/ledger').catch(() => []);
+      const acctName = (title) => BR_BT_ACCOUNTS.find((x) =>
+        x.toLowerCase() === String(title || '').trim().toLowerCase()) || title;
+      const booksRows = ledger.map((l) => ({
+        src: 'books', key: `b${l.id}`, day: String(l.entry_date).slice(0, 10),
+        ref: l.entry_no || '', party: l.memo || '', account: acctName(l.account),
+        dir: Number(l.debit) > 0 ? 'in' : 'out', amount: Number(l.debit) > 0 ? l.debit : l.credit,
+        kind: 'books', balance: Number(l.running), note: l.line_memo || '',
+      }));
       // The period picked under From – To; empty means every date.
       let btFrom = '';
       let btTo = '';
@@ -15422,11 +15436,17 @@ SCREENS.bankreport = async (page) => {
         const q = $('#bt_q', body).value.trim().toLowerCase();
         const acct = $('#bt_acct', body).value;
         const kind = $('#bt_kind', body).value;
-        const day = (t) => String(t.txn_on).slice(0, 10);
-        const rows = txns.filter((t) => (!acct || t.account === acct) && (!kind || t.kind === kind)
-          && (!btFrom || day(t) >= btFrom) && (!btTo || day(t) <= btTo)
-          && (!q || `${t.reference} ${t.party} ${t.note || ''}`.toLowerCase().includes(q)));
         const bal = running();
+        // Recorded bank transactions and Books entries, one list, newest first.
+        const all = txns.map((t) => ({
+          src: 'stmt', key: `s${t.id}`, day: String(t.txn_on).slice(0, 10), ref: t.reference,
+          party: t.party, account: t.account, dir: t.direction, amount: t.amount, kind: t.kind,
+          balance: bal.get(t.id) || 0, note: t.note || '',
+        })).concat(booksRows)
+          .sort((a, b) => b.day.localeCompare(a.day) || (a.src === b.src ? 0 : a.src === 'books' ? 1 : -1));
+        const rows = all.filter((t) => (!acct || t.account === acct) && (!kind || t.kind === kind)
+          && (!btFrom || t.day >= btFrom) && (!btTo || t.day <= btTo)
+          && (!q || `${t.ref} ${t.party} ${t.note}`.toLowerCase().includes(q)));
         const filtered = q || acct || kind || btFrom || btTo;
         // Its own table rather than the app-wide one: the design's header row,
         // and an empty state with a line on how to start.
@@ -15435,16 +15455,17 @@ SCREENS.bankreport = async (page) => {
             <th class="c" title="Money in or out">◆</th><th>Type</th><th class="n">Debit (₱)</th>
             <th class="n">Credit (₱)</th><th class="n">Balance (₱)</th><th>Remarks</th></tr></thead>
           <tbody>${rows.length ? rows.map((t) => `<tr>
-            <td>${onDay(t.txn_on)}</td>
-            <td><span class="dim">${esc(t.reference)}</span></td>
+            <td>${onDay(t.day)}</td>
+            <td><span class="dim">${esc(t.ref)}</span></td>
             <td><b>${esc(t.party)}</b></td>
             <td>${esc(t.account)}</td>
-            <td class="c">${t.direction === 'in'
+            <td class="c">${t.dir === 'in'
               ? '<span class="btin" title="Money in">▲</span>' : '<span class="btout" title="Money out">▼</span>'}</td>
-            <td>${tag(...(BR_BT_KINDS[t.kind] || [t.kind, 'grey']))}</td>
-            <td class="n">${t.direction === 'in' ? peso(t.amount) : ''}</td>
-            <td class="n">${t.direction === 'out' ? peso(t.amount) : ''}</td>
-            <td class="n"><b>${peso(bal.get(t.id) || 0)}</b></td>
+            <td>${t.src === 'books' ? tag('Books', 'grey')
+              : tag(...(BR_BT_KINDS[t.kind] || [t.kind, 'grey']))}</td>
+            <td class="n">${t.dir === 'in' ? peso(t.amount) : ''}</td>
+            <td class="n">${t.dir === 'out' ? peso(t.amount) : ''}</td>
+            <td class="n"><b>${peso(t.balance)}</b></td>
             <td>${t.note ? esc(t.note) : '<span class="dim">—</span>'}</td></tr>`).join('')
           : `<tr><td colspan="10"><div class="btempty">
               <span class="bticon big" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/>
