@@ -2088,3 +2088,5 @@ input.n { text-align: right; }
   padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: rgba(0, 0, 0, .4); }
 .itzoom-bar .cap { color: #fff; margin-right: 8px; }
 .itzoom-pct { color: #fff; min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
+.asspecs { white-space: pre-line; font-size: .8rem; max-width: 46ch; }
+.asgrid textarea { width: 100%; min-height: 7.5em; resize: vertical; }

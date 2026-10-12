@@ -16571,8 +16571,9 @@ SCREENS.itsupport = async (page) => {
           <div class="itsteps"><span>📦 Receive</span><span>✂️ Unbox</span>
             <span>🏷️ Asset-tag</span><span>📋 Log</span></div>
           <h3 class="mt">Intake &amp; unboxing</h3>
-          <div class="dim">Enter on any box adds the unit and clears for the next one.
-            Type, brand, supplier, PO and the receipt stay — the next unit is usually
+          <div class="dim">Enter on any box adds the unit and clears for the next one —
+            except Specs and description, where Enter starts a new line.
+            Type, brand, supplier / store, specs and the receipt stay — the next unit is usually
             from the same delivery. Photos clear with each unit.</div>
           <form id="as_form" class="asgrid mt" autocomplete="off">
             <div><label for="as_kind">Hardware type</label><select id="as_kind">${
@@ -16583,10 +16584,12 @@ SCREENS.itsupport = async (page) => {
               <datalist id="as_brands"></datalist></div>
             <div><label for="as_model">Model no.</label><input id="as_model" type="text"></div>
             <div><label for="as_serial">Serial no. (S/N)</label><input id="as_serial" type="text"></div>
-            <div><label for="as_supplier">Supplier</label>
+            <div><label for="as_supplier">Supplier / store</label>
               <input id="as_supplier" type="text" list="as_suppliers">
               <datalist id="as_suppliers"></datalist></div>
-            <div><label for="as_po">Purchase order ID</label><input id="as_po" type="text"></div>
+            <div class="wide"><label for="as_specs">Specs and description</label>
+              <textarea id="as_specs" rows="5"
+                placeholder="e.g. Intel Core i5-1335U, 16GB RAM, 512GB SSD, 24&quot; display, with keyboard and mouse"></textarea></div>
             <div><label for="as_receipt">Receipt</label>
               <input id="as_receipt" type="file" accept="image/*"></div>
             <div><label for="as_photos">Photos of the unit</label>
@@ -16637,7 +16640,7 @@ SCREENS.itsupport = async (page) => {
           const made = await POST('/api/it/assets', {
             kind: kind.value, tag: tagNow, brand: $('#as_brand', body).value,
             model: $('#as_model', body).value, serial_no: $('#as_serial', body).value,
-            supplier: $('#as_supplier', body).value, po_ref: $('#as_po', body).value,
+            supplier: $('#as_supplier', body).value, specs: $('#as_specs', body).value,
             condition: $$('[data-ascond]', body).filter((c) => c.checked).map((c) => c.dataset.ascond),
           });
           // The receipt and photos go on against the unit just logged.
@@ -16687,14 +16690,15 @@ SCREENS.itsupport = async (page) => {
     const q = af.q.trim().toLowerCase();
     const rows = assets.filter((a) => (!af.kind || a.kind === af.kind)
       && (!af.brand || a.brand === af.brand) && (!af.status || a.status === af.status)
-      && (!q || [a.tag, a.serial_no, a.brand, a.model, a.assigned_to, a.supplier, a.po_ref]
+      && (!q || [a.tag, a.serial_no, a.brand, a.model, a.assigned_to, a.supplier, a.specs]
         .some((v) => String(v || '').toLowerCase().includes(q))));
     $('#as_list', body).innerHTML = table(rows, [
       { head: 'Asset tag', cell: (a) => `<button class="nameopen" data-asopen="${a.id}"><b>${esc(a.tag)}</b></button>` },
       { head: 'Category', cell: (a) => esc((IT_KINDS[a.kind] || [a.kind])[0]) },
       { head: 'Item description', cell: (a) => `${esc(described(a))}${(a.condition || []).includes('missing_items')
           ? ' ' + tag('missing items', 'red') : ''}${(a.files || []).length
-          ? ` <span class="dim" title="Attachments">📎 ${(a.files || []).length}</span>` : ''}` },
+          ? ` <span class="dim" title="Attachments">📎 ${(a.files || []).length}</span>` : ''}${
+          a.specs ? `<div class="dim asspecs">${esc(a.specs)}</div>` : ''}` },
       { head: 'Serial no.', cell: (a) => (a.serial_no ? `<code>${esc(a.serial_no)}</code>` : '<span class="dim">—</span>') },
       { head: 'Date logged', cell: (a) => onDay(a.logged_at) },
       { head: 'Status', cell: (a) => {
@@ -16720,7 +16724,8 @@ SCREENS.itsupport = async (page) => {
       <aside class="asdrawer" role="dialog" aria-label="Assign ${esc(a.tag)}">
         <div class="row" style="align-items:center">
           <div><h3 style="margin:0">${esc(a.tag)}</h3>
-            <div class="dim">${esc(described(a))}${a.serial_no ? ' · S/N ' + esc(a.serial_no) : ''}</div></div>
+            <div class="dim">${esc(described(a))}${a.serial_no ? ' · S/N ' + esc(a.serial_no) : ''}</div>
+            ${a.specs ? `<div class="dim asspecs">${esc(a.specs)}</div>` : ''}</div>
           <button class="dialog-x" id="asd_x" aria-label="Close">✕</button>
         </div>
         <div class="mt"><label for="asd_status">Status</label>
