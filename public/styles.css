@@ -2161,3 +2161,13 @@ input.n { text-align: right; }
 .bttable td:nth-child(2) { overflow-wrap: anywhere; max-width: 150px; }
 .btrange #bt_range_label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bttable td:first-child { white-space: nowrap; }
+
+/* Bank report → Bank: Cash position as two columns, BANK and CASH. */
+.br-cash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+.br-cash-col { display: grid; gap: 12px; }
+.br-cash-colhd { display: flex; justify-content: space-between; align-items: baseline;
+  font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--rose-deep);
+  border-bottom: 2px solid var(--rose-soft); padding-bottom: 6px; }
+.br-cash-colhd .dim { letter-spacing: 0; font-weight: 600; }
+.br-cash-rest { margin-top: 12px; font-size: .85rem; }
+@media (max-width: 640px) { .br-cash-cols { grid-template-columns: 1fr; } }

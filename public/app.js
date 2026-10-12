@@ -15353,11 +15353,28 @@ SCREENS.bankreport = async (page) => {
         a.title.trim().toLowerCase() === label.toLowerCase())?.balance;
       body.innerHTML = `
         <div class="panel"><h3>Cash position</h3>
-          <div class="br-cash-grid">
-            ${BR_CASH_BOXES.map((label) => `
-              <div class="br-cash-acct"><div class="label">${esc(label)}</div>
-                <div class="big">${money(bal(label))}</div></div>`).join('')}
-          </div>
+          ${(() => {
+            // Laid out as the owner drew it: BANK down the left — BDO, BPI,
+            // Security Bank — and CASH down the right — cash on hand, GCash.
+            // Bank view's own arrangement; BR_CASH_BOXES and the Dashboard's
+            // total that reads it are left as they are.
+            const sumOf = (list) => list.reduce((t, [acct]) => t + Number(bal(acct) || 0), 0);
+            const column = (title, list) => `
+              <div class="br-cash-col"><div class="br-cash-colhd"><span>${title}</span>
+                <span class="dim">${money(sumOf(list))}</span></div>
+                ${list.map(([acct, shown]) => `
+                  <div class="br-cash-acct"><div class="label">${esc(shown)}</div>
+                    <div class="big">${money(bal(acct))}</div></div>`).join('')}</div>`;
+            const bankCol = [['BDO', 'BDO'], ['BPI', 'BPI'], ['Security Bank', 'Security Bank']];
+            const cashCol = [['Cash on hand', 'Cash'], ['GCash', 'GCash']];
+            // The two accounts the drawing leaves out still count in the
+            // total below, so they are named rather than silently dropped.
+            const rest = BR_CASH_BOXES.filter((acct) =>
+              ![...bankCol, ...cashCol].some(([a]) => a === acct));
+            return `<div class="br-cash-cols">${column('Bank', bankCol)}${column('Cash', cashCol)}</div>
+              <div class="dim br-cash-rest">Also in the total: ${rest.map((acct) =>
+                `${esc(acct)} ${money(bal(acct))}`).join(' · ')}</div>`;
+          })()}
           <div class="br-cash-total"><span>Total</span><b>${money(
             BR_CASH_BOXES.reduce((t, label) => t + Number(bal(label) || 0), 0))}</b></div>
           <div class="dim mt">A box reads ₱0.00 until an account by that exact name exists
