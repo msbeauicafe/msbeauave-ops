@@ -2171,3 +2171,10 @@ input.n { text-align: right; }
 .br-cash-colhd .dim { letter-spacing: 0; font-weight: 600; }
 .br-cash-rest { margin-top: 12px; font-size: .85rem; }
 @media (max-width: 640px) { .br-cash-cols { grid-template-columns: 1fr; } }
+
+/* Bank report → Bank: a Cash position box opens its own transactions. */
+.br-cash-pick { display: block; width: 100%; text-align: left; background: #fff; font: inherit;
+  color: inherit; cursor: pointer; transition: border-color .12s, background .12s; }
+.br-cash-pick:hover, .br-cash-pick:focus-visible { border-color: var(--rose-deep); background: var(--rose-blush); }
+.br-cash-pick.on { border-color: var(--rose-deep); background: var(--rose-blush);
+  box-shadow: inset 0 0 0 1px var(--rose-deep); }

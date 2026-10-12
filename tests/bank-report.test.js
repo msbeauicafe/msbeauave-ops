@@ -374,3 +374,15 @@ test("Bank's transactions section is laid out as the owner drew it, inside the B
   assert.match(block, /<table class="bttable">/);
   assert.doesNotMatch(app.slice(0, app.indexOf('SCREENS.bankreport = async')), /bttable|bt_range/);
 });
+
+test("a Cash position box opens its own account's transactions, in the Bank view only", () => {
+  const at = app.indexOf("if (view === 'bank') {");
+  const block = app.slice(at, app.indexOf("if (view === 'sales')", at));
+  assert.match(block, /class="br-cash-acct br-cash-pick" data-btacct="\$\{esc\(acct\)\}"/, 'each box is a button');
+  assert.match(block, /pick\.value = pick\.value === b\.dataset\.btacct \? '' : b\.dataset\.btacct;/,
+    'click narrows to that account; click again for every account');
+  // Every box's account is one the list can filter to.
+  for (const acct of ['BDO', 'BPI', 'Security Bank', 'Cash on hand', 'GCash']) {
+    assert.match(app, new RegExp(`const BR_BT_ACCOUNTS = \\[[^\\]]*'${acct}'`), `${acct} is in the account filter`);
+  }
+});
