@@ -1728,3 +1728,14 @@ test('Inventory stock value report ends with JPEG and PDF downloads and the tota
   assert.match(block, /const svSheet = \(rows,/);
   assert.match(block, /const svPdf = \(jpegs, pxW, pxH\) =>/);
 });
+
+test("Invoice tab: a Date range after Standing narrows the list by invoice issued date — its own code", () => {
+  const at = app.indexOf('SCREENS.coinvoices = async');
+  const fn = app.slice(at, app.indexOf('\n};\n', at));
+  assert.match(fn, /id="coinv_standing_pick"[\s\S]*?<label for="coinv_range">Date range<\/label>/,
+    'Date range sits right after Standing');
+  assert.match(fn, /\(!invFrom \|\| issuedDay\(o\) >= invFrom\) && \(!invTo \|\| issuedDay\(o\) <= invTo\)/);
+  assert.match(fn, /const issuedDay = \(o\) => new Date\(o\.invoice_issued_on \|\| o\.placed_at\)/,
+    'the same date the Invoice issued date column shows');
+  assert.doesNotMatch(app.slice(0, at), /coinv_range/, 'nothing outside the Invoice tab');
+});
