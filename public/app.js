@@ -16305,6 +16305,76 @@ const IT_ASSET_STATUS = {
 const IT_CONDITION = { brand_new: 'Brand new', sealed: 'Sealed', unboxed: 'Unboxed',
   missing_items: 'Missing items' };
 
+// Hardware assets' own picture viewer — zoom and pan, so a receipt's small
+// print or a serial sticker in a photo can actually be read. Its own, on
+// data-itzoom, rather than a change to the app-wide lightbox other screens use.
+function itZoom(src, cap) {
+  let scale = 1, x = 0, y = 0, drag = null;
+  const box = document.createElement('div');
+  box.className = 'itzoom';
+  box.innerHTML = `
+    <div class="itzoom-stage"><img src="${esc(src)}" alt="" draggable="false"></div>
+    <div class="itzoom-bar">
+      ${cap ? `<span class="cap">${esc(cap)}</span>` : ''}
+      <button class="btn sm line" data-z="out" aria-label="Zoom out">−</button>
+      <span class="itzoom-pct">100%</span>
+      <button class="btn sm line" data-z="in" aria-label="Zoom in">＋</button>
+      <button class="btn sm line" data-z="fit">Fit</button>
+      <a class="btn sm" href="${esc(src)}" download>⤓ Download</a>
+      <button class="btn sm quiet" data-z="close" aria-label="Close">✕</button>
+    </div>`;
+  const img = box.querySelector('img');
+  const stage = box.querySelector('.itzoom-stage');
+  const paint = () => {
+    img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    box.querySelector('.itzoom-pct').textContent = `${Math.round(scale * 100)}%`;
+    stage.style.cursor = scale > 1 ? (drag ? 'grabbing' : 'grab') : 'zoom-in';
+  };
+  const zoomTo = (next) => {
+    scale = Math.min(8, Math.max(1, next));
+    if (scale === 1) { x = 0; y = 0; }
+    paint();
+  };
+  const close = () => { box.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+    if (e.key === '+' || e.key === '=') zoomTo(scale * 1.25);
+    if (e.key === '-') zoomTo(scale / 1.25);
+  };
+  document.addEventListener('keydown', onKey);
+  box.querySelectorAll('[data-z]').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.z === 'in') zoomTo(scale * 1.25);
+    if (b.dataset.z === 'out') zoomTo(scale / 1.25);
+    if (b.dataset.z === 'fit') zoomTo(1);
+    if (b.dataset.z === 'close') close();
+  }));
+  stage.addEventListener('wheel', (e) => { e.preventDefault(); zoomTo(scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)); },
+    { passive: false });
+  stage.addEventListener('dblclick', () => zoomTo(scale > 1 ? 1 : 2.5));
+  stage.addEventListener('pointerdown', (e) => {
+    if (scale === 1) return;
+    drag = { sx: e.clientX - x, sy: e.clientY - y };
+    stage.setPointerCapture(e.pointerId);
+    paint();
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    x = e.clientX - drag.sx; y = e.clientY - drag.sy;
+    paint();
+  });
+  stage.addEventListener('pointerup', () => { drag = null; paint(); });
+  // A click on the dark surround, outside the picture, closes it.
+  stage.addEventListener('click', (e) => { if (e.target === stage && scale === 1) close(); });
+  document.body.appendChild(box);
+  paint();
+}
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-itzoom]');
+  if (t) itZoom(t.dataset.itzoom, t.dataset.itzoomCap || '');
+});
+
+const IT_FILE_KIND = { receipt: 'Receipt', photo: 'Unit photo' };
+
 // One ticket's conversation, oldest first. IT's replies are marked as IT's.
 const itThread = (t) => `
   <div class="itthread">${(t.messages || []).map((m) => `
@@ -16502,8 +16572,8 @@ SCREENS.itsupport = async (page) => {
             <span>🏷️ Asset-tag</span><span>📋 Log</span></div>
           <h3 class="mt">Intake &amp; unboxing</h3>
           <div class="dim">Enter on any box adds the unit and clears for the next one.
-            Type, brand, supplier and PO stay filled — the next unit is usually from
-            the same delivery.</div>
+            Type, brand, supplier, PO and the receipt stay — the next unit is usually
+            from the same delivery. Photos clear with each unit.</div>
           <form id="as_form" class="asgrid mt" autocomplete="off">
             <div><label for="as_kind">Hardware type</label><select id="as_kind">${
               Object.entries(IT_KINDS).map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select></div>
@@ -16517,6 +16587,11 @@ SCREENS.itsupport = async (page) => {
               <input id="as_supplier" type="text" list="as_suppliers">
               <datalist id="as_suppliers"></datalist></div>
             <div><label for="as_po">Purchase order ID</label><input id="as_po" type="text"></div>
+            <div><label for="as_receipt">Receipt</label>
+              <input id="as_receipt" type="file" accept="image/*"></div>
+            <div><label for="as_photos">Photos of the unit</label>
+              <input id="as_photos" type="file" accept="image/*" multiple></div>
+            <div><label>&nbsp;</label><div class="asthumbs" id="as_picked"></div></div>
             <div class="wide"><label>Physical condition</label>
               <div class="ascheck">${Object.entries(IT_CONDITION).map(([k, l]) => `
                 <label><input type="checkbox" data-ascond="${k}"> ${l}</label>`).join('')}</div></div>
@@ -16541,22 +16616,42 @@ SCREENS.itsupport = async (page) => {
 
       const kind = $('#as_kind', body);
       kind.addEventListener('change', () => { $('#as_tag', body).value = nextTag(kind.value); });
+      // What is about to be attached, shown before it is — click to zoom.
+      const picked = () => {
+        const files = [...($('#as_receipt', body).files || [])].map((f) => ['receipt', f])
+          .concat([...($('#as_photos', body).files || [])].map((f) => ['photo', f]));
+        $('#as_picked', body).innerHTML = files.map(([k, f]) => {
+          const url = URL.createObjectURL(f);
+          return `<img src="${url}" alt="" data-itzoom="${url}" data-itzoom-cap="${IT_FILE_KIND[k]}"
+            title="${IT_FILE_KIND[k]}">`;
+        }).join('');
+      };
+      $('#as_receipt', body).addEventListener('change', picked);
+      $('#as_photos', body).addEventListener('change', picked);
       $('#as_form', body).addEventListener('submit', async (e) => {
         e.preventDefault();
         const go = $('#as_go', body);
         go.disabled = true;
         try {
           const tagNow = $('#as_tag', body).value.trim();
-          await POST('/api/it/assets', {
+          const made = await POST('/api/it/assets', {
             kind: kind.value, tag: tagNow, brand: $('#as_brand', body).value,
             model: $('#as_model', body).value, serial_no: $('#as_serial', body).value,
             supplier: $('#as_supplier', body).value, po_ref: $('#as_po', body).value,
             condition: $$('[data-ascond]', body).filter((c) => c.checked).map((c) => c.dataset.ascond),
           });
-          notice(`${tagNow.toUpperCase()} logged 🏷️`, 'good');
+          // The receipt and photos go on against the unit just logged.
+          const uploads = [...($('#as_receipt', body).files || [])].map((f) => ['receipt', f])
+            .concat([...($('#as_photos', body).files || [])].map((f) => ['photo', f]));
+          for (const [k, f] of uploads) {
+            await POST(`/api/it/assets/${made.id}/files`, { kind: k, dataUrl: await shrink(f, 1600) });
+          }
+          notice(`${tagNow.toUpperCase()} logged 🏷️${uploads.length ? ` with ${uploads.length} attachment${uploads.length === 1 ? '' : 's'}` : ''}`, 'good');
           // The unit is on the list; the box is cleared for the next one.
           $('#as_model', body).value = '';
           $('#as_serial', body).value = '';
+          $('#as_photos', body).value = '';
+          picked();
           $$('[data-ascond]', body).forEach((c) => { c.checked = false; });
           await drawAssets();
           $('#as_tag', body).value = nextTag(kind.value);
@@ -16598,7 +16693,8 @@ SCREENS.itsupport = async (page) => {
       { head: 'Asset tag', cell: (a) => `<button class="nameopen" data-asopen="${a.id}"><b>${esc(a.tag)}</b></button>` },
       { head: 'Category', cell: (a) => esc((IT_KINDS[a.kind] || [a.kind])[0]) },
       { head: 'Item description', cell: (a) => `${esc(described(a))}${(a.condition || []).includes('missing_items')
-          ? ' ' + tag('missing items', 'red') : ''}` },
+          ? ' ' + tag('missing items', 'red') : ''}${(a.files || []).length
+          ? ` <span class="dim" title="Attachments">📎 ${(a.files || []).length}</span>` : ''}` },
       { head: 'Serial no.', cell: (a) => (a.serial_no ? `<code>${esc(a.serial_no)}</code>` : '<span class="dim">—</span>') },
       { head: 'Date logged', cell: (a) => onDay(a.logged_at) },
       { head: 'Status', cell: (a) => {
@@ -16606,7 +16702,7 @@ SCREENS.itsupport = async (page) => {
           return `${tag(l, k)}${a.assigned_to ? `<div class="dim">${esc(a.assigned_to)}${
             a.department ? ' · ' + esc(a.department) : ''}</div>` : ''}`; } },
       { head: '', cell: (a) => `<button class="btn line sm" data-asopen="${a.id}">Assign / update</button>` },
-    ], q || af.kind || af.brand || af.status ? 'Nothing matches that.' : 'Nothing logged yet — add the first unit above.');
+    ], assets.length ? 'Nothing matches that.' : 'Nothing logged yet — add the first unit above.');
     $$('[data-asopen]', body).forEach((b) => b.addEventListener('click',
       () => assetDrawer(assets.find((a) => String(a.id) === b.dataset.asopen))));
   };
@@ -16641,6 +16737,17 @@ SCREENS.itsupport = async (page) => {
           <input id="asd_on" type="date" value="${esc(String(a.deployed_on || today).slice(0, 10))}"></div>
         <div class="mt"><label for="asd_notes">IT notes</label>
           <textarea id="asd_notes" rows="4" placeholder="e.g. Configured with the accounting system and Epson printer drivers">${esc(a.notes || '')}</textarea></div>
+        <div class="mt"><label>Receipt and photos</label>
+          <div class="asthumbs big">${(a.files || []).map((f) => `
+            <figure><img src="/api/it/asset-files/${f.id}" alt="" loading="lazy"
+              data-itzoom="/api/it/asset-files/${f.id}" data-itzoom-cap="${esc(a.tag)} · ${IT_FILE_KIND[f.kind] || f.kind}">
+              <figcaption>${IT_FILE_KIND[f.kind] || f.kind}
+                <button class="linkbtn" data-asdrop="${f.id}" aria-label="Remove">✕</button></figcaption></figure>`).join('')
+            || '<span class="dim">Nothing attached yet.</span>'}</div>
+          <div class="row mt">
+            <div><label for="asd_receipt">Add a receipt</label><input id="asd_receipt" type="file" accept="image/*"></div>
+            <div><label for="asd_photos">Add photos</label><input id="asd_photos" type="file" accept="image/*" multiple></div>
+          </div></div>
         <div class="dim mt">Logged ${when(a.logged_at)} by ${esc(a.logged_by)}${a.supplier ? ` · from ${esc(a.supplier)}` : ''}${
           a.po_ref ? ` · PO ${esc(a.po_ref)}` : ''}${(a.condition || []).length ? ` · ${a.condition.map((c) => IT_CONDITION[c] || c).join(', ')}` : ''}</div>
         <button class="btn itsendbig mt" id="asd_save">Save</button>
@@ -16653,6 +16760,31 @@ SCREENS.itsupport = async (page) => {
     };
     sync();
     $('#asd_status').addEventListener('change', sync);
+    // Attachments save the moment they are picked or removed, then the
+    // drawer reopens on the same unit with them in it.
+    const reopen = async () => {
+      await drawAssets();
+      assetDrawer(assets.find((x) => x.id === a.id));
+    };
+    const attach = (input, k) => input.addEventListener('change', async () => {
+      try {
+        for (const f of input.files) {
+          await POST(`/api/it/assets/${a.id}/files`, { kind: k, dataUrl: await shrink(f, 1600) });
+        }
+        notice('Attached 📎', 'good');
+        await reopen();
+      } catch (err) { whoops(err); }
+    });
+    attach($('#asd_receipt'), 'receipt');
+    attach($('#asd_photos'), 'photo');
+    $$('[data-asdrop]', wrap).forEach((b) => b.addEventListener('click', async () => {
+      if (!await askFirst('Remove this attachment?', 'It is deleted for good.', 'Remove', 'Keep it')) return;
+      try {
+        await DELETE(`/api/it/asset-files/${b.dataset.asdrop}`);
+        notice('Removed', 'good');
+        await reopen();
+      } catch (err) { whoops(err); }
+    }));
     $('#asd_x').addEventListener('click', close);
     wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
     $('#asd_save').addEventListener('click', async () => {

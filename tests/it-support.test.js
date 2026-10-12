@@ -251,3 +251,40 @@ test('Hardware assets is a third view for IT only', () => {
   assert.match(app, /const views = isIT \? \[\['dash', 'IT Dashboard'\], \['file', 'File Concern'\], \['assets', 'Hardware assets'\]\]/);
   assert.match(app, /: \[\['file', 'File Concern'\], \['mine', 'My requests'\]\]/, 'everybody else is unchanged');
 });
+
+test("an asset's receipt and photos: attached, shown, served, removed — IT's alone", async () => {
+  const it = await signInIT();
+  const { id } = (await POST(it, '/api/it/assets',
+    { kind: 'monitor', tag: `MSBA-MON-${process.pid}${seq++}`, brand: 'Dell' })).data;
+  // A 2×2 PNG.
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==';
+
+  const receipt = await POST(it, `/api/it/assets/${id}/files`, { kind: 'receipt', dataUrl: png });
+  assert.equal(receipt.status, 200, JSON.stringify(receipt.data));
+  assert.equal((await POST(it, `/api/it/assets/${id}/files`, { kind: 'photo', dataUrl: png })).status, 200);
+  assert.notEqual((await POST(it, `/api/it/assets/${id}/files`,
+    { kind: 'photo', dataUrl: 'data:application/pdf;base64,JVBERi0=' })).status, 200, 'images only');
+
+  const row = (await GET(it, '/api/it/assets')).data.find((a) => a.id === id);
+  assert.deepEqual(row.files.map((f) => f.kind).sort(), ['photo', 'receipt']);
+
+  const file = await fetch(`${base}/api/it/asset-files/${receipt.data.id}`, { headers: { Cookie: it } });
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get('content-type'), 'image/jpeg', 'kept as a shrunk JPEG');
+
+  const other = await signIn('admin');
+  const peek = await fetch(`${base}/api/it/asset-files/${receipt.data.id}`, { headers: { Cookie: other } });
+  assert.notEqual(peek.status, 200, 'another admin cannot open it');
+  assert.notEqual((await POST(other, `/api/it/assets/${id}/files`, { kind: 'photo', dataUrl: png })).status, 200);
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_asset_files'), /permission denied/);
+
+  assert.equal((await request(it, 'DELETE', `/api/it/asset-files/${receipt.data.id}`)).status, 200);
+  const after = (await GET(it, '/api/it/assets')).data.find((a) => a.id === id);
+  assert.deepEqual(after.files.map((f) => f.kind), ['photo']);
+});
+
+test("Hardware assets has its own zoomable viewer, not the app-wide lightbox", () => {
+  assert.match(app, /function itZoom\(src, cap\)/);
+  assert.match(app, /data-itzoom="\/api\/it\/asset-files\/\$\{f\.id\}"/);
+  assert.doesNotMatch(app, /data-zoom="\/api\/it\//, 'the shared lightbox is left alone');
+});
