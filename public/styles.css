@@ -2202,3 +2202,16 @@ input.n { text-align: right; }
 .btacct-edit { display: flex; gap: 6px; margin-top: 6px; }
 .btacct-edit input { flex: 1; min-width: 0; }
 .btacct-edit[hidden] { display: none; }
+
+/* Customer order → Pending: the Date range button and its drop-down. */
+.pend-rangewrap { position: relative; display: inline-block; }
+.pend-range { display: flex; gap: 8px; align-items: center; min-width: 230px; background: #fff;
+  border: 1px solid var(--rose-soft); border-radius: 10px; padding: 9px 12px; font: inherit;
+  color: var(--muted); cursor: pointer; text-align: left; }
+.pend-range #pending_range_label { flex: 1; white-space: nowrap; }
+.pend-range.on { color: var(--ink, inherit); border-color: var(--rose-deep); }
+.pend-rangepop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; background: #fff;
+  border: 1px solid var(--rose-soft); border-radius: 12px; padding: 12px; width: 260px;
+  box-shadow: 0 12px 30px rgba(60, 20, 40, .16); display: grid; gap: 8px; }
+.pend-rangepop input { width: 100%; }
+.pend-rangepop .row { justify-content: flex-end; gap: 8px; }
