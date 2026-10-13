@@ -587,9 +587,9 @@ test('Payment Management: Account, Account no., Rename / Add bank, and the List 
   const form = fn.slice(fn.indexOf('dialog(`'), fn.indexOf('`);'));
   assert.match(form, /id="bt_account"[\s\S]*?id="bt_acct_no"[\s\S]*?id="bt_acct_rename"[\s\S]*?id="bt_acct_add"[\s\S]*?id="bt_go"[\s\S]*?List of mode of payment[\s\S]*?id="pm_list"/,
     'Account, then Account no. with Rename and Add bank under it, Save, then the list');
-  assert.match(fn, /<th>Account<\/th><th>Account no\.<\/th>/);
+  assert.match(fn, /<th>Account<\/th><th>Account name<\/th><th>Account no\.<\/th>/);
   assert.match(fn, /pmBoxes\.filter\(\(x\) => x\.is_bank\)/, 'the list is the banks Mode of payment offers');
-  assert.match(fn, /PUT\('\/api\/bank-report\/accounts\/number', \{ name, account_no: no \}\)/);
+  assert.match(fn, /PUT\('\/api\/bank-report\/accounts\/details', \{ name, account_name: holder, account_no: no \}\)/);
 
   const admin = await signIn('admin');
   const name = unique('Unionbank');
@@ -604,4 +604,74 @@ test('Payment Management: Account, Account no., Rename / Add bank, and the List 
   assert.notEqual((await request(admin, 'PUT', '/api/bank-report/accounts/number', { name: 'no such', account_no: '1' })).status, 200);
   const cashier = await signIn('cashier');
   assert.notEqual((await request(cashier, 'PUT', '/api/bank-report/accounts/number', { name, account_no: '1' })).status, 200);
+});
+
+// The Customer order form's Bank account details come off Payment
+// Management's list (db/190): each bank with an account no., by its name,
+// account name and number. The invoice and the other papers keep their own.
+test("Customer order form: Bank account details read Payment Management's list", async () => {
+  const at = app.indexOf('function customerOrderForm(');
+  const form = app.slice(at, app.indexOf('\n}\n', at));
+  assert.match(form, /\$\{coBankDetails\(\)\}/, 'the form draws its own bank block');
+  assert.doesNotMatch(form, /\$\{BANK_DETAILS\}/);
+  assert.equal(app.match(/coBankDetails\(\)/g).length, 1, "the Customer order form's alone");
+  assert.equal(app.match(/\$\{BANK_DETAILS\}/g).length, 4, 'the invoice and the other papers are untouched');
+  assert.match(app, /function drawFrame\(\) \{\n  refreshCoBanks\(\);/, 'read after sign-in');
+  const pm = app.slice(app.indexOf("$('#bt_new', body).addEventListener('click'"));
+  assert.match(pm.slice(0, pm.indexOf("if (view === 'sales')")), /refreshCoBanks\(\);/, 'and again when Payment Management saves');
+
+  const admin = await signIn('admin');
+  const name = unique('RCBC');
+  assert.equal((await POST(admin, '/api/bank-report/accounts', { name })).status, 200);
+  let shown = (await GET(admin, '/api/co-bank-details')).data;
+  assert.ok(!shown.some((b) => b.name === name), 'a bank with no account no. is not printed');
+  const set = await request(admin, 'PUT', '/api/bank-report/accounts/details',
+    { name, account_name: ' MS Beau Ave Enterprises OPC ', account_no: '123-456' });
+  assert.equal(set.status, 200, JSON.stringify(set.data));
+  shown = (await GET(admin, '/api/co-bank-details')).data;
+  assert.deepEqual(shown.find((b) => b.name === name),
+    { name, account_name: 'MS Beau Ave Enterprises OPC', account_no: '123-456' });
+  const box = (await GET(admin, '/api/bank-report/account-boxes')).data.find((x) => x.name === name);
+  assert.equal(box.account_name, 'MS Beau Ave Enterprises OPC', 'and Payment Management lists it');
+  // The three the form always printed are on the list with their numbers.
+  for (const no of ['010-338-012-751', '317-378-3972', '000-006-567-3032']) {
+    assert.ok(shown.some((b) => b.account_no === no && b.account_name === 'MS Beau Ave Enterprises OPC'), no);
+  }
+  const orderdesk = await signIn('orderdesk');
+  assert.equal((await GET(orderdesk, '/api/co-bank-details')).status, 200, 'whoever draws the form can read it');
+  assert.notEqual((await request(orderdesk, 'PUT', '/api/bank-report/accounts/details', { name, account_no: '1' })).status, 200);
+});
+
+// The ✕ on Payment Management's List of mode of payment: an empty bank goes,
+// one anything was recorded under stays (db/190).
+test("List of mode of payment: ✕ removes a bank nothing was recorded under, and only that", async () => {
+  const at = app.indexOf("$('#bt_new', body).addEventListener('click'");
+  const fn = app.slice(at, app.indexOf("if (view === 'sales')", at));
+  assert.match(fn, /data-pmdrop="\$\{esc\(x\.name\)\}"/, 'an ✕ on every row');
+  assert.match(fn, /btn\.textContent = 'Remove\?';\n\s*return;/, 'asks once before removing');
+  assert.match(fn, /POST\('\/api\/bank-report\/accounts\/remove', \{ name \}\)/);
+
+  const admin = await signIn('admin');
+  const empty = unique('Eastwest');
+  assert.equal((await POST(admin, '/api/bank-report/accounts', { name: empty })).status, 200);
+  const code = (await GET(admin, '/api/bank-report/account-boxes')).data.find((x) => x.name === empty).coa_code;
+  const gone = await POST(admin, '/api/bank-report/accounts/remove', { name: empty });
+  assert.equal(gone.status, 200, JSON.stringify(gone.data));
+  assert.ok(!(await GET(admin, '/api/payment-modes')).data.includes(empty), 'off Mode of payment');
+  assert.equal((await db.query('select 1 from coa_accounts where code = $1', [code])).rowCount, 0,
+    'and its unused Books account with it');
+
+  const used = unique('Metrobank');
+  assert.equal((await POST(admin, '/api/bank-report/accounts', { name: used })).status, 200);
+  const bill = await newPOBill(admin, 500);
+  assert.equal((await POST(admin, `/api/purchase-order-bills/${bill}/payments`, { amount: 100, method: used })).status, 200);
+  const kept = await POST(admin, '/api/bank-report/accounts/remove', { name: used });
+  assert.notEqual(kept.status, 200, 'a bank payments went through stays');
+  assert.match(JSON.stringify(kept.data), /so it stays/);
+  assert.ok((await GET(admin, '/api/payment-modes')).data.includes(used));
+  assert.notEqual((await POST(admin, '/api/bank-report/accounts/remove', { name: 'Cash on hand' })).status, 200,
+    'Cash on hand is not a bank to remove');
+
+  const cashier = await signIn('cashier');
+  assert.notEqual((await POST(cashier, '/api/bank-report/accounts/remove', { name: used })).status, 200);
 });
