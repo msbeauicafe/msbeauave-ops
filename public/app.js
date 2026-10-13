@@ -7383,6 +7383,76 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
   $('#ivd_done').addEventListener('click', closeDialog);
 }
 
+// Customer order → Invoice's own 🖨 Invoice, and only there: the same blue
+// INVOICE as showInvoiceDoc, with Overpayment (what this invoice was paid
+// over, the Funds it became) and Balance (what is still owed) as two rows —
+// the same pair Record payment's invoice shows. A copy rather than a branch:
+// every other screen that opens showInvoiceDoc keeps its one Balance row.
+function showCoInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
+                            who = {}, shipping = 0, others = 0, over = false,
+                            invoiceNo = null, overpaid = 0 }) {
+  const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const grand = sub + shipping + others;
+  const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
+  // MOP is the bank the money came through, Details the account it landed in,
+  // and the reference is the bank's own — the number a reseller quotes to say
+  // it left them. Anything not recorded prints blank rather than guessed at.
+  const slot = (p) => `
+    <div class="slot">
+      <b>MOP${p && p.method ? ` &nbsp;&nbsp;&nbsp; ${esc(p.method)}` : ''}</b>
+      <div>Details: ${p ? esc(p.payer_details || '') : ''}</div>
+      <div>Reference no.: ${p ? esc(p.reference_no || '') : ''}</div>
+      <div>Date: ${p ? onDay(p.paid_on) : ''}</div>
+      <div>Amount: ${p ? peso(p.amount) : ''}</div>
+    </div>`;
+  // Five, as the paper pad has, because a reseller may settle in instalments
+  // and the sheet has to have somewhere to record each one. They were cut to
+  // three when the document ran to two pages; everything else about the sheet
+  // has tightened since, so the five fit and the five stay.
+  const slots = [...payments.slice(0, 5).map(slot),
+                 ...Array.from({ length: Math.max(0, 5 - payments.length) }, () => slot(null))];
+  dialog(`
+    <div class="doc inv">
+      ${DOC_HEAD}
+      <div class="title inv">INVOICE</div>
+      ${docParty(resellerName, issuedOn, invoiceNo || orderId, who,
+                 invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.')}
+      <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
+      <div style="clear:both"></div>
+      ${docLines(lines)}
+      <div class="foot">
+        <div class="mop">
+          <div class="hd">PAYMENT DETAILS${payments.length ? '' : ' — TO FOLLOW PAYMENT'}</div>
+          ${slots.join('')}
+        </div>
+        <div>
+          <div class="totals">
+            <div><span>Subtotal:</span><span id="iv_sub">${peso(sub)}</span></div>
+            <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
+            <div><span>Others:</span><span>${peso(others)}</span></div>
+            <div class="grand"><span>Grand Total:</span><span id="iv_grand">${peso(grand)}</span></div>
+            <div class="bal"><span>Overpayment:</span><span id="iv_over">${
+              peso(overpaid > 0 ? overpaid : Math.max(paid - grand, 0))}</span></div>
+            <div class="bal"><span>Balance:</span><span id="iv_bal">${
+              peso(Math.max(grand - paid, 0))}</span></div>
+          </div>
+          ${BANK_DETAILS}
+        </div>
+      </div>
+      <div class="sign1">
+        <div class="nm">${esc(user?.name || user?.username || '')}</div>
+        <div>Order Management Coordinator</div>
+        <div class="cap">PREPARED BY:</div>
+      </div>
+    </div>
+    <div class="mt right">
+      <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
+      ${PRINT_BTN}
+      <button class="btn" id="ivd_done">Done</button></div>`, 'wide', over);
+  wireSave('#ivd_save', '.doc', `${invoiceNo || orderId} INVOICE.jpg`);
+  $('#ivd_done').addEventListener('click', closeDialog);
+}
+
 // Record payment's own Invoice log, and only there: the same blue INVOICE,
 // but a payment row here can carry more than this invoice ever owed — the
 // owner pays down the invoice first and whatever is left over becomes the
@@ -11147,11 +11217,18 @@ SCREENS.coinvoices = async (page) => {
     $$('[data-invdoc]', page).forEach((b) => b.addEventListener('click', async () => {
       const o = find(b.dataset.invdoc);
       try {
-        const [full, payments] = await Promise.all([
+        const [full, payments, acct] = await Promise.all([
           GET(`/api/orders/${o.id}`),
           GET(`/api/resellers/${o.reseller_id}/payments?order_id=${o.id}`).catch(() => []),
+          GET(`/api/resellers/${o.reseller_id}`).catch(() => null),
         ]);
-        showInvoiceDoc({
+        // What overflowed off this invoice into Funds — the same record
+        // Record payment's own invoice reads its Overpayment from.
+        const overpaid = (acct?.overflow || [])
+          .filter((f) => String(f.source_invoice_id) === String(o.invoice_id) && !f.target_invoice_id)
+          .reduce((t, f) => t + Number(f.amount), 0);
+        showCoInvoiceDoc({
+          overpaid,
           orderId: full.id,
           // This tab's own Invoice button reads the packing list's own
           // issued date first — the paper is normally handed over the day

@@ -587,15 +587,14 @@ test('the four invoice-row buttons do their own four things', () => {
   assert.match(screen, /openInvoiceOrder\(b\.dataset\.invco, load\)/,
     'Customer order opens Invoice tab\'s own dialog, not the shared openOrder');
 
-  // Invoice reuses the generic showInvoiceDoc renderer — the same blue
-  // INVOICE document a reseller's own account page already opens it from —
-  // rather than redrawing the paper here; only the fetch that feeds it data
-  // is this screen's own.
+  // Invoice opens this tab's own copy of the blue INVOICE (showCoInvoiceDoc),
+  // which shows Overpayment and Balance as two rows; the shared
+  // showInvoiceDoc other screens open keeps its single Balance row.
   const invdoc = screen.slice(screen.indexOf("$$('[data-invdoc]'"));
   assert.match(invdoc, /GET\(`\/api\/orders\/\$\{o\.id\}`\)/, "this screen's own fetch of the order");
   assert.match(invdoc, /GET\(`\/api\/resellers\/\$\{o\.reseller_id\}\/payments\?order_id=\$\{o\.id\}`\)/,
     'and of the payments made against it, so they show in the form\'s own Payment Details');
-  assert.match(invdoc, /showInvoiceDoc\(\{/, 'the shared renderer, reused rather than redrawn');
+  assert.match(invdoc, /showCoInvoiceDoc\(\{/, "this tab's own copy, with Overpayment and Balance");
   // DATE on the printed document reads the packing list's own issued date
   // first — the paper normally leaves the day the goods actually went out,
   // not the day the invoice number was struck — falling back to the
@@ -1746,4 +1745,23 @@ test("Invoice tab: a Date range after Standing narrows the list by packing list 
     'no packing list yet means outside any range');
   assert.doesNotMatch(fn, /issuedDay/);
   assert.doesNotMatch(app.slice(0, at), /coinv_range/, 'nothing outside the Invoice tab');
+});
+
+test("Invoice tab's own 🖨 Invoice shows Overpayment then Balance; the shared invoice keeps one Balance row", () => {
+  const at = app.indexOf('function showCoInvoiceDoc(');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  assert.match(fn, /<span>Overpayment:<\/span><span id="iv_over">\$\{\s*\n?\s*peso\(overpaid > 0 \? overpaid : Math\.max\(paid - grand, 0\)\)\}/);
+  assert.match(fn, /<span>Balance:<\/span><span id="iv_bal">\$\{\s*\n?\s*peso\(Math\.max\(grand - paid, 0\)\)\}/);
+  assert.ok(fn.indexOf('Overpayment:') < fn.indexOf('Balance:'));
+
+  const tab = app.slice(app.indexOf('SCREENS.coinvoices = async'));
+  const handler = tab.slice(tab.indexOf("$$('[data-invdoc]', page)"), tab.indexOf('const load = async'));
+  assert.match(handler, /showCoInvoiceDoc\(\{/, 'the Invoice tab opens its own copy');
+  assert.match(handler, /String\(f\.source_invoice_id\) === String\(o\.invoice_id\) && !f\.target_invoice_id/,
+    "Overpayment is what overflowed off this invoice, as Record payment's own invoice reads it");
+
+  const sharedAt = app.indexOf('function showInvoiceDoc(');
+  const shared = app.slice(sharedAt, app.indexOf('\n}\n', sharedAt));
+  assert.doesNotMatch(shared, /Overpayment/, 'every other screen keeps its single Balance row');
+  assert.equal((app.match(/(?<!function )showCoInvoiceDoc\(\{/g) || []).length, 1, 'opened from the Invoice tab alone');
 });
