@@ -7430,8 +7430,12 @@ function showInvoiceLogDoc({ orderId, issuedOn, resellerName, lines, payments = 
             <div><span>Shipping/Delivery Fee:</span><span>${peso(shipping)}</span></div>
             <div><span>Others:</span><span>${peso(others)}</span></div>
             <div class="grand"><span>Grand Total:</span><span id="iv_grand">${peso(grand)}</span></div>
+            ${/* Two rows, not one doing both jobs: what was paid over the
+                 invoice (the Funds it became), and what is still owed. */''}
+            <div class="bal"><span>Overpayment:</span><span id="iv_over">${
+              peso(fundTotal > 0 ? fundTotal : Math.max(paid - grand, 0))}</span></div>
             <div class="bal"><span>Balance:</span><span id="iv_bal">${
-              peso(fundTotal > 0 ? fundTotal : grand - paid)}</span></div>
+              peso(Math.max(grand - paid, 0))}</span></div>
           </div>
           ${BANK_DETAILS}
         </div>

@@ -1007,9 +1007,15 @@ test("the invoice log's own document shows the real amount paid and, once settle
 
   assert.match(fn, /Amount: \$\{p \? peso\(p\.displayAmount \?\? p\.amount\) : ''\}/,
     'the row shows the real transfer (applied + whatever of it overflowed), not just what was applied');
+  // Overpayment and Balance are two rows: what was paid over the invoice
+  // (the Funds it became), then what is still owed.
   assert.match(fn,
-    /<span id="iv_bal">\$\{\s*\n?\s*peso\(fundTotal > 0 \? fundTotal : grand - paid\)\}<\/span>/,
-    "Balance reads the Funds total once there's nothing left owed; otherwise it's the ordinary balance due");
+    /<span>Overpayment:<\/span><span id="iv_over">\$\{\s*\n?\s*peso\(fundTotal > 0 \? fundTotal : Math\.max\(paid - grand, 0\)\)\}<\/span>/,
+    'Overpayment reads the Funds the extra became');
+  assert.match(fn,
+    /<span>Balance:<\/span><span id="iv_bal">\$\{\s*\n?\s*peso\(Math\.max\(grand - paid, 0\)\)\}<\/span>/,
+    'Balance, under it, is only ever what is still owed');
+  assert.ok(fn.indexOf('Overpayment:') < fn.indexOf('Balance:'), 'Overpayment first, Balance below it');
 
   // The shared showInvoiceDoc every other screen opens is untouched —
   // Balance there only ever means what is still owed.
