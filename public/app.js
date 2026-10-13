@@ -8846,8 +8846,8 @@ SCREENS.pendingorders = async (page) => {
     if (o.status === 'cancelled') return 'Cancelled';
     return { placed: 'Committed', picking: 'Picking', fulfilled: 'Completed' }[o.status] ?? o.status;
   };
-  const PENDING_STAGES = ['Awaiting payment', 'Committed', 'Picking', 'Draft', 'Completed',
-    'Delivered', 'Cancelled'];
+  // Picking and Delivered are left out of the pick, as asked; Every stage still shows them.
+  const PENDING_STAGES = ['Awaiting payment', 'Committed', 'Draft', 'Completed', 'Cancelled'];
   let pendFrom = '';
   let pendTo = '';
   const placedDay = (o) => (o.placed_at
