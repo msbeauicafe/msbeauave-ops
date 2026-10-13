@@ -361,7 +361,9 @@ test("Bank's transactions section is laid out as the owner drew it, inside the B
   assert.match(block, /View and manage all bank transactions, filter by account, type and period\./);
   assert.match(block, /placeholder="Search reference, name, or particulars…"/);
   assert.match(block, /id="bt_range"/, 'a From – To period filter');
-  const heads = [...block.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+  // The transactions table's own headings (Payment Management's list has its own).
+  const bt = block.slice(block.indexOf('<table class="bttable">'), block.indexOf('</thead>', block.indexOf('<table class="bttable">')));
+  const heads = [...bt.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
   assert.deepEqual(heads, ['Date', 'Reference #', 'Particulars', 'Account', '◆', 'Type',
     'Debit (₱)', 'Credit (₱)', 'Balance (₱)', 'Remarks']);
   assert.match(block, /Use the filters above or click “Payment Management” to get started\./);
@@ -575,4 +577,31 @@ test('Payment Management is only Account, Rename, + Add bank and Save; every Mod
     assert.match(app.slice(i, i + 300), /await refreshMops\(\);/, `${opener} reads the list first`);
   }
   assert.doesNotMatch(app, /BANCO DE ORO \(BDO\)/, 'no second name for BDO left on any screen');
+});
+
+// Payment Management, as the owner drew it: Account | Account no., Rename and
+// Add bank under the number, and the List of mode of payment below (db/189).
+test('Payment Management: Account, Account no., Rename / Add bank, and the List of mode of payment', async () => {
+  const at = app.indexOf("$('#bt_new', body).addEventListener('click'");
+  const fn = app.slice(at, app.indexOf("if (view === 'sales')", at));
+  const form = fn.slice(fn.indexOf('dialog(`'), fn.indexOf('`);'));
+  assert.match(form, /id="bt_account"[\s\S]*?id="bt_acct_no"[\s\S]*?id="bt_acct_rename"[\s\S]*?id="bt_acct_add"[\s\S]*?id="bt_go"[\s\S]*?List of mode of payment[\s\S]*?id="pm_list"/,
+    'Account, then Account no. with Rename and Add bank under it, Save, then the list');
+  assert.match(fn, /<th>Account<\/th><th>Account no\.<\/th>/);
+  assert.match(fn, /pmBoxes\.filter\(\(x\) => x\.is_bank\)/, 'the list is the banks Mode of payment offers');
+  assert.match(fn, /PUT\('\/api\/bank-report\/accounts\/number', \{ name, account_no: no \}\)/);
+
+  const admin = await signIn('admin');
+  const name = unique('Unionbank');
+  assert.equal((await POST(admin, '/api/bank-report/accounts', { name })).status, 200);
+  const set = await request(admin, 'PUT', '/api/bank-report/accounts/number', { name, account_no: ' 0010-0014 ' });
+  assert.equal(set.status, 200, JSON.stringify(set.data));
+  let box = (await GET(admin, '/api/bank-report/account-boxes')).data.find((x) => x.name === name);
+  assert.equal(box.account_no, '0010-0014', 'kept, trimmed');
+  await request(admin, 'PUT', '/api/bank-report/accounts/number', { name, account_no: '' });
+  box = (await GET(admin, '/api/bank-report/account-boxes')).data.find((x) => x.name === name);
+  assert.equal(box.account_no, null, 'and can be cleared');
+  assert.notEqual((await request(admin, 'PUT', '/api/bank-report/accounts/number', { name: 'no such', account_no: '1' })).status, 200);
+  const cashier = await signIn('cashier');
+  assert.notEqual((await request(cashier, 'PUT', '/api/bank-report/accounts/number', { name, account_no: '1' })).status, 200);
 });
