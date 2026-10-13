@@ -8834,9 +8834,30 @@ SCREENS.pendingorders = async (page) => {
   // a Set of the ids /api/pending-orders/by-product answered with, kept as
   // strings the way a bigint id already arrives off Postgres.
   let matchedIds = null;
+  // Stage and Date range, beside the product search. The stage is the same
+  // word the row's own Stage tag reads — worked out here the same way
+  // pendingStageTag does, as plain text, so the pick and the row agree.
+  // The range is the Placed date.
+  const stageOf = (o) => {
+    if (o.delivered_at) return 'Delivered';
+    if (o.parked_at) return 'Draft';
+    if (!o.committed_at && o.status === 'placed') return 'Awaiting payment';
+    if (o.committed_at && ['placed', 'picking'].includes(o.status)) return 'Committed';
+    if (o.status === 'cancelled') return 'Cancelled';
+    return { placed: 'Committed', picking: 'Picking', fulfilled: 'Completed' }[o.status] ?? o.status;
+  };
+  const PENDING_STAGES = ['Awaiting payment', 'Committed', 'Picking', 'Draft', 'Completed',
+    'Delivered', 'Cancelled'];
+  let pendFrom = '';
+  let pendTo = '';
+  const placedDay = (o) => (o.placed_at
+    ? new Date(o.placed_at).toLocaleDateString('en-CA', { timeZone: TZ }) : '');
 
   const draw = () => {
-    const shown = matchedIds ? rows.filter((o) => matchedIds.has(String(o.id))) : rows;
+    const stage = $('#pending_stage', page)?.value || '';
+    const shown = (matchedIds ? rows.filter((o) => matchedIds.has(String(o.id))) : rows)
+      .filter((o) => (!stage || stageOf(o) === stage)
+        && (!pendFrom || placedDay(o) >= pendFrom) && (!pendTo || placedDay(o) <= pendTo));
     $('#pending', page).innerHTML = table(shown, [
       { head: 'Customer order', cell: (o) => `<b>${esc(o.co_no || '—')}</b>` },
       { head: 'Placed', cell: (o) => {
@@ -8854,6 +8875,7 @@ SCREENS.pendingorders = async (page) => {
           ${pendingAwaitingPayment(o)
             ? `<button class="btn sm quiet" data-park="${o.id}">Draft</button>` : ''}` },
     ], matchedIds ? 'No waiting order has that product on it.'
+      : ($('#pending_stage', page)?.value || pendFrom || pendTo) ? 'No order matches that.'
       : 'Nothing is waiting — every order taken has gone out.');
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
@@ -8902,8 +8924,45 @@ SCREENS.pendingorders = async (page) => {
       <span class="hint" id="pending_count"></span></div>
     <div class="tools">
       <input type="search" id="pending_product" placeholder="Search by product…">
+      <select id="pending_stage" aria-label="Stage"><option value="">Every stage</option>${
+        PENDING_STAGES.map((x) => `<option>${esc(x)}</option>`).join('')}</select>
+      <span class="pend-rangewrap"><button type="button" class="pend-range" id="pending_range">
+        <span aria-hidden="true">📅</span> <span id="pending_range_label">From – To</span>
+        <span aria-hidden="true">▾</span></button></span>
     </div>
     <div id="pending"></div>`;
+  $('#pending_stage', page).addEventListener('change', draw);
+  // This tab's own From – To drop-down over the Placed date.
+  $('#pending_range', page).addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = $('#pending_rangepop', page);
+    if (open) { open.remove(); return; }
+    const today = localDay();
+    const pop = document.createElement('div');
+    pop.id = 'pending_rangepop';
+    pop.className = 'pend-rangepop';
+    pop.innerHTML = `
+      <div><label for="pending_from">From</label><input id="pending_from" type="date" value="${pendFrom}" max="${today}"></div>
+      <div><label for="pending_to">To</label><input id="pending_to" type="date" value="${pendTo}" max="${today}"></div>
+      <div class="row"><button type="button" class="btn sm line" id="pending_clear">Clear</button>
+        <button type="button" class="btn sm" id="pending_apply">Apply</button></div>`;
+    $('#pending_range', page).after(pop);
+    const shut = (ev) => {
+      if (!pop.contains(ev.target)) { pop.remove(); document.removeEventListener('click', shut, true); }
+    };
+    setTimeout(() => document.addEventListener('click', shut, true));
+    const set = (from, to) => {
+      [pendFrom, pendTo] = from && to && from > to ? [to, from] : [from, to];
+      $('#pending_range_label', page).textContent = pendFrom || pendTo
+        ? `${pendFrom ? onDay(pendFrom) : 'Start'} – ${pendTo ? onDay(pendTo) : 'today'}` : 'From – To';
+      $('#pending_range', page).classList.toggle('on', !!(pendFrom || pendTo));
+      pop.remove();
+      document.removeEventListener('click', shut, true);
+      draw();
+    };
+    $('#pending_apply', pop).addEventListener('click', () => set($('#pending_from', pop).value, $('#pending_to', pop).value));
+    $('#pending_clear', pop).addEventListener('click', () => set('', ''));
+  });
 
   // Which resellers also have this product waiting — typed, not picked, since
   // a product list here would be the whole catalogue. A search against the

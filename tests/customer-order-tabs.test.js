@@ -1765,3 +1765,20 @@ test("Invoice tab's own 🖨 Invoice shows Overpayment then Balance; the shared 
   assert.doesNotMatch(shared, /Overpayment/, 'every other screen keeps its single Balance row');
   assert.equal((app.match(/(?<!function )showCoInvoiceDoc\(\{/g) || []).length, 1, 'opened from the Invoice tab alone');
 });
+
+test('Pending customer order: Stage and Date range after the product search — its own code', () => {
+  const at = app.indexOf('SCREENS.pendingorders = async');
+  const fn = app.slice(at, app.indexOf('\n};\n', at));
+  assert.match(fn, /id="pending_product"[\s\S]*?id="pending_stage"[\s\S]*?id="pending_range"/,
+    'Search by product, then Stage, then Date range');
+  assert.match(fn, /\(!stage \|\| stageOf\(o\) === stage\)/, 'Stage narrows by the word the row reads');
+  assert.match(fn, /\(!pendFrom \|\| placedDay\(o\) >= pendFrom\) && \(!pendTo \|\| placedDay\(o\) <= pendTo\)/,
+    'the range is the Placed date');
+  // Every word stageOf can give is one the row's own tag shows.
+  const tagFn = app.slice(app.indexOf('const pendingStageTag'), at);
+  for (const w of ['Delivered', 'Draft', 'Awaiting payment', 'Committed', 'Cancelled', 'Picking', 'Completed']) {
+    assert.ok(tagFn.includes(`'${w}'`), `${w} is a stage the row shows`);
+    assert.ok(fn.includes(`'${w}'`), `${w} is offered in the Stage pick`);
+  }
+  assert.doesNotMatch(app.slice(0, app.indexOf('const pendingStageTag')), /pending_stage|pending_range/);
+});
