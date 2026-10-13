@@ -5455,6 +5455,19 @@ const packingStageTag = (o) => {
   }[o.status] ?? tag(o.status, 'grey');
 };
 
+// This tab's own copy of Invoice tab's Standing words, so the Invoice column
+// reads what that tab's Standing does — paid, paid w/bal, unpaid, void —
+// never the database's bare "open". Copied rather than shared: Invoice tab's
+// own standing stays exactly as it is.
+const packingInvoiceStanding = (o) => {
+  if (o.invoice_status === 'paid') return tag('paid', 'green');
+  if (o.invoice_status === 'void') return tag('void', 'grey');
+  const amount = Number(o.invoice_amount ?? o.total ?? 0);
+  const balance = Number(o.balance ?? amount);
+  const label = balance < amount ? 'paid w/bal' : 'unpaid';
+  return tag(label, label === 'unpaid' && o.invoice_overdue ? 'red' : 'amber');
+};
+
 SCREENS.copacking = async (page) => {
   let status = '';
   const load = async () => {
@@ -5474,7 +5487,7 @@ SCREENS.copacking = async (page) => {
       { head: 'Reseller', cell: (o) => `<b>${esc(o.reseller || '')}</b> `
           + (o.tier ? tierTag(o.tier) : '') },
       { head: 'Stage', cell: (o) => packingStageTag(o) },
-      { head: 'Invoice', cell: (o) => tag(o.invoice_status, 'green') },
+      { head: 'Invoice', cell: (o) => packingInvoiceStanding(o) },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
       // Every row here has had Packing list pressed, so the date this
       // screen's own sort already reads — when that happened, not when the
