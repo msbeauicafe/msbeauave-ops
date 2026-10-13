@@ -15331,7 +15331,6 @@ const BR_PERIODIC = ['sales', 'purchases', 'expenses'];
 const BR_BT_ACCOUNTS = ['BDO', 'BPI', 'Security Bank', 'GCash', 'Bank', 'Cash on hand'];
 const BR_BT_KINDS = { instapay: ['InstaPay', 'green'], pesonet: ['PESONet', 'amber'],
   otc: ['OTC cash deposit', 'pink'], check: ['Check', 'grey'] };
-const BR_STANDING = { paid: ['Paid', 'green'], pending: ['Pending', 'amber'], overdue: ['Overdue', 'red'] };
 
 SCREENS.bankreport = async (page) => {
   const today = localDay();
@@ -15860,6 +15859,11 @@ SCREENS.bankreport = async (page) => {
       const unpaid = rows.filter((i) => Number(i.balance) > 0 && paidSoFar(i) <= 0);
       const part = rows.filter((i) => Number(i.balance) > 0 && paidSoFar(i) > 0);
       const n = (list) => `${count(list.length)} invoice${list.length === 1 ? '' : 's'}`;
+      const brSalesStanding = (i) => {
+        if (i.standing === 'paid' || Number(i.balance) <= 0) return tag('paid', 'green');
+        if (paidSoFar(i) > 0) return tag('paid w/bal', 'amber');
+        return tag('unpaid', i.standing === 'overdue' ? 'red' : 'amber');
+      };
       const groups = {
         all: [rows, 'Total order amounts', '', sum(rows, (i) => i.amount), n(rows)],
         paid: [paid, 'Paid transactions', 'good', sum(paid, (i) => i.amount), n(paid)],
@@ -15889,7 +15893,10 @@ SCREENS.bankreport = async (page) => {
           { head: 'Balance', n: true, cell: (i) => (Number(i.balance) > 0 && paidSoFar(i) > 0
               ? peso(i.balance) : '<span class="dim">—</span>') },
           { head: 'Total balance', n: true, cell: (i) => `<b>${peso(Math.max(Number(i.balance), 0))}</b>` },
-          { head: 'Status', cell: (i) => tag(...BR_STANDING[i.standing]) },
+          // The invoice's own standing, in Invoice tab's words — paid, paid
+          // w/bal, unpaid (red only once past due) — so a part-paid invoice
+          // past its date reads paid w/bal, not Overdue. Sales' own copy.
+          { head: 'Status', cell: (i) => brSalesStanding(i) },
         ], brSalesFilter === 'all' ? 'No invoices in this period.' : 'None of those in this period.')}</div>`;
         $$('[data-sf]', body).forEach((b) => b.addEventListener('click', () => {
           brSalesFilter = b.dataset.sf;

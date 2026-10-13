@@ -480,3 +480,18 @@ test("Payment Management's Account list: add a bank, rename it, and the lines fo
   assert.notEqual((await POST(cashier, '/api/bank-report/accounts', { name: 'X' })).status, 200);
   await assert.rejects(asRole('cashier', 'someone', "select bank_acct_add('X')"), /FORBIDDEN/);
 });
+
+// Sales' Status reads the invoice's standing the way Invoice tab does: a
+// part-paid invoice past its due date is paid w/bal, not Overdue.
+test("Sales' Status: paid / paid w/bal / unpaid, as Invoice tab reads it — never Overdue", () => {
+  const at = app.indexOf("if (view === 'sales')");
+  const block = app.slice(at, app.indexOf("if (view === 'purchases')", at));
+  assert.match(block, /\{ head: 'Status', cell: \(i\) => brSalesStanding\(i\) \}/);
+  const fn = block.slice(block.indexOf('const brSalesStanding'), block.indexOf('const groups'));
+  assert.match(fn, /tag\('paid', 'green'\)/);
+  assert.match(fn, /if \(paidSoFar\(i\) > 0\) return tag\('paid w\/bal', 'amber'\);/,
+    'part-paid is paid w/bal, before any due-date check');
+  assert.match(fn, /tag\('unpaid', i\.standing === 'overdue' \? 'red' : 'amber'\)/);
+  assert.doesNotMatch(block, /'Overdue'/);
+  assert.equal(app.match(/brSalesStanding\(/g).length, 1, "Sales' own, used nowhere else");
+});
