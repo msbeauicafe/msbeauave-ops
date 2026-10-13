@@ -1787,3 +1787,17 @@ test('Pending customer order: Stage and Date range after the product search — 
     'no Picking or Delivered in the Stage pick');
   assert.doesNotMatch(app.slice(0, app.indexOf('const pendingStageTag')), /pending_stage|pending_range/);
 });
+
+// Packing list's Invoice column reads the invoice's standing in Invoice tab's
+// own words — never the bare "open" — from a copy of its own.
+test('Packing list: the Invoice column reads paid / paid w/bal / unpaid, not open — its own copy', () => {
+  const at = app.indexOf('SCREENS.copacking = async');
+  const fn = app.slice(at, app.indexOf('\n};\n', at));
+  assert.match(fn, /\{ head: 'Invoice', cell: \(o\) => packingInvoiceStanding\(o\) \}/);
+  assert.doesNotMatch(fn, /tag\(o\.invoice_status/, 'the bare status word is not shown');
+  const own = app.slice(app.indexOf('const packingInvoiceStanding'), at);
+  for (const w of ["'paid'", "'void'", "'paid w/bal'", "'unpaid'"]) assert.ok(own.includes(w), w);
+  // Invoice tab keeps its own, untouched.
+  assert.match(app, /SCREENS\.coinvoices = async[\s\S]*?const standingLabel = \(o\) =>/);
+  assert.equal(app.match(/packingInvoiceStanding\(/g).length, 1, 'used on this tab only');
+});
