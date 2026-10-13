@@ -10781,14 +10781,19 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
   // was actually typed into the form first, that is saved on the way out
   // rather than left behind, since Packing list only shows what is paid.
   // The press itself is stamped too, the same as pressing Invoice stamps
-  // that one — Packing list reads newest-pressed first off it.
+  // that one — Packing list reads newest-pressed first off it. Landing on the
+  // tab, the order is opened straight onto its packing list form — the same
+  // dialog the tab's own Open button shows — rather than left for the bench
+  // to find in the list. Called as it is, not changed: the tab looks the same.
   $('#ci_pack2').addEventListener('click', async () => {
     $('#ci_pack2').disabled = true;
     try {
       await save();
       await POST(`/api/orders/${orderId}/packing-list-pressed`);
       closeDialog();
-      $('[data-panel="copacking"]')?.click();
+      const toPacking = () => $('[data-panel="copacking"]')?.click();
+      toPacking();
+      await openPackingListOrder(orderId, toPacking);
     } catch (e) {
       whoops(e);
       $('#ci_pack2').disabled = false;
