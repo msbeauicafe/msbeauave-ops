@@ -1778,7 +1778,10 @@ test('Pending customer order: Stage and Date range after the product search — 
   const tagFn = app.slice(app.indexOf('const pendingStageTag'), at);
   for (const w of ['Delivered', 'Draft', 'Awaiting payment', 'Committed', 'Cancelled', 'Picking', 'Completed']) {
     assert.ok(tagFn.includes(`'${w}'`), `${w} is a stage the row shows`);
-    assert.ok(fn.includes(`'${w}'`), `${w} is offered in the Stage pick`);
+    assert.ok(fn.includes(`'${w}'`), `${w} is a word the row can read`);
   }
+  // The Stage pick leaves out Picking and Delivered.
+  assert.match(fn, /const PENDING_STAGES = \['Awaiting payment', 'Committed', 'Draft', 'Completed', 'Cancelled'\];/,
+    'no Picking or Delivered in the Stage pick');
   assert.doesNotMatch(app.slice(0, app.indexOf('const pendingStageTag')), /pending_stage|pending_range/);
 });
