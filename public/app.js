@@ -3549,6 +3549,7 @@ SCREENS.purchaseorders = async (page, headless = false) => {
   // happened. The dialog now stays open, the new row and its thumbnail
   // painted straight back, until told to close.
   const billPaymentForm = async (bill, done) => {
+    await refreshMops();
     dialog(`
       <h3>Record a payment — ${esc(bill.po_no)}</h3>
       <div class="dim">${esc(bill.supplier)}${bill.invoice_no
@@ -7048,11 +7049,16 @@ function printOneSheet() {
 // it. One listener on the document covers every print button on every sheet,
 // including the ones drawn after this line runs.
 // How money actually arrives here, offered as a list rather than left to
-// whoever is typing. Two screens ask the question — the account and the
-// invoice — so the answer is written once: a mode added here is added to both,
-// and "GCASH" cannot be GCash on one screen and G-Cash on the other, which is
-// what a statement is matched against later.
-const MOP_OPTIONS = ['BANCO DE ORO (BDO)', 'BPI', 'SECURITY BANK', 'GCASH', 'CASH', 'FUNDS'];
+// whoever is typing. Every Record payment asks the question — the account,
+// the invoice, a purchase order's bill — so the answer is one list: Bank
+// report's Payment Management, whose banks come by the names it gives them
+// (renamed there, renamed here), then CASH and FUNDS (db/188). Read fresh
+// each time one of those opens; this is only what shows if that read fails.
+let MOP_OPTIONS = ['BDO', 'BPI', 'Security Bank', 'GCash', 'CASH', 'FUNDS'];
+const refreshMops = async () => {
+  const list = await GET('/api/payment-modes').catch(() => null);
+  if (Array.isArray(list) && list.length) MOP_OPTIONS = list;
+};
 const mopList = (id) => `<datalist id="${id}">${MOP_OPTIONS
   .map((m) => `<option value="${esc(m)}"></option>`).join('')}</datalist>`;
 
@@ -10248,6 +10254,7 @@ SCREENS.draftorders = async (page) => {
 // A proof photo is filed under the reseller's own gallery (the same place
 // Customers shows it), since a payment here has nowhere of its own to keep one.
 async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink, owed, resellerId, orderId, done) {
+  await refreshMops();
   dialog(`
     <h3>Record payment — ${invoiceNo ? `${esc(invoiceNo)} ` : ''}${esc(resellerName || `#${invoiceId}`)} ${chatBadge(chatLink)}</h3>
 
@@ -11474,6 +11481,7 @@ async function openReseller(id, reload, part = 'account') {
   const acct = part === 'account';
   const money = part === 'money';
   const r = await GET(`/api/resellers/${id}`);
+  if (money) await refreshMops();
   dialog(`
     <h3>${esc(r.name)}</h3>
     <div class="tags">${activeTag(r)}
@@ -11616,7 +11624,7 @@ async function openReseller(id, reload, part = 'account') {
           <input class="pay_on" type="date" value="${localDay()}"></div>
         <div><label${n ? ' class="sr"' : ''}>Through (MOP)</label>
           <input class="pay_mop" type="text" list="acct_banks"
-                 placeholder="BANCO DE ORO (BDO)"></div>
+                 placeholder="${esc(MOP_OPTIONS[0])}"></div>
         <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
           <input class="pay_ref" type="text" placeholder="the bank's own reference"></div>
       </div>`).join('')}
@@ -11923,7 +11931,8 @@ async function openReseller(id, reload, part = 'account') {
   // there so the breakdown — BDO, then BPI, then GCash — survives into the
   // ledger and onto the invoice, instead of one anonymous lump nobody can
   // trace back to a bank statement.
-  $$('[data-pay]').forEach((b) => b.addEventListener('click', () => {
+  $$('[data-pay]').forEach((b) => b.addEventListener('click', async () => {
+    await refreshMops();
     const owed = Number(b.dataset.owed);
     const invoiceNo = b.dataset.pay;
     const orderNo = b.dataset.order;
@@ -11945,7 +11954,7 @@ async function openReseller(id, reload, part = 'account') {
             <input class="ip_on" type="date" value="${localDay()}"></div>
           <div><label${n ? ' class="sr"' : ''}>Through (MOP)</label>
             <input class="ip_mop" type="text" list="inv_banks"
-                   placeholder="BANCO DE ORO (BDO)"></div>
+                   placeholder="${esc(MOP_OPTIONS[0])}"></div>
           <div><label${n ? ' class="sr"' : ''}>Reference no.</label>
             <input class="ip_ref" type="text" placeholder="the bank's own reference"></div>
           <div style="flex:0 0 auto"><label${n ? ' class="sr"' : ''}>Proof</label>
@@ -11966,7 +11975,7 @@ async function openReseller(id, reload, part = 'account') {
         <div><label class="sr">Received on</label>
           <input class="ip_on" type="date" value="${localDay()}"></div>
         <div><label class="sr">Through (MOP)</label>
-          <input class="ip_mop" type="text" list="inv_banks" placeholder="BANCO DE ORO (BDO)"></div>
+          <input class="ip_mop" type="text" list="inv_banks" placeholder="${esc(MOP_OPTIONS[0])}"></div>
         <div><label class="sr">Reference no.</label>
           <input class="ip_ref" type="text" placeholder="the bank's own reference"></div>
         <div style="flex:0 0 auto"><label class="sr">Proof</label>
@@ -15265,10 +15274,6 @@ const BR_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
 const BR_MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
                         'August', 'September', 'October', 'November', 'December'];
 const BR_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// Always these seven boxes, in this order, whether or not Books happens to
-// carry an account by that name yet — a box reads ₱0.00 rather than vanish,
-// so the shape of the panel never shifts as accounts are set up one by one.
-const BR_CASH_BOXES = ['Bank', 'Cash on hand', 'GCash', 'BDO', 'BPI', 'Security Bank', 'Balance'];
 const brParts = (iso) => { const [y, m, d] = iso.split('-').map(Number); return { y, m, d }; };
 const brISO = (y, m, d) => {
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -15329,6 +15334,14 @@ const brTiles = (keys) => `<div class="brgrid">${keys.map((k) => `<button class=
 const BR_PERIODIC = ['sales', 'purchases', 'expenses'];
 // Bank transactions: the accounts a line can sit on, and its four kinds.
 const BR_BT_ACCOUNTS = ['BDO', 'BPI', 'Security Bank', 'GCash', 'Bank', 'Cash on hand'];
+// Payment Management's list as Cash position lays it out (db/188): each
+// account, its side — bank, cash, or the rest — and the old Mode of payment
+// wording it still answers to. What the six were before the list, if the
+// read fails.
+const brBoxes = () => GET('/api/bank-report/account-boxes').catch(() => [
+  ...['BDO', 'BPI', 'Security Bank'].map((name) => ({ name, column: 'bank', aliases: [] })),
+  { name: 'Cash on hand', column: 'cash', aliases: ['CASH'] }, { name: 'GCash', column: 'cash', aliases: [] },
+  { name: 'Bank', column: 'rest', aliases: [] }]);
 const BR_BT_KINDS = { instapay: ['InstaPay', 'green'], pesonet: ['PESONet', 'amber'],
   otc: ['OTC cash deposit', 'pink'], check: ['Check', 'grey'] };
 
@@ -15432,14 +15445,16 @@ SCREENS.bankreport = async (page) => {
     $('#brd_label', page).textContent = dashPeriod === 'month'
       ? `${BR_MONTHS_LONG[m - 1]} ${y}` : `${BR_MONTHS_LONG[m - 1]} ${d}, ${y}`;
     $('#brd_next', page).disabled = brRange(dashPeriod, brShift(dashPeriod, dashAnchor, 1)).from > today;
-    const [fin, cash, payables, invoices] = await Promise.all([
+    const [fin, cash, payables, invoices, boxes] = await Promise.all([
       GET(`/api/finance?from=${from}&to=${to}`),
       GET('/api/books/cash'),
       GET('/api/reports/payables'),
       GET(`/api/bank-report/sales?from=${from}&to=${to}`),
+      brBoxes(),
     ]);
     if (view || !$('#br_dash', page)) return;
-    const bank = BR_CASH_BOXES.reduce((t, label) => t + Number(cash.accounts.find((a) =>
+    // Every box Cash position shows, by the names Payment Management gives them.
+    const bank = [...boxes.map((x) => x.name), 'Balance'].reduce((t, label) => t + Number(cash.accounts.find((a) =>
       a.title.trim().toLowerCase() === label.toLowerCase())?.balance || 0), 0);
     const figure = (label, amount, kind = '') => `
       <div class="tile ${kind}"><div class="label">${label}</div><div class="big">${peso(amount || 0)}</div></div>`;
@@ -15553,7 +15568,7 @@ SCREENS.bankreport = async (page) => {
     const money = (v) => peso(v || 0);
 
     if (view === 'bank') {
-      const cash = await GET('/api/books/cash');
+      const [cash, boxes] = await Promise.all([GET('/api/books/cash'), brBoxes()]);
       const bal = (label) => cash.accounts.find((a) =>
         a.title.trim().toLowerCase() === label.toLowerCase())?.balance;
       body.innerHTML = `
@@ -15561,8 +15576,6 @@ SCREENS.bankreport = async (page) => {
           ${(() => {
             // Laid out as the owner drew it: BANK down the left — BDO, BPI,
             // Security Bank — and CASH down the right — cash on hand, GCash.
-            // Bank view's own arrangement; BR_CASH_BOXES and the Dashboard's
-            // total that reads it are left as they are.
             const sumOf = (list) => list.reduce((t, [acct]) => t + Number(bal(acct) || 0), 0);
             const column = (title, list) => `
               <div class="br-cash-col"><div class="br-cash-colhd"><span>${title}</span>
@@ -15571,18 +15584,22 @@ SCREENS.bankreport = async (page) => {
                   <button type="button" class="br-cash-acct br-cash-pick" data-btacct="${esc(acct)}"
                     title="Show ${esc(shown)} transactions below"><div class="label">${esc(shown)}</div>
                     <div class="big">${money(bal(acct))}</div></button>`).join('')}</div>`;
-            const bankCol = [['BDO', 'BDO'], ['BPI', 'BPI'], ['Security Bank', 'Security Bank']];
-            const cashCol = [['Cash on hand', 'Cash'], ['GCash', 'GCash']];
-            // The two accounts the drawing leaves out still count in the
+            // The boxes come off Payment Management's list (db/188), so a
+            // bank renamed there is renamed here, and one added gets a box.
+            const bankCol = boxes.filter((x) => x.column === 'bank').map((x) => [x.name, x.name]);
+            // Cash on hand first, read as plain Cash, then the rest of the side.
+            const cashCol = boxes.filter((x) => x.column === 'cash')
+              .sort((a, b) => Number(b.is_bank === false) - Number(a.is_bank === false))
+              .map((x) => [x.name, x.is_bank === false ? 'Cash' : x.name]);
+            // The accounts the drawing leaves out still count in the
             // total below, so they are named rather than silently dropped.
-            const rest = BR_CASH_BOXES.filter((acct) =>
-              ![...bankCol, ...cashCol].some(([a]) => a === acct));
+            const rest = [...boxes.filter((x) => x.column === 'rest').map((x) => x.name), 'Balance'];
             return `<div class="br-cash-cols">${column('Bank', bankCol)}${column('Cash', cashCol)}</div>
               <div class="dim br-cash-rest">Also in the total: ${rest.map((acct) =>
                 `${esc(acct)} ${money(bal(acct))}`).join(' · ')}</div>`;
           })()}
           <div class="br-cash-total"><span>Total</span><b>${money(
-            BR_CASH_BOXES.reduce((t, label) => t + Number(bal(label) || 0), 0))}</b></div>
+            [...boxes.map((x) => x.name), 'Balance'].reduce((t, label) => t + Number(bal(label) || 0), 0))}</b></div>
           <div class="dim mt">A box reads ₱0.00 until an account by that exact name exists
             in Books and carries a balance — set one up or correct it there, not here.</div>
         </div>
@@ -15615,7 +15632,7 @@ SCREENS.bankreport = async (page) => {
       const fillAccountFilter = () => {
         const pick = $('#bt_acct', body);
         const was = pick.value;
-        const names = [...new Set([...btAccounts, ...BR_BT_ACCOUNTS])];
+        const names = btAccounts;
         pick.innerHTML = '<option value="">Every account</option>'
           + names.map((x) => `<option${x === was ? ' selected' : ''}>${esc(x)}</option>`).join('');
       };
@@ -15625,7 +15642,7 @@ SCREENS.bankreport = async (page) => {
       // carries a balance. Read-only here; each line keeps Books' own
       // running balance, the one the box shows.
       const ledger = await GET('/api/bank-report/ledger').catch(() => []);
-      const acctName = (title) => BR_BT_ACCOUNTS.find((x) =>
+      const acctName = (title) => btAccounts.find((x) =>
         x.toLowerCase() === String(title || '').trim().toLowerCase()) || title;
       // A customer's payment reads by its invoice and who paid it; any other
       // Books line keeps Books' own entry number and description.
@@ -15639,10 +15656,14 @@ SCREENS.bankreport = async (page) => {
       // account its payment method names. Not posted to Books, so no Books
       // balance to show beside it.
       const poPaid = await GET('/api/bank-report/po-payments').catch(() => []);
-      const methodAccount = (m) => ({
-        cash: 'Cash on hand', gcash: 'GCash', 'banco de oro (bdo)': 'BDO', bdo: 'BDO',
-        bpi: 'BPI', 'security bank': 'Security Bank',
-      })[String(m || '').trim().toLowerCase()] || 'Bank';
+      // The account a payment's Mode of payment names, off the same list —
+      // by its name now or its old wording — and Bank if it names none.
+      const methodAccount = (m) => {
+        const v = String(m || '').trim();
+        const hit = boxes.find((x) => x.name.toLowerCase() === v.toLowerCase()
+          || (x.aliases || []).includes(v.toUpperCase()));
+        return hit ? hit.name : 'Bank';
+      };
       const poRows = poPaid.map((x) => ({
         // Reference # is the supplier's invoice no. on the bill, not the PO
         // no.; the PO no. stays in Remarks so the payment can be traced.
@@ -15758,38 +15779,20 @@ SCREENS.bankreport = async (page) => {
         $('#bt_clear', pop).addEventListener('click', () => set('', ''));
       });
       $('#bt_new', body).addEventListener('click', () => {
+        // Just the Account list now: pick a bank, then Rename it or Add a
+        // bank, type the name, and Save. The list is the one every Mode of
+        // payment offers (db/188), so a name saved here is the name there.
         dialog(`
           <h3>Payment Management</h3>
           <div class="row">
-            <div><label>Date</label><input id="bt_on" type="date" value="${today}" max="${today}"></div>
-            <div style="flex:2"><label for="bt_account">Account</label>
+            <div><label for="bt_account">Account</label>
               <div class="btacct-row"><select id="bt_account"></select>
                 <button type="button" class="btn sm line" id="bt_acct_rename" title="Rename this account">✎ Rename</button>
                 <button type="button" class="btn sm line" id="bt_acct_add" title="Add a bank to the list">＋ Add bank</button></div>
               <div class="btacct-edit" id="bt_acct_edit" hidden>
-                <input id="bt_acct_name" type="text" autocomplete="off">
-                <button type="button" class="btn sm" id="bt_acct_save">Save</button>
-                <button type="button" class="btn sm quiet" id="bt_acct_cancel">Cancel</button></div></div>
+                <input id="bt_acct_name" type="text" autocomplete="off"></div></div>
           </div>
-          <div class="row">
-            <div><label>Type</label><select id="bt_type">
-              ${Object.entries(BR_BT_KINDS).map(([k, [l]]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></div>
-            <div><label>Money</label><select id="bt_dir">
-              <option value="in">In — received</option><option value="out">Out — paid</option></select></div>
-          </div>
-          <div class="row"><div><label>From / to</label>
-            <input id="bt_party" type="text" placeholder="Who sent it, or who it went to"></div></div>
-          <div class="row">
-            <div><label>Amount</label><input id="bt_amt" type="text" inputmode="decimal" placeholder="0.00"></div>
-            <div><label>Bank reference no.</label><input id="bt_ref" type="text" placeholder="e.g. 2026101012345678"></div>
-          </div>
-          <div class="row"><div><label>Note</label><input id="bt_note" type="text" placeholder="Optional"></div></div>
-          <div class="dim mt">A reference number already on file for the same account is refused,
-            so the same transfer can't be entered twice.</div>
           <div class="mt right"><button class="btn" id="bt_go">Save</button></div>`);
-        $('#bt_amt').addEventListener('input', (e) => comma(e.target));
-        // The Account list: pick from it, rename the one picked, or add a
-        // bank — each saved at once, the list redrawn with it picked.
         const fillAccounts = (pickName) => {
           $('#bt_account').innerHTML = btAccounts.map((x) =>
             `<option${x === pickName ? ' selected' : ''}>${esc(x)}</option>`).join('');
@@ -15802,47 +15805,29 @@ SCREENS.bankreport = async (page) => {
           const box = $('#bt_acct_name');
           box.value = mode === 'rename' ? $('#bt_account').value : '';
           box.placeholder = mode === 'rename' ? 'New name for this account' : 'Bank name, e.g. Metrobank';
-          $('#bt_acct_save').textContent = mode === 'rename' ? 'Save name' : 'Add bank';
           box.focus();
           box.select();
         };
         $('#bt_acct_rename').addEventListener('click', () => openEdit('rename'));
         $('#bt_acct_add').addEventListener('click', () => openEdit('add'));
-        $('#bt_acct_cancel').addEventListener('click', () => { $('#bt_acct_edit').hidden = true; });
         $('#bt_acct_name').addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') { e.preventDefault(); $('#bt_acct_save').click(); }
+          if (e.key === 'Enter') { e.preventDefault(); $('#bt_go').click(); }
         });
-        $('#bt_acct_save').addEventListener('click', async () => {
+        // Save: the rename or the new bank typed in the box, if there is one;
+        // with nothing typed, there is nothing to save and it just closes.
+        $('#bt_go').addEventListener('click', async () => {
           const typed = $('#bt_acct_name').value.trim();
+          if (!acctMode || $('#bt_acct_edit').hidden) { closeDialog(); return; }
           try {
             const from = $('#bt_account').value;
             const out = acctMode === 'rename'
               ? await PUT('/api/bank-report/accounts', { from, to: typed })
               : await POST('/api/bank-report/accounts', { name: typed });
-            btAccounts = await GET('/api/bank-report/accounts');
-            fillAccounts(out.name);
-            fillAccountFilter();
-            $('#bt_acct_edit').hidden = true;
-            notice(acctMode === 'rename' ? `${from} renamed to ${out.name}` : `${out.name} added`, 'good');
-            if (acctMode === 'rename') {
-              txns = await GET('/api/bank-report/transactions');
-              drawTxns();
-            }
-          } catch (err) { whoops(err); }
-        });
-        $('#bt_go').addEventListener('click', async () => {
-          try {
-            await POST('/api/bank-report/transactions', {
-              txn_on: $('#bt_on').value || null, account: $('#bt_account').value,
-              kind: $('#bt_type').value, direction: $('#bt_dir').value,
-              party: $('#bt_party').value, amount: num($('#bt_amt').value),
-              reference: $('#bt_ref').value, note: $('#bt_note').value,
-            });
             closeDialog();
-            notice('Recorded 🌸', 'good');
-            txns = await GET('/api/bank-report/transactions');
-            drawTxns();
-          } catch (e) { whoops(e); }
+            notice(acctMode === 'rename' ? `${from} renamed to ${out.name}` : `${out.name} added`, 'good');
+            // The boxes, the filter and the lines all carry the new name.
+            load().catch(whoops);
+          } catch (err) { whoops(err); }
         });
       });
       return;
