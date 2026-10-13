@@ -2138,8 +2138,10 @@ test('one invoice takes its payment in pieces, each with the bank it came throug
     // In the order the money came in, which is the order the slots are read.
     assert.deepEqual(forOrder.data.map((p) => p.reference_no),
       ['BDO-771', 'BPI-402', 'GC-9911']);
+    // Each bank is kept by Payment Management's own name for it (db/188) —
+    // the old Mode of payment wording reads as the bank it always meant.
     assert.deepEqual(mine.map((p) => p.method).sort(),
-      ['BANCO DE ORO (BDO)', 'BPI', 'GCASH']);
+      ['BDO', 'BPI', 'GCash']);
     assert.deepEqual(mine.map((p) => p.reference_no).sort(),
       ['BDO-771', 'BPI-402', 'GC-9911']);
 

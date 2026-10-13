@@ -119,27 +119,22 @@ test('SCREENS.bankreport reads the same finance figures Finance already uses, pl
   assert.doesNotMatch(fn, /POST\(.*\/api\/books/);
 });
 
-// Cash position always shows these seven boxes, whether or not Books
-// happens to carry an account by that name yet — a box reads ₱0.00 rather
-// than disappear, so the panel's shape never shifts as accounts are set up
-// one at a time in Books.
-test('Cash position is a fixed set of seven named boxes, not just whatever Books happens to have today', () => {
-  assert.match(app,
-    /const BR_CASH_BOXES = \['Bank', 'Cash on hand', 'GCash', 'BDO', 'BPI', 'Security Bank', 'Balance'\];/);
-
+// Cash position's boxes come off Payment Management's own list (db/188): BANK
+// down the left, CASH down the right, the rest named under them — so a bank
+// renamed there is renamed here, and one added gets a box of its own. A box
+// still reads ₱0.00 rather than vanish when Books has nothing on it yet.
+test("Cash position's boxes are Payment Management's list, laid out BANK | CASH", () => {
   const at = app.indexOf('SCREENS.bankreport = async');
   const fn = app.slice(at, app.indexOf('\nSCREENS.', at + 1));
-  // Laid out as the owner drew it: BANK (BDO, BPI, Security Bank) on the
-  // left, CASH (cash on hand, GCash) on the right — and the two accounts the
-  // drawing leaves out named under them, still in the total.
-  assert.match(fn, /const bankCol = \[\['BDO', 'BDO'\], \['BPI', 'BPI'\], \['Security Bank', 'Security Bank'\]\];/);
-  assert.match(fn, /const cashCol = \[\['Cash on hand', 'Cash'\], \['GCash', 'GCash'\]\];/);
+  assert.match(fn, /const bankCol = boxes\.filter\(\(x\) => x\.column === 'bank'\)/);
+  assert.match(fn, /const cashCol = boxes\.filter\(\(x\) => x\.column === 'cash'\)/);
   assert.match(fn, /\$\{column\('Bank', bankCol\)\}\$\{column\('Cash', cashCol\)\}/);
   assert.match(fn, /Also in the total:/);
-  assert.match(fn, /BR_CASH_BOXES\.reduce\(\(t, label\) => t \+ Number\(bal\(label\) \|\| 0\), 0\)/,
-    'the total still counts all seven, the same as the Dashboard');
+  assert.match(fn, /\[\.\.\.boxes\.map\(\(x\) => x\.name\), 'Balance'\]\.reduce\(\(t, label\) => t \+ Number\(bal\(label\) \|\| 0\), 0\)/,
+    'the total counts every box, the same as the Dashboard');
   assert.match(fn, /a\.title\.trim\(\)\.toLowerCase\(\) === label\.toLowerCase\(\)/,
     "each box is matched to a real Books account by its exact name");
+  assert.doesNotMatch(app, /BR_CASH_BOXES/, 'no fixed seven any more');
 });
 
 test('the Day/Week/Month toggle is a real subtabs control, and the next arrow cannot be pushed into the future', () => {
@@ -435,7 +430,8 @@ test('Bank Transactions: a payment reads by its SI no. and payor; a PO payment i
   assert.ok(po.po_no && po.supplier, 'with its PO no. and supplier');
   assert.ok('invoice_no' in po, "and the supplier's invoice no. the bill carries");
   assert.equal(Number(po.amount), 1200);
-  assert.equal(po.method, 'BANCO DE ORO (BDO)');
+  // Kept by Payment Management's name for the bank (db/188).
+  assert.equal(po.method, 'BDO');
 
   const cashier = await signIn('cashier');
   assert.notEqual((await GET(cashier, '/api/bank-report/po-payments')).status, 200);
@@ -494,4 +490,89 @@ test("Sales' Status: paid / paid w/bal / unpaid, as Invoice tab reads it — nev
   assert.match(fn, /tag\('unpaid', i\.standing === 'overdue' \? 'red' : 'amber'\)/);
   assert.doesNotMatch(block, /'Overdue'/);
   assert.equal(app.match(/brSalesStanding\(/g).length, 1, "Sales' own, used nowhere else");
+});
+
+// One list of banks (db/188): Payment Management's. Mode of payment offers
+// its banks by the names given there, plus CASH and FUNDS; renaming one
+// there renames it on the payments already recorded, on a purchase order
+// bill's payments, and on the Books account behind its Cash position box.
+test('one bank list: Mode of payment follows Payment Management, and a rename carries everywhere', async () => {
+  const admin = await signIn('admin');
+  const modes = (await GET(admin, '/api/payment-modes')).data;
+  assert.deepEqual(modes.slice(-2), ['CASH', 'FUNDS'], 'CASH and FUNDS, last, as they were');
+  for (const b of ['BDO', 'BPI', 'Security Bank', 'GCash']) assert.ok(modes.includes(b), `${b} is offered`);
+  assert.ok(!modes.includes('Bank') && !modes.includes('Cash on hand'), 'the two that are not banks are not offered');
+  assert.ok(!modes.includes('BANCO DE ORO (BDO)'), 'no second name for BDO');
+
+  // A new bank: offered at once, with a Books account and a BANK box.
+  const name = unique('Landbank');
+  assert.equal((await POST(admin, '/api/bank-report/accounts', { name })).status, 200);
+  assert.ok((await GET(admin, '/api/payment-modes')).data.includes(name), 'a bank added is a Mode of payment');
+  const box = (await GET(admin, '/api/bank-report/account-boxes')).data.find((x) => x.name === name);
+  assert.equal(box.column, 'bank');
+  assert.ok(box.coa_code, 'with a Books account of its own');
+
+  // Paid through it — a supplier's bill, and (where there is an invoice) a customer.
+  const bill = await newPOBill(admin, 900);
+  const paid = await POST(admin, `/api/purchase-order-bills/${bill}/payments`, { amount: 300, method: name });
+  assert.equal(paid.status, 200, JSON.stringify(paid.data));
+  const inv = (await db.query('select id from invoices order by id limit 1')).rows[0];
+  const pay = inv ? (await db.query(
+    'insert into payments (invoice_id, amount, method) values ($1, 1, $2) returning id', [inv.id, name])).rows[0].id : null;
+
+  const to = unique('LANDBANK OF THE PHILIPPINES');
+  const r = await request(admin, 'PUT', '/api/bank-report/accounts', { from: name, to });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const after = (await GET(admin, '/api/payment-modes')).data;
+  assert.ok(after.includes(to) && !after.includes(name), 'Mode of payment shows the new name only');
+  const po = (await GET(admin, '/api/bank-report/po-payments')).data.find((x) => Number(x.id) === paid.data.id);
+  assert.equal(po.method, to, "the bill payment already recorded reads the new name");
+  if (pay) {
+    assert.equal((await db.query('select method from payments where id = $1', [pay])).rows[0].method, to,
+      "and so does the customer's");
+    await db.query('delete from payments where id = $1', [pay]);
+  }
+  assert.equal((await db.query('select title from coa_accounts where code = $1', [box.coa_code])).rows[0].title, to,
+    'the Books account behind the box is renamed with it');
+
+  // The old wording still means the bank it always did.
+  const bdo = (await GET(admin, '/api/bank-report/account-boxes')).data.find((x) => x.aliases.includes('BANCO DE ORO (BDO)'));
+  const old = await POST(admin, `/api/purchase-order-bills/${bill}/payments`, { amount: 100, method: 'BANCO DE ORO (BDO)' });
+  assert.equal(old.status, 200, JSON.stringify(old.data));
+  const oldRow = (await GET(admin, '/api/bank-report/po-payments')).data.find((x) => Number(x.id) === old.data.id);
+  assert.equal(oldRow.method, bdo.name, 'kept under the list\'s name');
+  assert.notEqual((await POST(admin, `/api/purchase-order-bills/${bill}/payments`, { amount: 1, method: 'aaaaa' })).status, 200,
+    'a bank not on the list is refused');
+  assert.notEqual((await POST(admin, '/api/bank-report/accounts', { name: 'cash' })).status, 200, 'CASH is not a bank name');
+
+  const cashier = await signIn('cashier');
+  assert.notEqual((await GET(cashier, '/api/payment-modes')).status, 200);
+  assert.notEqual((await GET(cashier, '/api/bank-report/account-boxes')).status, 200);
+});
+
+test('Payment Management is only Account, Rename, + Add bank and Save; every Mode of payment reads the list', () => {
+  const at = app.indexOf("$('#bt_new', body).addEventListener('click'");
+  const fn = app.slice(at, app.indexOf("if (view === 'sales')", at));
+  const form = fn.slice(fn.indexOf('dialog(`'), fn.indexOf('`);'));
+  for (const id of ['bt_account', 'bt_acct_rename', 'bt_acct_add', 'bt_acct_name', 'bt_go']) {
+    assert.match(form, new RegExp(`id="${id}"`), `${id} stays`);
+  }
+  for (const id of ['bt_on', 'bt_type', 'bt_dir', 'bt_party', 'bt_amt', 'bt_ref', 'bt_note', 'bt_acct_save', 'bt_acct_cancel']) {
+    assert.doesNotMatch(form, new RegExp(`id="${id}"`), `${id} is gone`);
+  }
+  assert.doesNotMatch(fn, /POST\('\/api\/bank-report\/transactions'/, 'Save no longer records a bank line');
+  assert.match(fn, /PUT\('\/api\/bank-report\/accounts', \{ from, to: typed \}\)/);
+  assert.match(fn, /POST\('\/api\/bank-report\/accounts', \{ name: typed \}\)/);
+
+  // Record payment on Customer order, Purchase order's billing statement and
+  // the account's Confirm the bank payment all read the list as they open.
+  assert.match(app, /let MOP_OPTIONS = /);
+  assert.match(app, /const refreshMops = async \(\) => \{\n  const list = await GET\('\/api\/payment-modes'\)/);
+  for (const opener of ['async function recordInvoicePayment(', 'const billPaymentForm = async (bill, done) => {',
+    "$$('[data-pay]').forEach((b) => b.addEventListener('click', async () => {"]) {
+    const i = app.indexOf(opener);
+    assert.ok(i > 0, opener);
+    assert.match(app.slice(i, i + 300), /await refreshMops\(\);/, `${opener} reads the list first`);
+  }
+  assert.doesNotMatch(app, /BANCO DE ORO \(BDO\)/, 'no second name for BDO left on any screen');
 });
