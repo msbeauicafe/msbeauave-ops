@@ -1216,8 +1216,10 @@ test('Record payment has a Packing list button beside Done, and it saves on the 
     'a payment left filled in the form is saved before leaving');
   assert.match(packHandler, /\$\('\[data-panel="copacking"\]'\)\?\.click\(\)/,
     'clicking it switches to the Packing list tab');
+  assert.match(packHandler, /await openPackingListOrder\(orderId, toPacking\);/,
+    'and opens that order on its packing list form, the tab\'s own Open dialog');
   assert.doesNotMatch(fn, /showPackingList\(/,
-    'it does not open the document itself — that is opened by hand from the tab');
+    'not the popup print of the document — the tab\'s own dialog instead');
 });
 
 // One Packing list / Done / Save, right under the payment rows (and the
