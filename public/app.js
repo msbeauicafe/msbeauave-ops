@@ -672,6 +672,7 @@ async function markIt() {
 }
 
 function drawFrame() {
+  refreshCoBanks();
   let tabs = TABS[user.role] ?? [];
   // For every admin, IT support goes to the top of the menu, above Dashboard
   // — the owner's choice. Only the IT person gets the dashboard behind it
@@ -6765,6 +6766,26 @@ const BANK_DETAILS = `
     <div>Account Number: 000-006-567-3032</div>
   </div>`;
 
+// The Customer order form's own Bank account details — every bank on
+// Bank report's Payment Management with an account no., by the name, account
+// name and number given there (db/190), so a bank renamed, added or numbered
+// there is on the next form drawn. Read after sign-in and again whenever
+// Payment Management saves; BANK_DETAILS above is only what shows until that
+// first read lands. The invoice and the other papers keep BANK_DETAILS.
+let CO_BANKS = null;
+const refreshCoBanks = async () => {
+  const list = await GET('/api/co-bank-details').catch(() => null);
+  if (Array.isArray(list)) CO_BANKS = list;
+};
+const coBankDetails = () => (CO_BANKS ? `
+  <div class="bank">
+    <h5>BANK ACCOUNT DETAILS:</h5>
+    ${CO_BANKS.map((b) => `
+    <div class="b">${esc(String(b.name).toUpperCase())}</div>
+    ${b.account_name ? `<div>Account Name: ${esc(b.account_name)}</div>` : ''}
+    <div>Account Number: ${esc(b.account_no)}</div>`).join('')}
+  </div>` : BANK_DETAILS);
+
 const TAX_LINES = [
   ['Tax Type', 'tax_type'], ['Business Trade Name', 'trade_name'],
   ['Taxpayer Name', 'taxpayer_name'], ['TIN Number', 'tin'],
@@ -7197,7 +7218,7 @@ function customerOrderForm({ orderId, issuedOn, amount, resellerName, lines,
           <b>Reminders:</b>
           <div>1. Please settle payment before delivery date.</div>
           <div>2. Please settle payment to any bank accounts indicated below.</div>
-          ${BANK_DETAILS}
+          ${coBankDetails()}
         </div>
         <div class="totals">
           <div><span>Subtotal:</span><span data-cofsub>${peso(sub)}</span></div>
@@ -15790,6 +15811,8 @@ SCREENS.bankreport = async (page) => {
             <div><label for="bt_account">Account</label><select id="bt_account"></select>
               <div class="btacct-edit" id="bt_acct_edit" hidden>
                 <input id="bt_acct_name" type="text" autocomplete="off"></div></div>
+            <div><label for="bt_acct_holder">Account name</label>
+              <input id="bt_acct_holder" type="text" autocomplete="off" placeholder="e.g. MS Beau Ave Enterprises OPC"></div>
             <div><label for="bt_acct_no">Account no.</label>
               <input id="bt_acct_no" type="text" autocomplete="off" placeholder="e.g. 0000-0001">
               <div class="pm-acts">
@@ -15800,18 +15823,50 @@ SCREENS.bankreport = async (page) => {
           <h3 class="mt">List of mode of payment</h3>
           <div id="pm_list"></div>`);
         const noOf = (name) => pmBoxes.find((x) => x.name === name)?.account_no || '';
+        const holderOf = (name) => pmBoxes.find((x) => x.name === name)?.account_name || '';
+        const showDetails = () => {
+          $('#bt_acct_holder').value = holderOf($('#bt_account').value);
+          $('#bt_acct_no').value = noOf($('#bt_account').value);
+        };
         const fillAccounts = (pickName) => {
           $('#bt_account').innerHTML = btAccounts.map((x) =>
             `<option${x === pickName ? ' selected' : ''}>${esc(x)}</option>`).join('');
-          $('#bt_acct_no').value = noOf($('#bt_account').value);
+          showDetails();
         };
         const drawList = () => {
           const banks = pmBoxes.filter((x) => x.is_bank);
           $('#pm_list').innerHTML = banks.length ? `<table class="pm-list">
-            <thead><tr><th>Account</th><th>Account no.</th></tr></thead>
+            <thead><tr><th>Account</th><th>Account name</th><th>Account no.</th><th></th></tr></thead>
             <tbody>${banks.map((x) => `<tr><td>${esc(x.name)}</td>
-              <td>${x.account_no ? esc(x.account_no) : '<span class="dim">—</span>'}</td></tr>`).join('')}</tbody>
+              <td>${x.account_name ? esc(x.account_name) : '<span class="dim">—</span>'}</td>
+              <td>${x.account_no ? esc(x.account_no) : '<span class="dim">—</span>'}</td>
+              <td class="pm-x"><button type="button" class="btn sm quiet" data-pmdrop="${esc(x.name)}"
+                title="Remove ${esc(x.name)} from the list">✕</button></td></tr>`).join('')}</tbody>
           </table>` : '<div class="dim">No banks on the list yet.</div>';
+          // ✕ asks once — it turns into Remove? — and the second press
+          // removes. A bank with anything recorded under it is refused.
+          $$('[data-pmdrop]', $('#pm_list')).forEach((btn) => btn.addEventListener('click', async () => {
+            if (!btn.classList.contains('sure')) {
+              btn.classList.add('sure');
+              btn.textContent = 'Remove?';
+              return;
+            }
+            const name = btn.dataset.pmdrop;
+            try {
+              await POST('/api/bank-report/accounts/remove', { name });
+              btAccounts = await GET('/api/bank-report/accounts');
+              pmBoxes = await brBoxes();
+              fillAccounts();
+              drawList();
+              notice(`${name} removed`, 'good');
+              load().catch(whoops);
+              refreshCoBanks();
+            } catch (err) {
+              whoops(err);
+              btn.classList.remove('sure');
+              btn.textContent = '✕';
+            }
+          }));
         };
         fillAccounts();
         drawList();
@@ -15822,18 +15877,18 @@ SCREENS.bankreport = async (page) => {
           const box = $('#bt_acct_name');
           box.value = mode === 'rename' ? $('#bt_account').value : '';
           box.placeholder = mode === 'rename' ? 'New name for this account' : 'Bank name, e.g. Metrobank';
-          if (mode === 'add') $('#bt_acct_no').value = '';
+          if (mode === 'add') { $('#bt_acct_no').value = ''; $('#bt_acct_holder').value = ''; }
           box.focus();
           box.select();
         };
         $('#bt_account').addEventListener('change', () => {
-          $('#bt_acct_no').value = noOf($('#bt_account').value);
+          showDetails();
           $('#bt_acct_edit').hidden = true;
           acctMode = '';
         });
         $('#bt_acct_rename').addEventListener('click', () => openEdit('rename'));
         $('#bt_acct_add').addEventListener('click', () => openEdit('add'));
-        for (const id of ['#bt_acct_name', '#bt_acct_no']) {
+        for (const id of ['#bt_acct_name', '#bt_acct_holder', '#bt_acct_no']) {
           $(id).addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); $('#bt_go').click(); }
           });
@@ -15844,6 +15899,7 @@ SCREENS.bankreport = async (page) => {
         $('#bt_go').addEventListener('click', async () => {
           const typed = $('#bt_acct_name').value.trim();
           const no = $('#bt_acct_no').value.trim();
+          const holder = $('#bt_acct_holder').value.trim();
           const naming = acctMode && !$('#bt_acct_edit').hidden;
           try {
             let name = $('#bt_account').value;
@@ -15856,9 +15912,12 @@ SCREENS.bankreport = async (page) => {
               name = out.name;
               said.push(acctMode === 'rename' ? `${from} renamed to ${name}` : `${name} added`);
             }
-            if (no !== (naming && acctMode === 'add' ? '' : noOf($('#bt_account').value))) {
-              await PUT('/api/bank-report/accounts/number', { name, account_no: no });
-              said.push(no ? `${name}'s account no. is ${no}` : `${name}'s account no. cleared`);
+            const adding = naming && acctMode === 'add';
+            const wasNo = adding ? '' : noOf($('#bt_account').value);
+            const wasHolder = adding ? '' : holderOf($('#bt_account').value);
+            if (no !== wasNo || holder !== wasHolder) {
+              await PUT('/api/bank-report/accounts/details', { name, account_name: holder, account_no: no });
+              said.push(`${name}'s account details saved`);
             }
             btAccounts = await GET('/api/bank-report/accounts');
             pmBoxes = await brBoxes();
@@ -15869,6 +15928,9 @@ SCREENS.bankreport = async (page) => {
             notice(said.join(' · ') || 'Nothing changed', said.length ? 'good' : '');
             // The boxes, the filter and the lines all carry the new name.
             if (naming) load().catch(whoops);
+            // The Customer order form prints this list — the next one drawn
+            // carries what was just saved.
+            refreshCoBanks();
           } catch (err) { whoops(err); }
         });
       });

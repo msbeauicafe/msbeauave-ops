@@ -2225,3 +2225,5 @@ input.n { text-align: right; }
 .pm-list th { text-align: left; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
   color: var(--muted, #8a6f7d); border-bottom: 1px solid var(--line, #ecd5df); padding: 6px 8px; }
 .pm-list td { padding: 8px; border-bottom: 1px solid var(--line, #f3e4ea); }
+.pm-list td.pm-x { text-align: right; width: 1%; white-space: nowrap; }
+.pm-list [data-pmdrop].sure { background: #b5484f; color: #fff; }
