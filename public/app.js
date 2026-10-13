@@ -15779,25 +15779,42 @@ SCREENS.bankreport = async (page) => {
         $('#bt_clear', pop).addEventListener('click', () => set('', ''));
       });
       $('#bt_new', body).addEventListener('click', () => {
-        // Just the Account list now: pick a bank, then Rename it or Add a
-        // bank, type the name, and Save. The list is the one every Mode of
-        // payment offers (db/188), so a name saved here is the name there.
+        // Laid out as the owner drew it: Account (picked) on the left, its
+        // Account no. (typed) on the right with Rename and Add bank under
+        // it, and the List of mode of payment below — every bank Mode of
+        // payment offers (db/188), with the account no. each one is (db/189).
+        let pmBoxes = boxes;
         dialog(`
           <h3>Payment Management</h3>
-          <div class="row">
-            <div><label for="bt_account">Account</label>
-              <div class="btacct-row"><select id="bt_account"></select>
-                <button type="button" class="btn sm line" id="bt_acct_rename" title="Rename this account">✎ Rename</button>
-                <button type="button" class="btn sm line" id="bt_acct_add" title="Add a bank to the list">＋ Add bank</button></div>
+          <div class="row pm-top">
+            <div><label for="bt_account">Account</label><select id="bt_account"></select>
               <div class="btacct-edit" id="bt_acct_edit" hidden>
                 <input id="bt_acct_name" type="text" autocomplete="off"></div></div>
+            <div><label for="bt_acct_no">Account no.</label>
+              <input id="bt_acct_no" type="text" autocomplete="off" placeholder="e.g. 0000-0001">
+              <div class="pm-acts">
+                <button type="button" class="btn sm line" id="bt_acct_rename" title="Rename this account">✎ Rename</button>
+                <button type="button" class="btn sm line" id="bt_acct_add" title="Add a bank to the list">＋ Add bank</button></div></div>
           </div>
-          <div class="mt right"><button class="btn" id="bt_go">Save</button></div>`);
+          <div class="mt right"><button class="btn" id="bt_go">Save</button></div>
+          <h3 class="mt">List of mode of payment</h3>
+          <div id="pm_list"></div>`);
+        const noOf = (name) => pmBoxes.find((x) => x.name === name)?.account_no || '';
         const fillAccounts = (pickName) => {
           $('#bt_account').innerHTML = btAccounts.map((x) =>
             `<option${x === pickName ? ' selected' : ''}>${esc(x)}</option>`).join('');
+          $('#bt_acct_no').value = noOf($('#bt_account').value);
+        };
+        const drawList = () => {
+          const banks = pmBoxes.filter((x) => x.is_bank);
+          $('#pm_list').innerHTML = banks.length ? `<table class="pm-list">
+            <thead><tr><th>Account</th><th>Account no.</th></tr></thead>
+            <tbody>${banks.map((x) => `<tr><td>${esc(x.name)}</td>
+              <td>${x.account_no ? esc(x.account_no) : '<span class="dim">—</span>'}</td></tr>`).join('')}</tbody>
+          </table>` : '<div class="dim">No banks on the list yet.</div>';
         };
         fillAccounts();
+        drawList();
         let acctMode = '';
         const openEdit = (mode) => {
           acctMode = mode;
@@ -15805,28 +15822,53 @@ SCREENS.bankreport = async (page) => {
           const box = $('#bt_acct_name');
           box.value = mode === 'rename' ? $('#bt_account').value : '';
           box.placeholder = mode === 'rename' ? 'New name for this account' : 'Bank name, e.g. Metrobank';
+          if (mode === 'add') $('#bt_acct_no').value = '';
           box.focus();
           box.select();
         };
+        $('#bt_account').addEventListener('change', () => {
+          $('#bt_acct_no').value = noOf($('#bt_account').value);
+          $('#bt_acct_edit').hidden = true;
+          acctMode = '';
+        });
         $('#bt_acct_rename').addEventListener('click', () => openEdit('rename'));
         $('#bt_acct_add').addEventListener('click', () => openEdit('add'));
-        $('#bt_acct_name').addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') { e.preventDefault(); $('#bt_go').click(); }
-        });
-        // Save: the rename or the new bank typed in the box, if there is one;
-        // with nothing typed, there is nothing to save and it just closes.
+        for (const id of ['#bt_acct_name', '#bt_acct_no']) {
+          $(id).addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); $('#bt_go').click(); }
+          });
+        }
+        // Save: the rename or the new bank typed in the name box, if one is
+        // open, and the Account no. for that account — the list below and
+        // the screen behind are redrawn with both.
         $('#bt_go').addEventListener('click', async () => {
           const typed = $('#bt_acct_name').value.trim();
-          if (!acctMode || $('#bt_acct_edit').hidden) { closeDialog(); return; }
+          const no = $('#bt_acct_no').value.trim();
+          const naming = acctMode && !$('#bt_acct_edit').hidden;
           try {
-            const from = $('#bt_account').value;
-            const out = acctMode === 'rename'
-              ? await PUT('/api/bank-report/accounts', { from, to: typed })
-              : await POST('/api/bank-report/accounts', { name: typed });
-            closeDialog();
-            notice(acctMode === 'rename' ? `${from} renamed to ${out.name}` : `${out.name} added`, 'good');
+            let name = $('#bt_account').value;
+            const said = [];
+            if (naming) {
+              const from = name;
+              const out = acctMode === 'rename'
+                ? await PUT('/api/bank-report/accounts', { from, to: typed })
+                : await POST('/api/bank-report/accounts', { name: typed });
+              name = out.name;
+              said.push(acctMode === 'rename' ? `${from} renamed to ${name}` : `${name} added`);
+            }
+            if (no !== (naming && acctMode === 'add' ? '' : noOf($('#bt_account').value))) {
+              await PUT('/api/bank-report/accounts/number', { name, account_no: no });
+              said.push(no ? `${name}'s account no. is ${no}` : `${name}'s account no. cleared`);
+            }
+            btAccounts = await GET('/api/bank-report/accounts');
+            pmBoxes = await brBoxes();
+            acctMode = '';
+            $('#bt_acct_edit').hidden = true;
+            fillAccounts(name);
+            drawList();
+            notice(said.join(' · ') || 'Nothing changed', said.length ? 'good' : '');
             // The boxes, the filter and the lines all carry the new name.
-            load().catch(whoops);
+            if (naming) load().catch(whoops);
           } catch (err) { whoops(err); }
         });
       });

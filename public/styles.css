@@ -2215,3 +2215,13 @@ input.n { text-align: right; }
   box-shadow: 0 12px 30px rgba(60, 20, 40, .16); display: grid; gap: 8px; }
 .pend-rangepop input { width: 100%; }
 .pend-rangepop .row { justify-content: flex-end; gap: 8px; }
+
+/* Payment Management (Bank report → Bank): Account | Account no., Rename and
+   Add bank under the number, and the List of mode of payment below. */
+.pm-top { align-items: flex-start; }
+.pm-acts { display: flex; gap: 6px; margin-top: 8px; }
+.pm-acts .btn { white-space: nowrap; }
+.pm-list { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.pm-list th { text-align: left; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted, #8a6f7d); border-bottom: 1px solid var(--line, #ecd5df); padding: 6px 8px; }
+.pm-list td { padding: 8px; border-bottom: 1px solid var(--line, #f3e4ea); }
