@@ -675,3 +675,17 @@ test("List of mode of payment: ✕ removes a bank nothing was recorded under, an
   const cashier = await signIn('cashier');
   assert.notEqual((await POST(cashier, '/api/bank-report/accounts/remove', { name: used })).status, 200);
 });
+
+// GCash's box sits under BANK, after Security Bank (db/193): the list's own
+// side for it, read only by Cash position.
+test('Cash position: GCash sits under BANK, after Security Bank', async () => {
+  const admin = await signIn('admin');
+  const boxes = (await GET(admin, '/api/bank-report/account-boxes')).data;
+  const gcash = boxes.find((x) => x.aliases.includes('GCASH'));
+  assert.equal(gcash.column, 'bank');
+  const bank = boxes.filter((x) => x.column === 'bank').map((x) => x.name);
+  const sec = boxes.find((x) => x.aliases.includes('SECURITY BANK')).name;
+  assert.ok(bank.indexOf(gcash.name) > bank.indexOf(sec), 'below Security Bank');
+  assert.deepEqual(boxes.filter((x) => x.column === 'cash').map((x) => x.aliases), [['CASH']],
+    'Cash on hand alone under CASH');
+});

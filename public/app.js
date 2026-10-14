@@ -15738,7 +15738,8 @@ SCREENS.bankreport = async (page) => {
         <div class="panel"><h3>Cash position</h3>
           ${(() => {
             // Laid out as the owner drew it: BANK down the left — BDO, BPI,
-            // Security Bank — and CASH down the right — cash on hand, GCash.
+            // Security Bank, GCash — and CASH down the right — cash on hand.
+            // Which side a box sits is the list's own setting (db/188, 193).
             const sumOf = (list) => list.reduce((t, [acct]) => t + Number(bal(acct) || 0), 0);
             const column = (title, list) => `
               <div class="br-cash-col"><div class="br-cash-colhd"><span>${title}</span>
