@@ -2288,3 +2288,16 @@ input.n { text-align: right; }
 .rs-tax { display: block; text-align: center; background: var(--rose-deep); color: #fff; font-size: .75rem;
   font-weight: 800; letter-spacing: .08em; border-radius: 999px; padding: 4px 10px; }
 .taxpick { min-width: 104px; padding: 4px 8px; }
+
+/* Customer order → Invoice tab's own invoice, when the invoice is void:
+   STATUS: VOIDED under the number, and a VOID stamp across the sheet. Inside
+   the .doc, so the JPEG and the print carry it. Its own co-void* classes. */
+.doc.co-voided { position: relative; overflow: hidden; }
+.co-voidstatus { width: fit-content; margin: 2px 0 6px auto; padding: 2px 14px;
+  border: 2px solid #d32f2f; background: #fff0f0; color: #d32f2f;
+  font-weight: 800; font-size: .8rem; letter-spacing: .04em; }
+.co-voidstamp { position: absolute; left: 50%; top: 50%; pointer-events: none; z-index: 2;
+  transform: translate(-50%, -50%) rotate(-18deg);
+  border: 10px solid rgba(211, 47, 47, .78); border-radius: 22px; padding: 0 44px; }
+.co-voidstamp span { display: block; font: 900 128px/1.15 Georgia, 'Times New Roman', serif;
+  color: rgba(211, 47, 47, .72); letter-spacing: .06em; }

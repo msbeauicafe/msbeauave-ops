@@ -1848,3 +1848,22 @@ test('Customers: a 🔑 Sign-in link button on each account row, its own code', 
   const dlg = app.slice(app.indexOf('async function openReseller('), app.indexOf('async function openReseller(') + 30000);
   assert.doesNotMatch(dlg.slice(0, dlg.indexOf('\n}\n')), /\/invite|Sign-in link/, 'the shared account dialog is untouched');
 });
+
+// Invoice tab's own invoice, when the invoice is void: STATUS: VOIDED and a
+// VOID stamp across the sheet, inside .doc so the JPEG and print carry it.
+// The other invoice papers are untouched.
+test("Invoice tab: a void invoice prints STATUS: VOIDED and a VOID stamp — its own invoice only", () => {
+  const at = app.indexOf('function showCoInvoiceDoc(');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  assert.match(fn, /voided = false \}\) \{/);
+  assert.match(fn, /class="doc inv\$\{voided \? ' co-voided' : ''\}"/);
+  assert.match(fn, /co-voidstatus">STATUS: VOIDED</);
+  const stamp = fn.indexOf('co-voidstamp');
+  assert.ok(stamp > fn.indexOf('PREPARED BY:') && stamp < fn.indexOf('<div class="mt right">'),
+    'the stamp sits inside the sheet, before it closes');
+  assert.match(app, /showCoInvoiceDoc\(\{\n\s*overpaid,\n\s*voided: o\.invoice_status === 'void',/);
+  for (const other of ['showInvoiceDoc', 'showInvoiceLogDoc', 'showFundsLogDoc']) {
+    const o = app.indexOf(`function ${other}(`);
+    assert.doesNotMatch(app.slice(o, app.indexOf('\n}\n', o)), /co-void/, `${other} is untouched`);
+  }
+});
