@@ -7455,7 +7455,7 @@ function showInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
 // every other screen that opens showInvoiceDoc keeps its one Balance row.
 function showCoInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [],
                             who = {}, shipping = 0, others = 0, over = false,
-                            invoiceNo = null, overpaid = 0 }) {
+                            invoiceNo = null, overpaid = 0, voided = false }) {
   const sub = lines.reduce((s, l) => s + l.price * l.qty, 0);
   const grand = sub + shipping + others;
   const paid = payments.reduce((s, p) => s + Number(p.amount), 0);
@@ -7476,12 +7476,16 @@ function showCoInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [
   // has tightened since, so the five fit and the five stay.
   const slots = [...payments.slice(0, 5).map(slot),
                  ...Array.from({ length: Math.max(0, 5 - payments.length) }, () => slot(null))];
+  // A voided invoice says so twice: STATUS: VOIDED under its number, and a
+  // VOID stamp across the sheet — inside .doc, so the JPEG and the print
+  // carry it too. This tab's own invoice only.
   dialog(`
-    <div class="doc inv">
+    <div class="doc inv${voided ? ' co-voided' : ''}">
       ${DOC_HEAD}
       <div class="title inv">INVOICE</div>
       ${docParty(resellerName, issuedOn, invoiceNo || orderId, who,
                  invoiceNo ? 'INVOICE NO.' : 'SALES ORDER NO.')}
+      ${voided ? '<div class="co-voidstatus">STATUS: VOIDED</div>' : ''}
       <div class="duebox">Total Due (PHP)<b>${peso(grand - paid)}</b></div>
       <div style="clear:both"></div>
       ${docLines(lines)}
@@ -7509,12 +7513,13 @@ function showCoInvoiceDoc({ orderId, issuedOn, resellerName, lines, payments = [
         <div>Order Management Coordinator</div>
         <div class="cap">PREPARED BY:</div>
       </div>
+      ${voided ? '<div class="co-voidstamp" aria-label="Void"><span>VOID</span></div>' : ''}
     </div>
     <div class="mt right">
       <button class="btn quiet" id="ivd_save">⬇ Download JPEG</button>
       ${PRINT_BTN}
       <button class="btn" id="ivd_done">Done</button></div>`, 'wide', over);
-  wireSave('#ivd_save', '.doc', `${invoiceNo || orderId} INVOICE.jpg`);
+  wireSave('#ivd_save', '.doc', `${invoiceNo || orderId} INVOICE${voided ? ' VOID' : ''}.jpg`);
   $('#ivd_done').addEventListener('click', closeDialog);
 }
 
@@ -11389,6 +11394,7 @@ SCREENS.coinvoices = async (page) => {
           .reduce((t, f) => t + Number(f.amount), 0);
         showCoInvoiceDoc({
           overpaid,
+          voided: o.invoice_status === 'void',
           orderId: full.id,
           // This tab's own Invoice button reads the packing list's own
           // issued date first — the paper is normally handed over the day
