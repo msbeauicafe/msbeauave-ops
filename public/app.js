@@ -987,7 +987,12 @@ SCREENS.dashboard = async (page) => {
 // ===========================================================================
 // Products
 // ===========================================================================
+// The three tax types a product can be, as Product list offers them (db/191).
+const PRODUCT_TAX_TYPES = ['VAT', 'Non-VAT', 'Exempt'];
+
 SCREENS.products = async (page) => {
+  // Who may pick a tax type: the same two who may edit a product.
+  const canTax = ['admin', 'datacoord'].includes(user?.role);
   let term = '';
   let cat = '';
   // The supplier list, as it was: who brings what, how to reach them, and the
@@ -1138,6 +1143,15 @@ SCREENS.products = async (page) => {
           esc(p.sku)}"><b>${esc(p.name)}</b></button>` },
       { head: 'Brand', cell: (p) => p.brand ? esc(p.brand) : '<span class="dim">—</span>' },
       { head: 'Category', cell: (p) => prodCatTag(p.category) },
+      // VAT, Non-VAT or Exempt — picked here, never typed, and saved the
+      // moment it is picked (db/191). The reseller's Reseller Hub tags and
+      // filters by it. Product list's own column; the product form is not
+      // touched, since Warehouse and Internal Inventory Report open it too.
+      { head: 'Tax type', cell: (p) => (canTax
+        ? `<select class="taxpick" data-tax="${esc(p.sku)}" aria-label="Tax type of ${esc(p.name)}">
+            ${['', ...PRODUCT_TAX_TYPES].map((t) => `<option value="${t}"${(p.tax_type || '') === t ? ' selected' : ''}>${
+              t || '—'}</option>`).join('')}</select>`
+        : (p.tax_type ? esc(p.tax_type) : '<span class="dim">—</span>')) },
       // Free to sell, not the physical count — see `available` above for why
       // this differs from Purchase order's own product picker on purpose.
       { head: 'Quantity', n: true, cell: (p) => count(available(p)) },
@@ -1167,6 +1181,17 @@ SCREENS.products = async (page) => {
     ];
     box.innerHTML = table(rows, columns,
       term2 ? 'No products match that search.' : 'No products yet.');
+    $$('[data-tax]', box).forEach((sel) => sel.addEventListener('change', async () => {
+      const row = rows.find((r) => r.sku === sel.dataset.tax);
+      try {
+        await PUT(`/api/products/${encodeURIComponent(sel.dataset.tax)}`, { tax_type: sel.value || null });
+        if (row) row.tax_type = sel.value || null;
+        notice(`${row?.name || sel.dataset.tax}: ${sel.value || 'no tax type'}`, 'good');
+      } catch (e) {
+        whoops(e);
+        sel.value = row?.tax_type || '';
+      }
+    }));
     // The name opens the product, the way a supplier's name opens the supplier.
     $$('[data-prod]', box).forEach((b) => b.addEventListener('click',
       () => editProduct(rows.find((r) => r.sku === b.dataset.prod), drawBrands)));
@@ -13779,6 +13804,7 @@ SCREENS.catalog = async (page) => {
   let account = null;
   let openInvoices = 0;
   let brand = '';
+  let taxType = '';
 
   page.innerHTML = `
     <div class="rs-hub">
@@ -13799,6 +13825,9 @@ SCREENS.catalog = async (page) => {
       <div class="rs-filters">
         <label for="rs_brand">Filter by brand:</label>
         <select id="rs_brand"><option value="">All brands</option></select>
+        <label for="rs_tax">Filter by tax type:</label>
+        <select id="rs_tax"><option value="">All tax types</option>
+          ${PRODUCT_TAX_TYPES.map((t) => `<option>${t}</option>`).join('')}</select>
       </div>
       <div class="rs-grid" id="list"></div>
     </div>`;
@@ -13868,7 +13897,8 @@ SCREENS.catalog = async (page) => {
 
   const drawList = () => {
     const term = ($('#q', page).value || '').toLowerCase();
-    const rows = goods.filter((g) => (!brand || (g.brand || '') === brand) && (!term
+    const rows = goods.filter((g) => (!brand || (g.brand || '') === brand)
+      && (!taxType || g.tax_type === taxType) && (!term
       || g.name.toLowerCase().includes(term) || g.sku.toLowerCase().includes(term)
       || (g.brand || '').toLowerCase().includes(term)));
     $('#list', page).innerHTML = rows.length ? rows.map((g) => `
@@ -13878,6 +13908,7 @@ SCREENS.catalog = async (page) => {
           <img src="${photoUrl(g.sku)}" alt="" loading="lazy" onerror="this.remove()"></div>
         <div class="rs-body">
           <div class="rs-name">${esc(g.name)}</div>
+          ${g.tax_type ? `<span class="rs-tax">${esc(g.tax_type)}</span>` : ''}
           ${g.available > 0 ? `<span class="rs-stock">${count(g.available)} available</span>`
             : '<span class="rs-stock out">Out of stock</span>'}
           <div class="rs-price">Your price (${esc(tierWord())}): <b>${peso(g.wholesale_price)}</b></div>
@@ -13930,6 +13961,7 @@ SCREENS.catalog = async (page) => {
 
   $('#q', page).addEventListener('input', drawList);
   $('#rs_brand', page).addEventListener('change', (e) => { brand = e.target.value; drawList(); });
+  $('#rs_tax', page).addEventListener('change', (e) => { taxType = e.target.value; drawList(); });
   $('#rs_cart', page).addEventListener('click', openCart);
   $('#rs_inv', page).addEventListener('click', () => $('[data-tab="account"]')?.click());
 

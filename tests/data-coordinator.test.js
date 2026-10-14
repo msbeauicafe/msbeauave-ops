@@ -255,3 +255,28 @@ test('the role picker offers Data coordinator', () => {
   assert.match(list, /\['datacoord',/, 'a role a sign-in can be set to');
   assert.match(app, /datacoord: 'Data coordinator'/, 'and it has a name on the badge');
 });
+
+// A product's tax type (db/191): VAT, Non-VAT or Exempt, set from Product
+// list by the same two who edit a product, cleared back to none, refused if
+// typed as anything else, and read by the reseller's catalogue.
+test('a product carries a tax type the reseller catalogue reads', async () => {
+  const sku = unique('TAX');
+  await db.query(`insert into products (sku, name, wholesale_price, srp) values ($1, $2, 100, 150)`, [sku, `Taxed ${sku}`]);
+  for (const role of ['admin', 'datacoord']) {
+    const who = await signIn(role);
+    const r = await PUT(who, `/api/products/${encodeURIComponent(sku)}`, { tax_type: role === 'admin' ? 'VAT' : 'Exempt' });
+    assert.equal(r.status, 200, `${role}: ${JSON.stringify(r.data)}`);
+  }
+  assert.equal((await db.query('select tax_type from products where sku = $1', [sku])).rows[0].tax_type, 'Exempt');
+  assert.equal((await db.query('select tax_type from b2b_catalog where sku = $1', [sku])).rows[0].tax_type, 'Exempt',
+    "the reseller's catalogue carries it");
+  const admin = await signIn('admin');
+  const listed = (await GET(admin, `/api/products?prices=1&q=${encodeURIComponent(sku)}`)).data.find((p) => p.sku === sku);
+  assert.equal(listed.tax_type, 'Exempt', 'Product list reads it back');
+  assert.notEqual((await PUT(admin, `/api/products/${encodeURIComponent(sku)}`, { tax_type: 'aaaaa' })).status, 200,
+    'only the three are accepted');
+  assert.equal((await PUT(admin, `/api/products/${encodeURIComponent(sku)}`, { tax_type: null })).status, 200);
+  assert.equal((await db.query('select tax_type from products where sku = $1', [sku])).rows[0].tax_type, null, 'and can be cleared');
+  const cashier = await signIn('cashier');
+  assert.notEqual((await PUT(cashier, `/api/products/${encodeURIComponent(sku)}`, { tax_type: 'VAT' })).status, 200);
+});
