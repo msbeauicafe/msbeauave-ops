@@ -498,3 +498,52 @@ button.al { cursor: pointer; }
   .sh-sheet-inner .big-img { height: 340px; }
   .sh-close { width: auto; min-width: 160px; float: right; padding: 10px 22px; }
 }
+
+/* ---------- Home, laid out like the Reseller Hub (hh-*) ---------- */
+.hh-welcome { text-align: center; padding: 22px 16px 8px; }
+.hh-welcome h2 { font-family: Georgia, 'Times New Roman', serif; color: var(--rose-deep);
+  font-size: clamp(1.5rem, 3.4vw, 2.3rem); margin: 0 0 8px; }
+.hh-welcome p { color: var(--muted); margin: 0 0 14px; }
+.hh-pill { display: inline-block; background: var(--rose-primary); color: #fff; font-weight: 700;
+  border-radius: 10px; padding: 8px 18px; }
+.hh-filters { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 16px 16px; }
+.hh-filters label { color: var(--rose-deep); font-weight: 700; font-size: .85rem; }
+.hh-filters select { width: 240px; max-width: 100%; padding: 9px 12px; border-radius: 10px;
+  border: 1px solid var(--rose-dust); background: #fff; color: var(--ink); font: inherit; }
+.hh-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; padding: 0 16px 16px; }
+@media (max-width: 1300px) { .hh-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 900px)  { .hh-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 620px)  { .hh-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 0 10px 12px; } }
+.hh-card { background: #fff; border: 1px solid var(--rose-soft); border-radius: 14px; overflow: hidden;
+  display: flex; flex-direction: column; }
+.hh-card.gone .hh-photo { opacity: .55; }
+.hh-badge { background: var(--rose-primary); color: #fff; text-align: center; font-size: .66rem; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; padding: 7px 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hh-photo { aspect-ratio: 1 / 1; background: #fff; display: grid; place-items: center; font-size: 2.2rem;
+  border-bottom: 1px solid var(--rose-soft); }
+.hh-photo img { width: 100%; height: 100%; object-fit: contain; padding: 8px; }
+.hh-body { background: var(--rose-blush); padding: 10px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.hh-name { color: var(--rose-deep); font-weight: 800; text-transform: uppercase; text-align: center;
+  font-size: .82rem; line-height: 1.25; min-height: 2.5em; }
+.hh-tax { display: block; text-align: center; background: var(--rose-deep); color: #fff; font-size: .7rem;
+  font-weight: 800; letter-spacing: .08em; border-radius: 999px; padding: 3px 10px; }
+.hh-stock { align-self: center; background: #5F8D6B; color: #fff; font-size: .68rem; font-weight: 700;
+  border-radius: 999px; padding: 3px 12px; }
+.hh-stock.out { background: var(--muted); }
+.hh-price { color: var(--rose-deep); font-size: .85rem; font-weight: 700;
+  border-top: 1px solid var(--rose-soft); padding-top: 7px; }
+.hh-price b { font-size: 1rem; }
+.hh-price s { color: var(--muted); font-weight: 400; font-size: .78rem; }
+.hh-off { color: var(--danger); font-size: .74rem; font-weight: 700; min-height: 1em; margin-bottom: auto; }
+.hh-details, .hh-add { width: 100%; border-radius: 10px; font: inherit; font-weight: 700; cursor: pointer; padding: 8px; }
+.hh-details { background: transparent; color: var(--rose-deep); border: 2px solid var(--rose-primary); }
+.hh-add { background: var(--rose-primary); color: #fff; border: 2px solid var(--rose-primary); }
+.hh-add:hover { background: var(--rose-deep); border-color: var(--rose-deep); }
+.hh-add.added { background: #5F8D6B; border-color: #5F8D6B; }
+.hh-add:disabled { opacity: .5; cursor: not-allowed; }
+.hh-more { text-align: center; padding: 6px 16px 22px; }
+.hh-more button { background: #fff; border: 2px solid var(--rose-primary); color: var(--rose-deep); font: inherit;
+  font-weight: 700; border-radius: 999px; padding: 10px 26px; cursor: pointer; }
+.hh-more button span { color: var(--muted); font-weight: 500; margin-left: 6px; }
