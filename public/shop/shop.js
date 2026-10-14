@@ -109,7 +109,7 @@ function draw() {
         basketCount() ? `<span class="sh-cart-n">${basketCount()}</span>` : ''}</button>
     </header>
 
-    <div class="sh-page" id="page">${
+    <div class="sh-page${view === 'home' ? ' hh-full' : ''}" id="page">${
       view === 'home' ? homeView()
       : view === 'shop' ? shopView()
       : view === 'suggest' ? suggestView()
@@ -274,12 +274,16 @@ function hhCard(p) {
         ? `<img src="${photoUrl(p.sku)}" alt="${esc(p.name)}" loading="lazy">` : '<span>🧴</span>'}</div>
       <div class="hh-body">
         <div class="hh-name">${esc(p.name)}</div>
-        ${p.tax_type ? `<span class="hh-tax">${esc(p.tax_type)}</span>` : ''}
-        <span class="hh-stock ${p.in_stock ? '' : 'out'}">${p.in_stock ? 'In stock' : 'Sold out'}</span>
+        <div class="hh-tags">
+          ${p.tax_type ? `<span class="hh-tax">${esc(p.tax_type)}</span>` : ''}
+          <span class="hh-stock ${p.in_stock ? '' : 'out'}">${p.in_stock ? 'In stock' : 'Sold out'}</span>
+        </div>
         <div class="hh-price">Price: <b>${peso(p.price)}</b>${p.was ? ` <s>${peso(p.was)}</s>` : ''}</div>
-        ${p.percent_off ? `<div class="hh-off">−${Number(p.percent_off)}% off today</div>` : '<div class="hh-off"></div>'}
-        <button type="button" class="hh-details" data-hhopen="${esc(p.sku)}">Details</button>
-        <button type="button" class="hh-add" data-hhadd="${esc(p.sku)}" ${p.in_stock ? '' : 'disabled'}>🛒 Add to cart</button>
+        ${p.percent_off ? `<div class="hh-off">−${Number(p.percent_off)}% off today</div>` : ''}
+        <div class="hh-acts">
+          <button type="button" class="hh-details" data-hhopen="${esc(p.sku)}">Details</button>
+          <button type="button" class="hh-add" data-hhadd="${esc(p.sku)}" ${p.in_stock ? '' : 'disabled'}>🛒 Add to cart</button>
+        </div>
       </div>
     </div>`;
 }

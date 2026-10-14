@@ -134,3 +134,14 @@ test('a rail rests where its heading starts, not a padding to the left', () => {
     'the two have to move together — a rail whose scroll padding does not '
     + 'match its padding is a rail that lands off the line');
 });
+
+// On a computer the shop fills the whole window, edge to edge, like the
+// owner's reference; Home's cards use the full width, the other tabs keep
+// their content centred. Phones are untouched.
+test('desktop: the shop fills the window, Home full width', () => {
+  const at = css.lastIndexOf('@media (min-width: 1000px)');
+  const block = css.slice(at, css.indexOf('\n}\n', at));
+  assert.match(block, /\.phone \{ max-width: none; border-radius: 0; min-height: 100vh;/);
+  assert.match(block, /\.sh-page\.hh-full \{ max-width: none; \}/);
+  assert.match(shop, /class="sh-page\$\{view === 'home' \? ' hh-full' : ''\}"/);
+});
