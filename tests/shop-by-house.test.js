@@ -139,9 +139,22 @@ test('a rail rests where its heading starts, not a padding to the left', () => {
 // owner's reference; Home's cards use the full width, the other tabs keep
 // their content centred. Phones are untouched.
 test('desktop: the shop fills the window, Home full width', () => {
-  const at = css.lastIndexOf('@media (min-width: 1000px)');
+  const at = css.lastIndexOf('@media (min-width: 1000px)', css.indexOf('.phone { max-width: none;'));
   const block = css.slice(at, css.indexOf('\n}\n', at));
   assert.match(block, /\.phone \{ max-width: none; border-radius: 0; min-height: 100vh;/);
   assert.match(block, /\.sh-page\.hh-full \{ max-width: none; \}/);
   assert.match(shop, /class="sh-page\$\{view === 'home' \? ' hh-full' : ''\}"/);
+});
+
+// At 1360×768 a whole row of Home's cards is in view: on a computer the strip,
+// the welcome and the cards are drawn compact, and Details / Add to cart sit
+// side by side on one line. Phones keep the roomier card.
+test('desktop: Home is compact enough for 1360×768', () => {
+  const at = css.indexOf('/* ---------- Home on a computer, kept tight');
+  assert.ok(at > 0);
+  const block = css.slice(at);
+  assert.match(block, /\.hh-full \.hh-photo \{ aspect-ratio: auto; height: 150px;/);
+  assert.match(block, /\.hh-full \.hh-acts \{ grid-template-columns: auto 1fr; \}/);
+  assert.match(block, /white-space: nowrap;/);
+  assert.match(shop, /class="hh-tags"[\s\S]*?class="hh-acts"/, 'tags on one line, buttons in one row');
 });
