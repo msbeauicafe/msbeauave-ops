@@ -1838,3 +1838,13 @@ test('Tax type: a Product list dropdown, and the Reseller Hub tags and filters b
   assert.match(hub, /\(!taxType \|\| g\.tax_type === taxType\)/);
   assert.match(hub, /class="rs-name"[\s\S]*?class="rs-tax"/, 'the tag sits under the name');
 });
+
+// Customers' own 🔑 Sign-in link on each account row: a one-time /join link
+// for the account to set up its own sign-in to the Reseller Hub. The account
+// dialog (also opened from Birthdays) is not touched.
+test('Customers: a 🔑 Sign-in link button on each account row, its own code', () => {
+  assert.match(app, /data-signin="\$\{r\.id\}"[\s\S]*?🔑 Sign-in link<\/button>/);
+  assert.match(app, /POST\(`\/api\/resellers\/\$\{b\.dataset\.signin\}\/invite`, \{ days_valid: 14 \}\)/);
+  const dlg = app.slice(app.indexOf('async function openReseller('), app.indexOf('async function openReseller(') + 30000);
+  assert.doesNotMatch(dlg.slice(0, dlg.indexOf('\n}\n')), /\/invite|Sign-in link/, 'the shared account dialog is untouched');
+});

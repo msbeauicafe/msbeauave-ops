@@ -9602,6 +9602,13 @@ const resellerList = (part, tier) => async (page) => {
     // The ✕ at the end of a row opens that account — the same as the name does —
     // where the confirm-and-remove is. A way out that lands on the account it
     // would close, so it is read before it is taken.
+    // A one-time link for the account to set up its own sign-in (the
+    // Reseller Hub and the MBA resellers app). Customers' own button, on the
+    // row — the account dialog is left as it is, since Birthdays opens it too.
+    if (acct) cols.push(
+      { head: '', cell: (r) => `<button class="btn sm quiet" data-signin="${r.id}"
+          data-signname="${esc(r.name)}" title="Make a sign-in link for ${esc(r.name)}">🔑 Sign-in link</button>` },
+    );
     if (acct) cols.push(
       { head: '', n: true, cell: (r) => `<button class="rowx" data-open="${r.id}"
           title="Open ${esc(r.name)} to remove">✕</button>` },
@@ -9640,6 +9647,29 @@ const resellerList = (part, tier) => async (page) => {
 
     $$('[data-open]', page).forEach((b) => b.addEventListener('click',
       () => openReseller(+b.dataset.open, load, part).catch(whoops)));
+    // The link is made here and shown once: it is never stored where it could
+    // be read again, so it is copied or sent now. The account opens it, picks
+    // its own username and password, and lands in the Reseller Hub. An
+    // account that already has a sign-in is refused, in those words.
+    $$('[data-signin]', page).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const out = await POST(`/api/resellers/${b.dataset.signin}/invite`, { days_valid: 14 });
+        const url = `${location.origin}${out.link}`;
+        dialog(`<h3>🔑 Sign-in link — ${esc(b.dataset.signname)}</h3>
+          <div class="dim">Send this to ${esc(b.dataset.signname)}. Opening it, they choose their
+            own username and password — nobody here ever sees it — and land in the
+            Reseller Hub. It works once, for 14 days.</div>
+          <div class="linkfield mt"><input id="si_link" type="text" readonly value="${esc(url)}">
+            <button class="btn sm" id="si_copy">Copy</button></div>
+          <div class="dim mt">This link is shown only now. Lost it? Press 🔑 Sign-in link
+            again for a new one — the old one stops working.</div>`);
+        $('#si_link').addEventListener('focus', (e) => e.target.select());
+        $('#si_copy').addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(url); notice('Link copied 🌸', 'good'); }
+          catch { $('#si_link').select(); notice('Press Ctrl+C to copy it.', ''); }
+        });
+      } catch (e) { whoops(e); }
+    }));
   };
 
   page.innerHTML = `
