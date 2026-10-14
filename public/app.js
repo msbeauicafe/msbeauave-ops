@@ -10741,12 +10741,32 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
         </figcaption>
       </figure>`;
     }).join('') : '<div class="dim">None recorded yet.</div>';
+    // Each payment on file's reference no. shows in the Reference no. box of
+    // the row beside it — the first payment's in the first row, the second's
+    // in the second — greyed and read-only, so it is never saved again as if
+    // it were new. Typing an amount into that row means a new payment, so the
+    // box clears and opens for that payment's own reference.
+    $$('.payrow', $('#ci_rows')).forEach((row, n) => {
+      const box = $('.ci_ref', row);
+      const ref = prior[n]?.reference_no || '';
+      box.value = ref;
+      box.readOnly = !!ref;
+      box.classList.toggle('ci-ref-onfile', !!ref);
+      box.title = ref ? 'The reference no. of the payment already on file' : '';
+    });
   };
   await paintPrior();
 
   $$('.ci_amt', $('#ci_rows')).forEach((el) => el.addEventListener('input', () => {
     comma(el);
     showEstimate();
+    const ref = $('.ci_ref', el.closest('.payrow'));
+    if (ref.classList.contains('ci-ref-onfile')) {
+      ref.value = '';
+      ref.readOnly = false;
+      ref.title = '';
+      ref.classList.remove('ci-ref-onfile');
+    }
   }));
 
   // The rows reset rather than the dialog closing — recording a payment does
@@ -10763,6 +10783,8 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
       $('.ci_on', row).value = localDay();
       $('.ci_mop', row).selectedIndex = 0;
       $('.ci_ref', row).value = '';
+      $('.ci_ref', row).readOnly = false;
+      $('.ci_ref', row).classList.remove('ci-ref-onfile');
       $('.ci_file', row).value = '';
     });
   };
@@ -10782,7 +10804,10 @@ async function recordInvoicePayment(invoiceId, invoiceNo, resellerName, chatLink
       amount: num($('.ci_amt', row).value),
       paid_on: $('.ci_on', row).value || null,
       method: $('.ci_mop', row).value || null,
-      reference_no: $('.ci_ref', row).value || null,
+      // A payment on file's reference, still shown in its row, is not this
+      // payment's — never sent again.
+      reference_no: $('.ci_ref', row).classList.contains('ci-ref-onfile')
+        ? null : ($('.ci_ref', row).value || null),
       file: $('.ci_file', row).files[0] || null,
     })).filter((r) => r.amount > 0);
     if (!rows.length) return false;

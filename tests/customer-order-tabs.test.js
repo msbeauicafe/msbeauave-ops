@@ -1867,3 +1867,15 @@ test("Invoice tab: a void invoice prints STATUS: VOIDED and a VOID stamp — its
     assert.doesNotMatch(app.slice(o, app.indexOf('\n}\n', o)), /co-void/, `${other} is untouched`);
   }
 });
+
+// Record payment: each payment on file's reference no. shows in its row's
+// Reference no. box, read-only, and is never sent again; typing an amount in
+// that row clears it for the new payment's own reference.
+test("Record payment: a payment on file's reference no. shows in its row, read-only", () => {
+  const at = app.indexOf('async function recordInvoicePayment(');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  assert.match(fn, /const ref = prior\[n\]\?\.reference_no \|\| '';\n\s*box\.value = ref;\n\s*box\.readOnly = !!ref;/);
+  assert.match(fn, /reference_no: \$\('\.ci_ref', row\)\.classList\.contains\('ci-ref-onfile'\)\n\s*\? null :/,
+    'never saved again as the new payment\'s reference');
+  assert.match(fn, /if \(ref\.classList\.contains\('ci-ref-onfile'\)\) \{\n\s*ref\.value = '';\n\s*ref\.readOnly = false;/);
+});

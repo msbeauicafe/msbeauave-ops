@@ -2301,3 +2301,7 @@ input.n { text-align: right; }
   border: 10px solid rgba(211, 47, 47, .78); border-radius: 22px; padding: 0 44px; }
 .co-voidstamp span { display: block; font: 900 128px/1.15 Georgia, 'Times New Roman', serif;
   color: rgba(211, 47, 47, .72); letter-spacing: .06em; }
+
+/* Record payment (Invoice tab): a payment on file's reference no., shown in
+   its row's Reference no. box, greyed and read-only. */
+.ci_ref.ci-ref-onfile { background: #f3edf0; color: var(--muted); cursor: default; }
