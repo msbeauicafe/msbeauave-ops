@@ -46,28 +46,20 @@ test('touching the search box opens the suggestions', () => {
   assert.match(shop, /view === 'suggest' \? suggestView\(\)/, 'the view is drawn');
 });
 
-test('home is rows of houses, not one column of everything', () => {
-  const at = shop.indexOf('function rails(');
-  assert.ok(at > 0, 'there is a banded arrangement');
+// Home was rows of houses; the owner asked for it laid out like the Reseller
+// Hub instead — a welcome, Filter by brand and Filter by tax type, and cards
+// six across with Details and Add to cart. Home's own card (hhCard) and its
+// own classes; the Shop tab and the suggestions keep card() below.
+test('home is laid out like the Reseller Hub, with its own card', () => {
+  const at = shop.indexOf('function homeView()');
   const fn = shop.slice(at, shop.indexOf('\n}\n', at));
-  assert.match(fn, /class="sh-rail"/, 'each house is a rail');
-  assert.match(fn, /of\.slice\(0, RAIL\)/,
-    'a rail carries the first few, not the whole house');
-  assert.match(fn, /sh-railmore/,
-    'and offers the rest rather than pretending the house is that small');
-
-  // Searching still wants a wall — a rail per house is for browsing, and
-  // somebody who typed a word wants the matches, not an arrangement.
-  assert.match(shop, /\$\{term \? grid\(shown\) : rails\(shown\)\}/,
-    'a typed search shows results; an untyped page shows houses');
-});
-
-test('a rail swipes sideways and the page never does', () => {
-  const rail = css.slice(css.indexOf('.sh-rail {'), css.indexOf('.sh-rail {') + 400);
-  assert.match(rail, /overflow-x:\s*auto/, 'the rail scrolls');
-  assert.match(rail, /scroll-snap-type/, 'and lands on a card rather than between two');
-  assert.match(rail, /overscroll-behavior-x:\s*contain/,
-    'without handing its momentum to the page behind it');
+  assert.match(fn, /class="hh-welcome"[\s\S]*?Welcome\$\{me \? `, \$\{esc\(me\.name\)\}` : ' to MS BEAU AVE'\}!/);
+  assert.match(fn, /Filter by brand:[\s\S]*?Filter by tax type:/);
+  assert.match(fn, /shown\.slice\(0, hhShown\)\.map\(hhCard\)/, 'a page of cards, then Show more');
+  const cardFn = shop.slice(shop.indexOf('function hhCard('), shop.indexOf('\n}\n', shop.indexOf('function hhCard(')));
+  assert.match(cardFn, /hh-badge[\s\S]*?hh-photo[\s\S]*?hh-name[\s\S]*?hh-tax[\s\S]*?hh-stock[\s\S]*?hh-price[\s\S]*?Details[\s\S]*?Add to cart/);
+  assert.match(css, /\.hh-grid \{[^}]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/, 'six across on a wide screen');
+  assert.ok(!/function rails\(/.test(shop), 'the old rows of houses are gone');
 });
 
 test('a card is drawn once, however it is arranged', () => {

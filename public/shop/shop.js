@@ -184,6 +184,7 @@ function wire() {
   $('#cart').addEventListener('click', openBasket);
 
   if (view === 'me') wireMe();
+  if (view === 'home') wireHome();
 
   $$('[data-go]').forEach((b) => b.addEventListener('click', () => {
     view = b.dataset.go;
@@ -210,8 +211,19 @@ function wire() {
 // ---------------------------------------------------------------------------
 // Home — everything, newest thinking first
 // ---------------------------------------------------------------------------
+// Home, laid out like the Reseller Hub (the owner liked its layout and flow):
+// a welcome by name, Filter by brand and Filter by tax type, and the products
+// as cards six across — brand badge, photo, name, tax type, stock, price,
+// then Details and Add to cart. Home's own card and its own classes (hh-*);
+// the Shop tab and the search suggestions keep the card they had.
+let hhBrand = '';
+let hhTax = '';
+let hhShown = 60;      // cards drawn before "Show more"
+const HH_STEP = 60;
+
 function homeView() {
-  const shown = category ? goods.filter((p) => p.category === category) : goods;
+  const brands = [...new Set(goods.map((p) => p.brand).filter(Boolean))].sort((x, y) => x.localeCompare(y));
+  const shown = goods.filter((p) => (!hhBrand || p.brand === hhBrand) && (!hhTax || p.tax_type === hhTax));
   return `
     <div class="sh-wallet">
       <div><b>Free</b><span>skin check in store</span></div>
@@ -219,13 +231,13 @@ function homeView() {
       <div><b>Mon–Sat · 10am – 7pm</b><span>Bayan Bayanan, Marikina</span></div>
     </div>
 
-    ${term ? '' : promos.length ? `
-      <div class="sh-banner sale">
-        <span class="sh-flash">−${Number(promos[0].percent_off)}% off</span>
-        <h3>${esc(promos[0].headline)}</h3>
-        <p>${peso(promos[0].price)} instead of ${peso(promos[0].was)} · until ${
-          onDay(promos[0].ends_on)}</p>
-      </div>
+    <div class="hh-welcome">
+      <h2>Welcome${me ? `, ${esc(me.name)}` : ' to MS BEAU AVE'}!</h2>
+      <p>Everything here is on our shelves right now. Reserve in store or message us.</p>
+      <span class="hh-pill">Our available products</span>
+    </div>
+
+    ${promos.length ? `
       <div class="sh-rowhead">🌸 MS BEAU LIVE · on promotion</div>
       <div class="sh-live">
         ${promos.map((pm) => `
@@ -237,60 +249,66 @@ function homeView() {
             <div class="sh-price">${peso(pm.price)}
               <s>${peso(pm.was)}</s></div>
           </button>`).join('')}
-      </div>` : `
-      <div class="sh-banner">
-        <h3>Skincare, straight from the counter</h3>
-        <p>Everything here is on our shelves right now. Reserve in store or message us.</p>
-      </div>`}
+      </div>` : ''}
 
-    <div class="sh-rowhead">${term
-      ? `${shown.length} result${shown.length === 1 ? '' : 's'} for “${esc(term)}”`
-      : '✨ For you'}</div>
-    ${term ? grid(shown) : rails(shown)}`;
+    <div class="hh-filters">
+      <label for="hh_brand">Filter by brand:</label>
+      <select id="hh_brand"><option value="">All brands</option>
+        ${brands.map((x) => `<option${x === hhBrand ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>
+      <label for="hh_tax">Filter by tax type:</label>
+      <select id="hh_tax"><option value="">All tax types</option>
+        ${['VAT', 'Non-VAT', 'Exempt'].map((x) => `<option${x === hhTax ? ' selected' : ''}>${x}</option>`).join('')}</select>
+    </div>
+
+    ${shown.length ? `<div class="hh-grid">${shown.slice(0, hhShown).map(hhCard).join('')}</div>
+      ${shown.length > hhShown ? `<div class="hh-more"><button id="hh_more">Show more
+        <span>${shown.length - hhShown} more</span></button></div>` : ''}`
+    : '<div class="sh-empty">Nothing matches those filters.</div>'}`;
 }
 
-// ---------------------------------------------------------------------------
-// The wall, made walkable
-//
-// Home was every product we stock in one column: 867 cards, two abreast, four
-// hundred rows deep. Reaching the bottom of it is not something anybody does
-// twice, which means most of the shop was never seen.
-//
-// So it is banded by house instead. Each brand gets a row that swipes
-// sideways, and the page scrolls down through seventy-three brands rather than
-// through eight hundred products — the whole shop is a thumb's width away
-// instead of a minute of flicking. The houses we carry deepest come first,
-// because those are the ones somebody is most likely to have come for.
-//
-// The chips above jump straight to a house, for anybody who already knows
-// which one they want.
-// ---------------------------------------------------------------------------
-const RAIL = 12;   // per house, before "see all" takes over
-
-function rails(list) {
-  const houses = byBrand(list);
-  if (!houses.length) {
-    return '<div class="sh-empty">Nothing on the shelves just now.</div>';
-  }
+function hhCard(p) {
   return `
-    <div class="sh-chips sh-brandchips">
-      ${houses.map(([name, of]) => `
-        <button data-house="${esc(name)}">${esc(name)}
-          <span>${of.length}</span></button>`).join('')}
-    </div>
-    ${houses.map(([name, of]) => `
-      <div class="sh-house">
-        <div class="sh-housetop">
-          <b>${esc(name)}</b>
-          <span>${of.length} product${of.length === 1 ? '' : 's'}</span>
-        </div>
-        <div class="sh-rail">
-          ${of.slice(0, RAIL).map((p) => card(p, false)).join('')}
-          ${of.length > RAIL ? `
-            <button class="sh-railmore" data-house="${esc(name)}">
-              See all<br>${of.length}</button>` : ''}
-        </div>
-      </div>`).join('')}`;
+    <div class="hh-card ${p.in_stock ? '' : 'gone'}">
+      <div class="hh-badge">${esc(p.brand || 'MS BEAU AVE')}</div>
+      <div class="hh-photo">${p.has_photo
+        ? `<img src="${photoUrl(p.sku)}" alt="${esc(p.name)}" loading="lazy">` : '<span>🧴</span>'}</div>
+      <div class="hh-body">
+        <div class="hh-name">${esc(p.name)}</div>
+        ${p.tax_type ? `<span class="hh-tax">${esc(p.tax_type)}</span>` : ''}
+        <span class="hh-stock ${p.in_stock ? '' : 'out'}">${p.in_stock ? 'In stock' : 'Sold out'}</span>
+        <div class="hh-price">Price: <b>${peso(p.price)}</b>${p.was ? ` <s>${peso(p.was)}</s>` : ''}</div>
+        ${p.percent_off ? `<div class="hh-off">−${Number(p.percent_off)}% off today</div>` : '<div class="hh-off"></div>'}
+        <button type="button" class="hh-details" data-hhopen="${esc(p.sku)}">Details</button>
+        <button type="button" class="hh-add" data-hhadd="${esc(p.sku)}" ${p.in_stock ? '' : 'disabled'}>🛒 Add to cart</button>
+      </div>
+    </div>`;
+}
+
+// Home's own controls, wired after each draw.
+function wireHome() {
+  $('#hh_brand')?.addEventListener('change', (e) => { hhBrand = e.target.value; hhShown = HH_STEP; draw(); });
+  $('#hh_tax')?.addEventListener('change', (e) => { hhTax = e.target.value; hhShown = HH_STEP; draw(); });
+  $('#hh_more')?.addEventListener('click', () => {
+    const y = window.scrollY;
+    hhShown += HH_STEP;
+    draw();
+    window.scrollTo(0, y);
+  });
+  $$('[data-hhopen]').forEach((b) => b.addEventListener('click', () =>
+    openProduct(goods.find((p) => p.sku === b.dataset.hhopen))));
+  // Straight into the basket from the card; the button says so for a moment
+  // and the basket count in the top band keeps the tally.
+  $$('[data-hhadd]').forEach((b) => b.addEventListener('click', () => {
+    const sku = b.dataset.hhadd;
+    basket[sku] = (basket[sku] || 0) + 1;
+    saveBasket();
+    const n = $('.sh-cart-n');
+    if (n) n.textContent = basketCount();
+    else $('#cart')?.insertAdjacentHTML('beforeend', `<span class="sh-cart-n">${basketCount()}</span>`);
+    b.classList.add('added');
+    b.textContent = `Added ✓ (${basket[sku]})`;
+    setTimeout(() => { b.classList.remove('added'); b.textContent = '🛒 Add to cart'; }, 1200);
+  }));
 }
 
 // ---------------------------------------------------------------------------
