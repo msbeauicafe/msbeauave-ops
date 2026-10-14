@@ -13767,98 +13767,172 @@ SCREENS.closeday = async (page) => {
 // ===========================================================================
 const order = new Map();
 
+// Order stock, as the owner's reference drew it, in the shop's own colours:
+// a top bar with the cart and the open invoices, a welcome by name that says
+// the prices are this account's own, a brand filter, and the products as
+// cards six across — brand badge, photo, name, the price this account is
+// charged and the SRP under it, Price tiers and Add to cart. The reseller's
+// screen alone: its own classes (rs-*), nothing shared with the shop or the
+// back office.
 SCREENS.catalog = async (page) => {
   let goods = [];
+  let account = null;
+  let openInvoices = 0;
+  let brand = '';
 
   page.innerHTML = `
-    <div class="head"><h2>Order stock</h2>
-      <span class="hint">What is free to ship you right now</span></div>
-    <div id="warn"></div>
-    <div class="till">
-      <div>
-        <div class="tools"><input type="search" id="q" placeholder="Search products…"></div>
-        <div class="panel" id="list"></div>
+    <div class="rs-hub">
+      <div class="rs-bar">
+        <div class="rs-brandname">MS BEAU AVE <span>Reseller Hub</span></div>
+        <input type="search" id="q" class="rs-search" placeholder="Search products…">
+        <button type="button" class="rs-track" id="rs_cart" title="Your cart">
+          🛒 Cart <b id="rs_cartn">0</b></button>
+        <button type="button" class="rs-track" id="rs_inv" title="Your invoices">
+          🧾 Sales invoice <b id="rs_invn">0</b></button>
       </div>
-      <div class="panel"><h3>🛒 Your order</h3><div id="cart"></div>
-        <div class="total" id="total">₱0.00</div>
-        <button class="btn" id="send" style="width:100%">Place the order</button>
-        <div class="dim mt">Stock is held for you the moment this goes through.</div>
+      <div id="warn"></div>
+      <div class="rs-welcome">
+        <h2 id="rs_hello">Welcome!</h2>
+        <p id="rs_sub">Explore your product catalogue below.</p>
+        <span class="rs-pill">Your available products</span>
       </div>
+      <div class="rs-filters">
+        <label for="rs_brand">Filter by brand:</label>
+        <select id="rs_brand"><option value="">All brands</option></select>
+      </div>
+      <div class="rs-grid" id="list"></div>
     </div>`;
 
-  const drawCart = () => {
-    $('#cart', page).innerHTML = order.size ? [...order.values()].map((l) => `
-      <div class="pick">
-        <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${peso(l.price)} each</span></span>
-        <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
-        <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
-      </div>`).join('') : '<div class="none">Nothing yet — add from the list.</div>';
-    $('#total', page).textContent = peso(
-      [...order.values()].reduce((s, l) => s + l.price * l.qty, 0));
+  const tierWord = () => (account ? tierName(account.tier).toUpperCase() : '');
+  const inCart = () => [...order.values()].reduce((n, l) => n + l.qty, 0);
+  const drawTrackers = () => {
+    $('#rs_cartn', page).textContent = inCart();
+    $('#rs_invn', page).textContent = openInvoices;
+  };
 
-    $$('[data-qty]', page).forEach((i) => i.addEventListener('change', () => {
-      order.get(i.dataset.qty).qty = Math.max(1, +i.value || 1);
-      drawCart();
-    }));
-    $$('[data-drop]', page).forEach((b) => b.addEventListener('click', () => {
-      order.delete(b.dataset.drop);
-      drawCart();
-    }));
+  // The cart, opened from the top bar: each line, its quantity, the total,
+  // and Place the order — the same order the screen always placed.
+  const openCart = () => {
+    dialog(`<h3>🛒 Your order</h3><div id="rs_lines"></div>
+      <div class="rs-carttotal"><span>Total</span><b id="rs_total">₱0.00</b></div>
+      <button class="btn" id="send" style="width:100%">Place the order</button>
+      <div class="dim mt">Stock is held for you the moment this goes through.</div>`);
+    const draw = () => {
+      $('#rs_lines').innerHTML = order.size ? [...order.values()].map((l) => `
+        <div class="pick">
+          <span class="nm"><b>${esc(l.name)}</b><br><span class="dim">${peso(l.price)} each</span></span>
+          <input type="number" min="1" value="${l.qty}" data-qty="${esc(l.sku)}">
+          <button class="btn sm stop" data-drop="${esc(l.sku)}">✕</button>
+        </div>`).join('') : '<div class="none">Nothing yet — add from the products.</div>';
+      $('#rs_total').textContent = peso([...order.values()].reduce((t, l) => t + l.price * l.qty, 0));
+      $$('#rs_lines [data-qty]').forEach((i) => i.addEventListener('change', () => {
+        order.get(i.dataset.qty).qty = Math.max(1, +i.value || 1);
+        draw(); drawTrackers();
+      }));
+      $$('#rs_lines [data-drop]').forEach((x) => x.addEventListener('click', () => {
+        order.delete(x.dataset.drop);
+        draw(); drawTrackers();
+      }));
+    };
+    draw();
+    $('#send').addEventListener('click', async () => {
+      if (!order.size) return notice('Your order is empty.', 'bad');
+      try {
+        const r = await POST('/api/portal/orders', {
+          lines: [...order.values()].map((l) => ({ sku: l.sku, qty: l.qty })),
+        });
+        order.clear();
+        closeDialog();
+        drawTrackers();
+        notice(`Order ${r.orderId} placed — stock is held for you 🌸`
+          + (r.invoice ? ` Invoice due ${onDay(r.invoice.due_on)}.` : ''), 'good');
+        load();
+      } catch (e) { whoops(e); load(); }
+    });
+  };
+
+  // Price tiers: what a few common quantities cost at this account's price,
+  // what they resell for at SRP, and what is left — the account's own
+  // figures only, never another tier's price.
+  const openTiers = (g) => {
+    const price = Number(g.wholesale_price);
+    const srp = Number(g.srp) || 0;
+    dialog(`<h3>Price tiers — ${esc(g.name)}</h3>
+      <div class="dim">Your price (${esc(tierWord())}) ${peso(price)} each · SRP ${peso(srp)}</div>
+      <table class="rs-tiers"><thead><tr><th>Quantity</th><th>You pay</th><th>Resells for</th><th>Your margin</th></tr></thead>
+        <tbody>${[1, 6, 12, 24, 48].map((n) => `<tr><td>${n} ${esc(g.unit_type || 'PCS')}</td>
+          <td>${peso(price * n)}</td><td>${srp ? peso(srp * n) : '—'}</td>
+          <td>${srp ? peso((srp - price) * n) : '—'}</td></tr>`).join('')}</tbody></table>
+      ${srp > price ? `<div class="dim mt">That is ${Math.round(((srp - price) / srp) * 100)}% of SRP kept on every piece.</div>` : ''}`);
   };
 
   const drawList = () => {
     const term = ($('#q', page).value || '').toLowerCase();
-    const rows = goods.filter((g) => !term
-      || g.name.toLowerCase().includes(term) || g.sku.toLowerCase().includes(term));
-    $('#list', page).innerHTML = table(rows, [
-      { head: 'Product', cell: (g) => `<b>${esc(g.name)}</b><br>`
-          + `<span class="dim">${esc(g.brand || '')} ${esc(g.sku)}</span>` },
-      { head: 'Your price', n: true, cell: (g) => peso(g.wholesale_price) },
-      { head: 'You sell at', n: true, cell: (g) => peso(g.srp) },
-      { head: 'Available', n: true, cell: (g) => g.available > 0
-          ? count(g.available) : tag('none', 'red') },
-      { head: '', cell: (g) => g.available > 0
-          ? `<button class="btn sm" data-add="${esc(g.sku)}">Add</button>` : '' },
-    ], 'Nothing matches.');
+    const rows = goods.filter((g) => (!brand || (g.brand || '') === brand) && (!term
+      || g.name.toLowerCase().includes(term) || g.sku.toLowerCase().includes(term)
+      || (g.brand || '').toLowerCase().includes(term)));
+    $('#list', page).innerHTML = rows.length ? rows.map((g) => `
+      <div class="rs-card">
+        <div class="rs-badge">${esc(g.brand || 'MS BEAU AVE')}</div>
+        <div class="rs-photo"><span aria-hidden="true">🧴</span>
+          <img src="${photoUrl(g.sku)}" alt="" loading="lazy" onerror="this.remove()"></div>
+        <div class="rs-body">
+          <div class="rs-name">${esc(g.name)}</div>
+          ${g.available > 0 ? `<span class="rs-stock">${count(g.available)} available</span>`
+            : '<span class="rs-stock out">Out of stock</span>'}
+          <div class="rs-price">Your price (${esc(tierWord())}): <b>${peso(g.wholesale_price)}</b></div>
+          <div class="rs-srp">SRP: ${g.srp ? peso(g.srp) : '—'}</div>
+          <button type="button" class="rs-tierbtn" data-tiers="${esc(g.sku)}">Price tiers</button>
+          <button type="button" class="rs-add" data-add="${esc(g.sku)}" ${g.available > 0 ? '' : 'disabled'}>🛒 Add to cart</button>
+        </div>
+      </div>`).join('') : '<div class="none">Nothing matches.</div>';
 
-    $$('[data-add]', page).forEach((b) => b.addEventListener('click', () => {
-      const g = goods.find((x) => x.sku === b.dataset.add);
+    $$('[data-add]', page).forEach((x) => x.addEventListener('click', () => {
+      const g = goods.find((y) => y.sku === x.dataset.add);
       const line = order.get(g.sku)
         ?? { sku: g.sku, name: g.name, price: Number(g.wholesale_price), qty: 0 };
       line.qty += 1;
       order.set(g.sku, line);
-      drawCart();
+      drawTrackers();
+      // Said on the button itself, not a notice per press — the Cart count
+      // in the top bar is what keeps the tally.
+      x.classList.add('added');
+      x.textContent = `Added ✓ (${line.qty})`;
+      setTimeout(() => { x.classList.remove('added'); x.textContent = '🛒 Add to cart'; }, 1200);
     }));
+    $$('[data-tiers]', page).forEach((x) => x.addEventListener('click', () =>
+      openTiers(goods.find((y) => y.sku === x.dataset.tiers))));
   };
 
   const load = async () => {
-    const [catalog, account] = await Promise.all([
+    const [catalog, acct] = await Promise.all([
       GET('/api/portal/catalog'), GET('/api/portal/account'),
     ]);
     goods = catalog;
-    $('#warn', page).innerHTML = account.blocked
-      ? `<div class="banner bad">🚫 ${esc(account.reason)}
-          ${account.toClear > 0 ? ` Settle <b>${peso(account.toClear)}</b> to start ordering again.` : ''}</div>`
+    account = acct.account;
+    openInvoices = acct.invoices.filter((i) => i.status === 'open').length;
+    $('#rs_hello', page).textContent = `Welcome, ${account.name}!`;
+    $('#rs_sub', page).textContent = `Explore your exclusive product catalogue below. The prices you see are your own ${tierName(account.tier)} prices.`;
+    $('#warn', page).innerHTML = acct.blocked
+      ? `<div class="banner bad">🚫 ${esc(acct.reason)}
+          ${acct.toClear > 0 ? ` Settle <b>${peso(acct.toClear)}</b> to start ordering again.` : ''}</div>`
       : '';
+    const pick = $('#rs_brand', page);
+    const brands = [...new Set(goods.map((g) => g.brand).filter(Boolean))].sort((x, y) => x.localeCompare(y));
+    if (pick.dataset.brands !== brands.join('|')) {
+      pick.dataset.brands = brands.join('|');
+      pick.innerHTML = '<option value="">All brands</option>'
+        + brands.map((x) => `<option${x === brand ? ' selected' : ''}>${esc(x)}</option>`).join('');
+    }
+    drawTrackers();
     drawList();
   };
 
   $('#q', page).addEventListener('input', drawList);
-  $('#send', page).addEventListener('click', async () => {
-    if (!order.size) return notice('Your order is empty.', 'bad');
-    try {
-      const r = await POST('/api/portal/orders', {
-        lines: [...order.values()].map((l) => ({ sku: l.sku, qty: l.qty })),
-      });
-      order.clear();
-      drawCart();
-      notice(`Order ${r.orderId} placed — stock is held for you 🌸`
-        + (r.invoice ? ` Invoice due ${onDay(r.invoice.due_on)}.` : ''), 'good');
-      load();
-    } catch (e) { whoops(e); load(); }
-  });
+  $('#rs_brand', page).addEventListener('change', (e) => { brand = e.target.value; drawList(); });
+  $('#rs_cart', page).addEventListener('click', openCart);
+  $('#rs_inv', page).addEventListener('click', () => $('[data-tab="account"]')?.click());
 
-  drawCart();
   await load();
   repeat(load, 10000);
 };
