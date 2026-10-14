@@ -1820,3 +1820,21 @@ test("Reseller Hub: the reseller's Order stock laid out as the reference, its ow
   assert.equal((app.match(/class="rs-/g) || []).length > 0 && app.indexOf('class="rs-') > at, true,
     'rs-* belongs to this screen only');
 });
+
+// Tax type (db/191): picked on Product list's own column, never typed, and
+// read by the Reseller Hub's tag and Filter by tax type. The shared product
+// form (also opened from Warehouse and Internal Inventory Report) is untouched.
+test('Tax type: a Product list dropdown, and the Reseller Hub tags and filters by it', () => {
+  assert.match(app, /const PRODUCT_TAX_TYPES = \['VAT', 'Non-VAT', 'Exempt'\];/);
+  const at = app.indexOf('SCREENS.products = async');
+  const fn = app.slice(at, app.indexOf('\nfunction erasePracticeData', at));
+  assert.match(fn, /\{ head: 'Tax type', cell: \(p\) => \(canTax\s*\? `<select class="taxpick" data-tax=/);
+  assert.match(fn, /PUT\(`\/api\/products\/\$\{encodeURIComponent\(sel\.dataset\.tax\)\}`, \{ tax_type: sel\.value \|\| null \}\)/);
+  const form = app.slice(app.indexOf('function editProduct('), app.indexOf('function editProduct(') + 20000);
+  assert.doesNotMatch(form.slice(0, form.indexOf('\n}\n')), /tax_type|Tax type/, 'the shared product form is untouched');
+
+  const hub = app.slice(app.indexOf('SCREENS.catalog = async'), app.indexOf('SCREENS.myorders = async'));
+  assert.match(hub, /Filter by tax type:/);
+  assert.match(hub, /\(!taxType \|\| g\.tax_type === taxType\)/);
+  assert.match(hub, /class="rs-name"[\s\S]*?class="rs-tax"/, 'the tag sits under the name');
+});
