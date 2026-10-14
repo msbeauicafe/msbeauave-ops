@@ -527,16 +527,18 @@ button.al { cursor: pointer; }
 .hh-body { background: var(--rose-blush); padding: 10px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .hh-name { color: var(--rose-deep); font-weight: 800; text-transform: uppercase; text-align: center;
   font-size: .82rem; line-height: 1.25; min-height: 2.5em; }
-.hh-tax { display: block; text-align: center; background: var(--rose-deep); color: #fff; font-size: .7rem;
+.hh-tags { display: flex; justify-content: center; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hh-acts { display: grid; gap: 6px; margin-top: auto; }
+.hh-tax { display: inline-block; text-align: center; background: var(--rose-deep); color: #fff; font-size: .7rem;
   font-weight: 800; letter-spacing: .08em; border-radius: 999px; padding: 3px 10px; }
-.hh-stock { align-self: center; background: #5F8D6B; color: #fff; font-size: .68rem; font-weight: 700;
+.hh-stock { background: #5F8D6B; color: #fff; font-size: .68rem; font-weight: 700;
   border-radius: 999px; padding: 3px 12px; }
 .hh-stock.out { background: var(--muted); }
 .hh-price { color: var(--rose-deep); font-size: .85rem; font-weight: 700;
   border-top: 1px solid var(--rose-soft); padding-top: 7px; }
 .hh-price b { font-size: 1rem; }
 .hh-price s { color: var(--muted); font-weight: 400; font-size: .78rem; }
-.hh-off { color: var(--danger); font-size: .74rem; font-weight: 700; min-height: 1em; margin-bottom: auto; }
+.hh-off { color: var(--danger); font-size: .74rem; font-weight: 700; }
 .hh-details, .hh-add { width: 100%; border-radius: 10px; font: inherit; font-weight: 700; cursor: pointer; padding: 8px; }
 .hh-details { background: transparent; color: var(--rose-deep); border: 2px solid var(--rose-primary); }
 .hh-add { background: var(--rose-primary); color: #fff; border: 2px solid var(--rose-primary); }
@@ -547,3 +549,50 @@ button.al { cursor: pointer; }
 .hh-more button { background: #fff; border: 2px solid var(--rose-primary); color: var(--rose-deep); font: inherit;
   font-weight: 700; border-radius: 999px; padding: 10px 26px; cursor: pointer; }
 .hh-more button span { color: var(--muted); font-weight: 500; margin-left: 6px; }
+
+/* ---------- A computer's whole window, like the reference ----------
+   On a desktop the shop is a website, not a phone in the middle of the
+   screen: the band and the tabs run edge to edge. Home's cards use the whole
+   width (hh-full); the other tabs keep their content at the width they had,
+   centred, so a form is never stretched across a 1,900px screen. Phones are
+   untouched — this only applies from 1000px up. */
+@media (min-width: 1000px) {
+  body { padding: 0; }
+  .phone { max-width: none; border-radius: 0; min-height: 100vh; box-shadow: none; }
+  .sh-page { width: 100%; max-width: 1180px; margin: 0 auto; }
+  .sh-page.hh-full { max-width: none; }
+  .sh-page.hh-full .hh-grid { padding: 0 28px 24px; gap: 18px; }
+}
+
+/* ---------- Home on a computer, kept tight ----------
+   At 1360×768 the welcome and the strip above it took half the screen and a
+   card was taller than what was left, so not one whole row showed. On a
+   computer Home is drawn compact: a one-line strip, a shorter welcome with
+   the filters close under it, and shorter cards — a full row in view at
+   1360×768. Phones keep the roomier layout above. */
+@media (min-width: 1000px) {
+  .hh-full .sh-wallet > div { padding: 8px 10px; flex-direction: row; justify-content: center;
+    align-items: baseline; gap: 6px; }
+  .hh-full .sh-wallet b { display: inline; margin-right: 6px; }
+  .hh-full .sh-wallet span { display: inline; }
+  .hh-full .hh-welcome { padding: 14px 16px 2px; }
+  .hh-full .hh-welcome h2 { font-size: 1.85rem; margin: 0 0 4px; }
+  .hh-full .hh-welcome p { margin: 0 0 10px; font-size: .9rem; }
+  .hh-full .hh-pill { padding: 6px 16px; font-size: .9rem; }
+  .hh-full .hh-filters { padding: 10px 16px 12px; }
+  .hh-full .hh-filters select { padding: 7px 10px; }
+  .hh-full .hh-grid { gap: 14px; padding: 0 24px 20px; }
+  .hh-full .hh-badge { padding: 6px; font-size: .62rem; }
+  .hh-full .hh-photo { aspect-ratio: auto; height: 150px; font-size: 1.8rem; }
+  .hh-full .hh-photo img { padding: 6px; }
+  .hh-full .hh-body { padding: 8px 10px 10px; gap: 5px; }
+  .hh-full .hh-name { font-size: .78rem; min-height: 2.5em; }
+  .hh-full .hh-tax { padding: 2px 8px; font-size: .66rem; }
+  .hh-full .hh-stock { padding: 2px 10px; font-size: .64rem; }
+  .hh-full .hh-price { padding-top: 5px; font-size: .8rem; }
+  .hh-full .hh-price b { font-size: .95rem; }
+  .hh-full .hh-off { font-size: .7rem; }
+  .hh-full .hh-acts { grid-template-columns: auto 1fr; }
+  .hh-full .hh-details, .hh-full .hh-add { padding: 6px 6px; font-size: .76rem; border-radius: 8px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
