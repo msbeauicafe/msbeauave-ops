@@ -1801,3 +1801,22 @@ test('Packing list: the Invoice column reads paid / paid w/bal / unpaid, not ope
   assert.match(app, /SCREENS\.coinvoices = async[\s\S]*?const standingLabel = \(o\) =>/);
   assert.equal(app.match(/packingInvoiceStanding\(/g).length, 1, 'used on this tab only');
 });
+
+// The reseller's Order stock, as the owner's reference drew it: Reseller Hub
+// top bar with the cart and invoice trackers, Welcome by name with their own
+// tier, a brand filter, and six-across cards. Its own rs-* classes.
+test("Reseller Hub: the reseller's Order stock laid out as the reference, its own code", () => {
+  const at = app.indexOf('SCREENS.catalog = async (page) => {');
+  const fn = app.slice(at, app.indexOf('SCREENS.myorders = async', at));
+  assert.match(fn, /id="rs_cart"[\s\S]*?id="rs_inv"/, 'cart and sales invoice trackers in the top bar');
+  assert.match(fn, /`Welcome, \$\{account\.name\}!`/);
+  assert.match(fn, /Filter by brand:/);
+  assert.match(fn, /class="rs-badge"[\s\S]*?class="rs-photo"[\s\S]*?class="rs-name"[\s\S]*?Your price \(\$\{esc\(tierWord\(\)\)\}\)[\s\S]*?class="rs-srp"[\s\S]*?Price tiers[\s\S]*?Add to cart/,
+    'badge, photo, name, your price, SRP, Price tiers, Add to cart — in that order');
+  assert.match(fn, /POST\('\/api\/portal\/orders'/, 'the order is placed the same way as before');
+  assert.doesNotMatch(fn, /g\.prices|price_codes/, "Price tiers shows this account's own figures only");
+  const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\.rs-grid \{ display: grid; grid-template-columns: repeat\(6, minmax\(0, 1fr\)\);/);
+  assert.equal((app.match(/class="rs-/g) || []).length > 0 && app.indexOf('class="rs-') > at, true,
+    'rs-* belongs to this screen only');
+});
