@@ -2360,15 +2360,19 @@ input.n { text-align: right; }
    the six tiles on the right, both bigger and filling the width. The menu's
    own br-split classes; phones keep the single column. */
 @media (min-width: 1000px) {
-  .br-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: stretch; }
+  .br-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
   .br-split .brheader, .br-split .brdash, .br-split .brgrid { max-width: none; }
   .br-split .brdash { margin-bottom: 0; }
-  .br-split .brfigs { gap: 14px; }
-  .br-split .brfigs .tile { padding: 22px 22px; min-height: 120px; }
+  /* The six figures are the size of the six tiles beside them — one box
+     size across both panels. */
+  .br-split .brfigs { grid-auto-rows: 189px; gap: 16px; }
+  .br-split .brfigs .tile { padding: 24px 24px; height: 189px; box-sizing: border-box;
+    display: flex; flex-direction: column; justify-content: center; }
   .br-split .brfigs .tile .big { font-size: 1.9rem; }
   .br-split .brfigs .tile .label { font-size: .95rem; }
   .br-split-r { display: flex; }
-  .br-split-r .brgrid { flex: 1; gap: 16px; grid-auto-rows: 1fr; }
+  .br-split-r .brgrid { flex: 1; gap: 16px; grid-auto-rows: 189px; align-content: start; }
+  .br-split .brtile { height: 189px; box-sizing: border-box; }
   .br-split .brtile { padding: 28px 26px; font-size: 1.12rem; gap: 16px; }
   .br-split .brtile svg { width: 30px; height: 30px; }
 }
