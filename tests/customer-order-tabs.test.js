@@ -1879,3 +1879,12 @@ test("Record payment: a payment on file's reference no. shows in its row, read-o
     'never saved again as the new payment\'s reference');
   assert.match(fn, /if \(ref\.classList\.contains\('ci-ref-onfile'\)\) \{\n\s*ref\.value = '';\n\s*ref\.readOnly = false;/);
 });
+
+// The sign-in link is for the reseller's own phone, so it carries the public
+// address even when it was made on a PC that opens the app locally.
+test('Customers: the sign-in link uses the public address, never 127.0.0.1', () => {
+  const at = app.indexOf("$$('[data-signin]', page)");
+  const fn = app.slice(at, at + 2500);
+  assert.match(fn, /const local = \/\^\(localhost\|127\\\.\|10\\\.\|192\\\.168\\\./);
+  assert.match(fn, /`\$\{local \? 'https:\/\/msbeauave-ops\.vercel\.app' : location\.origin\}\$\{out\.link\}`/);
+});

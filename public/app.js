@@ -9659,7 +9659,11 @@ const resellerList = (part, tier) => async (page) => {
     $$('[data-signin]', page).forEach((b) => b.addEventListener('click', async () => {
       try {
         const out = await POST(`/api/resellers/${b.dataset.signin}/invite`, { days_valid: 14 });
-        const url = `${location.origin}${out.link}`;
+        // The address the reseller opens it at — the public site, never this
+        // PC's own (127.0.0.1, localhost, a 192.168… shop address), which
+        // only works on the computer the link was made on.
+        const local = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname);
+        const url = `${local ? 'https://msbeauave-ops.vercel.app' : location.origin}${out.link}`;
         dialog(`<h3>🔑 Sign-in link — ${esc(b.dataset.signname)}</h3>
           <div class="dim">Send this to ${esc(b.dataset.signname)}. Opening it, they choose their
             own username and password — nobody here ever sees it — and land in the
