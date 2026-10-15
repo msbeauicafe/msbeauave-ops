@@ -2372,9 +2372,11 @@ input.n { text-align: right; }
   .br-split .brfigs .tile .label { font-size: .95rem; }
   .br-split-r { display: flex; }
   .br-split-r .brgrid { flex: 1; gap: 16px; grid-auto-rows: 189px; align-content: start; }
-  .br-split .brtile { height: 189px; box-sizing: border-box; }
-  .br-split .brtile { padding: 28px 26px; font-size: 1.12rem; gap: 16px; }
-  .br-split .brtile svg { width: 30px; height: 30px; }
+  /* The six tiles are shorter than the figures but sit in the same 189px
+     rows, top edge level with the figure beside it. */
+  .br-split .brtile { height: 120px; box-sizing: border-box; align-self: start; }
+  .br-split .brtile { padding: 20px 24px; font-size: 1.05rem; gap: 14px; }
+  .br-split .brtile svg { width: 26px; height: 26px; }
 }
 
 /* Bank report menu on a computer: Daily / Monthly and the date bar on one
@@ -2508,3 +2510,32 @@ input.n { text-align: right; }
 .pr-amt small { color: var(--muted); font-size: .74rem; }
 .pr-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .so-tile { flex-direction: row; justify-content: flex-start; text-align: left; }
+
+/* ---------------------------------------------------------------------------
+   Bank report → Bank: the Bank Overview on top, a copy of the Expenses
+   Overview's look in the rose palette. Its own bo-*.
+   --------------------------------------------------------------------------- */
+.bo-card { background: linear-gradient(135deg, var(--rose-deep), var(--rose-primary)); color: #fff;
+  border-radius: 16px; padding: 18px; box-shadow: var(--shade); }
+.bo-head { display: flex; align-items: center; gap: 12px; }
+.bo-head h3 { margin: 0; color: #fff; font-size: 1.15rem; letter-spacing: .02em; }
+.bo-co { font-size: .82rem; opacity: .9; }
+.bo-icon { width: 42px; height: 42px; border-radius: 10px; background: rgba(255,255,255,.2);
+  display: grid; place-items: center; }
+.bo-icon svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.bo-year { margin-left: auto; background: rgba(255,255,255,.25); border-radius: 999px; padding: 2px 10px;
+  font-size: .78rem; font-weight: 700; }
+.bo-label { margin: 14px 0 6px; font-size: .88rem; }
+.bo-picks { display: flex; gap: 10px; }
+.bo-picks select { flex: 1; border-radius: 999px; border: 1px solid rgba(255,255,255,.5);
+  background: rgba(255,255,255,.95); color: var(--ink); padding: 9px 14px; }
+.bo-picks select#bo_year { flex: 0 0 120px; }
+.bo-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.bo-tile { text-align: left; background: rgba(255,255,255,.95); color: var(--ink);
+  border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.bo-tile span { font-size: .85rem; color: var(--muted); }
+.bo-tile b { font-size: 1.35rem; color: var(--rose-deep); }
+.bo-tile small { font-size: .74rem; color: var(--rose-primary); font-weight: 600; }
+.bo-tile.info small, .bo-tile.in small { color: var(--success); }
+.bo-tile.bad small { color: var(--danger); }
+@media (min-width: 1000px) { .bo-tiles { grid-template-columns: repeat(4, 1fr); } }

@@ -764,7 +764,7 @@ test("Bank report's menu: Dashboard left, the six tiles right", () => {
   assert.match(css, /\.br-split \{ display: grid; grid-template-columns: 1fr 1fr;/);
   // One box size across both panels.
   assert.match(css, /\.br-split \.brfigs \.tile \{[^}]*height: 189px;/);
-  assert.match(css, /\.br-split \.brtile \{ height: 189px;/);
+  assert.match(css, /\.br-split \.brtile \{ height: 120px; box-sizing: border-box; align-self: start; \}/, 'the tiles are smaller, level with the top of the figures\' rows');
   assert.match(css, /\.br-split-r \{ padding-top: 117px; \}/, 'the tiles start level with the figures');
 });
 
@@ -788,4 +788,14 @@ test('Sales Overview and Purchase Overview, and the Purchase Register', async ()
   assert.ok(po, 'a purchase order carries its billing: billed, paid');
   assert.equal(Number(po.owed), 500, 'and what is still owed');
   assert.ok('bill_nos' in po);
+});
+
+// Bank report → Bank: a Bank Overview card on top, in the Expenses Overview's
+// rose look, with its own bo-* classes and its own Reporting month.
+test('Bank: the Bank Overview sits on top of Cash position', () => {
+  const css = fs.readFileSync(path.join(here, '../public/styles.css'), 'utf8');
+  assert.match(app, /<div class="bo-card">[\s\S]*?BANK OVERVIEW[\s\S]*?<div class="panel mt"><h3>Cash position<\/h3>/);
+  for (const w of ['Total Cash Position', 'Bank Balance', 'Money In', 'Money Out']) assert.ok(app.includes(`<span>${w}</span>`), w);
+  assert.match(app, /let brBoYm = today\.slice\(0, 7\);/);
+  assert.match(css, /\.bo-card \{ background: linear-gradient\(135deg, var\(--rose-deep\), var\(--rose-primary\)\);/);
 });
