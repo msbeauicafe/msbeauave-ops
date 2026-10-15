@@ -15728,45 +15728,6 @@ SCREENS.bankreport = async (page) => {
           <b>${peso(v)} <small>${opex > 0 ? Math.round((v / opex) * 1000) / 10 : 0}%</small></b></div>`).join('')
           : `<div class="brf-none">No expenses ${dashWhen}</div>`}`)}`;
     $$('[data-brgo]', box).forEach((b) => b.addEventListener('click', () => open(b.dataset.brgo)));
-    drawTileData(from, to, { invoices, cash, boxes, fin, payables, owed, ar }).catch(() => {});
-  };
-
-  // The six tiles on the right carry a line of their own figures, as the
-  // owner's reference: what each holds for the Dashboard's period, then a
-  // footer with its amount. The menu's own; no other screen draws them.
-  const drawTileData = async (from, to, { invoices, cash, boxes, fin, payables, owed, ar }) => {
-    const [buys, exps] = await Promise.all([
-      GET(`/api/bank-report/purchases?from=${from}&to=${to}`).catch(() => []),
-      GET(`/api/bank-report/expense-register?from=${from}&to=${to}`).catch(() => []),
-    ]);
-    if (view || !$('.br-split-r', page)) return;
-    const dashWhen = dashPeriod === 'month' ? 'this month' : dashAnchor === today ? 'today' : 'that day';
-    const plural = (n, one, many = `${one}s`) => `${count(n)} ${n === 1 ? one : many}`;
-    const balOf = (name) => Number(cash.accounts.find((a) =>
-      a.title.trim().toLowerCase() === name.toLowerCase())?.balance || 0);
-    const bankSide = boxes.filter((x) => x.column === 'bank');
-    const live = buys.filter((o) => o.status !== 'cancelled');
-    const arTotal = ar.reduce((t, r) => t + Number(r.total_owed), 0);
-    const data = {
-      sales: [`${plural(invoices.length, 'invoice')} ${dashWhen}`,
-        peso(invoices.reduce((t, i) => t + Number(i.amount), 0))],
-      bank: [plural(bankSide.length, 'bank account'),
-        peso(bankSide.reduce((t, x) => t + balOf(x.name), 0))],
-      expenses: [`${peso(fin.expenses.total || 0)} ${dashWhen}`, plural(exps.length, 'record')],
-      purchases: [plural(live.filter((o) => ['open', 'part'].includes(o.status)).length, 'active order'),
-        `${peso(live.reduce((t, o) => t + Number(o.total), 0))} ${dashWhen}`],
-      receivable: [plural(ar.length, 'account'), `${peso(arTotal)} pending`],
-      payable: [plural(new Set(owed.map((r) => r.supplier)).size, 'supplier'), `${peso(payables.total || 0)} due`],
-    };
-    $$('.br-split-r [data-br]', page).forEach((b) => {
-      const k = b.dataset.br;
-      if (!data[k]) return;
-      b.classList.add('brt-data');
-      b.innerHTML = `<span class="brt-top"><svg viewBox="0 0 24 24">${BR_ICONS[k]}</svg>
-          <span class="brt-name">${esc(BR_TILES.find(([x]) => x === k)[1])}</span></span>
-        <span class="brt-sub">${esc(data[k][0])}</span>
-        <span class="brt-foot"><span>${esc(data[k][1])}</span><span aria-hidden="true">↗</span></span>`;
-    });
   };
 
   const menu = () => {

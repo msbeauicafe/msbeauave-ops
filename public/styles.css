@@ -2540,19 +2540,6 @@ input.n { text-align: right; }
 .bo-tile.bad small { color: var(--danger); }
 @media (min-width: 1000px) { .bo-tiles { grid-template-columns: repeat(4, 1fr); } }
 
-/* Bank report menu on a computer: the six tiles carry their own figures —
-   name, a line under it, and a footer with the amount — as the owner's
-   reference. Only the menu's br-split tiles once their figures are in. */
-@media (min-width: 1000px) {
-  .br-split .brtile.brt-data { flex-direction: column; align-items: stretch; justify-content: space-between;
-    gap: 6px; padding: 18px 22px; }
-  .br-split .brt-top { display: flex; align-items: center; gap: 14px; }
-  .br-split .brt-sub { font-size: .85rem; font-weight: 400; color: var(--muted); text-transform: none;
-    letter-spacing: 0; padding-left: 40px; }
-  .br-split .brt-foot { display: flex; justify-content: space-between; border-top: 1px solid var(--rose-soft);
-    padding-top: 8px; font-size: .85rem; font-weight: 600; color: var(--rose-deep); text-transform: none; letter-spacing: 0; }
-}
-
 /* Bank report menu: the six figures carry their own detail — a line under
    the amount and their top three — as the owner's reference. Taller rows,
    the same on both panels, so the tiles still line up beside them. */
