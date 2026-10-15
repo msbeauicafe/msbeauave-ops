@@ -15577,6 +15577,14 @@ SCREENS.bankreport = async (page) => {
   let brExpYm = today.slice(0, 7);
   // Bank's own Reporting month, for the Bank Overview's Money in / Money out.
   let brBoYm = today.slice(0, 7);
+  // Each overview's own Reporting view — Daily, Weekly or Monthly — and the
+  // day a Daily or Weekly view reads; Monthly reads its month (…Ym above).
+  let brBoPeriod = 'month';
+  let brBoDay = today;
+  let brPvPeriod = 'month';
+  let brPvDay = today;
+  let brExPeriod = 'month';
+  let brExDay = today;
   let brExpQ = '';
   let brExpPay = '';
 
@@ -15843,8 +15851,18 @@ SCREENS.bankreport = async (page) => {
       // and year, then Total Cash Position and Bank Balance as they stand,
       // and the month's Money in and Money out, filled once the transactions
       // below have loaded. Bank's own bo-*.
+      const boSpan = (() => {
+        if (brBoPeriod === 'month') {
+          const [yy, mm] = brBoYm.split('-').map(Number);
+          return { from: `${brBoYm}-01`, to: new Date(Date.UTC(yy, mm, 0)).toISOString().slice(0, 10),
+            label: `${BR_MONTHS_LONG[mm - 1]} ${yy}` };
+        }
+        const { from, to } = brRange(brBoPeriod, brBoDay);
+        const f = brParts(from); const t = brParts(to);
+        return { from, to, label: brBoPeriod === 'day' ? `${BR_MONTHS_LONG[f.m - 1]} ${f.d}, ${f.y}`
+          : `${BR_MONTHS[f.m - 1]} ${f.d} – ${BR_MONTHS[t.m - 1]} ${t.d}, ${t.y}` };
+      })();
       const [boY, boM] = brBoYm.split('-').map(Number);
-      const boYears = [...new Set([boY - 2, boY - 1, boY, Number(today.slice(0, 4))])].sort();
       const boBank = boxes.filter((x) => x.column === 'bank')
         .reduce((t, x) => t + Number(bal(x.name) || 0), 0);
       const boTotal = [...boxes.map((x) => x.name), 'Balance']
@@ -15855,19 +15873,25 @@ SCREENS.bankreport = async (page) => {
           <div class="bo-head">
             <span class="bo-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg></span>
             <div><h3>BANK OVERVIEW</h3><div class="bo-co">MS BEAU AVE ENTERPRISES OPC</div></div>
-            <span class="bo-year">${boY}</span>
+            <span class="bo-year">${boSpan.to.slice(0, 4)}</span>
           </div>
-          <div class="bo-label">Reporting month</div>
-          <div class="bo-picks">
-            <select id="bo_month">${BR_MONTHS_LONG.map((n, i) =>
-              `<option value="${String(i + 1).padStart(2, '0')}"${i + 1 === boM ? ' selected' : ''}>${n}</option>`).join('')}</select>
-            <select id="bo_year">${boYears.map((v) => `<option${v === boY ? ' selected' : ''}>${v}</option>`).join('')}</select>
+          <div class="bo-vpicks">
+            <div><label for="bo_view">Reporting view</label><select id="bo_view">
+              ${[['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly']].map(([k, l]) =>
+                `<option value="${k}"${brBoPeriod === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+            ${brBoPeriod === 'month' ? `
+            <div><label for="bo_month">Reporting month</label><select id="bo_month">${BR_MONTHS_LONG.map((n, i) =>
+              `<option value="${String(i + 1).padStart(2, '0')}"${i + 1 === boM ? ' selected' : ''}>${n}</option>`).join('')}</select></div>
+            <div><label for="bo_year">Year</label><select id="bo_year">${[...new Set([boY - 2, boY - 1, boY, Number(today.slice(0, 4))])].sort().map((v) =>
+              `<option${v === boY ? ' selected' : ''}>${v}</option>`).join('')}</select></div>` : `
+            <div class="bo-vwide"><label for="bo_day">${brBoPeriod === 'week' ? 'Any day in the week' : 'Reporting day'}</label>
+              <input id="bo_day" type="date" value="${brBoDay}" max="${today}"></div>`}
           </div>
           <div class="bo-tiles">
             <div class="bo-tile"><span>Total Cash Position</span><b>${money(boTotal)}</b><small>Bank and cash, as of today</small></div>
             <div class="bo-tile info"><span>Bank Balance</span><b>${money(boBank)}</b><small>Across ${count(boBanks)} bank account${boBanks === 1 ? '' : 's'}</small></div>
-            <div class="bo-tile in"><span>Money In</span><b id="bo_in">…</b><small>${BR_MONTHS_LONG[boM - 1]} ${boY}</small></div>
-            <div class="bo-tile bad"><span>Money Out</span><b id="bo_out">…</b><small>${BR_MONTHS_LONG[boM - 1]} ${boY}</small></div>
+            <div class="bo-tile in"><span>Money In</span><b id="bo_in">…</b><small>${boSpan.label}</small></div>
+            <div class="bo-tile bad"><span>Money Out</span><b id="bo_out">…</b><small>${boSpan.label}</small></div>
           </div>
         </div>
         <div class="panel mt"><h3>Cash position</h3>
@@ -16039,16 +16063,18 @@ SCREENS.bankreport = async (page) => {
       // The Bank Overview's Money in and Money out for its month: every
       // recorded transaction, Books entry and purchase order payment in it.
       {
-        const boFrom = `${brBoYm}-01`;
-        const boTo = new Date(Date.UTC(boY, boM, 0)).toISOString().slice(0, 10);
+        const { from: boFrom, to: boTo } = boSpan;
         const inMonth = txns.map((t) => ({ day: String(t.txn_on).slice(0, 10), dir: t.direction, amount: t.amount }))
           .concat(booksRows, poRows).filter((t) => t.day >= boFrom && t.day <= boTo);
         const boSum = (dir) => inMonth.filter((t) => t.dir === dir).reduce((t, x) => t + Number(x.amount || 0), 0);
         $('#bo_in', body).textContent = money(boSum('in'));
         $('#bo_out', body).textContent = money(boSum('out'));
-        const boPick = () => { brBoYm = `${$('#bo_year', body).value}-${$('#bo_month', body).value}`; load().catch(whoops); };
-        $('#bo_month', body).addEventListener('change', boPick);
-        $('#bo_year', body).addEventListener('change', boPick);
+        $('#bo_view', body).addEventListener('change', (e) => { brBoPeriod = e.target.value; load().catch(whoops); });
+        $('#bo_month', body)?.addEventListener('change', () => {
+          brBoYm = `${$('#bo_year', body).value}-${$('#bo_month', body).value}`; load().catch(whoops); });
+        $('#bo_year', body)?.addEventListener('change', () => {
+          brBoYm = `${$('#bo_year', body).value}-${$('#bo_month', body).value}`; load().catch(whoops); });
+        $('#bo_day', body)?.addEventListener('change', (e) => { brBoDay = e.target.value || today; load().catch(whoops); });
       }
       // A box in Cash position is a way into its own transactions: click BDO
       // and the list below narrows to BDO; click it again for every account.
@@ -16343,9 +16369,19 @@ SCREENS.bankreport = async (page) => {
       // Expenses Overview's look: one Reporting period (a month), then Total
       // Purchases, Outstanding AP, Pending Deliveries and Overdue AP. The list
       // of purchase orders stays under it. Purchases' own.
+      const pvSpan = (() => {
+        if (brPvPeriod === 'month') {
+          const [yy, mm] = brPoYm.split('-').map(Number);
+          return { from: `${brPoYm}-01`, to: new Date(Date.UTC(yy, mm, 0)).toISOString().slice(0, 10),
+            label: `${BR_MONTHS_LONG[mm - 1]} ${yy}` };
+        }
+        const { from, to } = brRange(brPvPeriod, brPvDay);
+        const f = brParts(from); const t = brParts(to);
+        return { from, to, label: brPvPeriod === 'day' ? `${BR_MONTHS_LONG[f.m - 1]} ${f.d}, ${f.y}`
+          : `${BR_MONTHS[f.m - 1]} ${f.d} – ${BR_MONTHS[t.m - 1]} ${t.d}, ${t.y}` };
+      })();
       const [py, pm] = brPoYm.split('-').map(Number);
-      const pFrom = `${brPoYm}-01`;
-      const pTo = new Date(Date.UTC(py, pm, 0)).toISOString().slice(0, 10);
+      const { from: pFrom, to: pTo } = pvSpan;
       const [rows, owed] = await Promise.all([
         GET(`/api/bank-report/purchases?from=${pFrom}&to=${pTo}`),
         GET('/api/bank-report/payables').catch(() => []),
@@ -16356,23 +16392,25 @@ SCREENS.bankreport = async (page) => {
       const ap = owed.reduce((t, r) => t + Number(r.balance), 0);
       const overdue = owed.filter((r) => r.due_date && String(r.due_date).slice(0, 10) < today)
         .reduce((t, r) => t + Number(r.balance), 0);
-      // The last two years of months, newest first, for the one picker.
-      const months = Array.from({ length: 24 }, (_, i) => {
-        const d = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1 - i, 1));
-        return d.toISOString().slice(0, 7);
-      });
-      if (!months.includes(brPoYm)) months.push(brPoYm);
-      const ymName = (ym) => `${BR_MONTHS_LONG[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
       body.innerHTML = `
         <div class="pv-card">
           <div class="pv-head">
             <span class="pv-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 11h10.2L20 7H6.2"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></svg></span>
             <div><h3>PURCHASE OVERVIEW</h3><div class="pv-co">MS BEAU AVE ENTERPRISES OPC</div></div>
-            <span class="pv-year">${py}</span>
+            <span class="pv-year">${pvSpan.to.slice(0, 4)}</span>
           </div>
-          <div class="pv-label">Reporting period</div>
-          <select id="pv_month" class="pv-pick">${months.map((ym) =>
-            `<option value="${ym}"${ym === brPoYm ? ' selected' : ''}>${ymName(ym)}</option>`).join('')}</select>
+          <div class="pv-vpicks">
+            <div><label for="pv_view">Reporting view</label><select id="pv_view">
+              ${[['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly']].map(([k, l]) =>
+                `<option value="${k}"${brPvPeriod === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+            ${brPvPeriod === 'month' ? `
+            <div><label for="pv_month">Reporting month</label><select id="pv_month">${BR_MONTHS_LONG.map((n, i) =>
+              `<option value="${String(i + 1).padStart(2, '0')}"${i + 1 === pm ? ' selected' : ''}>${n}</option>`).join('')}</select></div>
+            <div><label for="pv_year">Year</label><select id="pv_year">${[...new Set([py - 2, py - 1, py, Number(today.slice(0, 4))])].sort().map((v) =>
+              `<option${v === py ? ' selected' : ''}>${v}</option>`).join('')}</select></div>` : `
+            <div class="pv-vwide"><label for="pv_day">${brPvPeriod === 'week' ? 'Any day in the week' : 'Reporting day'}</label>
+              <input id="pv_day" type="date" value="${brPvDay}" max="${today}"></div>`}
+          </div>
           <div class="pv-tiles">
             <div class="pv-tile"><span>Total Purchases</span><b>${money(total)}</b><small>Recorded purchase value</small></div>
             <button type="button" class="pv-tile warn" data-pvgo="payable"><span>Outstanding AP</span><b>${money(ap)}</b><small>Unpaid supplier balances</small></button>
@@ -16382,7 +16420,7 @@ SCREENS.bankreport = async (page) => {
         </div>
         <div class="pr-reg">
           <div class="pr-reghead">
-            <div><h3>Purchase Register</h3><div class="dim">Purchase orders and supplier billings · ${ymName(brPoYm)}</div></div>
+            <div><h3>Purchase Register</h3><div class="dim">Purchase orders and supplier billings · ${pvSpan.label}</div></div>
             <button class="btn" id="pr_add">＋ Add Purchase</button>
           </div>
           <div class="pr-sums">
@@ -16435,7 +16473,12 @@ SCREENS.bankreport = async (page) => {
         }));
       };
       drawList();
-      $('#pv_month', body).addEventListener('change', (e) => { brPoYm = e.target.value; load().catch(whoops); });
+      $('#pv_view', body).addEventListener('change', (e) => { brPvPeriod = e.target.value; load().catch(whoops); });
+      $('#pv_month', body)?.addEventListener('change', () => {
+        brPoYm = `${$('#pv_year', body).value}-${$('#pv_month', body).value}`; load().catch(whoops); });
+      $('#pv_year', body)?.addEventListener('change', () => {
+        brPoYm = `${$('#pv_year', body).value}-${$('#pv_month', body).value}`; load().catch(whoops); });
+      $('#pv_day', body)?.addEventListener('change', (e) => { brPvDay = e.target.value || today; load().catch(whoops); });
       $('#pr_q', body).addEventListener('input', (e) => { brPrQ = e.target.value; drawList(); });
       $('#pr_payf', body).addEventListener('change', (e) => { brPrPay = e.target.value; drawList(); });
       $('#pr_add', body).addEventListener('click', () => brGoPO(null));
@@ -16456,29 +16499,43 @@ SCREENS.bankreport = async (page) => {
       // + Add Expense, search, a payment-status filter, the records, and
       // Copy records as table (db/194). Bank report's Expenses view only.
       await refreshMops();
+      const exSpan = (() => {
+        if (brExPeriod === 'month') {
+          const [yy, mm] = brExpYm.split('-').map(Number);
+          return { from: `${brExpYm}-01`, to: new Date(Date.UTC(yy, mm, 0)).toISOString().slice(0, 10),
+            label: `${BR_MONTHS_LONG[mm - 1]} ${yy}` };
+        }
+        const { from, to } = brRange(brExPeriod, brExDay);
+        const f = brParts(from); const t = brParts(to);
+        return { from, to, label: brExPeriod === 'day' ? `${BR_MONTHS_LONG[f.m - 1]} ${f.d}, ${f.y}`
+          : `${BR_MONTHS[f.m - 1]} ${f.d} – ${BR_MONTHS[t.m - 1]} ${t.d}, ${t.y}` };
+      })();
       const [y, m] = brExpYm.split('-').map(Number);
-      const first = `${brExpYm}-01`;
-      const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+      const { from: first, to: last } = exSpan;
       const rows = await GET(`/api/bank-report/expense-register?from=${first}&to=${last}`);
       const sum = (list) => list.reduce((t, e) => t + Number(e.amount), 0);
       const unpaid = rows.filter((e) => e.payment_status === 'pending');
       const reimb = rows.filter((e) => e.payment_status === 'reimburse');
       const missing = rows.filter((e) => e.receipt_status === 'missing');
       const kindName = (k) => (BR_EXP_KINDS.find(([x]) => x === k) || [k, k])[1];
-      const monthName = BR_MONTHS_LONG[m - 1];
-      const years = [...new Set([y - 2, y - 1, y, Number(today.slice(0, 4))])].sort();
       body.innerHTML = `
         <div class="ex-card">
           <div class="ex-head">
             <span class="ex-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M9 20V6M14 20v-8M19 20V4"/></svg></span>
             <div><h3>EXPENSES OVERVIEW</h3><div class="ex-co">MS BEAU AVE ENTERPRISES OPC</div></div>
-            <span class="ex-year">${y}</span>
+            <span class="ex-year">${exSpan.to.slice(0, 4)}</span>
           </div>
-          <div class="ex-label">Reporting month</div>
-          <div class="ex-picks">
-            <select id="ex_month">${BR_MONTHS_LONG.map((n, i) =>
-              `<option value="${String(i + 1).padStart(2, '0')}"${i + 1 === m ? ' selected' : ''}>${n}</option>`).join('')}</select>
-            <select id="ex_year">${years.map((v) => `<option${v === y ? ' selected' : ''}>${v}</option>`).join('')}</select>
+          <div class="ex-vpicks">
+            <div><label for="ex_view">Reporting view</label><select id="ex_view">
+              ${[['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly']].map(([k, l]) =>
+                `<option value="${k}"${brExPeriod === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+            ${brExPeriod === 'month' ? `
+            <div><label for="ex_month">Reporting month</label><select id="ex_month">${BR_MONTHS_LONG.map((n, i) =>
+              `<option value="${String(i + 1).padStart(2, '0')}"${i + 1 === m ? ' selected' : ''}>${n}</option>`).join('')}</select></div>
+            <div><label for="ex_year">Year</label><select id="ex_year">${[...new Set([y - 2, y - 1, y, Number(today.slice(0, 4))])].sort().map((v) =>
+              `<option${v === y ? ' selected' : ''}>${v}</option>`).join('')}</select></div>` : `
+            <div class="ex-vwide"><label for="ex_day">${brExPeriod === 'week' ? 'Any day in the week' : 'Reporting day'}</label>
+              <input id="ex_day" type="date" value="${brExDay}" max="${today}"></div>`}
           </div>
           <div class="ex-tiles">
             <button type="button" class="ex-tile" data-expay=""><span>Total Expenses</span><b>${peso(sum(rows))}</b><small>Selected period</small></button>
@@ -16490,7 +16547,7 @@ SCREENS.bankreport = async (page) => {
 
         <div class="ex-reg">
           <div class="ex-reghead">
-            <div><h3>Expense Register</h3><div class="dim">${monthName} ${y} · ${count(rows.length)} record${rows.length === 1 ? '' : 's'}</div></div>
+            <div><h3>Expense Register</h3><div class="dim">${exSpan.label} · ${count(rows.length)} record${rows.length === 1 ? '' : 's'}</div></div>
             <button class="btn" id="ex_add">＋ Add Expense</button>
           </div>
           <div class="ex-sums">
@@ -16565,9 +16622,12 @@ SCREENS.bankreport = async (page) => {
       };
       drawList();
 
-      const pickMonth = () => { brExpYm = `${$('#ex_year', body).value}-${$('#ex_month', body).value}`; load().catch(whoops); };
-      $('#ex_month', body).addEventListener('change', pickMonth);
-      $('#ex_year', body).addEventListener('change', pickMonth);
+      $('#ex_view', body).addEventListener('change', (e) => { brExPeriod = e.target.value; load().catch(whoops); });
+      $('#ex_month', body)?.addEventListener('change', () => {
+        brExpYm = `${$('#ex_year', body).value}-${$('#ex_month', body).value}`; load().catch(whoops); });
+      $('#ex_year', body)?.addEventListener('change', () => {
+        brExpYm = `${$('#ex_year', body).value}-${$('#ex_month', body).value}`; load().catch(whoops); });
+      $('#ex_day', body)?.addEventListener('change', (e) => { brExDay = e.target.value || today; load().catch(whoops); });
       $$('[data-expay]', body).forEach((x) => x.addEventListener('click', () => {
         brExpPay = brExpPay === x.dataset.expay ? '' : x.dataset.expay;
         $('#ex_payf', body).value = brExpPay;
@@ -16588,6 +16648,7 @@ SCREENS.bankreport = async (page) => {
           });
           notice('Expense recorded 🌸', 'good');
           brExpYm = $('#ex_on', body).value.slice(0, 7) || brExpYm;
+          brExDay = $('#ex_on', body).value || brExDay;
           load().catch(whoops);
         } catch (err) { whoops(err); }
       });

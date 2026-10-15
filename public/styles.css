@@ -2564,3 +2564,30 @@ input.n { text-align: right; }
   .br-split .brfigs .tile.brf .big { font-size: 1.6rem; }
   .br-split-r .brgrid { grid-auto-rows: 250px; }
 }
+
+/* Bank report → Purchases: its overview's Reporting view, month and year in
+   one light panel, as on the Sales Overview. Its own pv-vpicks. */
+.pv-vpicks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px;
+  background: rgba(255,255,255,.92); border-radius: 12px; padding: 10px 12px; color: var(--ink); }
+.pv-vpicks label { font-size: .78rem; color: var(--muted); display: block; margin-bottom: 3px; }
+.pv-vpicks select, .pv-vpicks input { width: 100%; }
+.pv-vpicks .pv-vwide { grid-column: span 2; }
+@media (max-width: 600px) { .pv-vpicks { grid-template-columns: 1fr; } .pv-vpicks .pv-vwide { grid-column: auto; } }
+
+/* Bank report → Expenses: its overview's Reporting view, month and year in
+   one light panel, as on the Sales Overview. Its own ex-vpicks. */
+.ex-vpicks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px;
+  background: rgba(255,255,255,.92); border-radius: 12px; padding: 10px 12px; color: var(--ink); }
+.ex-vpicks label { font-size: .78rem; color: var(--muted); display: block; margin-bottom: 3px; }
+.ex-vpicks select, .ex-vpicks input { width: 100%; }
+.ex-vpicks .ex-vwide { grid-column: span 2; }
+@media (max-width: 600px) { .ex-vpicks { grid-template-columns: 1fr; } .ex-vpicks .ex-vwide { grid-column: auto; } }
+
+/* Bank report → Bank: its overview's Reporting view, month and year in
+   one light panel, as on the Sales Overview. Its own bo-vpicks. */
+.bo-vpicks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px;
+  background: rgba(255,255,255,.92); border-radius: 12px; padding: 10px 12px; color: var(--ink); }
+.bo-vpicks label { font-size: .78rem; color: var(--muted); display: block; margin-bottom: 3px; }
+.bo-vpicks select, .bo-vpicks input { width: 100%; }
+.bo-vpicks .bo-vwide { grid-column: span 2; }
+@media (max-width: 600px) { .bo-vpicks { grid-template-columns: 1fr; } .bo-vpicks .bo-vwide { grid-column: auto; } }
