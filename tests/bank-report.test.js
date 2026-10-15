@@ -760,4 +760,8 @@ test("Bank report's menu: Dashboard left, the six tiles right", () => {
   assert.match(fn, /<div class="br-split"><div class="br-split-l">[\s\S]*?id="br_dash"[\s\S]*?<\/div><div class="br-split-r">\$\{brTiles\(BR_INSIDE\)\}<\/div><\/div>/);
   const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
   assert.match(css, /\.br-split \{ display: grid; grid-template-columns: 1fr 1fr;/);
+  // One box size across both panels.
+  assert.match(css, /\.br-split \.brfigs \.tile \{[^}]*height: 189px;/);
+  assert.match(css, /\.br-split \.brtile \{ height: 189px;/);
+  assert.match(css, /\.br-split-r \{ padding-top: 117px; \}/, 'the tiles start level with the figures');
 });
