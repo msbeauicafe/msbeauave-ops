@@ -2376,3 +2376,13 @@ input.n { text-align: right; }
   .br-split .brtile { padding: 28px 26px; font-size: 1.12rem; gap: 16px; }
   .br-split .brtile svg { width: 30px; height: 30px; }
 }
+
+/* Bank report menu on a computer: Daily / Monthly and the date bar on one
+   line, closer under the Dashboard heading, so the figures sit higher. */
+@media (min-width: 1000px) {
+  .br-split .brheader { padding: 12px 18px; margin-bottom: 8px; }
+  .br-split .brdash { display: grid; grid-template-columns: auto 1fr; column-gap: 12px; align-items: center; }
+  .br-split .brdash #brd_period { margin: 0; }
+  .br-split .brdash .brdate { margin: 0; padding: 6px 12px; }
+  .br-split .brdash .brfigs { grid-column: 1 / -1; margin-top: 10px; }
+}
