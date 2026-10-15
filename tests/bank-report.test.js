@@ -335,7 +335,7 @@ test('Bank report Dashboard: Daily/Monthly, a date bar and six figures above the
   const labels = [...fn.matchAll(/figure\('([^']+)'/g)].map((m) => m[1]);
   assert.deepEqual(labels, ['Total sales', 'Total bank balance', 'Outstanding AR', 'Outstanding AP',
     'Gross profit', 'Operating expenses']);
-  assert.match(fn, /figure\('Total sales', invoices\.reduce\(\(t, i\) => t \+ Number\(i\.amount\), 0\)\)/,
+  assert.match(fn, /const sales = invoices\.reduce\(\(t, i\) => t \+ Number\(i\.amount\), 0\);[\s\S]*?figure\('Total sales', sales,/,
     "Total sales is the Sales tile's own Total order amounts");
   assert.match(fn, /fin\.gross_margin/);
   assert.match(fn, /fin\.expenses\.total/);
@@ -798,4 +798,17 @@ test('Bank: the Bank Overview sits on top of Cash position', () => {
   for (const w of ['Total Cash Position', 'Bank Balance', 'Money In', 'Money Out']) assert.ok(app.includes(`<span>${w}</span>`), w);
   assert.match(app, /let brBoYm = today\.slice\(0, 7\);/);
   assert.match(css, /\.bo-card \{ background: linear-gradient\(135deg, var\(--rose-deep\), var\(--rose-primary\)\);/);
+});
+
+// Financial overview (was Bank report): the menu's figures and tiles carry
+// their own detail, as the owner's reference.
+test('Financial overview: the renamed menu, with data in its figures and tiles', () => {
+  const css = fs.readFileSync(path.join(here, '../public/styles.css'), 'utf8');
+  assert.match(app, /\['bankreport', '🏦', 'Financial overview'\]/);
+  assert.match(app, /<h2>Financial overview<\/h2>/);
+  assert.match(app, /‹ Financial overview<\/button>/);
+  for (const w of ['Top distributors', 'Account breakdown', 'Top owed receivables', 'Top owed suppliers',
+    'profit margin', 'Top 3 higher expenses']) assert.ok(app.includes(w), w);
+  assert.match(app, /const drawTileData = async/);
+  assert.match(css, /\.br-split \.brt-foot \{/);
 });

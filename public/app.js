@@ -480,7 +480,7 @@ const TABS = {
     ['inventory', '📥', 'Internal Inventory Report'],
     ['purchaseorders', '🧾', 'Purchase order'],
     ['customerorder', '💬', 'Customer order'],
-    ['bankreport', '🏦', 'Bank report'],
+    ['bankreport', '🏦', 'Financial overview'],
     ['warehouseinventory', '📥', 'Warehouse inventory report'],
     ['receivingform', '📦', 'Receiving form'],
     ['releasingform', '📤', 'Releasing form'],
@@ -15672,32 +15672,107 @@ SCREENS.bankreport = async (page) => {
     $('#brd_label', page).textContent = dashPeriod === 'month'
       ? `${BR_MONTHS_LONG[m - 1]} ${y}` : `${BR_MONTHS_LONG[m - 1]} ${d}, ${y}`;
     $('#brd_next', page).disabled = brRange(dashPeriod, brShift(dashPeriod, dashAnchor, 1)).from > today;
-    const [fin, cash, payables, invoices, boxes] = await Promise.all([
+    const [fin, cash, payables, invoices, boxes, owed, ar] = await Promise.all([
       GET(`/api/finance?from=${from}&to=${to}`),
       GET('/api/books/cash'),
       GET('/api/reports/payables'),
       GET(`/api/bank-report/sales?from=${from}&to=${to}`),
       brBoxes(),
+      GET('/api/bank-report/payables').catch(() => []),
+      GET('/api/reports/receivables').then((r) => r.ageing).catch(() => []),
     ]);
     if (view || !$('#br_dash', page)) return;
+    const balOf = (label) => Number(cash.accounts.find((a) =>
+      a.title.trim().toLowerCase() === label.toLowerCase())?.balance || 0);
     // Every box Cash position shows, by the names Payment Management gives them.
-    const bank = [...boxes.map((x) => x.name), 'Balance'].reduce((t, label) => t + Number(cash.accounts.find((a) =>
-      a.title.trim().toLowerCase() === label.toLowerCase())?.balance || 0), 0);
-    const figure = (label, amount, kind = '') => `
-      <div class="tile ${kind}"><div class="label">${label}</div><div class="big">${peso(amount || 0)}</div></div>`;
+    const bank = [...boxes.map((x) => x.name), 'Balance'].reduce((t, label) => t + balOf(label), 0);
+    const dashWhen = dashPeriod === 'month' ? 'this month' : dashAnchor === today ? 'today' : 'that day';
+    const plural = (n, one, many = `${one}s`) => `${count(n)} ${n === 1 ? one : many}`;
+    // Each figure carries its own detail, as the owner's reference: a line
+    // under the amount, then its top three with a way into the section.
+    // The menu's own figures; Bank report's sections keep theirs.
+    const top3 = (pairs) => pairs.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const group = (rows, key, val) => [...rows.reduce((m, r) =>
+      m.set(r[key], (m.get(r[key]) || 0) + Number(r[val] || 0)), new Map())];
+    const list = (title, go, goLabel, pairs, empty) => `
+      <div class="brf-listhd"><span>${title}</span>${go
+        ? `<button type="button" class="brf-go" data-brgo="${go}">${goLabel} ›</button>` : ''}</div>
+      ${pairs.length ? pairs.map(([n, v], i) => `<div class="brf-row"><span>${i + 1}. ${esc(n)}</span>
+        <b>${peso(v)}</b></div>`).join('') : `<div class="brf-none">${empty}</div>`}`;
+    const figure = (label, amount, kind, sub, detail) => `
+      <div class="tile ${kind} brf"><div class="label">${label}</div><div class="big">${peso(amount || 0)}</div>
+        <div class="brf-sub">${sub}</div>${detail}</div>`;
+    const sales = invoices.reduce((t, i) => t + Number(i.amount), 0);
+    const arTotal = Number(fin.wholesale.outstanding || 0);
+    const suppliers = group(owed, 'supplier', 'balance');
+    const revenue = Number(fin.counter?.revenue || 0) + Number(fin.wholesale?.invoiced || 0);
+    const margin = revenue > 0 ? Math.round((Number(fin.gross_margin) / revenue) * 1000) / 10 : 0;
+    const opex = Number(fin.expenses.total || 0);
+    const kinds = top3(Object.entries(fin.expenses.by_kind || {}).map(([k, v]) => [k, Number(v)]));
+    const kindName = (k) => (BR_EXP_KINDS.find(([x]) => x === k) || [k, k[0].toUpperCase() + k.slice(1)])[1];
     box.innerHTML = `
-      ${figure('Total sales', invoices.reduce((t, i) => t + Number(i.amount), 0))}
-      ${figure('Total bank balance', bank)}
-      ${figure('Outstanding AR', fin.wholesale.outstanding, 'good')}
-      ${figure('Outstanding AP', payables.total, Number(payables.total) > 0 ? 'bad' : '')}
-      ${figure('Gross profit', fin.gross_margin, Number(fin.gross_margin) < 0 ? 'bad' : 'good')}
-      ${figure('Operating expenses', fin.expenses.total)}`;
+      ${figure('Total sales', sales, '', `${plural(invoices.length, 'transaction')} processed`,
+        list('Top distributors', 'sales', 'View', top3(group(invoices, 'reseller', 'amount')), `No sales ${dashWhen}`))}
+      ${figure('Total bank balance', bank, '', bank >= Number(payables.total || 0)
+        ? '<span class="brf-pill good">✓ Healthy liquidity</span>' : '<span class="brf-pill bad">Below what we owe suppliers</span>',
+        list('Account breakdown', 'bank', 'Manage', top3(boxes.map((x) => [x.name, balOf(x.name)])), 'No balances yet'))}
+      ${figure('Outstanding AR', arTotal, 'good', `<span class="brf-warn">${plural(ar.length, 'pending receivable')}</span>`,
+        list('Top owed receivables', 'receivable', `All (${count(ar.length)})`, top3(ar.map((r) => [r.name, Number(r.total_owed)])), 'Nobody owes us'))}
+      ${figure('Outstanding AP', payables.total, Number(payables.total) > 0 ? 'bad' : '',
+        `<span class="brf-bad">${plural(suppliers.length, 'supplier liability', 'supplier liabilities')}</span>`,
+        list('Top owed suppliers', 'payable', 'Aging AP', top3(suppliers), 'We owe no supplier'))}
+      ${figure('Gross profit', fin.gross_margin, Number(fin.gross_margin) < 0 ? 'bad' : 'good',
+        `Current performance shows ${margin}% profit margin ${dashWhen}.`, '')}
+      ${figure('Operating expenses', opex, '', `Top 3 higher expenses ${dashWhen}:`,
+        `${kinds.length ? kinds.map(([k, v], i) => `<div class="brf-row"><span>${i + 1}. ${esc(kindName(k))}</span>
+          <b>${peso(v)} <small>${opex > 0 ? Math.round((v / opex) * 1000) / 10 : 0}%</small></b></div>`).join('')
+          : `<div class="brf-none">No expenses ${dashWhen}</div>`}`)}`;
+    $$('[data-brgo]', box).forEach((b) => b.addEventListener('click', () => open(b.dataset.brgo)));
+    drawTileData(from, to, { invoices, cash, boxes, fin, payables, owed, ar }).catch(() => {});
+  };
+
+  // The six tiles on the right carry a line of their own figures, as the
+  // owner's reference: what each holds for the Dashboard's period, then a
+  // footer with its amount. The menu's own; no other screen draws them.
+  const drawTileData = async (from, to, { invoices, cash, boxes, fin, payables, owed, ar }) => {
+    const [buys, exps] = await Promise.all([
+      GET(`/api/bank-report/purchases?from=${from}&to=${to}`).catch(() => []),
+      GET(`/api/bank-report/expense-register?from=${from}&to=${to}`).catch(() => []),
+    ]);
+    if (view || !$('.br-split-r', page)) return;
+    const dashWhen = dashPeriod === 'month' ? 'this month' : dashAnchor === today ? 'today' : 'that day';
+    const plural = (n, one, many = `${one}s`) => `${count(n)} ${n === 1 ? one : many}`;
+    const balOf = (name) => Number(cash.accounts.find((a) =>
+      a.title.trim().toLowerCase() === name.toLowerCase())?.balance || 0);
+    const bankSide = boxes.filter((x) => x.column === 'bank');
+    const live = buys.filter((o) => o.status !== 'cancelled');
+    const arTotal = ar.reduce((t, r) => t + Number(r.total_owed), 0);
+    const data = {
+      sales: [`${plural(invoices.length, 'invoice')} ${dashWhen}`,
+        peso(invoices.reduce((t, i) => t + Number(i.amount), 0))],
+      bank: [plural(bankSide.length, 'bank account'),
+        peso(bankSide.reduce((t, x) => t + balOf(x.name), 0))],
+      expenses: [`${peso(fin.expenses.total || 0)} ${dashWhen}`, plural(exps.length, 'record')],
+      purchases: [plural(live.filter((o) => ['open', 'part'].includes(o.status)).length, 'active order'),
+        `${peso(live.reduce((t, o) => t + Number(o.total), 0))} ${dashWhen}`],
+      receivable: [plural(ar.length, 'account'), `${peso(arTotal)} pending`],
+      payable: [plural(new Set(owed.map((r) => r.supplier)).size, 'supplier'), `${peso(payables.total || 0)} due`],
+    };
+    $$('.br-split-r [data-br]', page).forEach((b) => {
+      const k = b.dataset.br;
+      if (!data[k]) return;
+      b.classList.add('brt-data');
+      b.innerHTML = `<span class="brt-top"><svg viewBox="0 0 24 24">${BR_ICONS[k]}</svg>
+          <span class="brt-name">${esc(BR_TILES.find(([x]) => x === k)[1])}</span></span>
+        <span class="brt-sub">${esc(data[k][0])}</span>
+        <span class="brt-foot"><span>${esc(data[k][1])}</span><span aria-hidden="true">↗</span></span>`;
+    });
   };
 
   const menu = () => {
     view = '';
     page.innerHTML = `
-      <div class="head"><h2>Bank report</h2><span class="hint">Pick what to look at</span></div>
+      <div class="head"><h2>Financial overview</h2><span class="hint">Pick what to look at</span></div>
       <!-- Two panels, side by side on a computer: the Dashboard on the left,
            the six ways in on the right, both drawn bigger. -->
       <div class="br-split"><div class="br-split-l">
@@ -15743,7 +15818,7 @@ SCREENS.bankreport = async (page) => {
     const label = BR_TILES.find(([k]) => k === key)[1];
     const periodic = BR_PERIODIC.includes(key);
     page.innerHTML = `
-      <div class="head"><button class="btn sm quiet" id="br_back">‹ Bank report</button>
+      <div class="head"><button class="btn sm quiet" id="br_back">‹ Financial overview</button>
         <h2>${esc(label)}</h2></div>
       ${periodic ? `<div class="tools">
         <div class="subtabs" id="br_period">
