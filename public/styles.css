@@ -2558,8 +2558,8 @@ input.n { text-align: right; }
    the same on both panels, so the tiles still line up beside them. */
 .brf-sub { font-size: .82rem; color: var(--muted); margin-top: 2px; }
 .brf-pill { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: .78rem; font-weight: 600; }
-.brf-pill.good { background: #e3f1e6; color: var(--success); }
-.brf-pill.bad { background: #f8e1e4; color: var(--danger); }
+.brf-pill.brf-ok { background: #e3f1e6; color: var(--success); }
+.brf-pill.brf-low { background: #f8e1e4; color: var(--danger); }
 .brf-warn { color: var(--warning); font-weight: 600; }
 .brf-bad { color: var(--danger); font-weight: 600; }
 .brf-listhd { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--rose-soft);
@@ -2572,8 +2572,8 @@ input.n { text-align: right; }
 .brf-row small { color: var(--muted); font-weight: 400; }
 .brf-none { font-size: .8rem; color: var(--muted); padding: 4px 0; }
 @media (min-width: 1000px) {
-  .br-split .brfigs { grid-auto-rows: 240px; }
-  .br-split .brfigs .tile.brf { height: 240px; justify-content: flex-start; padding: 20px 22px; }
+  .br-split .brfigs { grid-auto-rows: 250px; }
+  .br-split .brfigs .tile.brf { height: 250px; justify-content: flex-start; padding: 20px 22px; }
   .br-split .brfigs .tile.brf .big { font-size: 1.6rem; }
-  .br-split-r .brgrid { grid-auto-rows: 240px; }
+  .br-split-r .brgrid { grid-auto-rows: 250px; }
 }

@@ -15714,7 +15714,7 @@ SCREENS.bankreport = async (page) => {
       ${figure('Total sales', sales, '', `${plural(invoices.length, 'transaction')} processed`,
         list('Top distributors', 'sales', 'View', top3(group(invoices, 'reseller', 'amount')), `No sales ${dashWhen}`))}
       ${figure('Total bank balance', bank, '', bank >= Number(payables.total || 0)
-        ? '<span class="brf-pill good">✓ Healthy liquidity</span>' : '<span class="brf-pill bad">Below what we owe suppliers</span>',
+        ? '<span class="brf-pill brf-ok">✓ Healthy liquidity</span>' : '<span class="brf-pill brf-low">Below what we owe suppliers</span>',
         list('Account breakdown', 'bank', 'Manage', top3(boxes.map((x) => [x.name, balOf(x.name)])), 'No balances yet'))}
       ${figure('Outstanding AR', arTotal, 'good', `<span class="brf-warn">${plural(ar.length, 'pending receivable')}</span>`,
         list('Top owed receivables', 'receivable', `All (${count(ar.length)})`, top3(ar.map((r) => [r.name, Number(r.total_owed)])), 'Nobody owes us'))}
