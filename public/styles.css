@@ -2391,3 +2391,120 @@ input.n { text-align: right; }
 @media (min-width: 1000px) {
   .br-split-r { padding-top: 117px; }
 }
+
+/* ---------------------------------------------------------------------------
+   Bank report → Sales: the Sales Overview, in the Expenses Overview's look.
+   Its own so-* (a copy, not shared).
+   --------------------------------------------------------------------------- */
+.so-card { background: linear-gradient(135deg, var(--rose-deep), var(--rose-primary)); color: #fff;
+  border-radius: 16px; padding: 18px; box-shadow: var(--shade); }
+.so-head { display: flex; align-items: center; gap: 12px; }
+.so-head h3 { margin: 0; color: #fff; font-size: 1.15rem; letter-spacing: .02em; }
+.so-co { font-size: .82rem; opacity: .9; }
+.so-icon { width: 42px; height: 42px; border-radius: 10px; background: rgba(255,255,255,.2);
+  display: grid; place-items: center; }
+.so-icon svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; }
+.so-year { margin-left: auto; background: rgba(255,255,255,.25); border-radius: 999px; padding: 2px 10px;
+  font-size: .78rem; font-weight: 700; }
+.so-label { margin: 14px 0 6px; font-size: .88rem; }
+.so-picks { display: flex; gap: 10px; }
+.so-picks select { flex: 1; border-radius: 999px; border: 1px solid rgba(255,255,255,.5);
+  background: rgba(255,255,255,.95); color: var(--ink); padding: 9px 14px; }
+.so-picks select#ex_year { flex: 0 0 120px; }
+.so-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.so-tile { text-align: left; background: rgba(255,255,255,.95); color: var(--ink); border: none;
+  border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.so-tile span { font-size: .85rem; color: var(--muted); }
+.so-tile b { font-size: 1.35rem; color: var(--rose-deep); }
+.so-tile small { font-size: .74rem; color: var(--rose-primary); font-weight: 600; }
+.so-tile.warn small { color: var(--warning); }
+.so-tile.info small { color: var(--success); }
+.so-tile.bad small { color: var(--danger); }
+.so-tile:hover { box-shadow: 0 0 0 2px #fff inset, 0 0 0 4px var(--rose-soft); }
+
+/* ---------------------------------------------------------------------------
+   Bank report → Purchases: the Purchase Overview, in the Expenses Overview's
+   look. Its own pv-* (a copy, not shared).
+   --------------------------------------------------------------------------- */
+.pv-card { background: linear-gradient(135deg, var(--rose-deep), var(--rose-primary)); color: #fff;
+  border-radius: 16px; padding: 18px; box-shadow: var(--shade); }
+.pv-head { display: flex; align-items: center; gap: 12px; }
+.pv-head h3 { margin: 0; color: #fff; font-size: 1.15rem; letter-spacing: .02em; }
+.pv-co { font-size: .82rem; opacity: .9; }
+.pv-icon { width: 42px; height: 42px; border-radius: 10px; background: rgba(255,255,255,.2);
+  display: grid; place-items: center; }
+.pv-icon svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; }
+.pv-year { margin-left: auto; background: rgba(255,255,255,.25); border-radius: 999px; padding: 2px 10px;
+  font-size: .78rem; font-weight: 700; }
+.pv-label { margin: 14px 0 6px; font-size: .88rem; }
+.pv-picks { display: flex; gap: 10px; }
+.pv-picks select { flex: 1; border-radius: 999px; border: 1px solid rgba(255,255,255,.5);
+  background: rgba(255,255,255,.95); color: var(--ink); padding: 9px 14px; }
+.pv-picks select#ex_year { flex: 0 0 120px; }
+.pv-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.pv-tile { text-align: left; background: rgba(255,255,255,.95); color: var(--ink); border: none;
+  border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.pv-tile span { font-size: .85rem; color: var(--muted); }
+.pv-tile b { font-size: 1.35rem; color: var(--rose-deep); }
+.pv-tile small { font-size: .74rem; color: var(--rose-primary); font-weight: 600; }
+.pv-tile.warn small { color: var(--warning); }
+.pv-tile.info small { color: var(--success); }
+.pv-tile.bad small { color: var(--danger); }
+.pv-tile:hover { box-shadow: 0 0 0 2px #fff inset, 0 0 0 4px var(--rose-soft); }
+
+/* Bank report → Purchases: the Purchase Register, a copy of the Expense
+   Register's look under its own pr-* names. */
+.pr-reg { background: var(--card); border: 1px solid var(--rose-soft); border-radius: 16px; padding: 16px;
+  margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.pr-reghead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.pr-reghead h3 { margin: 0; }
+.pr-sums { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 4px 2px; }
+.pr-sums div { display: flex; flex-direction: column; }
+.pr-sums b { font-size: 1.1rem; color: var(--rose-deep); }
+.pr-form { border: 1px solid var(--rose-soft); border-radius: 12px; padding: 12px 14px; background: var(--rose-blush); }
+.pr-form[hidden] { display: none; }
+.pr-form h4 { margin: 0 0 6px; color: var(--rose-deep); }
+.pr-formacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.pr-search, .pr-filter { width: 100%; }
+.pr-count { font-size: .8rem; margin: 2px 0 6px; }
+.pr-rec { border: 1px solid var(--rose-soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.pr-rectop { display: flex; justify-content: space-between; font-size: .8rem; }
+.pr-rectop b { font-size: .95rem; color: var(--ink); }
+.pr-recname { font-weight: 700; margin-top: 2px; }
+.pr-rectags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: .8rem; }
+.pr-none { color: var(--muted); padding: 10px 2px; }
+.pr-copy { width: 100%; }
+
+/* Sales Overview: three pickers in a row on a light band, and the four boxes
+   with their icon, each a button that narrows the list. */
+.so-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px;
+  background: rgba(255,255,255,.92); border-radius: 12px; padding: 10px 12px; color: var(--ink); }
+.so-picks label { font-size: .78rem; color: var(--muted); display: block; margin-bottom: 3px; }
+.so-picks select, .so-picks input { width: 100%; }
+.so-picks .so-wide { grid-column: span 2; }
+.so-tile { display: flex; align-items: center; gap: 14px; border: 1.5px solid transparent; }
+.so-tile.on { box-shadow: 0 0 0 3px rgba(255,255,255,.9); }
+.so-tile.all { border-color: var(--rose-deep); }
+.so-tile.paid { border-color: var(--success); }
+.so-tile.unpaid { border-color: var(--danger); }
+.so-tile.part { border-color: var(--warning); }
+.so-ticon { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; flex: none;
+  background: var(--rose-blush); }
+.so-tile.paid .so-ticon { background: #e8f1ea; }
+.so-tile.part .so-ticon { background: #faf0dc; }
+.so-ticon svg { width: 22px; height: 22px; fill: none; stroke: var(--rose-deep); stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; }
+.so-tbody { display: flex; flex-direction: column; gap: 2px; }
+.so-tlabel { font-size: .85rem; color: var(--muted); }
+.so-tbody b { font-size: 1.35rem; color: var(--rose-deep); }
+.so-tbody small { font-size: .74rem; color: var(--muted); }
+@media (min-width: 1000px) { .so-tiles { grid-template-columns: repeat(4, 1fr); } }
+.so-card + .panel { margin-top: 16px; }
+/* Purchase Overview: one wide Reporting period picker. */
+.pv-pick { width: 100%; border-radius: 999px; border: 1px solid rgba(255,255,255,.5);
+  background: rgba(255,255,255,.95); color: var(--ink); padding: 9px 14px; }
+/* Purchase Register: its own records, with the amount and what was paid. */
+.pr-amt { display: flex; flex-direction: column; align-items: flex-end; }
+.pr-amt small { color: var(--muted); font-size: .74rem; }
+.pr-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.so-tile { flex-direction: row; justify-content: flex-start; text-align: left; }
