@@ -287,7 +287,7 @@ test('Sales shows Total order amounts, Paid, Unpaid and Balance transactions', (
   assert.match(block, /const part = rows\.filter\(\(i\) => Number\(i\.balance\) > 0 && paidSoFar\(i\) > 0\)/);
   assert.match(block, /sum\(part, \(i\) => i\.balance\)/);
   // Each box is a button narrowing the list to its own invoices.
-  assert.match(block, /<button class="tile brsf/);
+  assert.match(block, /<button type="button" class="so-tile \$\{k\}/);
   assert.match(block, /table\(groups\[brSalesFilter\]\[0\]/);
 });
 
@@ -347,7 +347,9 @@ test("the Dashboard's date and Sales' date open Bank report's own calendar; Purc
   assert.match(fn, /const brCalendar = \(under, \{ mode, value, onPick \}\) =>/, 'its own calendar, inside this screen');
   assert.match(fn, /id="brd_pick"[\s\S]*?<b id="brd_label"><\/b>/, 'the Dashboard date is a button');
   assert.match(fn, /\$\('#brd_pick', page\)\.addEventListener\('click', \(\) => brCalendar\(/);
-  assert.match(fn, /if \(key === 'sales'\) \{\s*\n\s*\$\('#br_label', page\)\.outerHTML/, 'Sales alone gets the picker');
+  // Sales now picks its period in its own Sales Overview; the old picker
+  // only attaches if the shared bar is ever drawn for it again.
+  assert.match(fn, /if \(key === 'sales' && periodic\) \{\s*\n\s*\$\('#br_label', page\)\.outerHTML/);
   assert.match(fn, /<b id="br_label"><\/b>\n\s*<button class="btn sm quiet" id="br_next">/,
     "the shared header keeps its plain date for Purchases and Expenses");
   assert.doesNotMatch(app.slice(0, at), /brCalendar/, 'nothing outside Bank report uses it');
@@ -764,4 +766,26 @@ test("Bank report's menu: Dashboard left, the six tiles right", () => {
   assert.match(css, /\.br-split \.brfigs \.tile \{[^}]*height: 189px;/);
   assert.match(css, /\.br-split \.brtile \{ height: 189px;/);
   assert.match(css, /\.br-split-r \{ padding-top: 117px; \}/, 'the tiles start level with the figures');
+});
+
+// Sales and Purchases each open on their own overview, in the Expenses
+// Overview's look, and Purchases carries a Purchase Register under it.
+test('Sales Overview and Purchase Overview, and the Purchase Register', async () => {
+  const sales = app.slice(app.indexOf("    if (view === 'sales') {"), app.indexOf("    if (view === 'purchases') {"));
+  for (const w of ['SALES OVERVIEW', 'Reporting view', 'Reporting month', 'Year']) assert.ok(sales.includes(w), w);
+  assert.match(sales, /brRange\(brSoPeriod, brSoAnchor\)/, "its own period, not the shared bar");
+  const pur = app.slice(app.indexOf("    if (view === 'purchases') {"), app.indexOf("    if (view === 'expenses') {"));
+  for (const w of ['PURCHASE OVERVIEW', 'Reporting period', 'Total Purchases', 'Outstanding AP', 'Pending Deliveries',
+    'Overdue AP', 'Purchase Register', '＋ Add Purchase', 'Purchase Value', 'All payment statuses', 'Copy details',
+    'Copy all transactions for Sheets']) assert.ok(pur.includes(w), w);
+  assert.match(app, /const BR_PERIODIC = \[\];/);
+
+  const admin = await signIn('admin');
+  const bill = await newPOBill(admin, 700);
+  await POST(admin, `/api/purchase-order-bills/${bill}/payments`, { amount: 200, method: 'CASH' });
+  const rows = (await GET(admin, '/api/bank-report/purchases?from=2000-01-01&to=2100-01-01')).data;
+  const po = rows.find((o) => Number(o.billed) === 700 && Number(o.paid) === 200);
+  assert.ok(po, 'a purchase order carries its billing: billed, paid');
+  assert.equal(Number(po.owed), 500, 'and what is still owed');
+  assert.ok('bill_nos' in po);
 });

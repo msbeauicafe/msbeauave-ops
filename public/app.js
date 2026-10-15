@@ -15523,11 +15523,15 @@ const BR_INSIDE = ['sales', 'bank', 'expenses', 'purchases', 'receivable', 'paya
 const brTiles = (keys) => `<div class="brgrid">${keys.map((k) => `<button class="brtile" data-br="${k}">
   <svg viewBox="0 0 24 24">${BR_ICONS[k]}</svg>${esc(BR_TILES.find(([x]) => x === k)[1])}</button>`).join('')}</div>`;
 // Which tiles read a day / week / month; the rest stand as they are today.
-// Expenses picks its own Reporting month and year instead (its overview).
-const BR_PERIODIC = ['sales', 'purchases'];
+// Expenses, Sales and Purchases each pick their own period in their own
+// overview now, so none of them uses the shared bar.
+const BR_PERIODIC = [];
 // The Expense Register's own lists (db/194): what each is called on screen.
 const BR_EXP_KINDS = [['supplies', 'Office supplies'], ['transport', 'Transportation'], ['utilities', 'Utilities'],
   ['rent', 'Rent'], ['wages', 'Wages'], ['marketing', 'Marketing'], ['fees', 'Fees'], ['other', 'Other']];
+// The Purchase Register's payment states, from each order's supplier billing.
+const BR_PR_PAY = { paid: ['Fully paid', 'green'], part: ['Partially paid', 'amber'], unpaid: ['Unpaid', 'red'],
+  unbilled: ['Not billed yet', 'grey'] };
 const BR_EXP_PAY = { paid: ['Paid', 'green'], pending: ['Pending payment', 'amber'], reimburse: ['For reimbursement', 'pink'] };
 const BR_EXP_RECEIPT = { with_receipt: 'With receipt', with_invoice: 'With invoice', pending: 'Pending', missing: 'Missing' };
 // Bank transactions: the accounts a line can sit on, and its four kinds.
@@ -15550,6 +15554,25 @@ SCREENS.bankreport = async (page) => {
   let view = '';
   // Which of Sales' four boxes is picked; it stays picked across periods.
   let brSalesFilter = 'all';
+  // Sales' own Reporting view and date, and Purchases' own Reporting period.
+  let brSoPeriod = 'month';
+  let brSoAnchor = today;
+  let brPoYm = today.slice(0, 7);
+  let brPrQ = '';
+  let brPrPay = '';
+  // Edit and ＋ Add Purchase take you to the Purchase order screen itself —
+  // its own buttons, pressed for you: that order's Open, or ＋ New order.
+  // Nothing there is changed by it.
+  const brGoPO = (poId) => {
+    $('[data-tab="purchaseorders"]')?.click();
+    let tries = 0;
+    const press = () => {
+      const btn = poId ? $(`[data-po="${poId}"]`) : $('#po_new');
+      if (btn) btn.click();
+      else if (tries++ < 30) setTimeout(press, 100);
+    };
+    setTimeout(press, 100);
+  };
   // Expenses' own Reporting month (YYYY-MM), and the register's filters.
   let brExpYm = today.slice(0, 7);
   let brExpQ = '';
@@ -15733,7 +15756,9 @@ SCREENS.bankreport = async (page) => {
     $('#br_back', page).addEventListener('click', menu);
     // Sales' date opens the calendar; Purchases' and Expenses' stay as they
     // were — only Sales was asked for.
-    if (key === 'sales') {
+    // (Sales now picks its period in its own Sales Overview, so this only
+    // runs if the shared bar is ever drawn for it again.)
+    if (key === 'sales' && periodic) {
       $('#br_label', page).outerHTML = `<span class="brpickwrap"><button type="button" class="brpick"
         id="br_pick" title="Pick a date"><b id="br_label"></b> <span aria-hidden="true">📅</span></button></span>`;
       $('#br_pick', page).addEventListener('click', () => brCalendar($('#br_pick', page), {
@@ -16127,7 +16152,10 @@ SCREENS.bankreport = async (page) => {
     }
 
     if (view === 'sales') {
-      const rows = await GET(`/api/bank-report/sales?from=${from}&to=${to}`);
+      // Sales' own period, from its Sales Overview's Reporting view / month /
+      // year (or the day, for Daily and Weekly).
+      const { from: soFrom, to: soTo } = brRange(brSoPeriod, brSoAnchor);
+      const rows = await GET(`/api/bank-report/sales?from=${soFrom}&to=${soTo}`);
       // Four boxes over the period's invoices: everything ordered, the fully
       // paid, the ones with nothing paid yet, and the part-paid with a
       // balance still open (shown as what is still owed on them).
@@ -16151,10 +16179,43 @@ SCREENS.bankreport = async (page) => {
       // A box is a button: it narrows the list below to its own invoices.
       // Total order amounts brings the whole period back.
       const drawSales = () => {
+        // The Sales Overview, laid out as the owner's reference in the
+        // Expenses Overview's look: Reporting view, month and year, and the
+        // four boxes — each still a button that narrows the list below.
+        const { y: soY, m: soM } = brParts(brSoAnchor);
+        const soIcons = {
+          all: '<path d="M3 4h2l2.4 11h10.2L20 7H6.2"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>',
+          paid: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h3"/>',
+          unpaid: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+          part: '<ellipse cx="12" cy="7" rx="6" ry="2.5"/><path d="M6 7v5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5V7M6 12v5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-5"/>',
+        };
+        const soYears = [...new Set([soY - 2, soY - 1, soY, Number(today.slice(0, 4))])].sort();
         body.innerHTML = `
-        <div class="tiles">${Object.entries(groups).map(([k, [, label, kind, amt, sub]]) => `
-          <button class="tile brsf ${kind} ${brSalesFilter === k ? 'on' : ''}" data-sf="${k}">
-            <div class="big">${money(amt)}</div><div class="label">${label} · ${sub}</div></button>`).join('')}
+        <div class="so-card">
+          <div class="so-head">
+            <span class="so-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M9 20V6M14 20v-8M19 20V4"/></svg></span>
+            <div><h3>SALES OVERVIEW</h3><div class="so-co">MS BEAU AVE ENTERPRISES OPC</div></div>
+            <span class="so-year">${soY}</span>
+          </div>
+          <div class="so-picks">
+            <div><label for="so_view">Reporting view</label><select id="so_view">
+              ${[['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly']].map(([k, l]) =>
+                `<option value="${k}"${brSoPeriod === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+            ${brSoPeriod === 'month' ? `
+            <div><label for="so_month">Reporting month</label><select id="so_month">${BR_MONTHS_LONG.map((nm, i) =>
+              `<option value="${i + 1}"${i + 1 === soM ? ' selected' : ''}>${nm}</option>`).join('')}</select></div>
+            <div><label for="so_year">Year</label><select id="so_year">${soYears.map((v) =>
+              `<option${v === soY ? ' selected' : ''}>${v}</option>`).join('')}</select></div>` : `
+            <div class="so-wide"><label for="so_day">${brSoPeriod === 'week' ? 'Any day in the week' : 'Reporting day'}</label>
+              <input id="so_day" type="date" value="${brSoAnchor}" max="${today}"></div>`}
+          </div>
+          <div class="so-tiles">${Object.entries(groups).map(([k, [, label, kind, amt, sub]]) => `
+            <button type="button" class="so-tile ${k} ${brSalesFilter === k ? 'on' : ''}" data-sf="${k}">
+              <span class="so-ticon" aria-hidden="true"><svg viewBox="0 0 24 24">${soIcons[k]}</svg></span>
+              <span class="so-tbody"><span class="so-tlabel">${label.replace(/\b\w/g, (c) => c.toUpperCase())}</span>
+                <b>${money(amt)}</b><small>${k === 'part' ? sub.replace('part-paid', '').trim() + ' partially paid' : sub}</small></span>
+            </button>`).join('')}
+          </div>
         </div>
         <div class="panel">${table(groups[brSalesFilter][0], [
           { head: 'Invoice no.', cell: (i) => `<b>${esc(i.si_no)}</b>` },
@@ -16180,25 +16241,130 @@ SCREENS.bankreport = async (page) => {
           brSalesFilter = b.dataset.sf;
           drawSales();
         }));
+        $('#so_view', body).addEventListener('change', (e) => { brSoPeriod = e.target.value; load().catch(whoops); });
+        const soMonth = () => {
+          const mm = String($('#so_month', body).value).padStart(2, '0');
+          const yy = $('#so_year', body).value;
+          brSoAnchor = `${yy}-${mm}-01`;
+          load().catch(whoops);
+        };
+        $('#so_month', body)?.addEventListener('change', soMonth);
+        $('#so_year', body)?.addEventListener('change', soMonth);
+        $('#so_day', body)?.addEventListener('change', (e) => { brSoAnchor = e.target.value || today; load().catch(whoops); });
       };
       drawSales();
       return;
     }
 
     if (view === 'purchases') {
-      const rows = await GET(`/api/bank-report/purchases?from=${from}&to=${to}`);
-      const total = rows.filter((o) => o.status !== 'cancelled').reduce((t, o) => t + Number(o.total), 0);
+      // The Purchase Overview, laid out as the owner's reference in the
+      // Expenses Overview's look: one Reporting period (a month), then Total
+      // Purchases, Outstanding AP, Pending Deliveries and Overdue AP. The list
+      // of purchase orders stays under it. Purchases' own.
+      const [py, pm] = brPoYm.split('-').map(Number);
+      const pFrom = `${brPoYm}-01`;
+      const pTo = new Date(Date.UTC(py, pm, 0)).toISOString().slice(0, 10);
+      const [rows, owed] = await Promise.all([
+        GET(`/api/bank-report/purchases?from=${pFrom}&to=${pTo}`),
+        GET('/api/bank-report/payables').catch(() => []),
+      ]);
+      const live = rows.filter((o) => o.status !== 'cancelled');
+      const total = live.reduce((t, o) => t + Number(o.total), 0);
+      const pending = live.filter((o) => ['open', 'part'].includes(o.status));
+      const ap = owed.reduce((t, r) => t + Number(r.balance), 0);
+      const overdue = owed.filter((r) => r.due_date && String(r.due_date).slice(0, 10) < today)
+        .reduce((t, r) => t + Number(r.balance), 0);
+      // The last two years of months, newest first, for the one picker.
+      const months = Array.from({ length: 24 }, (_, i) => {
+        const d = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1 - i, 1));
+        return d.toISOString().slice(0, 7);
+      });
+      if (!months.includes(brPoYm)) months.push(brPoYm);
+      const ymName = (ym) => `${BR_MONTHS_LONG[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
       body.innerHTML = `
-        <div class="tiles"><div class="tile"><div class="big">${money(total)}</div>
-          <div class="label">Ordered · ${count(rows.length)} purchase order${rows.length === 1 ? '' : 's'}</div></div></div>
-        <div class="panel">${table(rows, [
-          { head: 'PO no.', cell: (o) => `<b>${esc(o.po_no || `#${o.id}`)}</b>` },
-          { head: 'Supplier', cell: (o) => esc(o.supplier) },
-          { head: 'Ordered', cell: (o) => onDay(o.ordered_on) },
-          { head: 'Amount', n: true, cell: (o) => peso(o.total) },
-          { head: 'Status', cell: (o) => tag(String(o.status || '').replace(/_/g, ' '),
-            o.status === 'cancelled' ? 'red' : o.status === 'received' ? 'green' : 'amber') },
-        ], 'No purchase orders in this period.')}</div>`;
+        <div class="pv-card">
+          <div class="pv-head">
+            <span class="pv-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 11h10.2L20 7H6.2"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></svg></span>
+            <div><h3>PURCHASE OVERVIEW</h3><div class="pv-co">MS BEAU AVE ENTERPRISES OPC</div></div>
+            <span class="pv-year">${py}</span>
+          </div>
+          <div class="pv-label">Reporting period</div>
+          <select id="pv_month" class="pv-pick">${months.map((ym) =>
+            `<option value="${ym}"${ym === brPoYm ? ' selected' : ''}>${ymName(ym)}</option>`).join('')}</select>
+          <div class="pv-tiles">
+            <div class="pv-tile"><span>Total Purchases</span><b>${money(total)}</b><small>Recorded purchase value</small></div>
+            <button type="button" class="pv-tile warn" data-pvgo="payable"><span>Outstanding AP</span><b>${money(ap)}</b><small>Unpaid supplier balances</small></button>
+            <div class="pv-tile info"><span>Pending Deliveries</span><b>${count(pending.length)}</b><small>Orders not fully received</small></div>
+            <button type="button" class="pv-tile bad" data-pvgo="payable"><span>Overdue AP</span><b>${money(overdue)}</b><small>Past-due supplier balances</small></button>
+          </div>
+        </div>
+        <div class="pr-reg">
+          <div class="pr-reghead">
+            <div><h3>Purchase Register</h3><div class="dim">Purchase orders and supplier billings · ${ymName(brPoYm)}</div></div>
+            <button class="btn" id="pr_add">＋ Add Purchase</button>
+          </div>
+          <div class="pr-sums">
+            <div><span class="dim">Purchase Value</span><b>${money(total)}</b></div>
+            <div><span class="dim">Outstanding AP</span><b>${money(live.reduce((t, o) => t + Number(o.owed || 0), 0))}</b></div>
+          </div>
+          <input type="search" id="pr_q" class="pr-search" placeholder="Search PO, supplier, billing number…" value="${esc(brPrQ)}">
+          <select id="pr_payf" class="pr-filter">
+            <option value="">All payment statuses</option>
+            ${Object.entries(BR_PR_PAY).map(([k, [l]]) => `<option value="${k}"${brPrPay === k ? ' selected' : ''}>${l}</option>`).join('')}
+          </select>
+          <div id="pr_list"></div>
+          <button class="btn quiet pr-copy" id="pr_copyall">⧉ Copy all transactions for Sheets</button>
+        </div>`;
+      // Each order's payment state, from its supplier billing, and how much of
+      // it has come in, from its own status.
+      const payOf = (o) => (Number(o.billed) <= 0 ? 'unbilled' : Number(o.owed) <= 0 ? 'paid'
+        : Number(o.paid) > 0 ? 'part' : 'unpaid');
+      const RECV = { open: 'Not yet received', part: 'Partially received', closed: 'Fully received', cancelled: 'Cancelled' };
+      const shown = () => {
+        const q = brPrQ.trim().toLowerCase();
+        return rows.filter((o) => (!brPrPay || payOf(o) === brPrPay)
+          && (!q || `${o.po_no || ''} ${o.supplier} ${o.bill_nos || ''}`.toLowerCase().includes(q)));
+      };
+      const line = (o) => [String(o.ordered_on).slice(0, 10), o.po_no || `#${o.id}`, o.supplier, o.bill_nos || '',
+        Number(o.total).toFixed(2), Number(o.paid || 0).toFixed(2), Number(o.owed || 0).toFixed(2),
+        BR_PR_PAY[payOf(o)][0], RECV[o.status] || o.status];
+      const drawList = () => {
+        const list = shown();
+        $('#pr_list', body).innerHTML = `<div class="dim pr-count">Showing ${count(list.length)} purchase${list.length === 1 ? '' : 's'}</div>`
+          + (list.length ? list.map((o) => `
+          <div class="pr-rec">
+            <div class="pr-rectop"><span class="dim">${esc(String(o.ordered_on).slice(0, 10))} · ${esc(o.po_no || `#${o.id}`)}</span>
+              <span class="pr-amt"><b>${peso(o.total)}</b><small>Paid: ${peso(o.paid || 0)}</small></span></div>
+            <div class="pr-recname">${esc(o.supplier)}</div>
+            <div class="dim">Billing: ${o.bill_nos ? esc(o.bill_nos) : '—'}</div>
+            <div class="pr-rectags">${tag(...BR_PR_PAY[payOf(o)])}
+              <span class="dim">${esc(RECV[o.status] || o.status)}</span></div>
+            <div class="pr-acts">
+              <button class="btn quiet" data-predit="${o.id}">✎ Edit</button>
+              <button class="btn quiet" data-prcopy="${o.id}">Copy details</button></div>
+          </div>`).join('') : '<div class="pr-none">No purchases match.</div>');
+        $$('[data-predit]', body).forEach((x) => x.addEventListener('click', () => brGoPO(+x.dataset.predit)));
+        $$('[data-prcopy]', body).forEach((x) => x.addEventListener('click', async () => {
+          const o = rows.find((r) => String(r.id) === x.dataset.prcopy);
+          const [d, po, sup, bill, amt, paid, bal, pay, recv] = line(o);
+          const text = `${po} · ${d}\n${sup}\nBilling: ${bill || '—'}\nAmount: ₱${amt} · Paid: ₱${paid} · Balance: ₱${bal}\n${pay} · ${recv}`;
+          try { await navigator.clipboard.writeText(text); notice('Details copied', 'good'); }
+          catch { notice('Could not reach the clipboard here.', 'bad'); }
+        }));
+      };
+      drawList();
+      $('#pv_month', body).addEventListener('change', (e) => { brPoYm = e.target.value; load().catch(whoops); });
+      $('#pr_q', body).addEventListener('input', (e) => { brPrQ = e.target.value; drawList(); });
+      $('#pr_payf', body).addEventListener('change', (e) => { brPrPay = e.target.value; drawList(); });
+      $('#pr_add', body).addEventListener('click', () => brGoPO(null));
+      $('#pr_copyall', body).addEventListener('click', async () => {
+        const head = ['Date', 'PO no.', 'Supplier', 'Billing no.', 'Amount', 'Paid', 'Balance', 'Payment status', 'Received'];
+        const text = [head, ...shown().map(line)].map((r) => r.map((c) => String(c).replace(/[\t\n]/g, ' ')).join('\t')).join('\n');
+        try { await navigator.clipboard.writeText(text); notice('Copied — paste it into Sheets', 'good'); }
+        catch { notice('Could not reach the clipboard here.', 'bad'); }
+      });
+      // The two AP boxes open Accounts payable, where the bills themselves are.
+      $$('[data-pvgo]', body).forEach((x) => x.addEventListener('click', () => open(x.dataset.pvgo)));
       return;
     }
 
