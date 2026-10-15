@@ -809,8 +809,9 @@ test('Financial overview: the renamed menu, with data in its figures and tiles',
   assert.match(app, /‹ Financial overview<\/button>/);
   for (const w of ['Top distributors', 'Account breakdown', 'Top owed receivables', 'Top owed suppliers',
     'profit margin', 'Top 3 higher expenses']) assert.ok(app.includes(w), w);
-  assert.match(app, /const drawTileData = async/);
-  assert.match(css, /\.br-split \.brt-foot \{/);
+  // The six tiles on the right stay plain: a name and an icon, no figures.
+  assert.ok(!app.includes('drawTileData'), 'the tiles carry no details');
+  assert.ok(!css.includes('.brt-foot'));
   // Not the shop's own .good / .bad, which are product cards elsewhere.
   assert.ok(!/brf-pill (good|bad)/.test(app), 'the liquidity tag keeps its own classes');
 });
