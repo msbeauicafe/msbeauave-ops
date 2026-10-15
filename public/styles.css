@@ -2355,3 +2355,20 @@ input.n { text-align: right; }
 .ex-rectags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: .8rem; }
 .ex-none { color: var(--muted); padding: 10px 2px; }
 .ex-copy { width: 100%; }
+
+/* Bank report's menu as two panels on a computer: the Dashboard on the left,
+   the six tiles on the right, both bigger and filling the width. The menu's
+   own br-split classes; phones keep the single column. */
+@media (min-width: 1000px) {
+  .br-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: stretch; }
+  .br-split .brheader, .br-split .brdash, .br-split .brgrid { max-width: none; }
+  .br-split .brdash { margin-bottom: 0; }
+  .br-split .brfigs { gap: 14px; }
+  .br-split .brfigs .tile { padding: 22px 22px; min-height: 120px; }
+  .br-split .brfigs .tile .big { font-size: 1.9rem; }
+  .br-split .brfigs .tile .label { font-size: .95rem; }
+  .br-split-r { display: flex; }
+  .br-split-r .brgrid { flex: 1; gap: 16px; grid-auto-rows: 1fr; }
+  .br-split .brtile { padding: 28px 26px; font-size: 1.12rem; gap: 16px; }
+  .br-split .brtile svg { width: 30px; height: 30px; }
+}

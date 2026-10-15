@@ -15673,6 +15673,9 @@ SCREENS.bankreport = async (page) => {
     view = '';
     page.innerHTML = `
       <div class="head"><h2>Bank report</h2><span class="hint">Pick what to look at</span></div>
+      <!-- Two panels, side by side on a computer: the Dashboard on the left,
+           the six ways in on the right, both drawn bigger. -->
+      <div class="br-split"><div class="br-split-l">
       <div class="brheader"><svg viewBox="0 0 24 24">${BR_ICONS.dashboard}</svg>Dashboard</div>
       <div class="brdash">
         <div class="subtabs" id="brd_period">
@@ -15685,7 +15688,7 @@ SCREENS.bankreport = async (page) => {
           <button class="btn sm quiet" id="brd_next">›</button></div>
         <div class="brfigs" id="br_dash"></div>
       </div>
-      ${brTiles(BR_INSIDE)}`;
+      </div><div class="br-split-r">${brTiles(BR_INSIDE)}</div></div>`;
     $$('[data-br]', page).forEach((b) => b.addEventListener('click', () => open(b.dataset.br)));
     $$('[data-dp]', page).forEach((b) => b.addEventListener('click', () => {
       if (b.classList.contains('on')) return;

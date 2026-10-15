@@ -751,3 +751,13 @@ test('Expenses: the overview and the Expense Register', async () => {
   const cashier = await signIn('cashier');
   assert.notEqual((await GET(cashier, '/api/bank-report/expense-register?from=2026-10-01&to=2026-10-31')).status, 200);
 });
+
+// Bank report's menu: two panels on a computer — the Dashboard on the left,
+// the six tiles on the right, both bigger.
+test("Bank report's menu: Dashboard left, the six tiles right", () => {
+  const at = app.indexOf('  const menu = () => {');
+  const fn = app.slice(at, app.indexOf('\n  };\n', at));
+  assert.match(fn, /<div class="br-split"><div class="br-split-l">[\s\S]*?id="br_dash"[\s\S]*?<\/div><div class="br-split-r">\$\{brTiles\(BR_INSIDE\)\}<\/div><\/div>/);
+  const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  assert.match(css, /\.br-split \{ display: grid; grid-template-columns: 1fr 1fr;/);
+});
