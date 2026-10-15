@@ -815,3 +815,27 @@ test('Financial overview: the renamed menu, with data in its figures and tiles',
   // Not the shop's own .good / .bad, which are product cards elsewhere.
   assert.ok(!/brf-pill (good|bad)/.test(app), 'the liquidity tag keeps its own classes');
 });
+
+// Purchases, Bank and Expenses each pick a Reporting view, month and year in
+// one light panel, as the Sales Overview does — each with its own classes.
+test('the Purchase, Bank and Expenses overviews pick a Reporting view, month and year', () => {
+  const css = fs.readFileSync(path.join(here, '../public/styles.css'), 'utf8');
+  for (const P of ['pv', 'bo', 'ex']) {
+    assert.ok(app.includes(`<div class="${P}-vpicks">`), P);
+    for (const id of ['view', 'month', 'year', 'day']) assert.ok(app.includes(`id="${P}_${id}"`), `${P}_${id}`);
+    assert.match(css, new RegExp(`\\.${P}-vpicks \\{ display: grid; grid-template-columns: repeat\\(3, 1fr\\);`));
+  }
+  for (const s of ['brPvPeriod', 'brBoPeriod', 'brExPeriod']) assert.ok(app.includes(`let ${s} = 'month';`), s);
+});
+
+// Purchases, Bank and Expenses each pick a Reporting view, month and year in
+// one light panel, as the Sales Overview does — each with its own classes.
+test('the Purchase, Bank and Expenses overviews pick a Reporting view, month and year', () => {
+  const css = fs.readFileSync(path.join(here, '../public/styles.css'), 'utf8');
+  for (const P of ['pv', 'bo', 'ex']) {
+    assert.ok(app.includes(`<div class="${P}-vpicks">`), P);
+    for (const id of ['view', 'month', 'year', 'day']) assert.ok(app.includes(`id="${P}_${id}"`), `${P}_${id}`);
+    assert.match(css, new RegExp(`\\.${P}-vpicks \\{ display: grid; grid-template-columns: repeat\\(3, 1fr\\);`));
+  }
+  for (const s of ['brPvPeriod', 'brBoPeriod', 'brExPeriod']) assert.ok(app.includes(`let ${s} = 'month';`), s);
+});
