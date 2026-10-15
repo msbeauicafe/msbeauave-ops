@@ -15519,7 +15519,13 @@ const BR_INSIDE = ['sales', 'bank', 'expenses', 'purchases', 'receivable', 'paya
 const brTiles = (keys) => `<div class="brgrid">${keys.map((k) => `<button class="brtile" data-br="${k}">
   <svg viewBox="0 0 24 24">${BR_ICONS[k]}</svg>${esc(BR_TILES.find(([x]) => x === k)[1])}</button>`).join('')}</div>`;
 // Which tiles read a day / week / month; the rest stand as they are today.
-const BR_PERIODIC = ['sales', 'purchases', 'expenses'];
+// Expenses picks its own Reporting month and year instead (its overview).
+const BR_PERIODIC = ['sales', 'purchases'];
+// The Expense Register's own lists (db/194): what each is called on screen.
+const BR_EXP_KINDS = [['supplies', 'Office supplies'], ['transport', 'Transportation'], ['utilities', 'Utilities'],
+  ['rent', 'Rent'], ['wages', 'Wages'], ['marketing', 'Marketing'], ['fees', 'Fees'], ['other', 'Other']];
+const BR_EXP_PAY = { paid: ['Paid', 'green'], pending: ['Pending payment', 'amber'], reimburse: ['For reimbursement', 'pink'] };
+const BR_EXP_RECEIPT = { with_receipt: 'With receipt', with_invoice: 'With invoice', pending: 'Pending', missing: 'Missing' };
 // Bank transactions: the accounts a line can sit on, and its four kinds.
 const BR_BT_ACCOUNTS = ['BDO', 'BPI', 'Security Bank', 'GCash', 'Bank', 'Cash on hand'];
 // Payment Management's list as Cash position lays it out (db/188): each
@@ -15540,6 +15546,10 @@ SCREENS.bankreport = async (page) => {
   let view = '';
   // Which of Sales' four boxes is picked; it stays picked across periods.
   let brSalesFilter = 'all';
+  // Expenses' own Reporting month (YYYY-MM), and the register's filters.
+  let brExpYm = today.slice(0, 7);
+  let brExpQ = '';
+  let brExpPay = '';
 
   // The Dashboard's own day or month, separate from the tiles' period.
   let dashPeriod = 'day';
@@ -16186,19 +16196,156 @@ SCREENS.bankreport = async (page) => {
     }
 
     if (view === 'expenses') {
-      const fin = await GET(`/api/finance?from=${from}&to=${to}`);
-      const rows = (fin.entries || []).filter((e) => !e.voided);
-      const total = rows.reduce((t, e) => t + Number(e.amount), 0);
+      // Laid out as the owner's reference: an Expenses Overview for one
+      // month — its own Reporting month and year — then the Expense Register:
+      // + Add Expense, search, a payment-status filter, the records, and
+      // Copy records as table (db/194). Bank report's Expenses view only.
+      await refreshMops();
+      const [y, m] = brExpYm.split('-').map(Number);
+      const first = `${brExpYm}-01`;
+      const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+      const rows = await GET(`/api/bank-report/expense-register?from=${first}&to=${last}`);
+      const sum = (list) => list.reduce((t, e) => t + Number(e.amount), 0);
+      const unpaid = rows.filter((e) => e.payment_status === 'pending');
+      const reimb = rows.filter((e) => e.payment_status === 'reimburse');
+      const missing = rows.filter((e) => e.receipt_status === 'missing');
+      const kindName = (k) => (BR_EXP_KINDS.find(([x]) => x === k) || [k, k])[1];
+      const monthName = BR_MONTHS_LONG[m - 1];
+      const years = [...new Set([y - 2, y - 1, y, Number(today.slice(0, 4))])].sort();
       body.innerHTML = `
-        <div class="tiles"><div class="tile"><div class="big">${money(total)}</div>
-          <div class="label">Spent · ${count(rows.length)} expense${rows.length === 1 ? '' : 's'}</div></div></div>
-        <div class="panel">${table(rows, [
-          { head: 'Date', cell: (e) => onDay(e.spent_on) },
-          { head: 'Kind', cell: (e) => tag(esc(e.kind), 'grey') },
-          { head: 'Description', cell: (e) => esc(e.description || '') },
-          { head: 'Paid by', cell: (e) => esc(e.method || '') },
-          { head: 'Amount', n: true, cell: (e) => peso(e.amount) },
-        ], 'No expenses in this period.')}</div>`;
+        <div class="ex-card">
+          <div class="ex-head">
+            <span class="ex-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M9 20V6M14 20v-8M19 20V4"/></svg></span>
+            <div><h3>EXPENSES OVERVIEW</h3><div class="ex-co">MS BEAU AVE ENTERPRISES OPC</div></div>
+            <span class="ex-year">${y}</span>
+          </div>
+          <div class="ex-label">Reporting month</div>
+          <div class="ex-picks">
+            <select id="ex_month">${BR_MONTHS_LONG.map((n, i) =>
+              `<option value="${String(i + 1).padStart(2, '0')}"${i + 1 === m ? ' selected' : ''}>${n}</option>`).join('')}</select>
+            <select id="ex_year">${years.map((v) => `<option${v === y ? ' selected' : ''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="ex-tiles">
+            <button type="button" class="ex-tile" data-expay=""><span>Total Expenses</span><b>${peso(sum(rows))}</b><small>Selected period</small></button>
+            <button type="button" class="ex-tile warn" data-expay="pending"><span>Unpaid Expenses</span><b>${peso(sum(unpaid))}</b><small>Pending payment</small></button>
+            <button type="button" class="ex-tile info" data-expay="reimburse"><span>For Reimbursement</span><b>${peso(sum(reimb))}</b><small>Outstanding claims</small></button>
+            <button type="button" class="ex-tile bad" data-expay="missing"><span>Missing Receipts</span><b>${count(missing.length)}</b><small>Needs follow-up</small></button>
+          </div>
+        </div>
+
+        <div class="ex-reg">
+          <div class="ex-reghead">
+            <div><h3>Expense Register</h3><div class="dim">${monthName} ${y} · ${count(rows.length)} record${rows.length === 1 ? '' : 's'}</div></div>
+            <button class="btn" id="ex_add">＋ Add Expense</button>
+          </div>
+          <div class="ex-sums">
+            <div><span class="dim">Recorded Expenses</span><b>${peso(sum(rows))}</b></div>
+            <div><span class="dim">Unpaid Balance</span><b>${peso(sum(unpaid) + sum(reimb))}</b></div>
+          </div>
+          <div class="ex-form" id="ex_form" hidden>
+            <h4>New Expense Entry</h4>
+            <div class="row">
+              <div><label for="ex_on">Transaction date</label><input id="ex_on" type="date" value="${today}" max="${today}"></div>
+              <div><label for="ex_kind">Expense category</label><select id="ex_kind">${
+                BR_EXP_KINDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></div>
+            </div>
+            <div class="row">
+              <div><label for="ex_desc">Particulars</label><input id="ex_desc" type="text" placeholder="Describe the expense"></div>
+              <div><label for="ex_payee">Payee / Supplier</label><input id="ex_payee" type="text" placeholder="Supplier or employee"></div>
+            </div>
+            <div class="row">
+              <div><label for="ex_amt">Amount (₱)</label><input id="ex_amt" type="text" inputmode="decimal" placeholder="0.00"></div>
+              <div><label for="ex_mop">Payment method</label><select id="ex_mop">${
+                MOP_OPTIONS.filter((x) => x !== 'FUNDS').map((x) => `<option>${esc(x)}</option>`).join('')}</select></div>
+            </div>
+            <div class="row">
+              <div><label for="ex_pay">Payment status</label><select id="ex_pay">${
+                Object.entries(BR_EXP_PAY).map(([k, [n]]) => `<option value="${k}">${n}</option>`).join('')}</select></div>
+              <div><label for="ex_rec">Receipt status</label><select id="ex_rec">${
+                Object.entries(BR_EXP_RECEIPT).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></div>
+            </div>
+            <div class="ex-formacts"><button class="btn" id="ex_save">Add Record</button>
+              <button class="btn quiet" id="ex_cancel">Cancel</button></div>
+          </div>
+          <input type="search" id="ex_q" class="ex-search" placeholder="Search reference, payee, category…" value="${esc(brExpQ)}">
+          <select id="ex_payf" class="ex-filter">
+            <option value="">All payment statuses</option>
+            ${Object.entries(BR_EXP_PAY).map(([k, [n]]) => `<option value="${k}"${brExpPay === k ? ' selected' : ''}>${n}</option>`).join('')}
+            <option value="missing"${brExpPay === 'missing' ? ' selected' : ''}>Receipt missing</option>
+          </select>
+          <div id="ex_list"></div>
+          <button class="btn quiet ex-copy" id="ex_copy">⧉ Copy records as table</button>
+        </div>`;
+
+      const shown = () => {
+        const q = brExpQ.trim().toLowerCase();
+        return rows.filter((e) => (!brExpPay || (brExpPay === 'missing'
+          ? e.receipt_status === 'missing' : e.payment_status === brExpPay))
+          && (!q || `${e.ref} ${e.payee || ''} ${kindName(e.kind)} ${e.description}`.toLowerCase().includes(q)));
+      };
+      const drawList = () => {
+        const list = shown();
+        $('#ex_list', body).innerHTML = `<div class="dim ex-count">Showing ${count(list.length)} record${list.length === 1 ? '' : 's'}</div>`
+          + (list.length ? list.map((e) => `
+          <div class="ex-rec">
+            <div class="ex-rectop"><span class="dim">${esc(e.ref)} · ${esc(String(e.spent_on).slice(0, 10))}</span>
+              <b>${peso(e.amount)}</b></div>
+            <div class="ex-recname">${esc(e.description)}</div>
+            <div class="dim">${esc(kindName(e.kind))}${e.payee ? ` · ${esc(e.payee)}` : ''}</div>
+            <div class="ex-rectags">${tag(...(BR_EXP_PAY[e.payment_status] || [e.payment_status, 'grey']))}
+              <span class="dim">${esc(e.paid_through || e.method || '')}</span>
+              <span class="dim">Receipt: ${e.receipt_status ? esc(BR_EXP_RECEIPT[e.receipt_status]) : '—'}</span>
+              ${e.payment_status !== 'paid' ? `<button class="btn sm quiet" data-expaid="${e.id}">Mark paid</button>` : ''}
+              ${['missing', 'pending'].includes(e.receipt_status)
+                ? `<button class="btn sm quiet" data-exrec="${e.id}">Receipt received</button>` : ''}</div>
+          </div>`).join('') : '<div class="ex-none">No expenses match.</div>');
+        $$('[data-expaid]', body).forEach((x) => x.addEventListener('click', async () => {
+          try { await POST(`/api/bank-report/expense-register/${x.dataset.expaid}/status`, { payment_status: 'paid' });
+            notice('Marked paid', 'good'); load().catch(whoops); } catch (err) { whoops(err); }
+        }));
+        $$('[data-exrec]', body).forEach((x) => x.addEventListener('click', async () => {
+          try { await POST(`/api/bank-report/expense-register/${x.dataset.exrec}/status`, { receipt_status: 'with_receipt' });
+            notice('Receipt noted', 'good'); load().catch(whoops); } catch (err) { whoops(err); }
+        }));
+      };
+      drawList();
+
+      const pickMonth = () => { brExpYm = `${$('#ex_year', body).value}-${$('#ex_month', body).value}`; load().catch(whoops); };
+      $('#ex_month', body).addEventListener('change', pickMonth);
+      $('#ex_year', body).addEventListener('change', pickMonth);
+      $$('[data-expay]', body).forEach((x) => x.addEventListener('click', () => {
+        brExpPay = brExpPay === x.dataset.expay ? '' : x.dataset.expay;
+        $('#ex_payf', body).value = brExpPay;
+        drawList();
+      }));
+      $('#ex_q', body).addEventListener('input', (e) => { brExpQ = e.target.value; drawList(); });
+      $('#ex_payf', body).addEventListener('change', (e) => { brExpPay = e.target.value; drawList(); });
+      $('#ex_amt', body).addEventListener('input', (e) => comma(e.target));
+      $('#ex_add', body).addEventListener('click', () => { $('#ex_form', body).hidden = false; $('#ex_desc', body).focus(); });
+      $('#ex_cancel', body).addEventListener('click', () => { $('#ex_form', body).hidden = true; });
+      $('#ex_save', body).addEventListener('click', async () => {
+        try {
+          await POST('/api/bank-report/expense-register', {
+            spent_on: $('#ex_on', body).value, kind: $('#ex_kind', body).value,
+            description: $('#ex_desc', body).value, payee: $('#ex_payee', body).value,
+            amount: num($('#ex_amt', body).value), paid_through: $('#ex_mop', body).value,
+            payment_status: $('#ex_pay', body).value, receipt_status: $('#ex_rec', body).value,
+          });
+          notice('Expense recorded 🌸', 'good');
+          brExpYm = $('#ex_on', body).value.slice(0, 7) || brExpYm;
+          load().catch(whoops);
+        } catch (err) { whoops(err); }
+      });
+      // The records showing, as a table to paste into a spreadsheet.
+      $('#ex_copy', body).addEventListener('click', async () => {
+        const head = ['Reference', 'Date', 'Category', 'Particulars', 'Payee', 'Amount', 'Payment method', 'Payment status', 'Receipt'];
+        const lines = [head, ...shown().map((e) => [e.ref, String(e.spent_on).slice(0, 10), kindName(e.kind),
+          e.description, e.payee || '', Number(e.amount).toFixed(2), e.paid_through || e.method || '',
+          (BR_EXP_PAY[e.payment_status] || [e.payment_status])[0], e.receipt_status ? BR_EXP_RECEIPT[e.receipt_status] : ''])]
+          .map((r) => r.map((c) => String(c).replace(/[\t\n]/g, ' ')).join('\t')).join('\n');
+        try { await navigator.clipboard.writeText(lines); notice('Copied — paste it into a spreadsheet', 'good'); }
+        catch { notice('Could not reach the clipboard here.', 'bad'); }
+      });
       return;
     }
 

@@ -710,3 +710,44 @@ test("Bank Transactions: a Reference column with the customer payment's referenc
   const line = (await GET(admin, '/api/bank-report/ledger')).data.find((l) => l.pay_ref === ref);
   assert.ok(line, 'the Books line carries the payment reference');
 });
+
+// Bank report → Expenses: the Expenses Overview and the Expense Register
+// (db/194) — totals for a month, add an expense with payee, payment and
+// receipt status, mark it paid, and the receipt in.
+test('Expenses: the overview and the Expense Register', async () => {
+  const at = app.indexOf("    if (view === 'expenses') {");
+  const block = app.slice(at, app.indexOf("    if (view === 'payable') {", at));
+  for (const w of ['EXPENSES OVERVIEW', 'Reporting month', 'Total Expenses', 'Unpaid Expenses',
+    'For Reimbursement', 'Missing Receipts', 'Expense Register', '＋ Add Expense', 'New Expense Entry',
+    'Payee / Supplier', 'Payment status', 'Receipt status', 'All payment statuses', 'Copy records as table']) {
+    assert.ok(block.includes(w), w);
+  }
+  assert.ok(!/'expenses'/.test(app.match(/const BR_PERIODIC = \[[^\]]*\]/)[0]), 'its own month picker, not the period bar');
+
+  const admin = await signIn('admin');
+  const add = await POST(admin, '/api/bank-report/expense-register', { spent_on: '2026-10-02', kind: 'transport',
+    description: 'Delivery expenses', payee: 'Employee A', amount: 1200, paid_through: 'CASH',
+    payment_status: 'pending', receipt_status: 'missing' });
+  assert.equal(add.status, 200, JSON.stringify(add.data));
+  let rows = (await GET(admin, '/api/bank-report/expense-register?from=2026-10-01&to=2026-10-31')).data;
+  let e = rows.find((x) => x.id === add.data.id);
+  assert.match(e.ref, /^EXP-2026-\d{3,}$/);
+  assert.equal(e.payment_status, 'pending');
+  assert.equal(e.receipt_status, 'missing');
+  assert.equal(e.paid_through, 'CASH');
+  assert.notEqual((await POST(admin, '/api/bank-report/expense-register', { description: 'x', amount: 5,
+    paid_through: 'aaaaa' })).status, 200, 'a payment method not on the list is refused');
+  assert.notEqual((await POST(admin, '/api/bank-report/expense-register', { description: 'x', amount: 5,
+    paid_through: 'CASH', payment_status: 'maybe' })).status, 200, 'only the three payment statuses');
+  await POST(admin, `/api/bank-report/expense-register/${e.id}/status`, { payment_status: 'paid' });
+  await POST(admin, `/api/bank-report/expense-register/${e.id}/status`, { receipt_status: 'with_receipt' });
+  rows = (await GET(admin, '/api/bank-report/expense-register?from=2026-10-01&to=2026-10-31')).data;
+  e = rows.find((x) => x.id === add.data.id);
+  assert.equal(e.payment_status, 'paid');
+  assert.equal(e.receipt_status, 'with_receipt');
+  assert.ok(rows.every((x) => x.kind !== 'stock'), 'stock bought for the shelves stays out of the register');
+  assert.notEqual((await POST(admin, '/api/bank-report/expense-register', { description: 'x', amount: 5,
+    paid_through: 'CASH', kind: 'stock' })).status, 200, 'stock is not recorded here');
+  const cashier = await signIn('cashier');
+  assert.notEqual((await GET(cashier, '/api/bank-report/expense-register?from=2026-10-01&to=2026-10-31')).status, 200);
+});
