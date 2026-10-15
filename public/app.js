@@ -15575,6 +15575,8 @@ SCREENS.bankreport = async (page) => {
   };
   // Expenses' own Reporting month (YYYY-MM), and the register's filters.
   let brExpYm = today.slice(0, 7);
+  // Bank's own Reporting month, for the Bank Overview's Money in / Money out.
+  let brBoYm = today.slice(0, 7);
   let brExpQ = '';
   let brExpPay = '';
 
@@ -15801,8 +15803,38 @@ SCREENS.bankreport = async (page) => {
       const [cash, boxes] = await Promise.all([GET('/api/books/cash'), brBoxes()]);
       const bal = (label) => cash.accounts.find((a) =>
         a.title.trim().toLowerCase() === label.toLowerCase())?.balance;
+      // The Bank Overview, in the Expenses Overview's look: a Reporting month
+      // and year, then Total Cash Position and Bank Balance as they stand,
+      // and the month's Money in and Money out, filled once the transactions
+      // below have loaded. Bank's own bo-*.
+      const [boY, boM] = brBoYm.split('-').map(Number);
+      const boYears = [...new Set([boY - 2, boY - 1, boY, Number(today.slice(0, 4))])].sort();
+      const boBank = boxes.filter((x) => x.column === 'bank')
+        .reduce((t, x) => t + Number(bal(x.name) || 0), 0);
+      const boTotal = [...boxes.map((x) => x.name), 'Balance']
+        .reduce((t, label) => t + Number(bal(label) || 0), 0);
+      const boBanks = boxes.filter((x) => x.column === 'bank').length;
       body.innerHTML = `
-        <div class="panel"><h3>Cash position</h3>
+        <div class="bo-card">
+          <div class="bo-head">
+            <span class="bo-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg></span>
+            <div><h3>BANK OVERVIEW</h3><div class="bo-co">MS BEAU AVE ENTERPRISES OPC</div></div>
+            <span class="bo-year">${boY}</span>
+          </div>
+          <div class="bo-label">Reporting month</div>
+          <div class="bo-picks">
+            <select id="bo_month">${BR_MONTHS_LONG.map((n, i) =>
+              `<option value="${String(i + 1).padStart(2, '0')}"${i + 1 === boM ? ' selected' : ''}>${n}</option>`).join('')}</select>
+            <select id="bo_year">${boYears.map((v) => `<option${v === boY ? ' selected' : ''}>${v}</option>`).join('')}</select>
+          </div>
+          <div class="bo-tiles">
+            <div class="bo-tile"><span>Total Cash Position</span><b>${money(boTotal)}</b><small>Bank and cash, as of today</small></div>
+            <div class="bo-tile info"><span>Bank Balance</span><b>${money(boBank)}</b><small>Across ${count(boBanks)} bank account${boBanks === 1 ? '' : 's'}</small></div>
+            <div class="bo-tile in"><span>Money In</span><b id="bo_in">…</b><small>${BR_MONTHS_LONG[boM - 1]} ${boY}</small></div>
+            <div class="bo-tile bad"><span>Money Out</span><b id="bo_out">…</b><small>${BR_MONTHS_LONG[boM - 1]} ${boY}</small></div>
+          </div>
+        </div>
+        <div class="panel mt"><h3>Cash position</h3>
           ${(() => {
             // Laid out as the owner drew it: BANK down the left — BDO, BPI,
             // Security Bank, GCash — and CASH down the right — cash on hand.
@@ -15968,6 +16000,20 @@ SCREENS.bankreport = async (page) => {
                   : 'Use the filters above or click “Payment Management” to get started.'}</div></div>
             </div></td></tr>`}</tbody></table></div>`;
       };
+      // The Bank Overview's Money in and Money out for its month: every
+      // recorded transaction, Books entry and purchase order payment in it.
+      {
+        const boFrom = `${brBoYm}-01`;
+        const boTo = new Date(Date.UTC(boY, boM, 0)).toISOString().slice(0, 10);
+        const inMonth = txns.map((t) => ({ day: String(t.txn_on).slice(0, 10), dir: t.direction, amount: t.amount }))
+          .concat(booksRows, poRows).filter((t) => t.day >= boFrom && t.day <= boTo);
+        const boSum = (dir) => inMonth.filter((t) => t.dir === dir).reduce((t, x) => t + Number(x.amount || 0), 0);
+        $('#bo_in', body).textContent = money(boSum('in'));
+        $('#bo_out', body).textContent = money(boSum('out'));
+        const boPick = () => { brBoYm = `${$('#bo_year', body).value}-${$('#bo_month', body).value}`; load().catch(whoops); };
+        $('#bo_month', body).addEventListener('change', boPick);
+        $('#bo_year', body).addEventListener('change', boPick);
+      }
       // A box in Cash position is a way into its own transactions: click BDO
       // and the list below narrows to BDO; click it again for every account.
       // The box and the Every account drop-down always agree.
