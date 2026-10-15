@@ -15840,6 +15840,8 @@ SCREENS.bankreport = async (page) => {
         ref: l.si_no || l.entry_no || '', party: l.payor || l.memo || '', account: acctName(l.account),
         dir: Number(l.debit) > 0 ? 'in' : 'out', amount: Number(l.debit) > 0 ? l.debit : l.credit,
         kind: 'books', balance: Number(l.running), note: l.line_memo || '',
+        // The reference no. the customer's payment was recorded with.
+        payref: l.pay_ref || '',
       }));
       // Money out on purchase orders: the PO no., the supplier, and the
       // account its payment method names. Not posted to Books, so no Books
@@ -15891,12 +15893,13 @@ SCREENS.bankreport = async (page) => {
           .sort((a, b) => b.day.localeCompare(a.day) || (a.src === b.src ? 0 : a.src === 'books' ? 1 : -1));
         const rows = all.filter((t) => (!acct || t.account === acct) && (!kind || t.kind === kind)
           && (!btFrom || t.day >= btFrom) && (!btTo || t.day <= btTo)
-          && (!q || `${t.ref} ${t.party} ${t.note}`.toLowerCase().includes(q)));
+          && (!q || `${t.ref} ${t.party} ${t.note} ${t.payref || ''}`.toLowerCase().includes(q)));
         const filtered = q || acct || kind || btFrom || btTo;
         // Its own table rather than the app-wide one: the design's header row,
         // and an empty state with a line on how to start.
         $('#bt_list', body).innerHTML = `<div class="btscroll"><table class="bttable">
           <thead><tr><th>Date</th><th>Reference #</th><th>Particulars</th><th>Account</th>
+            <th>Reference</th>
             <th class="c" title="Money in or out">◆</th><th>Type</th><th class="n">Debit (₱)</th>
             <th class="n">Credit (₱)</th><th class="n">Balance (₱)</th><th>Remarks</th></tr></thead>
           <tbody>${rows.length ? rows.map((t) => `<tr>
@@ -15904,6 +15907,7 @@ SCREENS.bankreport = async (page) => {
             <td><span class="dim">${esc(t.ref)}</span></td>
             <td><b>${esc(t.party)}</b></td>
             <td>${esc(t.account)}</td>
+            <td>${t.payref ? esc(t.payref) : '<span class="dim">—</span>'}</td>
             <td class="c">${t.dir === 'in'
               ? '<span class="btin" title="Money in">▲</span>' : '<span class="btout" title="Money out">▼</span>'}</td>
             <td>${t.src === 'books' ? tag('Books', 'grey') : t.src === 'po' ? tag('Purchase order', 'amber')
@@ -15914,7 +15918,7 @@ SCREENS.bankreport = async (page) => {
               ? '<span class="dim" title="Not posted to Books, so no Books balance">—</span>'
               : `<b>${peso(t.balance)}</b>`}</td>
             <td>${t.note ? esc(t.note) : '<span class="dim">—</span>'}</td></tr>`).join('')
-          : `<tr><td colspan="10"><div class="btempty">
+          : `<tr><td colspan="11"><div class="btempty">
               <span class="bticon big" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/>
                 <path d="M9 8h6M9 12h6M9 16h4"/></svg></span>
               <div><b>${filtered ? 'Nothing matches those filters.' : 'No bank transactions recorded yet.'}</b>

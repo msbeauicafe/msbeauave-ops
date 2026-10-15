@@ -364,7 +364,7 @@ test("Bank's transactions section is laid out as the owner drew it, inside the B
   // The transactions table's own headings (Payment Management's list has its own).
   const bt = block.slice(block.indexOf('<table class="bttable">'), block.indexOf('</thead>', block.indexOf('<table class="bttable">')));
   const heads = [...bt.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
-  assert.deepEqual(heads, ['Date', 'Reference #', 'Particulars', 'Account', '◆', 'Type',
+  assert.deepEqual(heads, ['Date', 'Reference #', 'Particulars', 'Account', 'Reference', '◆', 'Type',
     'Debit (₱)', 'Credit (₱)', 'Balance (₱)', 'Remarks']);
   assert.match(block, /Use the filters above or click “Payment Management” to get started\./);
   assert.match(block, /<button class="btn" id="bt_new">Payment Management<\/button>/, 'the button is named Payment Management');
@@ -688,4 +688,25 @@ test('Cash position: GCash sits under BANK, after Security Bank', async () => {
   assert.ok(bank.indexOf(gcash.name) > bank.indexOf(sec), 'below Security Bank');
   assert.deepEqual(boxes.filter((x) => x.column === 'cash').map((x) => x.aliases), [['CASH']],
     'Cash on hand alone under CASH');
+});
+
+// Bank Transactions' Reference column: the reference no. a customer's payment
+// was recorded with on Record payment, carried on its Books line.
+test("Bank Transactions: a Reference column with the customer payment's reference no.", async () => {
+  const at = app.indexOf("if (view === 'bank') {");
+  const block = app.slice(at, app.indexOf("if (view === 'sales')", at));
+  assert.match(block, /<th>Account<\/th>\n\s*<th>Reference<\/th>/);
+  assert.match(block, /payref: l\.pay_ref \|\| ''/);
+  assert.match(block, /<td>\$\{t\.payref \? esc\(t\.payref\) : '<span class="dim">—<\/span>'\}<\/td>/);
+
+  const admin = await signIn('admin');
+  const inv = (await db.query("select i.id from invoices i where i.status = 'open' order by i.id limit 1")).rows[0];
+  if (!inv) return;
+  const ref = unique('REF');
+  await db.query(
+    "insert into payments (invoice_id, amount, method, reference_no) values ($1, 1, 'BDO', $2) returning id",
+    [inv.id, ref]);
+  await POST(admin, '/api/books/sync');
+  const line = (await GET(admin, '/api/bank-report/ledger')).data.find((l) => l.pay_ref === ref);
+  assert.ok(line, 'the Books line carries the payment reference');
 });
