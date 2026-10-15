@@ -2386,3 +2386,8 @@ input.n { text-align: right; }
   .br-split .brdash .brdate { margin: 0; padding: 6px 12px; }
   .br-split .brdash .brfigs { grid-column: 1 / -1; margin-top: 10px; }
 }
+/* The six tiles start level with the six figures, row for row: the right
+   panel drops by the height of the Dashboard heading and the date line. */
+@media (min-width: 1000px) {
+  .br-split-r { padding-top: 117px; }
+}

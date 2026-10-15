@@ -763,4 +763,5 @@ test("Bank report's menu: Dashboard left, the six tiles right", () => {
   // One box size across both panels.
   assert.match(css, /\.br-split \.brfigs \.tile \{[^}]*height: 189px;/);
   assert.match(css, /\.br-split \.brtile \{ height: 189px;/);
+  assert.match(css, /\.br-split-r \{ padding-top: 117px; \}/, 'the tiles start level with the figures');
 });
