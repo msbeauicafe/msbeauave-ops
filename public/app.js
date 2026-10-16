@@ -18184,11 +18184,13 @@ SCREENS.itsupport = async (page) => {
         </div>
 
         <div class="panel">
-          <h3>Assigned to employees</h3>
-          <div class="dim">Every unit each employee holds — PC, laptop, phone, monitor, peripherals — and since when.
-            Click a unit to reassign it or take it back.</div>
+          <div class="acc-head"><div><h3>Assigned to employees</h3>
+            <div class="dim">Every unit each employee holds — PC, laptop, phone, monitor, peripherals — and since when.
+              Click a unit to reassign it or take it back.</div></div>
+            <button class="btn" id="as_assign" type="button">＋ Assign a unit</button></div>
           <div id="as_people" class="mt"></div>
         </div>`;
+      $('#as_assign', body).addEventListener('click', () => assignUnit());
 
       const kind = $('#as_kind', body);
       kind.addEventListener('change', () => { $('#as_tag', body).value = nextTag(kind.value); });
@@ -18279,7 +18281,8 @@ SCREENS.itsupport = async (page) => {
           return `${tag(l, k)}${a.assigned_to ? `<div class="dim">${esc(a.assigned_to)}${
             a.department ? ' · ' + esc(a.department) : ''}</div>` : ''}`; } },
       { head: '', cell: (a) => `<button class="btn line sm" data-asopen="${a.id}">Assign / update</button>` },
-    ], assets.length ? 'Nothing matches that.' : 'Nothing logged yet — add the first unit above.');
+    ], assets.length ? (af.status ? `Nothing matches that — a unit not yet given to anybody is In storage; set the last filter to Every status to see it.`
+      : 'Nothing matches that.') : 'Nothing logged yet — add the first unit above.');
     // By employee: who holds what — assigned units, and units in for repair
     // that are still somebody's.
     const held = assets.filter((a) => a.assigned_to && a.status !== 'retired' && a.status !== 'storage');
@@ -18297,6 +18300,40 @@ SCREENS.itsupport = async (page) => {
     }) : '<div class="dim">No unit is assigned to an employee yet — Assign / update on a unit gives it to somebody.</div>';
     $$('[data-asopen]', body).forEach((b) => b.addEventListener('click',
       () => assetDrawer(assets.find((a) => String(a.id) === b.dataset.asopen))));
+  };
+
+  // Give a unit to an employee straight from Assigned to employees: pick the
+  // unit (in storage, or anybody's to move), the person, their department and
+  // the date. The same save the unit's own drawer makes.
+  const assignUnit = () => {
+    const units = assets.filter((a) => a.status !== 'retired')
+      .sort((a, b) => (a.status === 'storage' ? 0 : 1) - (b.status === 'storage' ? 0 : 1) || String(a.tag).localeCompare(b.tag));
+    const people = choices.people || [];
+    const v = dialog(`
+      <h3>Assign a unit to an employee</h3>
+      <div class="acc-form mt" style="grid-template-columns:1fr 1fr">
+        <div style="grid-column:1 / -1"><label for="au_unit">Unit</label><select id="au_unit"><option value="">— Pick a unit —</option>${
+          units.map((a) => `<option value="${a.id}">${esc([a.tag, (IT_KINDS[a.kind] || [a.kind])[0], described(a), a.serial_no && `S/N ${a.serial_no}`]
+            .filter(Boolean).join(' · '))}${a.status === 'storage' ? ' — in storage' : a.assigned_to ? ` — now ${esc(a.assigned_to)}` : ''}</option>`).join('')}</select></div>
+        <div><label for="au_who">Employee</label><select id="au_who"><option value="">— Pick somebody —</option>${
+          people.map((n) => `<option>${esc(n)}</option>`).join('')}</select></div>
+        <div><label for="au_dept">Department</label><select id="au_dept"><option value="">—</option>${
+          IT_DEPARTMENTS.map((d) => `<option>${esc(d)}</option>`).join('')}</select></div>
+        <div><label for="au_on">Deployment date</label><input id="au_on" type="date" value="${localDay()}"></div>
+      </div>
+      <div class="row mt"><button class="btn" id="au_go">Assign</button></div>`, 'pr-dialog');
+    $('#au_go', v).addEventListener('click', async () => {
+      const a = assets.find((x) => String(x.id) === $('#au_unit', v).value);
+      if (!a) { notice('Pick the unit first.', 'bad'); return; }
+      if (!$('#au_who', v).value) { notice('Pick the employee.', 'bad'); return; }
+      try {
+        await PUT(`/api/it/assets/${a.id}`, { status: 'assigned', assigned_to: $('#au_who', v).value,
+          department: $('#au_dept', v).value, deployed_on: $('#au_on', v).value, notes: a.notes || '' });
+        notice(`${a.tag} assigned to ${$('#au_who', v).value} 🌸`, 'good');
+        closeDialog();
+        await drawAssets();
+      } catch (err) { whoops(err); }
+    });
   };
 
   // The side drawer: who has this unit now.
