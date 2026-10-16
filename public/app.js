@@ -17670,7 +17670,8 @@ const IT_DEPARTMENTS = ['Marketing', 'Ecommerce', 'Accounting', 'Admin', 'Wareho
 // IT's hardware masterlist (db/184). The tag prefix is the shop's own
 // convention — MSBA-LAP-001, MSBA-DESK-054 — so the next tag can be offered.
 const IT_KINDS = {
-  laptop: ['Laptop', 'LAP'], desktop: ['Desktop', 'DESK'], smartphone: ['Smartphone', 'PHN'],
+  laptop: ['Laptop', 'LAP'], desktop: ['Desktop', 'DESK'], imac: ['iMac', 'IMAC'],
+  smartphone: ['Smartphone', 'PHN'], iphone: ['iPhone', 'IPH'],
   monitor: ['Monitor', 'MON'], peripheral: ['Peripherals', 'PER'],
 };
 const IT_ASSET_STATUS = {
@@ -17956,7 +17957,7 @@ SCREENS.itsupport = async (page) => {
   // One employee's card: everything they hold — masterlist units and company
   // property — one compact line each, so a full desk fits. The rows of the
   // tab it is drawn on open their own editor; the others are shown only.
-  const IT_UNIT_ICON = { laptop: '💻', desktop: '🖥️', smartphone: '📱', monitor: '🖵', peripheral: '⌨️' };
+  const IT_UNIT_ICON = { laptop: '💻', desktop: '🖥️', imac: '🖥️', smartphone: '📱', iphone: '📱', monitor: '🖵', peripheral: '⌨️' };
   const heldUnits = (list) => list.filter((a) => a.assigned_to && a.status !== 'retired' && a.status !== 'storage');
   const heldProps = (list) => list.filter((x) => x.assigned_to && x.condition !== 'disposed');
   const holdCard = (name, units, items, opens) => {
