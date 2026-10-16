@@ -18134,6 +18134,7 @@ SCREENS.itsupport = async (page) => {
     assets = assets || [];
     if (!$('#as_list', body)) {
       body.innerHTML = `${asSwitch('list')}
+        <div id="as_counts"></div>
         <div class="panel">
           <div class="itsteps"><span>📦 Receive</span><span>✂️ Unbox</span>
             <span>🏷️ Asset-tag</span><span>📋 Log</span></div>
@@ -18168,8 +18169,6 @@ SCREENS.itsupport = async (page) => {
             <div class="wide"><button class="btn itsendbig" id="as_go" type="submit">⚡ Quick add &amp; clear</button></div>
           </form>
         </div>
-
-        <div id="as_counts"></div>
 
         <div class="panel">
           <h3>Masterlist</h3>

@@ -446,5 +446,7 @@ test('every IT support tab opens on its own rose overview card', () => {
     assert.ok(app.includes(t), t);
   }
   const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  // The Masterlist's card sits on top, above Intake & unboxing.
+  assert.match(app, /\$\{asSwitch\('list'\)\}\s*<div id="as_counts"><\/div>\s*<div class="panel">\s*<div class="itsteps">/);
   assert.match(css, /\.itov-card \{ background: linear-gradient\(135deg, var\(--rose-deep\), var\(--rose-primary\)\);/);
 });
