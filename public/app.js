@@ -18644,7 +18644,7 @@ SCREENS.itsupport = async (page) => {
       ])}
       <div class="panel">
         <div class="acc-head"><div><h3>Company property</h3>
-          <div class="dim">Devices, appliances and furniture — where each one is, who uses it, and its state. Click a room to see what is in it.</div></div>
+          <div class="dim">Devices, appliances and furniture — where each one is, who uses it, and its state. Click a room to open it: what is in it, and its photos.</div></div>
           <div class="row" style="gap:8px;flex:0 0 auto"><button class="btn quiet" id="pr_loc">＋ Location</button>
             <button class="btn" id="pr_new">＋ Add item</button></div></div>
         <div class="pr-rooms mt">${propLocs.map((l) => {
@@ -18718,9 +18718,9 @@ SCREENS.itsupport = async (page) => {
     $('#pr_fcat', body).addEventListener('change', (e) => { pf.cat = e.target.value; drawList(); });
     $('#pr_fcond', body).addEventListener('change', (e) => { pf.cond = e.target.value; drawList(); });
     $('#pr_fwho', body).addEventListener('change', (e) => { pf.who = e.target.value; drawList(); });
-    $$('[data-prloc]', body).forEach((b) => b.addEventListener('click', () => {
-      pf.loc = pf.loc === b.dataset.prloc ? '' : b.dataset.prloc; redraw();
-    }));
+    // A room card opens the room: what is in it, and its photos.
+    $$('[data-prloc]', body).forEach((b) => b.addEventListener('click', () =>
+      propRoom(propLocs.find((l) => String(l.id) === b.dataset.prloc)).catch(whoops)));
     $('#pr_new', body).addEventListener('click', () => propEdit(null));
     $('#pr_loc', body).addEventListener('click', async () => {
       const name = prompt('Name the new location (e.g. 3rd floor conference room):');
@@ -18732,6 +18732,61 @@ SCREENS.itsupport = async (page) => {
       const o = e.target.closest('[data-propen]');
       if (o) propEdit(props.find((x) => String(x.id) === o.dataset.propen));
     });
+  };
+
+  // One room, opened: everything in it, and its photos — each one zoomable,
+  // each one of the whole room or of one item in it (db/198).
+  const propRoom = async (loc) => {
+    if (!loc) return;
+    const files = (await GET(`/api/it/property-locations/${loc.id}/files`)) || [];
+    const here = props.filter((x) => x.location_id === loc.id && x.condition !== 'disposed');
+    const v = dialog(`
+      <h3>🏢 ${esc(loc.name)}</h3>
+      <div class="dim">${count(here.reduce((t, x) => t + Number(x.qty || 1), 0))} item${here.length === 1 ? '' : 's'} here ·
+        ${count(files.length)} photo${files.length === 1 ? '' : 's'}</div>
+      <h4 class="mt">What is here</h4>
+      ${here.length ? `<div class="pr-roomitems">${here.map((x) => `<button type="button" class="hold-row" data-roomitem="${x.id}">
+        <span>${IT_PROP_CATS[x.category]?.[2] || ''} ${esc(x.item)}${x.qty > 1 ? ` ×${count(x.qty)}` : ''}</span>
+        <span class="dim">${esc(x.tag)} · ${x.assigned_to ? esc(x.assigned_to) : 'Shared'}${
+          [x.brand, x.model].filter(Boolean).length ? ` · ${esc([x.brand, x.model].filter(Boolean).join(' '))}` : ''}</span>
+        ${x.condition !== 'good' ? tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey'])) : ''}</button>`).join('')}</div>`
+        : '<div class="dim">Nothing is logged in this room yet.</div>'}
+      <h4 class="mt">Photos</h4>
+      <div class="pr-upload">
+        <div><label for="prr_files">Add photos</label><input id="prr_files" type="file" accept="image/*" multiple></div>
+        <div><label for="prr_item">Of which item</label><select id="prr_item"><option value="">The whole room</option>${here.map((x) =>
+          `<option value="${x.id}">${esc(`${x.tag} · ${x.item}`)}</option>`).join('')}</select></div>
+        <div><label for="prr_cap">Caption</label><input id="prr_cap" type="text" placeholder="Front view, serial sticker…"></div>
+        <div><label>&nbsp;</label><button class="btn" id="prr_up">⤒ Upload</button></div>
+      </div>
+      <div class="pr-gallery mt">${files.map((f) => `
+        <figure><img src="/api/it/property-files/${f.id}" alt="" loading="lazy"
+          data-itzoom="/api/it/property-files/${f.id}" data-itzoom-cap="${esc([loc.name, f.tag && `${f.tag} · ${f.item}`, f.caption].filter(Boolean).join(' · '))}">
+          <figcaption><b>${esc(f.tag ? `${f.tag} · ${f.item}` : 'Whole room')}</b>${f.caption ? `<span>${esc(f.caption)}</span>` : ''}
+            <span class="dim">${when(f.uploaded_at)}</span>
+            <button class="linkbtn" data-prdrop="${f.id}" aria-label="Remove photo">✕ Remove</button></figcaption></figure>`).join('')
+        || '<div class="dim">No photos yet — add some above. Click a photo to zoom in.</div>'}</div>`, 'wide pr-dialog');
+    $$('[data-roomitem]', v).forEach((b) => b.addEventListener('click', () =>
+      propEdit(props.find((x) => String(x.id) === b.dataset.roomitem))));
+    $('#prr_up', v).addEventListener('click', async () => {
+      const picked = [...($('#prr_files', v).files || [])];
+      if (!picked.length) { notice('Pick one or more photos first.', 'bad'); return; }
+      const btn = $('#prr_up', v);
+      btn.disabled = true; btn.textContent = 'Uploading…';
+      try {
+        for (const f of picked) {
+          await POST(`/api/it/property-locations/${loc.id}/files`, {
+            dataUrl: await shrink(f, 1600), property_id: $('#prr_item', v).value || null, caption: $('#prr_cap', v).value });
+        }
+        notice(`${picked.length} photo${picked.length === 1 ? '' : 's'} added 🌸`, 'good');
+        await propRoom(loc);
+      } catch (err) { whoops(err); btn.disabled = false; btn.textContent = '⤒ Upload'; }
+    });
+    $$('[data-prdrop]', v).forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Remove this photo?')) return;
+      try { await DELETE(`/api/it/property-files/${b.dataset.prdrop}`); await propRoom(loc); }
+      catch (err) { whoops(err); }
+    }));
   };
 
   // One item, to add or to change. A new room, person or condition is
