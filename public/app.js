@@ -18754,23 +18754,29 @@ SCREENS.itsupport = async (page) => {
       <h4 class="mt">Photos</h4>
       <div class="pr-upload">
         <div><label for="prr_files">Add photos</label><input id="prr_files" type="file" accept="image/*" multiple></div>
-        <div><label for="prr_item">Of which item</label><select id="prr_item"><option value="">The whole room</option>${here.map((x) =>
+        <div><label for="prr_cap">Name</label><input id="prr_cap" type="text" placeholder="Fire alarm, CCTV camera, aircon…"></div>
+        <div><label for="prr_item">Item on the register (optional)</label><select id="prr_item"><option value="">— None, just the name —</option>${here.map((x) =>
           `<option value="${x.id}">${esc(`${x.tag} · ${x.item}`)}</option>`).join('')}</select></div>
-        <div><label for="prr_cap">Caption</label><input id="prr_cap" type="text" placeholder="Front view, serial sticker…"></div>
         <div><label>&nbsp;</label><button class="btn" id="prr_up">⤒ Upload</button></div>
       </div>
       <div class="pr-gallery mt">${files.map((f) => `
         <figure><img src="/api/it/property-files/${f.id}" alt="" loading="lazy"
-          data-itzoom="/api/it/property-files/${f.id}" data-itzoom-cap="${esc([loc.name, f.tag && `${f.tag} · ${f.item}`, f.caption].filter(Boolean).join(' · '))}">
-          <figcaption><b>${esc(f.tag ? `${f.tag} · ${f.item}` : 'Whole room')}</b>${f.caption ? `<span>${esc(f.caption)}</span>` : ''}
+          data-itzoom="/api/it/property-files/${f.id}" data-itzoom-cap="${esc([f.caption || f.item || 'Photo', loc.name, f.tag].filter(Boolean).join(' · '))}">
+          <figcaption><b class="pr-photoname">${esc(f.caption || f.item || 'Unnamed photo')}</b>${f.tag ? `<span class="dim">${esc(`${f.tag} · ${f.item}`)}</span>` : ''}
             <span class="dim">${when(f.uploaded_at)}</span>
-            <button class="linkbtn" data-prdrop="${f.id}" aria-label="Remove photo">✕ Remove</button></figcaption></figure>`).join('')
+            <span class="pr-photoacts"><button class="linkbtn" data-prname="${f.id}">✎ Rename</button>
+              <button class="linkbtn" data-prdrop="${f.id}" aria-label="Remove photo">✕ Remove</button></span></figcaption></figure>`).join('')
         || '<div class="dim">No photos yet — add some above. Click a photo to zoom in.</div>'}</div>`, 'wide pr-dialog');
     $$('[data-roomitem]', v).forEach((b) => b.addEventListener('click', () =>
       propEdit(props.find((x) => String(x.id) === b.dataset.roomitem))));
     $('#prr_up', v).addEventListener('click', async () => {
       const picked = [...($('#prr_files', v).files || [])];
       if (!picked.length) { notice('Pick one or more photos first.', 'bad'); return; }
+      // A photo has a name — what is in it — unless it is of an item on the
+      // register, which names it.
+      if (!$('#prr_cap', v).value.trim() && !$('#prr_item', v).value) {
+        notice('Name the photo first — e.g. Fire alarm.', 'bad'); $('#prr_cap', v).focus(); return;
+      }
       const btn = $('#prr_up', v);
       btn.disabled = true; btn.textContent = 'Uploading…';
       try {
@@ -18782,6 +18788,18 @@ SCREENS.itsupport = async (page) => {
         await propRoom(loc);
       } catch (err) { whoops(err); btn.disabled = false; btn.textContent = '⤒ Upload'; }
     });
+    // Picking an item names the photo after it, if no name is typed yet.
+    $('#prr_item', v).addEventListener('change', (e) => {
+      const x = here.find((i) => String(i.id) === e.target.value);
+      if (x && !$('#prr_cap', v).value.trim()) $('#prr_cap', v).value = x.item;
+    });
+    $$('[data-prname]', v).forEach((b) => b.addEventListener('click', async () => {
+      const f = files.find((x) => String(x.id) === b.dataset.prname);
+      const name = prompt('Name this photo (e.g. Fire alarm):', f?.caption || f?.item || '');
+      if (!name || !name.trim()) return;
+      try { await PUT(`/api/it/property-files/${b.dataset.prname}`, { name }); await propRoom(loc); }
+      catch (err) { whoops(err); }
+    }));
     $$('[data-prdrop]', v).forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Remove this photo?')) return;
       try { await DELETE(`/api/it/property-files/${b.dataset.prdrop}`); await propRoom(loc); }

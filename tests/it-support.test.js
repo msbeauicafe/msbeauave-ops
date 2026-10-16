@@ -474,6 +474,17 @@ test("a room's photos: attached, of an item or the room, served, removed — IT'
   assert.notEqual((await fetch(`${base}/api/it/property-files/${up.data.id}`, { headers: { Cookie: other } })).status, 200);
   assert.notEqual((await POST(other, `/api/it/property-locations/${pantry}/files`, { dataUrl: png })).status, 200);
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_property_files'), /permission denied/);
+  // Every photo has a name (db/199): typed, or the item's own; renamed later.
+  assert.notEqual((await POST(it, `/api/it/property-locations/${pantry}/files`, { dataUrl: png })).status, 200,
+    'a photo of the whole room is named');
+  const byItem = await POST(it, `/api/it/property-locations/${pantry}/files`, { dataUrl: png, property_id: itemId });
+  assert.equal((await GET(it, `/api/it/property-locations/${pantry}/files`)).data.find((f) => f.id === byItem.data.id).caption,
+    'Water cooler', 'named after its item');
+  assert.equal((await PUT(it, `/api/it/property-files/${byItem.data.id}`, { name: 'Fire alarm' })).status, 200);
+  assert.equal((await GET(it, `/api/it/property-locations/${pantry}/files`)).data.find((f) => f.id === byItem.data.id).caption,
+    'Fire alarm');
+  assert.notEqual((await PUT(it, `/api/it/property-files/${byItem.data.id}`, { name: ' ' })).status, 200);
+  assert.notEqual((await PUT(other, `/api/it/property-files/${byItem.data.id}`, { name: 'X' })).status, 200);
   assert.equal((await request(it, 'DELETE', `/api/it/property-files/${up.data.id}`)).status, 200);
   assert.ok(!(await GET(it, `/api/it/property-locations/${pantry}/files`)).data.some((f) => f.id === up.data.id));
   assert.match(app, /data-itzoom="\/api\/it\/property-files\/\$\{f\.id\}"/, 'zoomable in the IT viewer');
