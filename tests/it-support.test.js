@@ -419,3 +419,18 @@ test('company property: by room and person, moves kept, rooms picked, IT\'s alon
 test('Hardware assets has a Company property tab', () => {
   assert.match(app, /data-asview="prop"[^>]*>🏢 Company property<\/button>/);
 });
+
+// Office supplies (db/197) is a fourth kind of company property, and both the
+// Masterlist and Company property list what each employee holds.
+test('office supplies are company property; both registers show what each employee holds', async () => {
+  const it = await signInIT();
+  const tag = `MSBA-SUP-${process.pid}${seq++}`;
+  const r = await POST(it, '/api/it/property', { category: 'supplies', tag, item: 'Stapler', assigned_to: 'Charmaine' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await GET(it, '/api/it/property')).data.items.find((x) => x.id === r.data.id).category, 'supplies');
+  assert.notEqual((await POST(it, '/api/it/property', { category: 'snacks', tag: `${tag}X`, item: 'Chips' })).status, 200);
+  assert.match(app, /supplies: \['Office supplies', 'SUP', '✂️'\]/);
+  assert.match(app, /'Paper shredder'/);
+  assert.match(app, /<h3>Assigned to employees<\/h3>/);
+  assert.match(app, /<h3>By employee<\/h3>/);
+});

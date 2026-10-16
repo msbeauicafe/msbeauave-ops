@@ -17898,16 +17898,18 @@ const IT_ACC_EQUIPMENT = ['Laptop', 'AIO PC', 'Desktop PC', 'Monitor', 'Keyboard
 // IT's company property register (db/196): devices, appliances and furniture
 // by room and person. The tag prefix follows the masterlist's convention.
 const IT_PROP_CATS = { device: ['Device', 'DEV', '🖨️'], appliance: ['Appliance', 'APP', '🧊'],
-  furniture: ['Furniture', 'FUR', '🪑'] };
+  furniture: ['Furniture', 'FUR', '🪑'], supplies: ['Office supplies', 'SUP', '✂️'] };
 const IT_PROP_COND = { good: ['Good', 'green'], fair: ['Fair', 'grey'], repair: ['Needs repair', 'amber'],
   broken: ['Broken', 'red'], disposed: ['Disposed', 'grey'] };
 // What each kind usually is; the item can still be named anything.
 const IT_PROP_ITEMS = {
   device: ['Printer', 'Router', 'CCTV camera', 'Telephone', 'Biometric scanner', 'Projector', 'TV', 'Speaker', 'UPS'],
   appliance: ['Water cooler', 'Water dispenser', 'Refrigerator', 'Microwave', 'Electric fan', 'Aircon', 'Coffee maker',
-    'Electric kettle', 'Rice cooker'],
+    'Electric kettle', 'Rice cooker', 'Paper shredder', 'Laminator'],
   furniture: ['Office chair', 'Office table', 'Drawer', 'Cabinet', 'Printer cabinet', 'Filing cabinet', 'Shelf', 'Sofa',
     'Monoblock chair'],
+  supplies: ['Stapler', 'Scissors', 'Puncher', 'Tape dispenser', 'Paper cutter', 'Calculator', 'Stamp pad',
+    'Staple remover', 'Ruler', 'Pen holder'],
 };
 
 const itReplyBox = (t, label) => `
@@ -18141,6 +18143,13 @@ SCREENS.itsupport = async (page) => {
               .map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select>
           </div>
           <div id="as_list" class="mt"></div>
+        </div>
+
+        <div class="panel">
+          <h3>Assigned to employees</h3>
+          <div class="dim">Every unit each employee holds — PC, laptop, phone, monitor, peripherals — and since when.
+            Click a unit to reassign it or take it back.</div>
+          <div id="as_people" class="mt"></div>
         </div>`;
 
       const kind = $('#as_kind', body);
@@ -18233,6 +18242,21 @@ SCREENS.itsupport = async (page) => {
             a.department ? ' · ' + esc(a.department) : ''}</div>` : ''}`; } },
       { head: '', cell: (a) => `<button class="btn line sm" data-asopen="${a.id}">Assign / update</button>` },
     ], assets.length ? 'Nothing matches that.' : 'Nothing logged yet — add the first unit above.');
+    // By employee: who holds what — assigned units, and units in for repair
+    // that are still somebody's.
+    const held = assets.filter((a) => a.assigned_to && a.status !== 'retired' && a.status !== 'storage');
+    const holders = [...new Set(held.map((a) => a.assigned_to))].sort();
+    $('#as_people', body).innerHTML = holders.length ? `<div class="hold-grid">${holders.map((name) => {
+      const list = held.filter((a) => a.assigned_to === name);
+      return `<div class="acc-holder"><div class="acc-holdhd"><b>${esc(name)}</b>
+        <span class="dim">${esc(list.find((a) => a.department)?.department || '')}</span>
+        <span class="tag pink">${count(list.length)} unit${list.length === 1 ? '' : 's'}</span></div>
+        ${list.map((a) => `<button type="button" class="hold-row" data-asopen="${a.id}">
+          <span>${esc((IT_KINDS[a.kind] || [a.kind])[0])} · ${esc(described(a))}</span>
+          <span class="dim">${esc(a.tag)}${a.serial_no ? ` · S/N ${esc(a.serial_no)}` : ''}${a.deployed_on
+            ? ` · since ${onDay(String(a.deployed_on).slice(0, 10))}` : ''}</span>
+          ${a.status === 'repair' ? tag('Under repair', 'amber') : ''}</button>`).join('')}</div>`;
+    }).join('')}</div>` : '<div class="dim">No unit is assigned to an employee yet — Assign / update on a unit gives it to somebody.</div>';
     $$('[data-asopen]', body).forEach((b) => b.addEventListener('click',
       () => assetDrawer(assets.find((a) => String(a.id) === b.dataset.asopen))));
   };
@@ -18575,7 +18599,7 @@ SCREENS.itsupport = async (page) => {
     body.innerHTML = `${asSwitch('prop')}
       <div class="itstats panel pr-stats">
         <div><span>Items in use</span><b>${count(qtyOf(live))}</b></div>
-        ${Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => `<div><span>${i} ${l === 'Furniture' ? l : `${l}s`}</span>
+        ${Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => `<div><span>${i} ${['Furniture', 'Office supplies'].includes(l) ? l : `${l}s`}</span>
           <b>${count(qtyOf(live.filter((x) => x.category === k)))}</b></div>`).join('')}
         <div><span>Needs attention</span><b class="red">${count(qtyOf(live.filter((x) => ['repair', 'broken'].includes(x.condition))))}</b></div>
       </div>
@@ -18606,7 +18630,26 @@ SCREENS.itsupport = async (page) => {
               `<option${pf.who === n ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
         </div>
         <div id="pr_list" class="mt"></div>
+      </div>
+      <div class="panel">
+        <h3>By employee</h3>
+        <div class="dim">What each employee has been given — their drawer, chair, table, stapler, scissors… Click an item to open it.</div>
+        <div id="pr_people" class="mt"></div>
       </div>`;
+    const mine = [...new Set(live.filter((x) => x.assigned_to).map((x) => x.assigned_to))].sort();
+    $('#pr_people', body).innerHTML = mine.length ? `<div class="hold-grid">${mine.map((name) => {
+      const list = live.filter((x) => x.assigned_to === name);
+      return `<div class="acc-holder"><div class="acc-holdhd"><b>${esc(name)}</b>
+        <span class="tag pink">${count(qtyOf(list))} item${qtyOf(list) === 1 ? '' : 's'}</span></div>
+        ${list.map((x) => `<button type="button" class="hold-row" data-propen="${x.id}">
+          <span>${IT_PROP_CATS[x.category]?.[2] || ''} ${esc(x.item)}${x.qty > 1 ? ` ×${count(x.qty)}` : ''}</span>
+          <span class="dim">${esc(x.tag)} · ${esc(x.location || 'No location')}</span>
+          ${x.condition !== 'good' ? tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey'])) : ''}</button>`).join('')}</div>`;
+    }).join('')}</div>` : '<div class="dim">Nothing is assigned to an employee yet — pick one under Used by when you add an item.</div>';
+    $('#pr_people', body).addEventListener('click', (e) => {
+      const o = e.target.closest('[data-propen]');
+      if (o) propEdit(props.find((x) => String(x.id) === o.dataset.propen));
+    });
 
     const drawList = () => {
       const q = pf.q.toLowerCase();
