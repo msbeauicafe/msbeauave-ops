@@ -2703,3 +2703,15 @@ input.n { text-align: right; }
 
 .pr-upload { grid-template-columns: 1.3fr 1fr 1.2fr .9fr auto; }
 .pr-gallery .pr-track { align-self: flex-start; margin: 3px 0; }
+
+/* Hardware assets: an employee's card, one compact line per thing held. */
+.hold-card .acc-holdhd b { font-size: .9rem; }
+.hold-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%;
+  background: none; border: none; border-top: 1px solid var(--rose-blush); padding: 4px 2px; font: inherit;
+  font-size: .78rem; color: var(--ink); text-align: left; cursor: default; }
+.hold-line[data-asopen], .hold-line[data-propen] { cursor: pointer; }
+.hold-line[data-asopen]:hover, .hold-line[data-propen]:hover { background: var(--rose-blush); }
+.hold-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.hold-tag { flex: none; font-size: .7rem; color: var(--muted); }
+.acc-head > div:first-child { flex: 1 1 360px; min-width: 0; }
+.acc-head > .btn, .acc-head > .row { flex: none; }

@@ -17946,6 +17946,34 @@ SCREENS.itsupport = async (page) => {
       .map(([b, list]) => `<div class="hold-branch"><h4>🏬 ${esc(b)} <span class="dim">· ${count(list.length)} employee${
         list.length === 1 ? '' : 's'}</span></h4><div class="hold-grid">${list.map(card).join('')}</div></div>`).join('');
   };
+  // One employee's card: everything they hold — masterlist units and company
+  // property — one compact line each, so a full desk fits. The rows of the
+  // tab it is drawn on open their own editor; the others are shown only.
+  const IT_UNIT_ICON = { laptop: '💻', desktop: '🖥️', smartphone: '📱', monitor: '🖵', peripheral: '⌨️' };
+  const heldUnits = (list) => list.filter((a) => a.assigned_to && a.status !== 'retired' && a.status !== 'storage');
+  const heldProps = (list) => list.filter((x) => x.assigned_to && x.condition !== 'disposed');
+  const holdCard = (name, units, items, opens) => {
+    const n = units.length + items.reduce((t, x) => t + Number(x.qty || 1), 0);
+    const dept = units.find((a) => a.department)?.department || '';
+    return `<div class="acc-holder hold-card"><div class="acc-holdhd"><b>${esc(name)}</b>
+        ${dept ? `<span class="dim">${esc(dept)}</span>` : ''}
+        <span class="tag pink">${count(n)} item${n === 1 ? '' : 's'}</span></div>
+      ${units.map((a) => `<button type="button" class="hold-line" ${opens === 'units' ? `data-asopen="${a.id}"` : 'tabindex="-1"'}
+        title="${esc([a.tag, a.serial_no && `S/N ${a.serial_no}`, a.deployed_on && `since ${onDay(String(a.deployed_on).slice(0, 10))}`].filter(Boolean).join(' · '))}">
+        <span class="hold-what">${IT_UNIT_ICON[a.kind] || '🖥️'} ${esc((IT_KINDS[a.kind] || [a.kind])[0])} · ${esc(described(a))}</span>
+        <span class="hold-tag">${esc(a.tag)}${a.status === 'repair' ? ' · under repair' : ''}</span></button>`).join('')}
+      ${items.map((x) => `<button type="button" class="hold-line" ${opens === 'props' ? `data-propen="${x.id}"` : 'tabindex="-1"'}
+        title="${esc([x.tag, x.location].filter(Boolean).join(' · '))}">
+        <span class="hold-what">${IT_PROP_CATS[x.category]?.[2] || ''} ${esc(x.item)}${x.qty > 1 ? ` ×${count(x.qty)}` : ''}</span>
+        <span class="hold-tag">${esc(x.tag)}${x.condition !== 'good' ? ` · ${esc(IT_PROP_COND[x.condition]?.[0] || x.condition)}` : ''}</span></button>`).join('')}
+    </div>`;
+  };
+  const holdCards = (unitList, propList, opens) => {
+    const u = heldUnits(unitList); const p = heldProps(propList);
+    const names = [...new Set([...u.map((a) => a.assigned_to), ...p.map((x) => x.assigned_to)])].sort();
+    return names.length ? byBranch(names, (name) => holdCard(name, u.filter((a) => a.assigned_to === name),
+      p.filter((x) => x.assigned_to === name), opens)) : '';
+  };
   const departments = IT_DEPARTMENTS;
 
   // Each tab opens on an overview card in the Financial overview's rose look:
@@ -18130,8 +18158,10 @@ SCREENS.itsupport = async (page) => {
   const described = (a) => [a.brand, a.model].filter(Boolean).join(' ');
 
   const drawAssets = async () => {
-    [assets] = await Promise.all([GET('/api/it/assets'), loadBranches()]);
-    assets = assets || [];
+    // Company property too: an employee's card lists everything they hold.
+    const [gotAssets, gotProps] = await Promise.all([GET('/api/it/assets'), GET('/api/it/property').catch(() => null), loadBranches()]);
+    assets = gotAssets || [];
+    if (gotProps) { props = gotProps.items || []; propLocs = gotProps.locations || []; }
     if (!$('#as_list', body)) {
       body.innerHTML = `${asSwitch('list')}
         <div id="as_counts"></div>
@@ -18185,8 +18215,8 @@ SCREENS.itsupport = async (page) => {
 
         <div class="panel">
           <div class="acc-head"><div><h3>Assigned to employees</h3>
-            <div class="dim">Every unit each employee holds — PC, laptop, phone, monitor, peripherals — and since when.
-              Click a unit to reassign it or take it back.</div></div>
+            <div class="dim">Everything each employee holds — PC, laptop, phone, peripherals, and the company property
+              given to them. Click a unit to reassign it or take it back; hover a line for its tag and date.</div></div>
             <button class="btn" id="as_assign" type="button">＋ Assign a unit</button></div>
           <div id="as_people" class="mt"></div>
         </div>`;
@@ -18285,19 +18315,8 @@ SCREENS.itsupport = async (page) => {
       : 'Nothing matches that.') : 'Nothing logged yet — add the first unit above.');
     // By employee: who holds what — assigned units, and units in for repair
     // that are still somebody's.
-    const held = assets.filter((a) => a.assigned_to && a.status !== 'retired' && a.status !== 'storage');
-    const holders = [...new Set(held.map((a) => a.assigned_to))].sort();
-    $('#as_people', body).innerHTML = holders.length ? byBranch(holders, (name) => {
-      const list = held.filter((a) => a.assigned_to === name);
-      return `<div class="acc-holder"><div class="acc-holdhd"><b>${esc(name)}</b>
-        <span class="dim">${esc(list.find((a) => a.department)?.department || '')}</span>
-        <span class="tag pink">${count(list.length)} unit${list.length === 1 ? '' : 's'}</span></div>
-        ${list.map((a) => `<button type="button" class="hold-row" data-asopen="${a.id}">
-          <span>${esc((IT_KINDS[a.kind] || [a.kind])[0])} · ${esc(described(a))}</span>
-          <span class="dim">${esc(a.tag)}${a.serial_no ? ` · S/N ${esc(a.serial_no)}` : ''}${a.deployed_on
-            ? ` · since ${onDay(String(a.deployed_on).slice(0, 10))}` : ''}</span>
-          ${a.status === 'repair' ? tag('Under repair', 'amber') : ''}</button>`).join('')}</div>`;
-    }) : '<div class="dim">No unit is assigned to an employee yet — Assign / update on a unit gives it to somebody.</div>';
+    $('#as_people', body).innerHTML = holdCards(assets, props, 'units')
+      || '<div class="dim">No unit is assigned to an employee yet — Assign / update on a unit gives it to somebody.</div>';
     $$('[data-asopen]', body).forEach((b) => b.addEventListener('click',
       () => assetDrawer(assets.find((a) => String(a.id) === b.dataset.asopen))));
   };
@@ -18667,8 +18686,9 @@ SCREENS.itsupport = async (page) => {
   };
 
   const drawProp = async () => {
-    const [got] = await Promise.all([GET('/api/it/property'), loadBranches()]);
+    const [got, gotAssets] = await Promise.all([GET('/api/it/property'), GET('/api/it/assets').catch(() => null), loadBranches()]);
     const data = got || {};
+    if (gotAssets) assets = gotAssets;
     props = data.items || []; propLocs = data.locations || [];
     const live = props.filter((x) => x.condition !== 'disposed');
     const qtyOf = (list) => list.reduce((t, x) => t + Number(x.qty || 1), 0);
@@ -18709,19 +18729,10 @@ SCREENS.itsupport = async (page) => {
       </div>
       <div class="panel">
         <h3>By employee</h3>
-        <div class="dim">What each employee has been given — their drawer, chair, table, stapler, scissors… Click an item to open it.</div>
+        <div class="dim">Everything each employee holds — their drawer, chair, table, stapler, and their PC, laptop or phone from the masterlist. Click an item to open it.</div>
         <div id="pr_people" class="mt"></div>
       </div>`;
-    const mine = [...new Set(live.filter((x) => x.assigned_to).map((x) => x.assigned_to))].sort();
-    $('#pr_people', body).innerHTML = mine.length ? byBranch(mine, (name) => {
-      const list = live.filter((x) => x.assigned_to === name);
-      return `<div class="acc-holder"><div class="acc-holdhd"><b>${esc(name)}</b>
-        <span class="tag pink">${count(qtyOf(list))} item${qtyOf(list) === 1 ? '' : 's'}</span></div>
-        ${list.map((x) => `<button type="button" class="hold-row" data-propen="${x.id}">
-          <span>${IT_PROP_CATS[x.category]?.[2] || ''} ${esc(x.item)}${x.qty > 1 ? ` ×${count(x.qty)}` : ''}</span>
-          <span class="dim">${esc(x.tag)} · ${esc(x.location || 'No location')}</span>
-          ${x.condition !== 'good' ? tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey'])) : ''}</button>`).join('')}</div>`;
-    }) : '<div class="dim">Nothing is assigned to an employee yet — pick one under Used by when you add an item.</div>';
+    $('#pr_people', body).innerHTML = holdCards(assets, props, 'props') || '<div class="dim">Nothing is assigned to an employee yet — pick one under Used by when you add an item.</div>';
     $('#pr_people', body).addEventListener('click', (e) => {
       const o = e.target.closest('[data-propen]');
       if (o) propEdit(props.find((x) => String(x.id) === o.dataset.propen));
