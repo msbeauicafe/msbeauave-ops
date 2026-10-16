@@ -489,3 +489,9 @@ test("a room's photos: attached, of an item or the room, served, removed — IT'
   assert.ok(!(await GET(it, `/api/it/property-locations/${pantry}/files`)).data.some((f) => f.id === up.data.id));
   assert.match(app, /data-itzoom="\/api\/it\/property-files\/\$\{f\.id\}"/, 'zoomable in the IT viewer');
 });
+
+test("a room's photo can be tracked as an item there, so the room counts it", () => {
+  assert.match(app, /<option value="new">＋ A new item in this room<\/option>/);
+  assert.match(app, /const propTrack = async \(name, kind, loc\) =>/);
+  assert.match(app, /data-prtrack="\$\{f\.id\}">＋ Track as an item<\/button>/);
+});
