@@ -17948,6 +17948,24 @@ SCREENS.itsupport = async (page) => {
   };
   const departments = IT_DEPARTMENTS;
 
+  // Each tab opens on an overview card in the Financial overview's rose look:
+  // a heading, the company, and its figures as white tiles. IT support's own
+  // itov-*. tiles: [label, value, line under it, kind, id].
+  const itOv = (title, icon, tiles) => `
+    <div class="itov-card">
+      <div class="itov-head"><span class="itov-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></span>
+        <div><h3>${title}</h3><div class="itov-co">MS BEAU AVE ENTERPRISES OPC</div></div>
+        <span class="itov-year">${localDay().slice(0, 4)}</span></div>
+      <div class="itov-tiles">${tiles.map(([label, value, sub, kind, id]) => `
+        <div class="itov-tile ${kind || ''}"><span>${label}</span><b${id ? ` id="${id}"` : ''}>${value}</b>${sub ? `<small>${sub}</small>` : ''}</div>`).join('')}</div>
+    </div>`;
+  const IT_OV_ICON = {
+    desk: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    box: '<path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/>',
+    doc: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
+    building: '<path d="M4 21V5l8-3v19M12 8h8v13M8 8v.01M8 12v.01M8 16v.01M16 12v.01M16 16v.01M2 21h20"/>',
+  };
+
   page.innerHTML = `
     <div class="ithead">
       <div class="head" style="margin:0"><h2>🖥️ IT support</h2>
@@ -17956,11 +17974,12 @@ SCREENS.itsupport = async (page) => {
       <div class="itswitch" role="tablist">${views.map(([k, l]) => `
         <button data-itview="${k}" role="tab">${l}</button>`).join('')}</div>
     </div>
-    <div class="itstats panel" id="it_stats">
-      <div><span>Total logs</span><b id="it_total">0</b></div>
-      <div><span>Active backlog</span><b id="it_active" class="amber">0</b></div>
-      <div><span>Critical tasks</span><b id="it_critical" class="red">0</b></div>
-    </div>
+    <div id="it_stats">${itOv(isIT ? 'IT SUPPORT OVERVIEW' : 'MY IT REQUESTS', IT_OV_ICON.desk, [
+      ['Total logs', '0', 'Every ticket filed', '', 'it_total'],
+      ['Active backlog', '0', 'Pending or in progress', 'warn', 'it_active'],
+      ['Critical tasks', '0', 'High urgency, still open', 'bad', 'it_critical'],
+      ['Resolved', '0', 'Closed tickets', 'info', 'it_resolved'],
+    ])}</div>
     <div id="it_body"></div>`;
 
   const body = $('#it_body');
@@ -17969,6 +17988,7 @@ SCREENS.itsupport = async (page) => {
     $('#it_total').textContent = tickets.length;
     $('#it_active').textContent = tickets.filter((t) => t.status !== 'resolved').length;
     $('#it_critical').textContent = tickets.filter((t) => t.status !== 'resolved' && t.urgency === 'high').length;
+    $('#it_resolved').textContent = tickets.filter((t) => t.status === 'resolved').length;
   };
 
   const card = (t) => {
@@ -18149,7 +18169,7 @@ SCREENS.itsupport = async (page) => {
           </form>
         </div>
 
-        <div class="itstats panel" id="as_counts"></div>
+        <div id="as_counts"></div>
 
         <div class="panel">
           <h3>Masterlist</h3>
@@ -18233,13 +18253,13 @@ SCREENS.itsupport = async (page) => {
       `<option value="${esc(b)}"${b === af.brand ? ' selected' : ''}>${esc(b)}</option>`).join('');
 
     const n = (st) => assets.filter((a) => a.status === st).length;
-    $('#as_counts', body).style.gridTemplateColumns = 'repeat(5, 1fr)';
-    $('#as_counts', body).innerHTML = `
-      <div><span>On the masterlist</span><b>${assets.length}</b></div>
-      <div><span>In storage</span><b>${n('storage')}</b></div>
-      <div><span>Assigned</span><b>${n('assigned')}</b></div>
-      <div><span>Under repair</span><b class="amber">${n('repair')}</b></div>
-      <div><span>Retired</span><b class="red">${n('retired')}</b></div>`;
+    $('#as_counts', body).innerHTML = itOv('HARDWARE OVERVIEW', IT_OV_ICON.box, [
+      ['On the masterlist', count(assets.length), 'Every unit logged'],
+      ['In storage', count(n('storage')), 'Ready to assign', 'info'],
+      ['Assigned', count(n('assigned')), `To ${count(new Set(assets.filter((a) => a.status === 'assigned').map((a) => a.assigned_to)).size)} employees`],
+      ['Under repair', count(n('repair')), 'Out for fixing', 'warn'],
+      ['Retired', count(n('retired')), 'Disposed of', 'bad'],
+    ]);
 
     const q = af.q.trim().toLowerCase();
     const rows = assets.filter((a) => (!af.kind || a.kind === af.kind)
@@ -18407,12 +18427,12 @@ SCREENS.itsupport = async (page) => {
     const out = accForms.flatMap((f) => accOut(f).map((i) => ({ ...i, f })));
     const holders = new Set(out.map((i) => i.f.employee));
     body.innerHTML = `${asSwitch('acc')}
-      <div class="itstats panel acc-stats">
-        <div><span>Forms on file</span><b>${count(accForms.length)}</b></div>
-        <div><span>Employees holding equipment</span><b class="amber">${count(holders.size)}</b></div>
-        <div><span>Items out</span><b class="red">${count(out.reduce((t, i) => t + Number(i.qty || 1), 0))}</b></div>
-        <div><span>Items returned</span><b>${count(accForms.reduce((t, f) => t + f.items.filter((i) => i.returned_on).length, 0))}</b></div>
-      </div>
+      ${itOv('ACCOUNTABILITY OVERVIEW', IT_OV_ICON.doc, [
+        ['Forms on file', count(accForms.length), 'Signed hand-overs'],
+        ['Employees holding equipment', count(holders.size), 'With something still out', 'warn'],
+        ['Items out', count(out.reduce((t, i) => t + Number(i.qty || 1), 0)), 'Not yet returned', 'bad'],
+        ['Items returned', count(accForms.reduce((t, f) => t + f.items.filter((i) => i.returned_on).length, 0)), 'Back with IT', 'info'],
+      ])}
       <div class="panel">
         <div class="acc-head"><div><h3>Employee accountability forms</h3>
           <div class="dim">Who signed for which equipment. Open one to edit it, mark items returned, or download it for Word.</div></div>
@@ -18617,12 +18637,12 @@ SCREENS.itsupport = async (page) => {
     const live = props.filter((x) => x.condition !== 'disposed');
     const qtyOf = (list) => list.reduce((t, x) => t + Number(x.qty || 1), 0);
     body.innerHTML = `${asSwitch('prop')}
-      <div class="itstats panel pr-stats">
-        <div><span>Items in use</span><b>${count(qtyOf(live))}</b></div>
-        ${Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => `<div><span>${i} ${['Furniture', 'Office supplies'].includes(l) ? l : `${l}s`}</span>
-          <b>${count(qtyOf(live.filter((x) => x.category === k)))}</b></div>`).join('')}
-        <div><span>Needs attention</span><b class="red">${count(qtyOf(live.filter((x) => ['repair', 'broken'].includes(x.condition))))}</b></div>
-      </div>
+      ${itOv('COMPANY PROPERTY OVERVIEW', IT_OV_ICON.building, [
+        ['Items in use', count(qtyOf(live)), `In ${count(propLocs.length)} locations`],
+        ...Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => [`${i} ${['Furniture', 'Office supplies'].includes(l) ? l : `${l}s`}`,
+          count(qtyOf(live.filter((x) => x.category === k))), 'In use', 'info']),
+        ['Needs attention', count(qtyOf(live.filter((x) => ['repair', 'broken'].includes(x.condition)))), 'Needs repair or broken', 'bad'],
+      ])}
       <div class="panel">
         <div class="acc-head"><div><h3>Company property</h3>
           <div class="dim">Devices, appliances and furniture — where each one is, who uses it, and its state. Click a room to see what is in it.</div></div>
