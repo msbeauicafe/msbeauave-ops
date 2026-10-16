@@ -364,6 +364,10 @@ test('accountability forms: lines follow the masterlist, returns free the unit, 
 
 test('Hardware assets has its Accountability forms, downloaded as a Word file', () => {
   assert.match(app, /data-asview="acc"[^>]*>📝 Accountability forms<\/button>/);
+  // Asset inventory masterlist, then Company property, then Accountability forms.
+  assert.match(app, /🗂️ Asset inventory masterlist<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
+  // Asset inventory masterlist, then Company property, then Accountability forms.
+  assert.match(app, /🗂️ Asset inventory masterlist<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
   assert.match(app, /function itAccDocx\(f, logo\)/);
   assert.match(app, /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
   assert.match(app, /a\.download = `Accountability form - /);
