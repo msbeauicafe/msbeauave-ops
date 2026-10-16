@@ -539,3 +539,13 @@ test('a refresh keeps IT support on the tab it was on, Hardware assets\' own tab
   assert.match(app, /itKeep\('itAssetsView', k\);/);
   assert.match(app, /let view = views\.some\(\(\[k\]\) => k === itKept\('itView'\)\)/);
 });
+
+test('the masterlist takes an iPhone and an iMac as their own types (db/201)', async () => {
+  const it = await signInIT();
+  for (const [kind, pre] of [['iphone', 'IPH'], ['imac', 'IMAC']]) {
+    const r = await POST(it, '/api/it/assets', { kind, tag: `MSBA-${pre}-${process.pid}${seq++}`, brand: 'Apple' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+  }
+  assert.match(app, /imac: \['iMac', 'IMAC'\]/);
+  assert.match(app, /iphone: \['iPhone', 'IPH'\]/);
+});
