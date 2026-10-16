@@ -17839,11 +17839,12 @@ function itAccDocx(f, logo) {
   const items = (f.items || []).map((i) => [String(i.qty || 1), i.equipment, i.model_no, i.serial_no,
     [i.specs, i.asset_tag ? `Tag ${i.asset_tag}` : '', i.return_note].filter(Boolean).join(' · '),
     itAccDay(i.issued_on), itAccDay(i.returned_on)]);
-  while (items.length < 6) items.push(['', '', '', '', '', '', '']);
+  while (items.length < 10) items.push(['', '', '', '', '', '', '']);
   const body = [
     // The shop's own logo, the same file the app and its printed forms use.
     logo ? `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="20"/></w:pPr><w:r><w:drawing>
-      <wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${logo.cx}" cy="${logo.cy}"/><wp:docPr id="1" name="MS Beau Ave logo"/>
+      <wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${logo.cx}" cy="${logo.cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="1" name="MS Beau Ave logo"/>
+      <wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>
       <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
       <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="logo.png"/><pic:cNvPicPr/></pic:nvPicPr>
       <pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
