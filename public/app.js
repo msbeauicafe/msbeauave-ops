@@ -18736,6 +18736,13 @@ SCREENS.itsupport = async (page) => {
 
   // One room, opened: everything in it, and its photos — each one zoomable,
   // each one of the whole room or of one item in it (db/198).
+  // A thing seen in a room, onto the register there: its name, its kind,
+  // the next tag for that kind, shared, in good condition.
+  const propTrack = async (name, kind, loc) => {
+    const { id } = await POST('/api/it/property', { category: kind, tag: propNextTag(kind), item: name,
+      location_id: loc.id, qty: 1, condition: 'good' });
+    return id;
+  };
   const propRoom = async (loc) => {
     if (!loc) return;
     const files = (await GET(`/api/it/property-locations/${loc.id}/files`)) || [];
@@ -18755,8 +18762,12 @@ SCREENS.itsupport = async (page) => {
       <div class="pr-upload">
         <div><label for="prr_files">Add photos</label><input id="prr_files" type="file" accept="image/*" multiple></div>
         <div><label for="prr_cap">Name</label><input id="prr_cap" type="text" placeholder="Fire alarm, CCTV camera, aircon…"></div>
-        <div><label for="prr_item">Item on the register (optional)</label><select id="prr_item"><option value="">— None, just the name —</option>${here.map((x) =>
-          `<option value="${x.id}">${esc(`${x.tag} · ${x.item}`)}</option>`).join('')}</select></div>
+        <div><label for="prr_item">Track it as</label><select id="prr_item">
+          <option value="new">＋ A new item in this room</option>${here.map((x) =>
+          `<option value="${x.id}">${esc(`${x.tag} · ${x.item}`)}</option>`).join('')}
+          <option value="">Just a photo — not tracked</option></select></div>
+        <div id="prr_kindbox"><label for="prr_kind">Kind</label><select id="prr_kind">${Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) =>
+          `<option value="${k}">${i} ${l}</option>`).join('')}</select></div>
         <div><label>&nbsp;</label><button class="btn" id="prr_up">⤒ Upload</button></div>
       </div>
       <div class="pr-gallery mt">${files.map((f) => `
@@ -18764,6 +18775,7 @@ SCREENS.itsupport = async (page) => {
           data-itzoom="/api/it/property-files/${f.id}" data-itzoom-cap="${esc([f.caption || f.item || 'Photo', loc.name, f.tag].filter(Boolean).join(' · '))}">
           <figcaption><b class="pr-photoname">${esc(f.caption || f.item || 'Unnamed photo')}</b>${f.tag ? `<span class="dim">${esc(`${f.tag} · ${f.item}`)}</span>` : ''}
             <span class="dim">${when(f.uploaded_at)}</span>
+            ${f.property_id ? '' : `<button class="btn sm quiet pr-track" data-prtrack="${f.id}">＋ Track as an item</button>`}
             <span class="pr-photoacts"><button class="linkbtn" data-prname="${f.id}">✎ Rename</button>
               <button class="linkbtn" data-prdrop="${f.id}" aria-label="Remove photo">✕ Remove</button></span></figcaption></figure>`).join('')
         || '<div class="dim">No photos yet — add some above. Click a photo to zoom in.</div>'}</div>`, 'wide pr-dialog');
@@ -18774,21 +18786,57 @@ SCREENS.itsupport = async (page) => {
       if (!picked.length) { notice('Pick one or more photos first.', 'bad'); return; }
       // A photo has a name — what is in it — unless it is of an item on the
       // register, which names it.
-      if (!$('#prr_cap', v).value.trim() && !$('#prr_item', v).value) {
+      const track = $('#prr_item', v).value;
+      const name = $('#prr_cap', v).value.trim();
+      if (!name && (!track || track === 'new')) {
         notice('Name the photo first — e.g. Fire alarm.', 'bad'); $('#prr_cap', v).focus(); return;
       }
       const btn = $('#prr_up', v);
       btn.disabled = true; btn.textContent = 'Uploading…';
       try {
+        // A new item: onto the register in this room first, so the room
+        // counts it, then its photos filed against it.
+        const propertyId = track === 'new' ? await propTrack(name, $('#prr_kind', v).value, loc) : track || null;
         for (const f of picked) {
           await POST(`/api/it/property-locations/${loc.id}/files`, {
-            dataUrl: await shrink(f, 1600), property_id: $('#prr_item', v).value || null, caption: $('#prr_cap', v).value });
+            dataUrl: await shrink(f, 1600), property_id: propertyId, caption: name });
         }
-        notice(`${picked.length} photo${picked.length === 1 ? '' : 's'} added 🌸`, 'good');
-        await propRoom(loc);
+        notice(`${picked.length} photo${picked.length === 1 ? '' : 's'} added${track === 'new' ? ` — ${name} is now tracked in ${loc.name}` : ''} 🌸`, 'good');
+        await drawProp();
+        await propRoom(propLocs.find((l) => l.id === loc.id) || loc);
       } catch (err) { whoops(err); btn.disabled = false; btn.textContent = '⤒ Upload'; }
     });
+    const kindBox = () => { $('#prr_kindbox', v).style.visibility = $('#prr_item', v).value === 'new' ? '' : 'hidden'; };
+    kindBox();
+    // A photo already up with no item: track it now — the item goes on the
+    // register in this room, and the photo is filed again against it.
+    $$('[data-prtrack]', v).forEach((b) => b.addEventListener('click', async () => {
+      const f = files.find((x) => String(x.id) === b.dataset.prtrack);
+      if (!f) return;
+      const w = dialog(`<h3>Track “${esc(f.caption || 'this photo')}” as an item</h3>
+        <div class="acc-form mt" style="grid-template-columns:1fr 1fr">
+          <div><label for="prt_name">Name</label><input id="prt_name" type="text" value="${esc(f.caption || '')}"></div>
+          <div><label for="prt_kind">Kind</label><select id="prt_kind">${Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) =>
+            `<option value="${k}">${i} ${l}</option>`).join('')}</select></div></div>
+        <div class="dim mt">It goes on the register in ${esc(loc.name)}, with this photo.</div>
+        <div class="row mt"><button class="btn" id="prt_go">Track it</button></div>`, 'pr-dialog', true);
+      $('#prt_go', w).addEventListener('click', async () => {
+        const name = $('#prt_name', w).value.trim();
+        if (!name) { notice('Give it a name first.', 'bad'); return; }
+        try {
+          const id = await propTrack(name, $('#prt_kind', w).value, loc);
+          const blob = await (await fetch(`/api/it/property-files/${f.id}`)).blob();
+          await POST(`/api/it/property-locations/${loc.id}/files`, { dataUrl: await shrink(blob, 1600), property_id: id, caption: name });
+          await DELETE(`/api/it/property-files/${f.id}`);
+          notice(`${name} is now tracked in ${loc.name} 🌸`, 'good');
+          closeDialog();
+          await drawProp();
+          await propRoom(propLocs.find((l) => l.id === loc.id) || loc);
+        } catch (err) { whoops(err); }
+      });
+    }));
     // Picking an item names the photo after it, if no name is typed yet.
+    $('#prr_item', v).addEventListener('change', kindBox);
     $('#prr_item', v).addEventListener('change', (e) => {
       const x = here.find((i) => String(i.id) === e.target.value);
       if (x && !$('#prr_cap', v).value.trim()) $('#prr_cap', v).value = x.item;
