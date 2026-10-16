@@ -17927,7 +17927,11 @@ SCREENS.itsupport = async (page) => {
   // their own and follows them. Two views either way, one switch.
   const views = isIT ? [['dash', 'IT Dashboard'], ['file', 'File Concern'], ['assets', 'Hardware assets']]
     : [['file', 'File Concern'], ['mine', 'My requests']];
-  let view = views[0][0];
+  // The tab IT support was on, and Hardware assets' own tab, kept across a
+  // refresh the way other screens keep their panel. IT support's own keys.
+  const itKept = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+  const itKeep = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+  let view = views.some(([k]) => k === itKept('itView')) ? itKept('itView') : views[0][0];
   const filters = { status: '', urgency: '', q: '' };
   let tickets = [];
   const choices = await GET('/api/it/choices').catch(() => ({ departments: [], people: [] }));
@@ -18497,10 +18501,14 @@ SCREENS.itsupport = async (page) => {
   body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-asview]');
     if (!b || b.classList.contains('on')) return;
-    if (b.dataset.asview === 'acc') drawAcc().catch(whoops);
-    else if (b.dataset.asview === 'prop') drawProp().catch(whoops);
-    else { body.innerHTML = ''; drawAssets().catch(whoops); }
+    openAsView(b.dataset.asview);
   });
+  const openAsView = (k) => {
+    itKeep('itAssetsView', k);
+    if (k === 'acc') drawAcc().catch(whoops);
+    else if (k === 'prop') drawProp().catch(whoops);
+    else { body.innerHTML = ''; drawAssets().catch(whoops); }
+  };
 
   // -------------------------------------------------------------------------
   // Accountability forms (db/195): the shop's paper form, kept here. Each
@@ -19010,11 +19018,12 @@ SCREENS.itsupport = async (page) => {
 
   const show = (v) => {
     view = v;
+    itKeep('itView', v);
     $$('[data-itview]', page).forEach((b) => b.classList.toggle('on', b.dataset.itview === v));
     // The ticket counts belong to the queue, not the hardware.
     $('#it_stats', page).style.display = v === 'assets' ? 'none' : '';
     if (v === 'file') drawForm();
-    else if (v === 'assets') { body.innerHTML = ''; drawAssets().catch(whoops); }
+    else if (v === 'assets') { body.innerHTML = ''; openAsView(['acc', 'prop'].includes(itKept('itAssetsView')) ? itKept('itAssetsView') : 'list'); }
     else { body.innerHTML = ''; drawList(); }
   };
 
