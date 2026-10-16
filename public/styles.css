@@ -2647,3 +2647,18 @@ input.n { text-align: right; }
 .pr-hist { display: flex; flex-direction: column; gap: 4px; font-size: .84rem; max-height: 180px; overflow-y: auto;
   border: 1px solid var(--rose-blush); border-radius: 10px; padding: 8px 10px; }
 @media (max-width: 700px) { .itstats.pr-stats { grid-template-columns: repeat(2, 1fr); } }
+
+/* Hardware assets: the by-employee cards on the Masterlist and on Company
+   property. Their own hold-*. */
+.hold-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.hold-grid .acc-holder { margin-top: 0; }
+.hold-row { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left;
+  background: none; border: none; border-top: 1px solid var(--rose-blush); padding: 6px 2px; font: inherit;
+  font-size: .86rem; color: var(--ink); cursor: pointer; }
+.hold-row:hover { background: var(--rose-blush); }
+.hold-row .dim { font-size: .78rem; }
+.itstats.pr-stats { grid-template-columns: repeat(6, 1fr); }
+@media (max-width: 700px) { .itstats.pr-stats { grid-template-columns: repeat(2, 1fr); } }
+
+.hold-branch + .hold-branch { margin-top: 14px; }
+.hold-branch h4 { margin: 0 0 8px; color: var(--rose-deep); }
