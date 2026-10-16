@@ -549,3 +549,11 @@ test('the masterlist takes an iPhone and an iMac as their own types (db/201)', a
   assert.match(app, /imac: \['iMac', 'IMAC'\]/);
   assert.match(app, /iphone: \['iPhone', 'IPH'\]/);
 });
+
+test('the accountability form downloads as one page', () => {
+  // Fewer blank lines, a smaller logo, tighter spacing and margins: the
+  // whole form, signatures and address included, fits a single A4 sheet.
+  assert.match(app, /while \(items\.length < 6\)/);
+  assert.match(app, /const cy = 777240;/);
+  assert.match(app, /w:top="600" w:right="1000" w:bottom="500" w:left="1000"/);
+});

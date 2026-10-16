@@ -17822,7 +17822,7 @@ function itAccDocx(f, logo) {
     : '<w:rFonts w:ascii="Poppins" w:hAnsi="Poppins" w:cs="Poppins"/>'}${o.b ? '<w:b/>' : ''}${
     o.color ? `<w:color w:val="${o.color}"/>` : ''}<w:sz w:val="${o.size || 20}"/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r>`;
   const para = (t, o = {}) => `<w:p><w:pPr><w:spacing w:before="${o.before || 0}" w:after="${o.after ?? 60}"/>${
-    o.jc ? `<w:jc w:val="${o.jc}"/>` : ''}</w:pPr>${t === '' ? '' : run(t, o)}</w:p>`;
+    o.jc ? `<w:jc w:val="${o.jc}"/>` : ''}${t === '' && o.size ? `<w:rPr><w:sz w:val="${o.size}"/></w:rPr>` : ''}</w:pPr>${t === '' ? '' : run(t, o)}</w:p>`;
   const cell = (t, w, o = {}) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${
     o.fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.fill}"/>` : ''}<w:vAlign w:val="center"/></w:tcPr>${
     para(t, { size: o.size || 18, b: o.b, after: 0, jc: o.jc })}</w:tc>`;
@@ -17839,10 +17839,10 @@ function itAccDocx(f, logo) {
   const items = (f.items || []).map((i) => [String(i.qty || 1), i.equipment, i.model_no, i.serial_no,
     [i.specs, i.asset_tag ? `Tag ${i.asset_tag}` : '', i.return_note].filter(Boolean).join(' · '),
     itAccDay(i.issued_on), itAccDay(i.returned_on)]);
-  while (items.length < 8) items.push(['', '', '', '', '', '', '']);
+  while (items.length < 6) items.push(['', '', '', '', '', '', '']);
   const body = [
     // The shop's own logo, the same file the app and its printed forms use.
-    logo ? `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="80"/></w:pPr><w:r><w:drawing>
+    logo ? `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="20"/></w:pPr><w:r><w:drawing>
       <wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${logo.cx}" cy="${logo.cy}"/><wp:docPr id="1" name="MS Beau Ave logo"/>
       <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
       <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="logo.png"/><pic:cNvPicPr/></pic:nvPicPr>
@@ -17850,23 +17850,22 @@ function itAccDocx(f, logo) {
       <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${logo.cx}" cy="${logo.cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
       </pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
       : para('MS Beau Ave', { size: 44, serif: true, jc: 'center', after: 40 }),
-    para('EMPLOYEE ACCOUNTABILITY FORM', { size: 26, b: true, serif: true, jc: 'center', after: 240 }),
+    para('EMPLOYEE ACCOUNTABILITY FORM', { size: 26, b: true, serif: true, jc: 'center', after: 140 }),
     docTable([3000, 6900], info.map(([l, v]) => row(cell(l, 3000, { fill: head, b: true }) + cell(v, 6900)))),
-    para('', { after: 160 }),
+    para('', { after: 0, size: 8 }),
     docTable(iw, [row(['Qty', 'Equipment', 'Model Number', 'Serial Number', 'Other Specifications', 'Date Issued', 'Date Returned']
       .map((t, k) => cell(t, iw[k], { fill: head, b: true, jc: 'center', size: 17 })).join(''))]
       .concat(items.map((r) => row(r.map((t, k) => cell(t, iw[k], { size: 17, jc: k === 0 ? 'center' : undefined })).join(''))))),
-    para('Acknowledgement', { size: 22, b: true, serif: true, jc: 'center', before: 240, after: 100 }),
-    ...IT_ACC_ACK.map((t) => para(t, { size: 18, jc: 'both', after: 80 })),
-    para('', { after: 120 }),
+    para('Acknowledgement', { size: 22, b: true, serif: true, jc: 'center', before: 160, after: 60 }),
+    ...IT_ACC_ACK.map((t) => para(t, { size: 17, jc: 'both', after: 40 })),
+    para('', { after: 0, size: 8 }),
     docTable([3000, 6900], [['Employee Signature:', ''], ['Immediate Superior Signature:', ''],
-      ['Released By:', f.released_by], ['Date:', '']].map(([l, v]) => row(cell(l, 3000, { fill: head, b: true }) + cell(v, 6900), 560))),
-    para('', { after: 240 }),
-    ...IT_ACC_ADDRESS.map((t) => para(t, { size: 18, jc: 'right', after: 0 })),
+      ['Released By:', f.released_by], ['Date:', '']].map(([l, v]) => row(cell(l, 3000, { fill: head, b: true }) + cell(v, 6900), 470))),
+    ...IT_ACC_ADDRESS.map((t, i) => para(t, { size: 16, jc: 'right', after: 0, before: i ? 0 : 120 })),
   ].join('');
   const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body}
-<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="850" w:right="1000" w:bottom="850" w:left="1000" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="600" w:right="1000" w:bottom="500" w:left="1000" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
   return itZip([
     { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
     { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
@@ -17884,7 +17883,7 @@ const itAccDownload = async (f) => {
       const bytes = new Uint8Array(await r.arrayBuffer());
       const view = new DataView(bytes.buffer);
       const w = view.getUint32(16); const h = view.getUint32(20);
-      const cy = 1051560;
+      const cy = 777240;
       return { bytes, cy, cx: Math.round((cy * w) / h) };
     }).catch(() => null);
   }
