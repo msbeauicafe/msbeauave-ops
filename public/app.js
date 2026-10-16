@@ -17791,7 +17791,7 @@ const itZip = (files, type) => {
   const enc = new TextEncoder();
   const parts = []; const central = []; let off = 0;
   files.forEach(({ name, data }) => {
-    const n = enc.encode(name); const d = enc.encode(data); const crc = itCrc32(d);
+    const n = enc.encode(name); const d = typeof data === 'string' ? enc.encode(data) : data; const crc = itCrc32(d);
     const h = new DataView(new ArrayBuffer(30));
     [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [12, 0x21, 2], [14, crc, 4], [18, d.length, 4],
       [22, d.length, 4], [26, n.length, 2]].forEach(([at, v, w]) => (w === 4 ? h.setUint32(at, v, true) : h.setUint16(at, v, true)));
@@ -17809,9 +17809,13 @@ const itZip = (files, type) => {
   return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type });
 };
 const itAccDay = (d) => (d ? onDay(String(d).slice(0, 10)) : '');
-function itAccDocx(f) {
+function itAccDocx(f, logo) {
   const x = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const run = (t, o = {}) => `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${o.b ? '<w:b/>' : ''}${
+  // The company's own type: Poppins, the app's font, for the form; Georgia,
+  // the wordmark's serif, for its title.
+  const run = (t, o = {}) => `<w:r><w:rPr>${o.serif
+    ? '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:cs="Georgia"/>'
+    : '<w:rFonts w:ascii="Poppins" w:hAnsi="Poppins" w:cs="Poppins"/>'}${o.b ? '<w:b/>' : ''}${
     o.color ? `<w:color w:val="${o.color}"/>` : ''}<w:sz w:val="${o.size || 20}"/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r>`;
   const para = (t, o = {}) => `<w:p><w:pPr><w:spacing w:before="${o.before || 0}" w:after="${o.after ?? 60}"/>${
     o.jc ? `<w:jc w:val="${o.jc}"/>` : ''}</w:pPr>${t === '' ? '' : run(t, o)}</w:p>`;
@@ -17833,14 +17837,22 @@ function itAccDocx(f) {
     itAccDay(i.issued_on), itAccDay(i.returned_on)]);
   while (items.length < 8) items.push(['', '', '', '', '', '', '']);
   const body = [
-    para('MS Beau Ave', { size: 44, b: true, color: '7A3B57', jc: 'center', after: 40 }),
-    para('EMPLOYEE ACCOUNTABILITY FORM', { size: 26, b: true, jc: 'center', after: 240 }),
+    // The shop's own logo, the same file the app and its printed forms use.
+    logo ? `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="80"/></w:pPr><w:r><w:drawing>
+      <wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${logo.cx}" cy="${logo.cy}"/><wp:docPr id="1" name="MS Beau Ave logo"/>
+      <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+      <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="logo.png"/><pic:cNvPicPr/></pic:nvPicPr>
+      <pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+      <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${logo.cx}" cy="${logo.cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+      </pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
+      : para('MS Beau Ave', { size: 44, serif: true, jc: 'center', after: 40 }),
+    para('EMPLOYEE ACCOUNTABILITY FORM', { size: 26, b: true, serif: true, jc: 'center', after: 240 }),
     docTable([3000, 6900], info.map(([l, v]) => row(cell(l, 3000, { fill: head, b: true }) + cell(v, 6900)))),
     para('', { after: 160 }),
     docTable(iw, [row(['Qty', 'Equipment', 'Model Number', 'Serial Number', 'Other Specifications', 'Date Issued', 'Date Returned']
       .map((t, k) => cell(t, iw[k], { fill: head, b: true, jc: 'center', size: 17 })).join(''))]
       .concat(items.map((r) => row(r.map((t, k) => cell(t, iw[k], { size: 17, jc: k === 0 ? 'center' : undefined })).join(''))))),
-    para('Acknowledgement', { size: 22, b: true, jc: 'center', before: 240, after: 100 }),
+    para('Acknowledgement', { size: 22, b: true, serif: true, jc: 'center', before: 240, after: 100 }),
     ...IT_ACC_ACK.map((t) => para(t, { size: 18, jc: 'both', after: 80 })),
     para('', { after: 120 }),
     docTable([3000, 6900], [['Employee Signature:', ''], ['Immediate Superior Signature:', ''],
@@ -17849,17 +17861,31 @@ function itAccDocx(f) {
     ...IT_ACC_ADDRESS.map((t) => para(t, { size: 18, jc: 'right', after: 0 })),
   ].join('');
   const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body}
 <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="850" w:right="1000" w:bottom="850" w:left="1000" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
   return itZip([
-    { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
+    { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
     { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
     { name: 'word/document.xml', data: doc },
+    ...(logo ? [{ name: 'word/media/logo.png', data: logo.bytes },
+      { name: 'word/_rels/document.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/></Relationships>' }] : []),
   ], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }
-const itAccDownload = (f) => {
+// The logo, read once from the app's own file; 1.15 inches tall on the form.
+let itAccLogo;
+const itAccDownload = async (f) => {
+  if (itAccLogo === undefined) {
+    itAccLogo = await fetch('/logo.png').then(async (r) => {
+      if (!r.ok) return null;
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      const view = new DataView(bytes.buffer);
+      const w = view.getUint32(16); const h = view.getUint32(20);
+      const cy = 1051560;
+      return { bytes, cy, cx: Math.round((cy * w) / h) };
+    }).catch(() => null);
+  }
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(itAccDocx(f));
+  a.href = URL.createObjectURL(itAccDocx(f, itAccLogo));
   a.download = `Accountability form - ${String(f.employee || 'employee').replace(/[\\/:*?"<>|]/g, '')} - ${
     String(f.form_date || localDay()).slice(0, 10)}.docx`;
   document.body.append(a); a.click(); a.remove();

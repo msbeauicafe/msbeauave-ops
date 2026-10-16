@@ -364,7 +364,11 @@ test('accountability forms: lines follow the masterlist, returns free the unit, 
 
 test('Hardware assets has its Accountability forms, downloaded as a Word file', () => {
   assert.match(app, /data-asview="acc"[^>]*>📝 Accountability forms<\/button>/);
-  assert.match(app, /function itAccDocx\(f\)/);
+  assert.match(app, /function itAccDocx\(f, logo\)/);
   assert.match(app, /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
   assert.match(app, /a\.download = `Accountability form - /);
+  // The shop's own logo file and type: Poppins for the form, Georgia for its title.
+  assert.match(app, /fetch\('\/logo\.png'\)/);
+  assert.match(app, /name: 'word\/media\/logo\.png'/);
+  assert.match(app, /w:ascii="Poppins"/);
 });
