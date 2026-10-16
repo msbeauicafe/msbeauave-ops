@@ -17677,6 +17677,9 @@ const IT_ASSET_STATUS = {
   storage: ['In storage (unboxed)', 'grey'], assigned: ['Assigned to employee', 'green'],
   repair: ['Under repair', 'amber'], retired: ['Disposed / retired', 'red'],
 };
+// A unit's health at its last check (db/200), and the colour its row takes.
+const IT_HEALTH = { good: ['Working well', 'green'], maintenance: ['Needs maintenance', 'amber'],
+  replace: ['Needs replacement', 'red'], defective: ['Defective', 'red'] };
 const IT_CONDITION = { brand_new: 'Brand new', sealed: 'Sealed', unboxed: 'Unboxed',
   missing_items: 'Missing items' };
 
@@ -18148,7 +18151,7 @@ SCREENS.itsupport = async (page) => {
   // masterlist under it. A row opens a drawer to say who has it now.
   // -------------------------------------------------------------------------
   let assets = [];
-  const af = { q: '', kind: '', brand: '', status: '' };
+  const af = { q: '', kind: '', brand: '', status: '', health: '' };
   const nextTag = (kind) => {
     const pre = `MSBA-${IT_KINDS[kind][1]}-`;
     const top = assets.reduce((n, a) => (String(a.tag).toUpperCase().startsWith(pre)
@@ -18207,6 +18210,8 @@ SCREENS.itsupport = async (page) => {
             <select id="as_fkind"><option value="">Every type</option>${Object.entries(IT_KINDS)
               .map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select>
             <select id="as_fbrand"><option value="">Every brand</option></select>
+            <select id="as_fhealth"><option value="">Every health</option>${Object.entries(IT_HEALTH)
+              .map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select>
             <select id="as_fstatus"><option value="">Every status</option>${Object.entries(IT_ASSET_STATUS)
               .map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select>
           </div>
@@ -18270,6 +18275,7 @@ SCREENS.itsupport = async (page) => {
       $('#as_fkind', body).addEventListener('change', (e) => { af.kind = e.target.value; drawMasterlist(); });
       $('#as_fbrand', body).addEventListener('change', (e) => { af.brand = e.target.value; drawMasterlist(); });
       $('#as_fstatus', body).addEventListener('change', (e) => { af.status = e.target.value; drawMasterlist(); });
+      $('#as_fhealth', body).addEventListener('change', (e) => { af.health = e.target.value; drawMasterlist(); });
       $('#as_tag', body).value = nextTag(kind.value);
     }
     drawMasterlist();
@@ -18290,11 +18296,14 @@ SCREENS.itsupport = async (page) => {
       ['Assigned', count(n('assigned')), `To ${count(new Set(assets.filter((a) => a.status === 'assigned').map((a) => a.assigned_to)).size)} employees`],
       ['Under repair', count(n('repair')), 'Out for fixing', 'warn'],
       ['Retired', count(n('retired')), 'Disposed of', 'bad'],
+      ['Needs attention', count(assets.filter((a) => a.status !== 'retired' && (a.health || 'good') !== 'good').length),
+        'Maintenance, replacement or defective', 'bad'],
     ]);
 
     const q = af.q.trim().toLowerCase();
     const rows = assets.filter((a) => (!af.kind || a.kind === af.kind)
       && (!af.brand || a.brand === af.brand) && (!af.status || a.status === af.status)
+      && (!af.health || (a.health || 'good') === af.health)
       && (!q || [a.tag, a.serial_no, a.brand, a.model, a.assigned_to, a.supplier, a.specs]
         .some((v) => String(v || '').toLowerCase().includes(q))));
     $('#as_list', body).innerHTML = table(rows, [
@@ -18305,7 +18314,15 @@ SCREENS.itsupport = async (page) => {
           ? ` <span class="dim" title="Attachments">📎 ${(a.files || []).length}</span>` : ''}${
           a.specs ? `<div class="dim asspecs">${esc(a.specs)}</div>` : ''}` },
       { head: 'Serial no.', cell: (a) => (a.serial_no ? `<code>${esc(a.serial_no)}</code>` : '<span class="dim">—</span>') },
-      { head: 'Date logged', cell: (a) => onDay(a.logged_at) },
+      // When IT last looked at it — a check, or any update — logged date under it.
+      { head: 'Last checked', cell: (a) => `${onDay(a.last_checked_at || a.updated_at || a.logged_at)}${
+          a.last_checked_at ? `<div class="dim">by ${esc(a.checked_by || '')}</div>` : '<div class="dim">not checked yet</div>'}
+          <div class="dim">logged ${onDay(a.logged_at)}</div>` },
+      { head: 'Health', cell: (a) => {
+          const h = a.health || 'good';
+          const [l, k] = IT_HEALTH[h] || [h, 'grey'];
+          // The marker colours the whole row (#as_list tr:has(.hl-…)).
+          return `<span class="hl-${h}"></span>${tag(l, k)}`; } },
       { head: 'Status', cell: (a) => {
           const [l, k] = IT_ASSET_STATUS[a.status] || [a.status, 'grey'];
           return `${tag(l, k)}${a.assigned_to ? `<div class="dim">${esc(a.assigned_to)}${
@@ -18386,6 +18403,18 @@ SCREENS.itsupport = async (page) => {
           <input id="asd_on" type="date" value="${esc(String(a.deployed_on || today).slice(0, 10))}"></div>
         <div class="mt"><label for="asd_notes">IT notes</label>
           <textarea id="asd_notes" rows="4" placeholder="e.g. Configured with the accounting system and Epson printer drivers">${esc(a.notes || '')}</textarea></div>
+        <div class="mt ascheck-box"><label for="asd_health">Unit check</label>
+          <div class="dim">Last checked ${a.last_checked_at ? `${when(a.last_checked_at)} by ${esc(a.checked_by || '')}` : 'never'}</div>
+          <div class="row mt" style="gap:8px">
+            <select id="asd_health">${Object.entries(IT_HEALTH).map(([k, [l]]) =>
+              `<option value="${k}"${k === (a.health || 'good') ? ' selected' : ''}>${l}</option>`).join('')}</select>
+            <input id="asd_cnote" type="text" placeholder="What you found — e.g. battery swelling, fan noisy">
+          </div>
+          <button class="btn sm mt" id="asd_check" type="button">✓ Checked today</button>
+          ${(a.checks || []).length ? `<div class="ascheck-hist mt">${a.checks.map((c) => `<div>
+            ${tag(...(IT_HEALTH[c.health] || [c.health, 'grey']))} <span class="dim">${when(c.at)} · ${esc(c.by)}</span>
+            ${c.note ? `<div>${esc(c.note)}</div>` : ''}</div>`).join('')}</div>` : ''}
+        </div>
         <div class="mt"><label>Receipt and photos</label>
           <div class="asthumbs big">${(a.files || []).map((f) => `
             <figure><img src="/api/it/asset-files/${f.id}" alt="" loading="lazy"
@@ -18444,6 +18473,14 @@ SCREENS.itsupport = async (page) => {
           notes: $('#asd_notes').value,
         });
         notice(`${a.tag} — ${IT_ASSET_STATUS[$('#asd_status').value][0]}`, 'good');
+        close();
+        await drawAssets();
+      } catch (err) { whoops(err); }
+    });
+    $('#asd_check').addEventListener('click', async () => {
+      try {
+        await POST(`/api/it/assets/${a.id}/check`, { health: $('#asd_health').value, note: $('#asd_cnote').value });
+        notice(`${a.tag} checked — ${IT_HEALTH[$('#asd_health').value][0]}`, 'good');
         close();
         await drawAssets();
       } catch (err) { whoops(err); }

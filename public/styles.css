@@ -2715,3 +2715,16 @@ input.n { text-align: right; }
 .hold-tag { flex: none; font-size: .7rem; color: var(--muted); }
 .acc-head > div:first-child { flex: 1 1 360px; min-width: 0; }
 .acc-head > .btn, .acc-head > .row { flex: none; }
+
+/* Masterlist: a unit's row takes the colour of its health at its last
+   check (db/200). Masterlist's own rows only. */
+#as_list tr:has(.hl-maintenance) td { background: #fdf3df; }
+#as_list tr:has(.hl-replace) td { background: #fbe1e3; }
+#as_list tr:has(.hl-defective) td { background: #f6cfd3; }
+#as_list tr:has(.hl-maintenance) td:first-child { box-shadow: inset 4px 0 0 var(--warning); }
+#as_list tr:has(.hl-replace) td:first-child,
+#as_list tr:has(.hl-defective) td:first-child { box-shadow: inset 4px 0 0 var(--danger); }
+.ascheck-box { border: 1px solid var(--rose-soft); border-radius: 12px; padding: 10px 12px; }
+.ascheck-box .row select { flex: 0 0 auto; }
+.ascheck-box .row input { flex: 1; min-width: 0; }
+.ascheck-hist { display: flex; flex-direction: column; gap: 6px; font-size: .82rem; max-height: 160px; overflow-y: auto; }
