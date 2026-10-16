@@ -17895,6 +17895,21 @@ const itAccDownload = async (f) => {
 const IT_ACC_EQUIPMENT = ['Laptop', 'AIO PC', 'Desktop PC', 'Monitor', 'Keyboard', 'Mouse', 'Charger',
   'Cellphone', 'SIM card', 'Calculator', 'Headset', 'Webcam', 'Printer', 'CP stand', 'Bag'];
 
+// IT's company property register (db/196): devices, appliances and furniture
+// by room and person. The tag prefix follows the masterlist's convention.
+const IT_PROP_CATS = { device: ['Device', 'DEV', '🖨️'], appliance: ['Appliance', 'APP', '🧊'],
+  furniture: ['Furniture', 'FUR', '🪑'] };
+const IT_PROP_COND = { good: ['Good', 'green'], fair: ['Fair', 'grey'], repair: ['Needs repair', 'amber'],
+  broken: ['Broken', 'red'], disposed: ['Disposed', 'grey'] };
+// What each kind usually is; the item can still be named anything.
+const IT_PROP_ITEMS = {
+  device: ['Printer', 'Router', 'CCTV camera', 'Telephone', 'Biometric scanner', 'Projector', 'TV', 'Speaker', 'UPS'],
+  appliance: ['Water cooler', 'Water dispenser', 'Refrigerator', 'Microwave', 'Electric fan', 'Aircon', 'Coffee maker',
+    'Electric kettle', 'Rice cooker'],
+  furniture: ['Office chair', 'Office table', 'Drawer', 'Cabinet', 'Printer cabinet', 'Filing cabinet', 'Shelf', 'Sofa',
+    'Monoblock chair'],
+};
+
 const itReplyBox = (t, label) => `
   <div class="row mt itreply">
     <input type="text" data-itdraft="${t.id}" placeholder="${esc(label)}">
@@ -18322,11 +18337,13 @@ SCREENS.itsupport = async (page) => {
   // accountability forms — who signed for which laptop, AIO PC, keyboard…
   const asSwitch = (on) => `<div class="acc-switch" role="tablist">
     <button type="button" data-asview="list" class="${on === 'list' ? 'on' : ''}">🗂️ Masterlist</button>
-    <button type="button" data-asview="acc" class="${on === 'acc' ? 'on' : ''}">📝 Accountability forms</button></div>`;
+    <button type="button" data-asview="acc" class="${on === 'acc' ? 'on' : ''}">📝 Accountability forms</button>
+    <button type="button" data-asview="prop" class="${on === 'prop' ? 'on' : ''}">🏢 Company property</button></div>`;
   body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-asview]');
     if (!b || b.classList.contains('on')) return;
     if (b.dataset.asview === 'acc') drawAcc().catch(whoops);
+    else if (b.dataset.asview === 'prop') drawProp().catch(whoops);
     else { body.innerHTML = ''; drawAssets().catch(whoops); }
   });
 
@@ -18532,6 +18549,174 @@ SCREENS.itsupport = async (page) => {
         closeDialog();
         await drawAcc();
       } catch (err) { whoops(err); }
+    });
+  };
+
+  // -------------------------------------------------------------------------
+  // Company property (db/196): every device, appliance and piece of furniture
+  // that is not on the masterlist — by room and by person, with its state and
+  // every move it has made. Rooms are picked from a list IT can add to.
+  // -------------------------------------------------------------------------
+  let props = [];
+  let propLocs = [];
+  const pf = { q: '', loc: '', cat: '', cond: '', who: '' };
+  const propNextTag = (cat) => {
+    const pre = `MSBA-${IT_PROP_CATS[cat][1]}-`;
+    const top = props.reduce((n, x) => (String(x.tag).toUpperCase().startsWith(pre)
+      ? Math.max(n, Number(String(x.tag).slice(pre.length)) || 0) : n), 0);
+    return pre + String(top + 1).padStart(3, '0');
+  };
+
+  const drawProp = async () => {
+    const data = (await GET('/api/it/property')) || {};
+    props = data.items || []; propLocs = data.locations || [];
+    const live = props.filter((x) => x.condition !== 'disposed');
+    const qtyOf = (list) => list.reduce((t, x) => t + Number(x.qty || 1), 0);
+    body.innerHTML = `${asSwitch('prop')}
+      <div class="itstats panel pr-stats">
+        <div><span>Items in use</span><b>${count(qtyOf(live))}</b></div>
+        ${Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => `<div><span>${i} ${l === 'Furniture' ? l : `${l}s`}</span>
+          <b>${count(qtyOf(live.filter((x) => x.category === k)))}</b></div>`).join('')}
+        <div><span>Needs attention</span><b class="red">${count(qtyOf(live.filter((x) => ['repair', 'broken'].includes(x.condition))))}</b></div>
+      </div>
+      <div class="panel">
+        <div class="acc-head"><div><h3>Company property</h3>
+          <div class="dim">Devices, appliances and furniture — where each one is, who uses it, and its state. Click a room to see what is in it.</div></div>
+          <div class="row" style="gap:8px;flex:0 0 auto"><button class="btn quiet" id="pr_loc">＋ Location</button>
+            <button class="btn" id="pr_new">＋ Add item</button></div></div>
+        <div class="pr-rooms mt">${propLocs.map((l) => {
+          const here = live.filter((x) => x.location_id === l.id);
+          return `<button type="button" class="pr-room ${pf.loc === String(l.id) ? 'on' : ''}" data-prloc="${l.id}">
+            <span class="pr-roomname">${esc(l.name)}</span><b>${count(qtyOf(here))}</b>
+            <span class="dim">${Object.entries(IT_PROP_CATS).map(([k, [, , i]]) => {
+              const n = qtyOf(here.filter((x) => x.category === k));
+              return n ? `${i} ${count(n)}` : '';
+            }).filter(Boolean).join(' · ') || 'Nothing logged yet'}</span></button>`;
+        }).join('')}</div>
+        <div class="tools mt">
+          <input type="search" id="pr_q" placeholder="Search tag, item, brand, serial, person…" value="${esc(pf.q)}">
+          <select id="pr_floc"><option value="">Every location</option>${propLocs.map((l) =>
+            `<option value="${l.id}"${pf.loc === String(l.id) ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select>
+          <select id="pr_fcat"><option value="">Every kind</option>${Object.entries(IT_PROP_CATS).map(([k, [l]]) =>
+            `<option value="${k}"${pf.cat === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          <select id="pr_fcond"><option value="">Every condition</option>${Object.entries(IT_PROP_COND).map(([k, [l]]) =>
+            `<option value="${k}"${pf.cond === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          <select id="pr_fwho"><option value="">Everybody</option><option value="-"${pf.who === '-' ? ' selected' : ''}>Shared (nobody)</option>${
+            [...new Set(props.map((x) => x.assigned_to).filter(Boolean))].sort().map((n) =>
+              `<option${pf.who === n ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
+        </div>
+        <div id="pr_list" class="mt"></div>
+      </div>`;
+
+    const drawList = () => {
+      const q = pf.q.toLowerCase();
+      const rows = props.filter((x) => (!pf.loc || String(x.location_id) === pf.loc) && (!pf.cat || x.category === pf.cat)
+        && (pf.cond ? x.condition === pf.cond : x.condition !== 'disposed')
+        && (!pf.who || (pf.who === '-' ? !x.assigned_to : x.assigned_to === pf.who))
+        && (!q || [x.tag, x.item, x.brand, x.model, x.serial_no, x.assigned_to, x.location, x.notes]
+          .join(' ').toLowerCase().includes(q)));
+      $('#pr_list', body).innerHTML = rows.length ? `<div class="acc-scroll"><table class="acc-table">
+        <thead><tr><th>Tag</th><th>Item</th><th>Kind</th><th>Location</th><th>Used by</th><th>Qty</th><th>Condition</th><th></th></tr></thead>
+        <tbody>${rows.map((x) => `<tr>
+          <td><b>${esc(x.tag)}</b></td>
+          <td>${esc(x.item)}${[x.brand, x.model].filter(Boolean).length ? `<div class="dim">${esc([x.brand, x.model].filter(Boolean).join(' '))}</div>` : ''}</td>
+          <td>${IT_PROP_CATS[x.category]?.[2] || ''} ${esc(IT_PROP_CATS[x.category]?.[0] || x.category)}</td>
+          <td>${esc(x.location || '—')}</td>
+          <td>${x.assigned_to ? esc(x.assigned_to) : '<span class="dim">Shared</span>'}</td>
+          <td>${count(x.qty || 1)}</td>
+          <td>${tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey']))}</td>
+          <td class="acc-acts"><button class="btn sm" data-propen="${x.id}">Open</button></td></tr>`).join('')}</tbody></table></div>
+          <div class="dim mt">${count(rows.length)} item${rows.length === 1 ? '' : 's'} shown${pf.cond ? '' : ' · disposed items are hidden unless you pick Disposed'}</div>`
+        : `<div class="dim">${props.length ? 'Nothing matches those filters.' : 'Nothing on the register yet — ＋ Add item logs the first one.'}</div>`;
+    };
+    drawList();
+    const redraw = () => drawProp().catch(whoops);
+    $('#pr_q', body).addEventListener('input', (e) => { pf.q = e.target.value; drawList(); });
+    $('#pr_floc', body).addEventListener('change', (e) => { pf.loc = e.target.value; redraw(); });
+    $('#pr_fcat', body).addEventListener('change', (e) => { pf.cat = e.target.value; drawList(); });
+    $('#pr_fcond', body).addEventListener('change', (e) => { pf.cond = e.target.value; drawList(); });
+    $('#pr_fwho', body).addEventListener('change', (e) => { pf.who = e.target.value; drawList(); });
+    $$('[data-prloc]', body).forEach((b) => b.addEventListener('click', () => {
+      pf.loc = pf.loc === b.dataset.prloc ? '' : b.dataset.prloc; redraw();
+    }));
+    $('#pr_new', body).addEventListener('click', () => propEdit(null));
+    $('#pr_loc', body).addEventListener('click', async () => {
+      const name = prompt('Name the new location (e.g. 3rd floor conference room):');
+      if (!name || !name.trim()) return;
+      try { await POST('/api/it/property-locations', { name }); notice('Location added 🌸', 'good'); redraw(); }
+      catch (err) { whoops(err); }
+    });
+    $('#pr_list', body).addEventListener('click', (e) => {
+      const o = e.target.closest('[data-propen]');
+      if (o) propEdit(props.find((x) => String(x.id) === o.dataset.propen));
+    });
+  };
+
+  // One item, to add or to change. A new room, person or condition is
+  // written to the item's history when it is saved.
+  const propEdit = (item) => {
+    const x = item ? { ...item } : { category: 'furniture', qty: 1, condition: 'good',
+      location_id: pf.loc ? Number(pf.loc) : '', assigned_to: '' };
+    if (!item) x.tag = propNextTag(x.category);
+    const people = [...new Set([...(choices.people || []), x.assigned_to].filter(Boolean))].sort();
+    const v = dialog(`
+      <h3>${item ? esc(`${x.tag} · ${x.item}`) : 'Add company property'}</h3>
+      <div class="acc-form">
+        <div><label for="prf_cat">Kind</label><select id="prf_cat">${Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) =>
+          `<option value="${k}"${x.category === k ? ' selected' : ''}>${i} ${l}</option>`).join('')}</select></div>
+        <div><label for="prf_tag">Property tag</label><input id="prf_tag" type="text" value="${esc(x.tag || '')}"></div>
+        <div><label for="prf_item">Item</label><input id="prf_item" type="text" list="prf_items" value="${esc(x.item || '')}"
+          placeholder="Office chair, water cooler…"><datalist id="prf_items"></datalist></div>
+        <div><label for="prf_brand">Brand</label><input id="prf_brand" type="text" value="${esc(x.brand || '')}"></div>
+        <div><label for="prf_model">Model</label><input id="prf_model" type="text" value="${esc(x.model || '')}"></div>
+        <div><label for="prf_serial">Serial no.</label><input id="prf_serial" type="text" value="${esc(x.serial_no || '')}"></div>
+        <div><label for="prf_loc">Location</label><select id="prf_loc"><option value="">— Pick a location —</option>${propLocs.map((l) =>
+          `<option value="${l.id}"${String(x.location_id) === String(l.id) ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div>
+        <div><label for="prf_who">Used by</label><select id="prf_who"><option value="">Shared — nobody in particular</option>${people.map((n) =>
+          `<option${n === x.assigned_to ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+        <div><label for="prf_qty">Quantity</label><input id="prf_qty" type="number" min="1" value="${esc(x.qty || 1)}"></div>
+        <div><label for="prf_cond">Condition</label><select id="prf_cond">${Object.entries(IT_PROP_COND).map(([k, [l]]) =>
+          `<option value="${k}"${x.condition === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div><label for="prf_acq">Date acquired</label><input id="prf_acq" type="date" value="${esc(String(x.acquired_on || '').slice(0, 10))}"></div>
+        ${item ? `<div><label for="prf_move">Reason for a move or change</label><input id="prf_move" type="text"
+          placeholder="Moved for the new hire, sent for repair…"></div>` : '<div></div>'}
+      </div>
+      <div class="mt"><label for="prf_notes">Notes</label><textarea id="prf_notes" rows="2">${esc(x.notes || '')}</textarea></div>
+      ${item && x.moves?.length ? `<h4 class="mt">History</h4><div class="pr-hist">${x.moves.map((m) => `
+        <div><span class="dim">${when(m.at)}</span> ${[
+          m.from_location !== m.to_location || !m.from_location ? (m.from_location ? `${esc(m.from_location)} → ${esc(m.to_location || '—')}` : esc(m.to_location || '')) : '',
+          m.from_person !== m.to_person ? (m.from_location || m.from_person
+            ? `${esc(m.from_person || 'Shared')} → ${esc(m.to_person || 'Shared')}` : esc(m.to_person || '')) : '',
+          m.condition ? IT_PROP_COND[m.condition]?.[0] || m.condition : '',
+        ].filter(Boolean).join(' · ')}${m.note ? ` <i>— ${esc(m.note)}</i>` : ''} <span class="dim">by ${esc(m.by)}</span></div>`).join('')}</div>` : ''}
+      <div class="row mt acc-btns">
+        <button class="btn" id="prf_save">${item ? 'Save changes' : 'Add to the register'}</button>
+        ${item ? '<button class="btn quiet danger" id="prf_del">Delete (entered in error)</button>' : ''}
+      </div>`, 'wide pr-dialog');
+    const fillItems = () => { $('#prf_items', v).innerHTML = (IT_PROP_ITEMS[$('#prf_cat', v).value] || [])
+      .map((n) => `<option>${esc(n)}</option>`).join(''); };
+    fillItems();
+    $('#prf_cat', v).addEventListener('change', () => {
+      fillItems();
+      // A new item's tag follows its kind until it is saved.
+      if (!item) $('#prf_tag', v).value = propNextTag($('#prf_cat', v).value);
+    });
+    $('#prf_save', v).addEventListener('click', async () => {
+      const g = (id) => $(id, v).value;
+      try {
+        await POST('/api/it/property', { id: item?.id, category: g('#prf_cat'), tag: g('#prf_tag'), item: g('#prf_item'),
+          brand: g('#prf_brand'), model: g('#prf_model'), serial_no: g('#prf_serial'), location_id: g('#prf_loc'),
+          assigned_to: g('#prf_who'), qty: g('#prf_qty'), condition: g('#prf_cond'), acquired_on: g('#prf_acq'),
+          notes: g('#prf_notes'), move_note: item ? g('#prf_move') : '' });
+        notice(item ? 'Saved 🌸' : 'Added to the register 🌸', 'good');
+        closeDialog();
+        await drawProp();
+      } catch (err) { whoops(err); }
+    });
+    $('#prf_del', v)?.addEventListener('click', async () => {
+      if (!confirm(`Delete ${x.tag} (${x.item})? Use this only for an entry made in error. For something the company no longer has, set Condition to Disposed instead.`)) return;
+      try { await DELETE(`/api/it/property/${item.id}`); notice('Deleted', 'good'); closeDialog(); await drawProp(); }
+      catch (err) { whoops(err); }
     });
   };
 
