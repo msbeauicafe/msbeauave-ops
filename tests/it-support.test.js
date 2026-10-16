@@ -509,3 +509,23 @@ test("an employee's card lists everything they hold — units and company proper
   const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
   assert.match(css, /\.hold-line \{[^}]*font-size: \.78rem;/);
 });
+
+// Unit checks (db/200): IT checks a unit from time to time — its health then
+// and a note — and the masterlist shows when, and colours the row.
+test('a unit check: health and last-checked date kept, history kept, IT\'s alone', async () => {
+  const it = await signInIT();
+  const { id } = (await POST(it, '/api/it/assets', { kind: 'laptop', tag: `MSBA-LAP-${process.pid}${seq++}`, brand: 'Lenovo' })).data;
+  let row = (await GET(it, '/api/it/assets')).data.find((a) => a.id === id);
+  assert.equal(row.health, 'good');
+  assert.equal(row.last_checked_at, null);
+  assert.equal((await POST(it, `/api/it/assets/${id}/check`, { health: 'replace', note: 'Battery swelling' })).status, 200);
+  row = (await GET(it, '/api/it/assets')).data.find((a) => a.id === id);
+  assert.equal(row.health, 'replace');
+  assert.ok(row.last_checked_at);
+  assert.equal(row.checks[0].note, 'Battery swelling');
+  assert.notEqual((await POST(it, `/api/it/assets/${id}/check`, { health: 'broken-ish' })).status, 200);
+  const other = await signIn('admin');
+  assert.notEqual((await POST(other, `/api/it/assets/${id}/check`, { health: 'good' })).status, 200);
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_asset_checks'), /permission denied/);
+  assert.match(app, /#as_list tr:has|<span class="hl-\$\{h\}"><\/span>/);
+});
