@@ -302,3 +302,73 @@ test('intake asks for specs and description, not a PO; Supplier is Supplier / st
   const row = (await GET(it, '/api/it/assets')).data.find((a) => a.id === id);
   assert.equal(row.specs, 'Ryzen 5 7520U, 8GB RAM, 512GB SSD');
 });
+
+// Employee accountability forms (db/195): saved whole, a masterlist unit on a
+// line reads as the employee's until it is marked returned, a unit can be out
+// on one form at a time, and only IT reads or writes them.
+test('accountability forms: lines follow the masterlist, returns free the unit, IT\'s alone', async () => {
+  const it = await signInIT();
+  const tag = `MSBA-DESK-${process.pid}${seq++}`;
+  const { id: assetId } = (await POST(it, '/api/it/assets', { kind: 'desktop', tag, brand: 'Asus', model: 'AIO A3402' })).data;
+  const emp = unique('Charmaine');
+  const form = {
+    employee: emp, employee_no: 'MS-00030', department: 'Marketing', superior: 'Jhazmine', released_by: 'Sonny',
+    form_date: '2026-10-16',
+    items: [
+      { asset_id: assetId, qty: 1, equipment: 'AIO PC', serial_no: 'P84', issued_on: '2026-10-16' },
+      { qty: 1, equipment: 'Calculator', model_no: 'JLX-837R', issued_on: '2026-07-01' },
+      { equipment: '' },
+    ],
+  };
+  const saved = await POST(it, '/api/it/accountability', form);
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  let mine = (await GET(it, '/api/it/accountability')).data.find((f) => f.id === saved.data.id);
+  assert.equal(mine.items.length, 2, 'a blank line is left off');
+  assert.equal(mine.items[0].asset_tag, tag);
+  let unit = (await GET(it, '/api/it/assets')).data.find((a) => a.id === assetId);
+  assert.equal(unit.status, 'assigned');
+  assert.equal(unit.assigned_to, emp);
+
+  // The same unit cannot go out on a second form while it is out.
+  const twice = await POST(it, '/api/it/accountability', { employee: unique('Other'),
+    items: [{ asset_id: assetId, equipment: 'AIO PC', issued_on: '2026-10-16' }] });
+  assert.notEqual(twice.status, 200, 'a unit is out on one form at a time');
+  // A return before its issue date is refused, in words.
+  const early = await POST(it, '/api/it/accountability', { ...form, id: saved.data.id,
+    items: [{ equipment: 'Mouse', issued_on: '2026-10-10', returned_on: '2026-10-01' }] });
+  assert.notEqual(early.status, 200);
+  assert.match(JSON.stringify(early.data), /returned before it was issued/);
+
+  // Marked returned: back into storage.
+  await POST(it, '/api/it/accountability', { ...form, id: saved.data.id, items: [
+    { asset_id: assetId, qty: 1, equipment: 'AIO PC', issued_on: '2026-10-16', returned_on: '2026-10-20', return_note: 'Good' },
+  ] });
+  unit = (await GET(it, '/api/it/assets')).data.find((a) => a.id === assetId);
+  assert.equal(unit.status, 'storage');
+  mine = (await GET(it, '/api/it/accountability')).data.find((f) => f.id === saved.data.id);
+  assert.equal(mine.items[0].returned_on.slice(0, 10), '2026-10-20');
+
+  // Out again, then the form deleted: the unit goes back into storage.
+  await POST(it, '/api/it/accountability', { ...form, id: saved.data.id,
+    items: [{ asset_id: assetId, equipment: 'AIO PC', issued_on: '2026-10-21' }] });
+  assert.equal((await GET(it, '/api/it/assets')).data.find((a) => a.id === assetId).status, 'assigned');
+  assert.equal((await request(it, 'DELETE', `/api/it/accountability/${saved.data.id}`)).status, 200);
+  assert.equal((await GET(it, '/api/it/assets')).data.find((a) => a.id === assetId).status, 'storage');
+
+  const other = await signIn('admin');
+  assert.notEqual((await GET(other, '/api/it/accountability')).status, 200, 'another admin does not get it');
+  assert.notEqual((await POST(other, '/api/it/accountability', { employee: 'X' })).status, 200);
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select it_acc_all()'), /FORBIDDEN/);
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_accountability'), /permission denied/);
+});
+
+test('Hardware assets has its Accountability forms, downloaded as a Word file', () => {
+  assert.match(app, /data-asview="acc"[^>]*>📝 Accountability forms<\/button>/);
+  assert.match(app, /function itAccDocx\(f, logo\)/);
+  assert.match(app, /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
+  assert.match(app, /a\.download = `Accountability form - /);
+  // The shop's own logo file and type: Poppins for the form, Georgia for its title.
+  assert.match(app, /fetch\('\/logo\.png'\)/);
+  assert.match(app, /name: 'word\/media\/logo\.png'/);
+  assert.match(app, /w:ascii="Poppins"/);
+});
