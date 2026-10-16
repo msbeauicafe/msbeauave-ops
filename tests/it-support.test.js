@@ -533,3 +533,9 @@ test('a unit check: health and last-checked date kept, history kept, IT\'s alone
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_asset_checks'), /permission denied/);
   assert.match(app, /#as_list tr:has|<span class="hl-\$\{h\}"><\/span>/);
 });
+
+test('a refresh keeps IT support on the tab it was on, Hardware assets\' own tab too', () => {
+  assert.match(app, /itKeep\('itView', v\);/);
+  assert.match(app, /itKeep\('itAssetsView', k\);/);
+  assert.match(app, /let view = views\.some\(\(\[k\]\) => k === itKept\('itView'\)\)/);
+});
