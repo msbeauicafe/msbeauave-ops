@@ -2591,3 +2591,41 @@ input.n { text-align: right; }
 .bo-vpicks select, .bo-vpicks input { width: 100%; }
 .bo-vpicks .bo-vwide { grid-column: span 2; }
 @media (max-width: 600px) { .bo-vpicks { grid-template-columns: 1fr; } .bo-vpicks .bo-vwide { grid-column: auto; } }
+
+/* ---------------------------------------------------------------------------
+   IT support → Hardware assets → Accountability forms (db/195). Its own acc-*.
+   --------------------------------------------------------------------------- */
+.acc-switch { display: inline-flex; background: var(--rose-blush); border-radius: 999px; padding: 4px; margin-bottom: 12px; }
+.acc-switch button { border: none; background: none; font: inherit; font-size: .9rem; padding: 7px 16px;
+  border-radius: 999px; cursor: pointer; color: var(--rose-deep); }
+.acc-switch button.on { background: #fff; font-weight: 600; box-shadow: 0 1px 4px rgba(160, 80, 110, .15); }
+.itstats.acc-stats { grid-template-columns: repeat(4, 1fr); }
+.acc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.acc-head h3 { margin: 0; }
+.acc-scroll { overflow-x: auto; }
+.acc-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.acc-table th { text-align: left; font-size: .78rem; color: var(--muted); font-weight: 600; padding: 8px 8px;
+  border-bottom: 1px solid var(--rose-soft); white-space: nowrap; }
+.acc-table td { padding: 8px; border-bottom: 1px solid var(--rose-blush); vertical-align: top; }
+.acc-table.compact td { padding: 5px 8px; }
+.acc-acts { white-space: nowrap; text-align: right; }
+.acc-chip { display: inline-block; background: var(--rose-blush); color: var(--rose-deep); border-radius: 999px;
+  padding: 1px 9px; font-size: .78rem; margin: 1px 0; }
+.acc-chip.back { background: #eef0ee; color: var(--muted); text-decoration: line-through; }
+.acc-holder { border: 1px solid var(--rose-soft); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+.acc-holdhd { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.acc-holdhd .tag { margin-left: auto; }
+.dialog.wide.acc-dialog { max-width: 1250px; }
+.acc-form { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 14px; }
+.acc-form label, .acc-dialog label { font-size: .8rem; color: var(--muted); display: block; margin-bottom: 3px; }
+.acc-form input, .acc-form select { width: 100%; box-sizing: border-box; }
+.acc-lines td { padding: 4px; }
+.acc-lines input, .acc-lines select { width: 100%; min-width: 110px; box-sizing: border-box; font-size: .85rem; }
+.acc-lines select { min-width: 190px; }
+.acc-lines input.acc-qty { min-width: 56px; width: 56px; }
+.acc-lines [data-acl="equipment"], .acc-lines [data-acl="return_note"] { min-width: 150px; }
+.acc-lines [data-acl="specs"] { min-width: 180px; }
+.acc-lines [data-acl="serial_no"], .acc-lines [data-acl="model_no"] { min-width: 130px; }
+.acc-lines tr.acc-back td { background: #f3f5f3; }
+.acc-btns { gap: 8px; flex-wrap: wrap; }
+@media (max-width: 700px) { .acc-form { grid-template-columns: 1fr; } }

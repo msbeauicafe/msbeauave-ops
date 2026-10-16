@@ -17759,6 +17759,116 @@ const itThread = (t) => `
       <div style="white-space:pre-line">${esc(m.body)}</div>
     </div>`).join('')}</div>`;
 
+// IT's employee accountability form as a real Word file (.docx), laid out
+// as the shop's paper form — header, employee details, the equipment list,
+// the acknowledgement and the signature lines — so it opens, edits and
+// prints in Word. Built here: a .docx is a zip of a few XML files, and the
+// zip is stored uncompressed, which Word reads like any other. Hardware
+// assets' own; nothing else in the app writes Word files.
+const IT_ACC_ACK = [
+  'I acknowledge that I have received the equipment mentioned above for use at the job site.',
+  'I fully understand that it is entirely my responsibility to keep the equipment in a safe place while it is in my custody.',
+  'I am aware that if the equipment is stolen, damaged, or broken, it is my duty to immediately provide a direct report to the Admin Office. I also understand that I may be charged for equipment damage resulting from misuse or carelessness while in my possession. (Amount depends on the damage.)',
+  'I understand that once my employment ends, it is my responsibility to return all company equipment in its original condition. Failure to do so, the company may withhold my final payment and clearance of dues.',
+  'By signing below, I acknowledge that I have received the employee accountability form and accept its terms and conditions.',
+];
+const IT_ACC_ADDRESS = ['Lot 16-A Blk 2, Bayan-bayanan Ave, Brgy. Marikina Heights',
+  'Marikina City, NCR, Philippines'];
+const itCrc32 = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return (u8) => {
+    let c = 0xFFFFFFFF;
+    for (const b of u8) c = t[(c ^ b) & 255] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  };
+})();
+const itZip = (files, type) => {
+  const enc = new TextEncoder();
+  const parts = []; const central = []; let off = 0;
+  files.forEach(({ name, data }) => {
+    const n = enc.encode(name); const d = enc.encode(data); const crc = itCrc32(d);
+    const h = new DataView(new ArrayBuffer(30));
+    [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [12, 0x21, 2], [14, crc, 4], [18, d.length, 4],
+      [22, d.length, 4], [26, n.length, 2]].forEach(([at, v, w]) => (w === 4 ? h.setUint32(at, v, true) : h.setUint16(at, v, true)));
+    parts.push(new Uint8Array(h.buffer), n, d);
+    const c = new DataView(new ArrayBuffer(46));
+    [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0x0800, 2], [14, 0x21, 2], [16, crc, 4], [20, d.length, 4],
+      [24, d.length, 4], [28, n.length, 2], [42, off, 4]].forEach(([at, v, w]) => (w === 4 ? c.setUint32(at, v, true) : c.setUint16(at, v, true)));
+    central.push(new Uint8Array(c.buffer), n);
+    off += 30 + n.length + d.length;
+  });
+  const size = central.reduce((t, u) => t + u.length, 0);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, size, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type });
+};
+const itAccDay = (d) => (d ? onDay(String(d).slice(0, 10)) : '');
+function itAccDocx(f) {
+  const x = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const run = (t, o = {}) => `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${o.b ? '<w:b/>' : ''}${
+    o.color ? `<w:color w:val="${o.color}"/>` : ''}<w:sz w:val="${o.size || 20}"/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r>`;
+  const para = (t, o = {}) => `<w:p><w:pPr><w:spacing w:before="${o.before || 0}" w:after="${o.after ?? 60}"/>${
+    o.jc ? `<w:jc w:val="${o.jc}"/>` : ''}</w:pPr>${t === '' ? '' : run(t, o)}</w:p>`;
+  const cell = (t, w, o = {}) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${
+    o.fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.fill}"/>` : ''}<w:vAlign w:val="center"/></w:tcPr>${
+    para(t, { size: o.size || 18, b: o.b, after: 0, jc: o.jc })}</w:tc>`;
+  const line = 'w:val="single" w:sz="6" w:space="0" w:color="8A8A8A"';
+  const docTable = (widths, rows) => `<w:tbl><w:tblPr><w:tblW w:w="${widths.reduce((t, v) => t + v, 0)}" w:type="dxa"/>
+    <w:tblBorders><w:top ${line}/><w:left ${line}/><w:bottom ${line}/><w:right ${line}/><w:insideH ${line}/><w:insideV ${line}/></w:tblBorders>
+    <w:tblCellMar><w:left w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr>
+    <w:tblGrid>${widths.map((v) => `<w:gridCol w:w="${v}"/>`).join('')}</w:tblGrid>${rows.join('')}</w:tbl>`;
+  const row = (cells, h = 380) => `<w:tr><w:trPr><w:trHeight w:val="${h}"/></w:trPr>${cells}</w:tr>`;
+  const head = 'E9D5DE';
+  const info = [['Employee Name:', f.employee], ['Employee No.:', f.employee_no], ['Immediate Superior Name:', f.superior],
+    ['Department:', f.department], ['Date:', itAccDay(f.form_date)]];
+  const iw = [600, 1750, 1450, 1650, 2250, 1100, 1100];
+  const items = (f.items || []).map((i) => [String(i.qty || 1), i.equipment, i.model_no, i.serial_no,
+    [i.specs, i.asset_tag ? `Tag ${i.asset_tag}` : '', i.return_note].filter(Boolean).join(' · '),
+    itAccDay(i.issued_on), itAccDay(i.returned_on)]);
+  while (items.length < 8) items.push(['', '', '', '', '', '', '']);
+  const body = [
+    para('MS Beau Ave', { size: 44, b: true, color: '7A3B57', jc: 'center', after: 40 }),
+    para('EMPLOYEE ACCOUNTABILITY FORM', { size: 26, b: true, jc: 'center', after: 240 }),
+    docTable([3000, 6900], info.map(([l, v]) => row(cell(l, 3000, { fill: head, b: true }) + cell(v, 6900)))),
+    para('', { after: 160 }),
+    docTable(iw, [row(['Qty', 'Equipment', 'Model Number', 'Serial Number', 'Other Specifications', 'Date Issued', 'Date Returned']
+      .map((t, k) => cell(t, iw[k], { fill: head, b: true, jc: 'center', size: 17 })).join(''))]
+      .concat(items.map((r) => row(r.map((t, k) => cell(t, iw[k], { size: 17, jc: k === 0 ? 'center' : undefined })).join(''))))),
+    para('Acknowledgement', { size: 22, b: true, jc: 'center', before: 240, after: 100 }),
+    ...IT_ACC_ACK.map((t) => para(t, { size: 18, jc: 'both', after: 80 })),
+    para('', { after: 120 }),
+    docTable([3000, 6900], [['Employee Signature:', ''], ['Immediate Superior Signature:', ''],
+      ['Released By:', f.released_by], ['Date:', '']].map(([l, v]) => row(cell(l, 3000, { fill: head, b: true }) + cell(v, 6900), 560))),
+    para('', { after: 240 }),
+    ...IT_ACC_ADDRESS.map((t) => para(t, { size: 18, jc: 'right', after: 0 })),
+  ].join('');
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}
+<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="850" w:right="1000" w:bottom="850" w:left="1000" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  return itZip([
+    { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
+    { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
+    { name: 'word/document.xml', data: doc },
+  ], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+}
+const itAccDownload = (f) => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(itAccDocx(f));
+  a.download = `Accountability form - ${String(f.employee || 'employee').replace(/[\\/:*?"<>|]/g, '')} - ${
+    String(f.form_date || localDay()).slice(0, 10)}.docx`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+};
+// The equipment names a form usually lists; the line can still say anything.
+const IT_ACC_EQUIPMENT = ['Laptop', 'AIO PC', 'Desktop PC', 'Monitor', 'Keyboard', 'Mouse', 'Charger',
+  'Cellphone', 'SIM card', 'Calculator', 'Headset', 'Webcam', 'Printer', 'CP stand', 'Bag'];
+
 const itReplyBox = (t, label) => `
   <div class="row mt itreply">
     <input type="text" data-itdraft="${t.id}" placeholder="${esc(label)}">
@@ -17941,7 +18051,7 @@ SCREENS.itsupport = async (page) => {
   const drawAssets = async () => {
     assets = (await GET('/api/it/assets')) || [];
     if (!$('#as_list', body)) {
-      body.innerHTML = `
+      body.innerHTML = `${asSwitch('list')}
         <div class="panel">
           <div class="itsteps"><span>📦 Receive</span><span>✂️ Unbox</span>
             <span>🏷️ Asset-tag</span><span>📋 Log</span></div>
@@ -18180,6 +18290,223 @@ SCREENS.itsupport = async (page) => {
       } catch (err) { whoops(err); }
     });
     $('#asd_status').focus();
+  };
+
+  // Hardware assets' two halves: the masterlist, and the employee
+  // accountability forms — who signed for which laptop, AIO PC, keyboard…
+  const asSwitch = (on) => `<div class="acc-switch" role="tablist">
+    <button type="button" data-asview="list" class="${on === 'list' ? 'on' : ''}">🗂️ Masterlist</button>
+    <button type="button" data-asview="acc" class="${on === 'acc' ? 'on' : ''}">📝 Accountability forms</button></div>`;
+  body.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-asview]');
+    if (!b || b.classList.contains('on')) return;
+    if (b.dataset.asview === 'acc') drawAcc().catch(whoops);
+    else { body.innerHTML = ''; drawAssets().catch(whoops); }
+  });
+
+  // -------------------------------------------------------------------------
+  // Accountability forms (db/195): the shop's paper form, kept here. Each
+  // line is one piece of equipment; a line can be a unit off the masterlist,
+  // which then reads as the employee's until the line is marked returned.
+  // Saved here, and downloaded as a Word file to print and sign.
+  // -------------------------------------------------------------------------
+  let accForms = [];
+  const accF = { q: '', dept: '', state: '' };
+  const accOut = (f) => f.items.filter((i) => !i.returned_on);
+  const accDays = (d) => (d ? Math.max(0, Math.round((Date.parse(localDay()) - Date.parse(String(d).slice(0, 10))) / 864e5)) : null);
+
+  const drawAcc = async () => {
+    [accForms, assets] = await Promise.all([GET('/api/it/accountability'), GET('/api/it/assets')]);
+    accForms = accForms || []; assets = assets || [];
+    const out = accForms.flatMap((f) => accOut(f).map((i) => ({ ...i, f })));
+    const holders = new Set(out.map((i) => i.f.employee));
+    body.innerHTML = `${asSwitch('acc')}
+      <div class="itstats panel acc-stats">
+        <div><span>Forms on file</span><b>${count(accForms.length)}</b></div>
+        <div><span>Employees holding equipment</span><b class="amber">${count(holders.size)}</b></div>
+        <div><span>Items out</span><b class="red">${count(out.reduce((t, i) => t + Number(i.qty || 1), 0))}</b></div>
+        <div><span>Items returned</span><b>${count(accForms.reduce((t, f) => t + f.items.filter((i) => i.returned_on).length, 0))}</b></div>
+      </div>
+      <div class="panel">
+        <div class="acc-head"><div><h3>Employee accountability forms</h3>
+          <div class="dim">Who signed for which equipment. Open one to edit it, mark items returned, or download it for Word.</div></div>
+          <button class="btn" id="acc_new">＋ New form</button></div>
+        <div class="tools mt">
+          <input type="search" id="acc_q" placeholder="Search employee, equipment, serial, tag…" value="${esc(accF.q)}">
+          <select id="acc_dept"><option value="">Every department</option>${IT_DEPARTMENTS.map((d) =>
+            `<option${accF.dept === d ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select>
+          <select id="acc_state"><option value="">Every form</option>
+            <option value="out"${accF.state === 'out' ? ' selected' : ''}>With equipment out</option>
+            <option value="cleared"${accF.state === 'cleared' ? ' selected' : ''}>All returned (cleared)</option></select>
+        </div>
+        <div id="acc_list" class="mt"></div>
+      </div>
+      <div class="panel">
+        <h3>Who has what</h3>
+        <div class="dim">Every piece of equipment still out, by employee.</div>
+        <div id="acc_out" class="mt"></div>
+      </div>`;
+
+    const drawList = () => {
+      const q = accF.q.toLowerCase();
+      const rows = accForms.filter((f) => (!accF.dept || f.department === accF.dept)
+        && (!accF.state || (accF.state === 'out' ? accOut(f).length : f.items.length && !accOut(f).length))
+        && (!q || [f.employee, f.employee_no, f.department, f.superior, ...f.items.flatMap((i) =>
+          [i.equipment, i.model_no, i.serial_no, i.asset_tag, i.specs])].join(' ').toLowerCase().includes(q)));
+      $('#acc_list', body).innerHTML = rows.length ? `<div class="acc-scroll"><table class="acc-table">
+        <thead><tr><th>Employee</th><th>Department</th><th>Form date</th><th>Equipment</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows.map((f) => {
+          const o = accOut(f).length;
+          return `<tr>
+            <td><b>${esc(f.employee)}</b>${f.employee_no ? `<div class="dim">${esc(f.employee_no)}</div>` : ''}</td>
+            <td>${esc(f.department || '—')}</td>
+            <td>${itAccDay(f.form_date)}</td>
+            <td>${f.items.map((i) => `<span class="acc-chip ${i.returned_on ? 'back' : ''}">${esc(i.equipment)}</span>`).join(' ') || '<span class="dim">—</span>'}</td>
+            <td>${!f.items.length ? tag('No items', 'grey') : o ? tag(`${o} out`, 'amber') : tag('Cleared', 'green')}</td>
+            <td class="acc-acts"><button class="btn sm" data-accopen="${f.id}">Open</button>
+              <button class="btn sm quiet" data-accword="${f.id}" title="Download as a Word file">⤓ Word</button></td></tr>`;
+        }).join('')}</tbody></table></div>`
+        : `<div class="dim">${accForms.length ? 'No form matches those filters.' : 'No forms yet — ＋ New form writes the first one.'}</div>`;
+    };
+    drawList();
+    const holding = [...holders].sort().map((name) => [name, out.filter((i) => i.f.employee === name)]);
+    $('#acc_out', body).innerHTML = holding.length ? holding.map(([name, list]) => `
+      <div class="acc-holder"><div class="acc-holdhd"><b>${esc(name)}</b>
+        <span class="dim">${esc(list[0].f.department || '')}</span>
+        <span class="tag pink">${count(list.length)} item${list.length === 1 ? '' : 's'}</span></div>
+        <div class="acc-scroll"><table class="acc-table compact"><thead><tr><th>Qty</th><th>Equipment</th><th>Model</th><th>Serial no.</th>
+          <th>Asset tag</th><th>Issued</th><th>Held</th></tr></thead><tbody>${list.map((i) => `<tr>
+          <td>${count(i.qty || 1)}</td><td>${esc(i.equipment)}</td><td>${esc(i.model_no || '—')}</td>
+          <td>${esc(i.serial_no || '—')}</td><td>${i.asset_tag ? `<b>${esc(i.asset_tag)}</b>` : '<span class="dim">—</span>'}</td>
+          <td>${itAccDay(i.issued_on) || '<span class="dim">—</span>'}</td>
+          <td>${accDays(i.issued_on) == null ? '—' : `${count(accDays(i.issued_on))} day${accDays(i.issued_on) === 1 ? '' : 's'}`}</td></tr>`).join('')}
+        </tbody></table></div></div>`).join('') : '<div class="dim">Nothing is out right now.</div>';
+
+    $('#acc_q', body).addEventListener('input', (e) => { accF.q = e.target.value; drawList(); });
+    $('#acc_dept', body).addEventListener('change', (e) => { accF.dept = e.target.value; drawList(); });
+    $('#acc_state', body).addEventListener('change', (e) => { accF.state = e.target.value; drawList(); });
+    $('#acc_new', body).addEventListener('click', () => accEdit(null));
+    $('#acc_list', body).addEventListener('click', (e) => {
+      const o = e.target.closest('[data-accopen]');
+      const w = e.target.closest('[data-accword]');
+      if (o) accEdit(accForms.find((f) => String(f.id) === o.dataset.accopen));
+      if (w) itAccDownload(accForms.find((f) => String(f.id) === w.dataset.accword));
+    });
+  };
+
+  // One form, opened to write or edit: the employee's details, then a line
+  // per piece of equipment. Picking a masterlist unit fills its line.
+  const accEdit = (form) => {
+    const f = form ? JSON.parse(JSON.stringify(form)) : {
+      id: null, employee: '', employee_no: '', superior: '', department: '', released_by: user.name || '',
+      form_date: localDay(), notes: '', items: [{ qty: 1, issued_on: localDay() }],
+    };
+    if (!f.items.length) f.items.push({ qty: 1, issued_on: localDay() });
+    const people = [...new Set([...(choices.people || []), f.employee, f.superior, f.released_by].filter(Boolean))].sort();
+    const pick = (id, val, blank) => `<select id="${id}"><option value="">${blank}</option>${people.map((n) =>
+      `<option${n === val ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+    const assetLabel = (a) => [a.tag, [a.brand, a.model].filter(Boolean).join(' '), a.serial_no].filter(Boolean).join(' · ');
+    // A unit can go on a line if it is in storage, already this employee's,
+    // or already on this line.
+    const usable = (line) => assets.filter((a) => a.status !== 'retired' && (a.status === 'storage'
+      || String(a.id) === String(line.asset_id) || (f.employee && a.assigned_to === f.employee)));
+    const v = dialog(`
+      <h3>${f.id ? 'Accountability form' : 'New accountability form'}</h3>
+      <div class="acc-form">
+        <div><label for="acf_emp">Employee name</label>${pick('acf_emp', f.employee, 'Pick the employee…')}</div>
+        <div><label for="acf_no">Employee no.</label><input id="acf_no" type="text" value="${esc(f.employee_no || '')}" placeholder="MS-00030"></div>
+        <div><label for="acf_dept">Department</label><select id="acf_dept"><option value="">—</option>${IT_DEPARTMENTS.map((d) =>
+          `<option${d === f.department ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select></div>
+        <div><label for="acf_sup">Immediate superior</label>${pick('acf_sup', f.superior, '—')}</div>
+        <div><label for="acf_rel">Released by</label>${pick('acf_rel', f.released_by, '—')}</div>
+        <div><label for="acf_date">Form date</label><input id="acf_date" type="date" value="${esc(String(f.form_date || '').slice(0, 10))}"></div>
+      </div>
+      <h4 class="mt">Equipment</h4>
+      <datalist id="acf_kinds">${IT_ACC_EQUIPMENT.map((k) => `<option>${esc(k)}</option>`).join('')}</datalist>
+      <div class="acc-scroll"><table class="acc-table acc-lines"><thead><tr>
+        <th>From masterlist</th><th>Qty</th><th>Equipment</th><th>Model no.</th><th>Serial no.</th><th>Other specifications</th>
+        <th>Issued</th><th>Returned</th><th>Return note</th><th></th></tr></thead><tbody id="acf_lines"></tbody></table></div>
+      <button type="button" class="btn sm quiet mt" id="acf_add">＋ Add equipment</button>
+      <div class="mt"><label for="acf_notes">Notes</label><textarea id="acf_notes" rows="2">${esc(f.notes || '')}</textarea></div>
+      <div class="row mt acc-btns">
+        <button class="btn" id="acf_save">Save form</button>
+        <button class="btn quiet" id="acf_word">⤓ Download Word</button>
+        ${f.id ? '<button class="btn quiet danger" id="acf_del">Delete form</button>' : ''}
+      </div>`, 'wide acc-dialog');
+
+    const read = () => {
+      f.employee = $('#acf_emp', v).value; f.employee_no = $('#acf_no', v).value;
+      f.department = $('#acf_dept', v).value; f.superior = $('#acf_sup', v).value;
+      f.released_by = $('#acf_rel', v).value; f.form_date = $('#acf_date', v).value; f.notes = $('#acf_notes', v).value;
+      f.items = $$('#acf_lines tr', v).map((tr) => {
+        const g = (k) => tr.querySelector(`[data-acl="${k}"]`).value;
+        const asset = assets.find((a) => String(a.id) === g('asset_id'));
+        return { asset_id: g('asset_id') || null, asset_tag: asset?.tag || null, qty: Number(g('qty')) || 1,
+          equipment: g('equipment'), model_no: g('model_no'), serial_no: g('serial_no'), specs: g('specs'),
+          issued_on: g('issued_on'), returned_on: g('returned_on'), return_note: g('return_note') };
+      });
+    };
+    const lines = () => {
+      $('#acf_lines', v).innerHTML = f.items.map((l, n) => `<tr class="${l.returned_on ? 'acc-back' : ''}">
+        <td><select data-acl="asset_id"><option value="">Not on the masterlist</option>${usable(l).map((a) =>
+          `<option value="${a.id}"${String(a.id) === String(l.asset_id) ? ' selected' : ''}>${esc(assetLabel(a))}</option>`).join('')}</select></td>
+        <td><input data-acl="qty" type="number" min="1" value="${esc(l.qty || 1)}" class="acc-qty"></td>
+        <td><input data-acl="equipment" type="text" list="acf_kinds" value="${esc(l.equipment || '')}" placeholder="Laptop, mouse…"></td>
+        <td><input data-acl="model_no" type="text" value="${esc(l.model_no || '')}"></td>
+        <td><input data-acl="serial_no" type="text" value="${esc(l.serial_no || '')}"></td>
+        <td><input data-acl="specs" type="text" value="${esc(l.specs || '')}" placeholder="With charger, battery…"></td>
+        <td><input data-acl="issued_on" type="date" value="${esc(String(l.issued_on || '').slice(0, 10))}"></td>
+        <td><input data-acl="returned_on" type="date" value="${esc(String(l.returned_on || '').slice(0, 10))}"></td>
+        <td><input data-acl="return_note" type="text" value="${esc(l.return_note || '')}" placeholder="Good condition…"></td>
+        <td><button type="button" class="btn sm quiet" data-acldrop="${n}" title="Take this line off">✕</button></td></tr>`).join('');
+    };
+    lines();
+    // Picking a unit fills its line from the masterlist.
+    $('#acf_lines', v).addEventListener('change', (e) => {
+      const sel = e.target.closest('[data-acl="asset_id"]');
+      if (!sel) return;
+      const a = assets.find((x) => String(x.id) === sel.value);
+      if (!a) return;
+      const tr = sel.closest('tr');
+      const set = (k, val) => { tr.querySelector(`[data-acl="${k}"]`).value = val || ''; };
+      set('equipment', (IT_KINDS[a.kind] || [a.kind])[0]);
+      set('model_no', [a.brand, a.model].filter(Boolean).join(' '));
+      set('serial_no', a.serial_no);
+      set('specs', String(a.specs || '').replace(/\s*\n\s*/g, ', '));
+      set('qty', 1);
+    });
+    $('#acf_lines', v).addEventListener('click', (e) => {
+      const d = e.target.closest('[data-acldrop]');
+      if (!d) return;
+      read(); f.items.splice(Number(d.dataset.acldrop), 1);
+      if (!f.items.length) f.items.push({ qty: 1, issued_on: localDay() });
+      lines();
+    });
+    $('#acf_emp', v).addEventListener('change', () => { read(); lines(); });
+    $('#acf_add', v).addEventListener('click', () => { read(); f.items.push({ qty: 1, issued_on: localDay() }); lines(); });
+    $('#acf_word', v).addEventListener('click', () => {
+      read();
+      itAccDownload({ ...f, items: f.items.filter((i) => String(i.equipment || '').trim() || i.asset_id) });
+    });
+    $('#acf_save', v).addEventListener('click', async () => {
+      read();
+      try {
+        const { id } = await POST('/api/it/accountability', f);
+        f.id = id;
+        notice('Accountability form saved 🌸', 'good');
+        closeDialog();
+        await drawAcc();
+      } catch (err) { whoops(err); }
+    });
+    $('#acf_del', v)?.addEventListener('click', async () => {
+      if (!confirm(`Delete ${f.employee}'s accountability form? Anything still out on it goes back into storage.`)) return;
+      try {
+        await DELETE(`/api/it/accountability/${f.id}`);
+        notice('Form deleted', 'good');
+        closeDialog();
+        await drawAcc();
+      } catch (err) { whoops(err); }
+    });
   };
 
   const show = (v) => {
