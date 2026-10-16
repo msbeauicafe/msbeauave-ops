@@ -2659,3 +2659,6 @@ input.n { text-align: right; }
 .hold-row .dim { font-size: .78rem; }
 .itstats.pr-stats { grid-template-columns: repeat(6, 1fr); }
 @media (max-width: 700px) { .itstats.pr-stats { grid-template-columns: repeat(2, 1fr); } }
+
+.hold-branch + .hold-branch { margin-top: 14px; }
+.hold-branch h4 { margin: 0 0 8px; color: var(--rose-deep); }

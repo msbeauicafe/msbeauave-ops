@@ -17928,6 +17928,24 @@ SCREENS.itsupport = async (page) => {
   const filters = { status: '', urgency: '', q: '' };
   let tickets = [];
   const choices = await GET('/api/it/choices').catch(() => ({ departments: [], people: [] }));
+  // Employees work at two branches: Hardware assets' by-employee lists put
+  // each person under their branch, as their Team record has it (db/197).
+  let itBranchOf = null;
+  const loadBranches = async () => {
+    if (itBranchOf || !isIT) return;
+    const rows = await GET('/api/it/people-branches').catch(() => []);
+    itBranchOf = new Map((rows || []).map((r) => [r.name, r.branch]));
+  };
+  const byBranch = (names, card) => {
+    const groups = new Map();
+    names.forEach((n) => {
+      const b = itBranchOf?.get(n) || 'No branch on file';
+      groups.set(b, [...(groups.get(b) || []), n]);
+    });
+    return [...groups].sort(([a], [b]) => (a === 'No branch on file') - (b === 'No branch on file') || a.localeCompare(b))
+      .map(([b, list]) => `<div class="hold-branch"><h4>🏬 ${esc(b)} <span class="dim">· ${count(list.length)} employee${
+        list.length === 1 ? '' : 's'}</span></h4><div class="hold-grid">${list.map(card).join('')}</div></div>`).join('');
+  };
   const departments = IT_DEPARTMENTS;
 
   page.innerHTML = `
@@ -18092,7 +18110,8 @@ SCREENS.itsupport = async (page) => {
   const described = (a) => [a.brand, a.model].filter(Boolean).join(' ');
 
   const drawAssets = async () => {
-    assets = (await GET('/api/it/assets')) || [];
+    [assets] = await Promise.all([GET('/api/it/assets'), loadBranches()]);
+    assets = assets || [];
     if (!$('#as_list', body)) {
       body.innerHTML = `${asSwitch('list')}
         <div class="panel">
@@ -18246,7 +18265,7 @@ SCREENS.itsupport = async (page) => {
     // that are still somebody's.
     const held = assets.filter((a) => a.assigned_to && a.status !== 'retired' && a.status !== 'storage');
     const holders = [...new Set(held.map((a) => a.assigned_to))].sort();
-    $('#as_people', body).innerHTML = holders.length ? `<div class="hold-grid">${holders.map((name) => {
+    $('#as_people', body).innerHTML = holders.length ? byBranch(holders, (name) => {
       const list = held.filter((a) => a.assigned_to === name);
       return `<div class="acc-holder"><div class="acc-holdhd"><b>${esc(name)}</b>
         <span class="dim">${esc(list.find((a) => a.department)?.department || '')}</span>
@@ -18256,7 +18275,7 @@ SCREENS.itsupport = async (page) => {
           <span class="dim">${esc(a.tag)}${a.serial_no ? ` · S/N ${esc(a.serial_no)}` : ''}${a.deployed_on
             ? ` · since ${onDay(String(a.deployed_on).slice(0, 10))}` : ''}</span>
           ${a.status === 'repair' ? tag('Under repair', 'amber') : ''}</button>`).join('')}</div>`;
-    }).join('')}</div>` : '<div class="dim">No unit is assigned to an employee yet — Assign / update on a unit gives it to somebody.</div>';
+    }) : '<div class="dim">No unit is assigned to an employee yet — Assign / update on a unit gives it to somebody.</div>';
     $$('[data-asopen]', body).forEach((b) => b.addEventListener('click',
       () => assetDrawer(assets.find((a) => String(a.id) === b.dataset.asopen))));
   };
@@ -18592,7 +18611,8 @@ SCREENS.itsupport = async (page) => {
   };
 
   const drawProp = async () => {
-    const data = (await GET('/api/it/property')) || {};
+    const [got] = await Promise.all([GET('/api/it/property'), loadBranches()]);
+    const data = got || {};
     props = data.items || []; propLocs = data.locations || [];
     const live = props.filter((x) => x.condition !== 'disposed');
     const qtyOf = (list) => list.reduce((t, x) => t + Number(x.qty || 1), 0);
@@ -18637,7 +18657,7 @@ SCREENS.itsupport = async (page) => {
         <div id="pr_people" class="mt"></div>
       </div>`;
     const mine = [...new Set(live.filter((x) => x.assigned_to).map((x) => x.assigned_to))].sort();
-    $('#pr_people', body).innerHTML = mine.length ? `<div class="hold-grid">${mine.map((name) => {
+    $('#pr_people', body).innerHTML = mine.length ? byBranch(mine, (name) => {
       const list = live.filter((x) => x.assigned_to === name);
       return `<div class="acc-holder"><div class="acc-holdhd"><b>${esc(name)}</b>
         <span class="tag pink">${count(qtyOf(list))} item${qtyOf(list) === 1 ? '' : 's'}</span></div>
@@ -18645,7 +18665,7 @@ SCREENS.itsupport = async (page) => {
           <span>${IT_PROP_CATS[x.category]?.[2] || ''} ${esc(x.item)}${x.qty > 1 ? ` ×${count(x.qty)}` : ''}</span>
           <span class="dim">${esc(x.tag)} · ${esc(x.location || 'No location')}</span>
           ${x.condition !== 'good' ? tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey'])) : ''}</button>`).join('')}</div>`;
-    }).join('')}</div>` : '<div class="dim">Nothing is assigned to an employee yet — pick one under Used by when you add an item.</div>';
+    }) : '<div class="dim">Nothing is assigned to an employee yet — pick one under Used by when you add an item.</div>';
     $('#pr_people', body).addEventListener('click', (e) => {
       const o = e.target.closest('[data-propen]');
       if (o) propEdit(props.find((x) => String(x.id) === o.dataset.propen));

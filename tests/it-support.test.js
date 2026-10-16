@@ -433,4 +433,10 @@ test('office supplies are company property; both registers show what each employ
   assert.match(app, /'Paper shredder'/);
   assert.match(app, /<h3>Assigned to employees<\/h3>/);
   assert.match(app, /<h3>By employee<\/h3>/);
+  // Employees are at two branches: each person's branch, from their Team record.
+  const people = await GET(it, '/api/it/people-branches');
+  assert.equal(people.status, 200);
+  assert.ok(Array.isArray(people.data));
+  assert.notEqual((await GET(await signIn('admin'), '/api/it/people-branches')).status, 200, 'IT\'s alone');
+  assert.match(app, /🏬 \$\{esc\(b\)\}/);
 });
