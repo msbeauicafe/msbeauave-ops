@@ -18204,7 +18204,7 @@ SCREENS.itsupport = async (page) => {
         </div>
 
         <div class="panel">
-          <h3>Masterlist</h3>
+          <h3>Asset inventory masterlist</h3>
           <div class="tools">
             <input type="search" id="as_q" placeholder="Search tag, serial, brand, model, person…">
             <select id="as_fkind"><option value="">Every type</option>${Object.entries(IT_KINDS)
@@ -18491,9 +18491,9 @@ SCREENS.itsupport = async (page) => {
   // Hardware assets' two halves: the masterlist, and the employee
   // accountability forms — who signed for which laptop, AIO PC, keyboard…
   const asSwitch = (on) => `<div class="acc-switch" role="tablist">
-    <button type="button" data-asview="list" class="${on === 'list' ? 'on' : ''}">🗂️ Masterlist</button>
-    <button type="button" data-asview="acc" class="${on === 'acc' ? 'on' : ''}">📝 Accountability forms</button>
-    <button type="button" data-asview="prop" class="${on === 'prop' ? 'on' : ''}">🏢 Company property</button></div>`;
+    <button type="button" data-asview="list" class="${on === 'list' ? 'on' : ''}">🗂️ Asset inventory masterlist</button>
+    <button type="button" data-asview="prop" class="${on === 'prop' ? 'on' : ''}">🏢 Company property</button>
+    <button type="button" data-asview="acc" class="${on === 'acc' ? 'on' : ''}">📝 Accountability forms</button></div>`;
   body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-asview]');
     if (!b || b.classList.contains('on')) return;
