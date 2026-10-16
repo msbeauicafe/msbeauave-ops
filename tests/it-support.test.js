@@ -372,3 +372,50 @@ test('Hardware assets has its Accountability forms, downloaded as a Word file', 
   assert.match(app, /name: 'word\/media\/logo\.png'/);
   assert.match(app, /w:ascii="Poppins"/);
 });
+
+// Company property (db/196): devices, appliances and furniture by room and
+// person; rooms are picked from a list IT can add to, and every move is kept.
+test('company property: by room and person, moves kept, rooms picked, IT\'s alone', async () => {
+  const it = await signInIT();
+  let data = (await GET(it, '/api/it/property')).data;
+  for (const room of ['Warehouse 1st floor', 'Hallway 1st floor', 'Pantry', 'Accounting 2nd floor',
+    'Head office 2nd floor', 'HR 2nd floor', '2nd floor warehouse stair', '2nd floor warehouse lobby']) {
+    assert.ok(data.locations.some((l) => l.name === room), room);
+  }
+  const pantry = data.locations.find((l) => l.name === 'Pantry').id;
+  const hr = data.locations.find((l) => l.name === 'HR 2nd floor').id;
+  const tag = `MSBA-FUR-${process.pid}${seq++}`;
+  const added = await POST(it, '/api/it/property', { category: 'furniture', tag: tag.toLowerCase(), item: 'Office chair',
+    location_id: pantry, assigned_to: 'Angel' });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+  assert.notEqual((await POST(it, '/api/it/property', { category: 'furniture', tag, item: 'Chair' })).status, 200,
+    'one tag, one item');
+  assert.notEqual((await POST(it, '/api/it/property', { category: 'furniture', tag: `${tag}X`, item: 'Chair',
+    location_id: 999999999 })).status, 200, 'a location is one from the list');
+
+  await POST(it, '/api/it/property', { id: added.data.id, category: 'furniture', tag, item: 'Office chair',
+    location_id: hr, assigned_to: 'Maria', condition: 'repair', move_note: 'New hire' });
+  data = (await GET(it, '/api/it/property')).data;
+  const row = data.items.find((x) => x.id === added.data.id);
+  assert.equal(row.tag, tag.toUpperCase());
+  assert.equal(row.location, 'HR 2nd floor');
+  assert.equal(row.moves.length, 2, 'added, then moved');
+  assert.equal(row.moves[0].from_location, 'Pantry');
+  assert.equal(row.moves[0].to_person, 'Maria');
+  assert.equal(row.moves[0].note, 'New hire');
+
+  const room = `Conference ${process.pid}${seq++}`;
+  assert.equal((await POST(it, '/api/it/property-locations', { name: room })).status, 200);
+  assert.ok((await GET(it, '/api/it/property')).data.locations.some((l) => l.name === room));
+
+  assert.equal((await request(it, 'DELETE', `/api/it/property/${added.data.id}`)).status, 200);
+  const other = await signIn('admin');
+  assert.notEqual((await GET(other, '/api/it/property')).status, 200, 'another admin does not get it');
+  assert.notEqual((await POST(other, '/api/it/property-locations', { name: 'X' })).status, 200);
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select it_property_all()'), /FORBIDDEN/);
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_property'), /permission denied/);
+});
+
+test('Hardware assets has a Company property tab', () => {
+  assert.match(app, /data-asview="prop"[^>]*>🏢 Company property<\/button>/);
+});

@@ -2629,3 +2629,21 @@ input.n { text-align: right; }
 .acc-lines tr.acc-back td { background: #f3f5f3; }
 .acc-btns { gap: 8px; flex-wrap: wrap; }
 @media (max-width: 700px) { .acc-form { grid-template-columns: 1fr; } }
+
+/* IT support → Hardware assets → Company property (db/196). Its own pr-*
+   rooms and stats; the table and dialog reuse the accountability forms' acc-*. */
+.itstats.pr-stats { grid-template-columns: repeat(5, 1fr); }
+.pr-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.pr-room { display: flex; flex-direction: column; gap: 2px; text-align: left; background: #fff; font: inherit;
+  border: 1px solid var(--rose-soft); border-radius: 12px; padding: 10px 12px; cursor: pointer; color: var(--ink); }
+.pr-room:hover { border-color: var(--rose-deep); }
+.pr-room.on { border-color: var(--rose-deep); background: var(--rose-blush); }
+.pr-roomname { font-size: .84rem; font-weight: 600; color: var(--rose-deep); }
+.pr-room b { font-size: 1.4rem; color: var(--rose-deep); }
+.pr-room .dim { font-size: .76rem; }
+.dialog.wide.pr-dialog { max-width: 900px; }
+.pr-dialog label { font-size: .8rem; color: var(--muted); display: block; margin-bottom: 3px; }
+.pr-dialog textarea { width: 100%; box-sizing: border-box; }
+.pr-hist { display: flex; flex-direction: column; gap: 4px; font-size: .84rem; max-height: 180px; overflow-y: auto;
+  border: 1px solid var(--rose-blush); border-radius: 10px; padding: 8px 10px; }
+@media (max-width: 700px) { .itstats.pr-stats { grid-template-columns: repeat(2, 1fr); } }
