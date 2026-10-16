@@ -495,3 +495,9 @@ test("a room's photo can be tracked as an item there, so the room counts it", ()
   assert.match(app, /const propTrack = async \(name, kind, loc\) =>/);
   assert.match(app, /data-prtrack="\$\{f\.id\}">＋ Track as an item<\/button>/);
 });
+
+test('Assigned to employees has its own ＋ Assign a unit, and the masterlist says where a stored unit went', () => {
+  assert.match(app, /<button class="btn" id="as_assign" type="button">＋ Assign a unit<\/button>/);
+  assert.match(app, /const assignUnit = \(\) =>/);
+  assert.match(app, /set the last filter to Every status to see it/);
+});
