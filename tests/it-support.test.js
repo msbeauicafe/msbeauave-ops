@@ -450,3 +450,31 @@ test('every IT support tab opens on its own rose overview card', () => {
   assert.match(app, /\$\{asSwitch\('list'\)\}\s*<div id="as_counts"><\/div>\s*<div class="panel">\s*<div class="itsteps">/);
   assert.match(css, /\.itov-card \{ background: linear-gradient\(135deg, var\(--rose-deep\), var\(--rose-primary\)\);/);
 });
+
+// Company property's photos (db/198): filed by room, and by item when IT
+// says which; served and removed by IT alone.
+test("a room's photos: attached, of an item or the room, served, removed — IT's alone", async () => {
+  const it = await signInIT();
+  const { locations } = (await GET(it, '/api/it/property')).data;
+  const pantry = locations.find((l) => l.name === 'Pantry').id;
+  const { id: itemId } = (await POST(it, '/api/it/property', { category: 'appliance',
+    tag: `MSBA-APP-${process.pid}${seq++}`, item: 'Water cooler', location_id: pantry })).data;
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const up = await POST(it, `/api/it/property-locations/${pantry}/files`, { dataUrl: png, property_id: itemId, caption: 'Front' });
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+  assert.notEqual((await POST(it, `/api/it/property-locations/${pantry}/files`, { dataUrl: 'data:text/plain;base64,aGk=' })).status, 200);
+  const files = (await GET(it, `/api/it/property-locations/${pantry}/files`)).data;
+  const mine = files.find((f) => f.id === up.data.id);
+  assert.equal(mine.item, 'Water cooler');
+  assert.equal(mine.caption, 'Front');
+  const got = await fetch(`${base}/api/it/property-files/${up.data.id}`, { headers: { Cookie: it } });
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get('content-type'), 'image/jpeg');
+  const other = await signIn('admin');
+  assert.notEqual((await fetch(`${base}/api/it/property-files/${up.data.id}`, { headers: { Cookie: other } })).status, 200);
+  assert.notEqual((await POST(other, `/api/it/property-locations/${pantry}/files`, { dataUrl: png })).status, 200);
+  await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_property_files'), /permission denied/);
+  assert.equal((await request(it, 'DELETE', `/api/it/property-files/${up.data.id}`)).status, 200);
+  assert.ok(!(await GET(it, `/api/it/property-locations/${pantry}/files`)).data.some((f) => f.id === up.data.id));
+  assert.match(app, /data-itzoom="\/api\/it\/property-files\/\$\{f\.id\}"/, 'zoomable in the IT viewer');
+});

@@ -2684,3 +2684,15 @@ input.n { text-align: right; }
 .itov-tile.warn small { color: var(--warning); }
 .itov-tile.info small { color: var(--success); }
 .itov-tile.bad small, .itov-tile.bad b { color: var(--danger); }
+
+/* Company property: a room, opened — its items and its zoomable photos. */
+.pr-roomitems { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0 14px; }
+.pr-upload { display: grid; grid-template-columns: 1.3fr 1fr 1fr auto; gap: 10px; align-items: end;
+  background: var(--rose-blush); border-radius: 12px; padding: 10px 12px; }
+.pr-upload input[type=text], .pr-upload select { width: 100%; box-sizing: border-box; }
+.pr-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.pr-gallery figure { margin: 0; border: 1px solid var(--rose-soft); border-radius: 12px; overflow: hidden; background: #fff; }
+.pr-gallery img { width: 100%; height: 140px; object-fit: cover; display: block; cursor: zoom-in; }
+.pr-gallery figcaption { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; font-size: .78rem; }
+.pr-gallery figcaption .linkbtn { align-self: flex-start; font-size: .76rem; }
+@media (max-width: 700px) { .pr-upload { grid-template-columns: 1fr; } }
