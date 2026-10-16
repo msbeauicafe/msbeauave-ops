@@ -2696,3 +2696,7 @@ input.n { text-align: right; }
 .pr-gallery figcaption { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; font-size: .78rem; }
 .pr-gallery figcaption .linkbtn { align-self: flex-start; font-size: .76rem; }
 @media (max-width: 700px) { .pr-upload { grid-template-columns: 1fr; } }
+
+.pr-gallery .pr-photoname { font-size: .88rem; color: var(--rose-deep); }
+.pr-photoacts { display: flex; gap: 10px; }
+.pr-upload { grid-template-columns: 1.3fr 1fr 1.2fr auto; }
