@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import sharp from 'sharp';
-import { hashPassword, needsRenewing } from '../lib/auth.js';
+import { hashPassword, needsRenewing, sessionCookie } from '../lib/auth.js';
 import { today, daysAgo } from '../lib/day.js';
 import { server } from '../scripts/dev.js';
 import { pool } from '../lib/db.js';
@@ -2239,4 +2239,19 @@ test('more than one invoice owes is refused whole, not half applied', async () =
     payments: [{ amount: '', method: 'BDO' }],
   });
   assert.equal(nothing.status, 400);
+});
+
+test("the door screen's sign-in lasts thirty days; a person's keeps its twelve hours", () => {
+  // A door tablet switched off overnight or over a weekend must not come back
+  // on its set-up screen. Only the timekeeper — the clock and nothing else.
+  const req = { headers: {}, socket: {} };
+  const door = sessionCookie({ id: 1, username: 'Timekeeper', display_name: 'Timekeeper', role: 'timekeeper' }, req);
+  const person = sessionCookie({ id: 2, username: 'someone', display_name: 'Someone', role: 'admin' }, req);
+  assert.match(door, /Max-Age=2592000\b/);
+  assert.match(person, /Max-Age=43200\b/);
+  const DAY = 86400e3;
+  assert.equal(needsRenewing({ role: 'timekeeper', expires: Date.now() + 20 * DAY }), false);
+  assert.equal(needsRenewing({ role: 'timekeeper', expires: Date.now() + 10 * DAY }), true,
+    'past halfway it renews, so a door in use never runs out');
+  assert.equal(needsRenewing({ role: 'admin', expires: Date.now() + 5 * 3600e3 }), true);
 });
