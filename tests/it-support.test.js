@@ -501,3 +501,11 @@ test('Assigned to employees has its own ＋ Assign a unit, and the masterlist sa
   assert.match(app, /const assignUnit = \(\) =>/);
   assert.match(app, /set the last filter to Every status to see it/);
 });
+
+test("an employee's card lists everything they hold — units and company property — one compact line each", () => {
+  assert.match(app, /const holdCard = \(name, units, items, opens\) =>/);
+  assert.match(app, /holdCards\(assets, props, 'units'\)/);
+  assert.match(app, /holdCards\(assets, props, 'props'\)/);
+  const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  assert.match(css, /\.hold-line \{[^}]*font-size: \.78rem;/);
+});
