@@ -440,3 +440,11 @@ test('office supplies are company property; both registers show what each employ
   assert.notEqual((await GET(await signIn('admin'), '/api/it/people-branches')).status, 200, 'IT\'s alone');
   assert.match(app, /🏬 \$\{esc\(b\)\}/);
 });
+
+test('every IT support tab opens on its own rose overview card', () => {
+  for (const t of ["'IT SUPPORT OVERVIEW'", "'HARDWARE OVERVIEW'", "'ACCOUNTABILITY OVERVIEW'", "'COMPANY PROPERTY OVERVIEW'"]) {
+    assert.ok(app.includes(t), t);
+  }
+  const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  assert.match(css, /\.itov-card \{ background: linear-gradient\(135deg, var\(--rose-deep\), var\(--rose-primary\)\);/);
+});
