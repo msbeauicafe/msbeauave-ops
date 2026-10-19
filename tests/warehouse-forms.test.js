@@ -340,3 +340,36 @@ test('Expected deliveries monitoring keeps a date and follow-up per order in its
   assert.notEqual((await request(wh, 'PUT', `/api/expected-deliveries/${po.data.id}`,
     { expected_on: '2026-10-26', follow_up: 'nonsense' })).status, 200, 'a follow-up off the list is refused');
 });
+
+test('Goods receipt & inspection form keeps DR, invoice and two checks per form in its own table (db/211)', async () => {
+  const at = app.indexOf('SCREENS.receivingform = async');
+  const fn = app.slice(at, app.indexOf('\n};', at));
+  for (const h of ['RF No.', 'Receiving Date', 'Supplier', 'PO No.', 'DR No.', 'Invoice No.', 'Qty Received',
+    'Inspection Status', 'Accounting Status', 'Actions']) assert.ok(fn.includes(`<th${h === 'Qty Received' ? ' class="n"' : ''}>${h}</th>`), h);
+  for (const t of ['Total Receiving Forms', 'For Inspection', 'With Discrepancies', 'Completed Receivings', 'Pending Accounting',
+    'Quick Filters', 'Quick Actions', 'Recent Activity', '＋ Create Receiving Form']) assert.ok(fn.includes(t), t);
+
+  // The real thing: warehouse records a form's DR and inspection, office its
+  // accounting check; a supervisor reads but cannot write; a status off the
+  // list is refused.
+  const admin = await signIn('admin');
+  const sup = await POST(admin, '/api/suppliers', { name: unique('Supplier') });
+  const { rows: [rf] } = await db.query(
+    `insert into receiving_forms (rf_no, supplier_id, total_boxes) values ($1, $2, 3) returning id`,
+    [unique('RF'), sup.data.id]);
+  const id = Number(rf.id);
+  const wh = await signIn('warehouse');
+  let r = await request(wh, 'PUT', `/api/goods-receipts/${id}`, { dr_no: 'DR-001', invoice_no: 'INV-9', inspection: 'approved' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const office = await signIn('office');
+  r = await request(office, 'PUT', `/api/goods-receipts/${id}`, { dr_no: 'DR-001', invoice_no: 'INV-9', inspection: 'approved', accounting: 'verified' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const supv = await signIn('supervisor');
+  const row = (await GET(supv, '/api/goods-receipts')).data.find((f) => Number(f.id) === id);
+  assert.equal(row.dr_no, 'DR-001');
+  assert.equal(row.inspection, 'approved');
+  assert.equal(row.accounting, 'verified');
+  assert.notEqual((await request(supv, 'PUT', `/api/goods-receipts/${id}`, { inspection: 'discrepancy' })).status, 200);
+  assert.notEqual((await request(wh, 'PUT', `/api/goods-receipts/${id}`, { inspection: 'lost' })).status, 200,
+    'an inspection status off the list is refused');
+});
