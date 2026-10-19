@@ -179,10 +179,10 @@ test('IT is one admin, not every admin', async () => {
   assert.equal((await GET(it, '/api/it/whoami')).data.it, true);
   assert.equal((await GET(other, '/api/it/whoami')).data.it, false);
 
-  // Refused by the database, which the app reports in plain words.
+  // Every admin may look at the queue, view only (db/205); answering and
+  // moving tickets stay IT's.
   const q = await GET(other, '/api/it/queue');
-  assert.notEqual(q.status, 200, 'another admin does not get the queue');
-  assert.match(q.data.error, /does not allow/);
+  assert.equal(q.status, 200, 'another admin may look at the queue');
   assert.notEqual((await GET(other, '/api/it/waiting')).status, 200);
   const { id } = (await POST(other, '/api/it/tickets',
     { issue: 'Monitor flickers', urgency: 'low', category: 'hardware' })).data;
@@ -241,7 +241,7 @@ test("IT's hardware masterlist: intake, no duplicate tags or serials, assigning,
   assert.equal(row.notes, 'Back from Maria');
 
   const other = await signIn('admin');
-  assert.notEqual((await GET(other, '/api/it/assets')).status, 200, 'another admin does not get it');
+  assert.equal((await GET(other, '/api/it/assets')).status, 200, 'another admin may look (db/205)');
   assert.notEqual((await POST(other, '/api/it/assets', { kind: 'laptop', tag: 'X', brand: 'Y' })).status, 200);
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select it_assets_all()'), /FORBIDDEN/);
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_assets'), /permission denied/);
@@ -274,7 +274,7 @@ test("an asset's receipt and photos: attached, shown, served, removed — IT's a
 
   const other = await signIn('admin');
   const peek = await fetch(`${base}/api/it/asset-files/${receipt.data.id}`, { headers: { Cookie: other } });
-  assert.notEqual(peek.status, 200, 'another admin cannot open it');
+  assert.equal(peek.status, 200, 'another admin may look at it (db/205)');
   assert.notEqual((await POST(other, `/api/it/assets/${id}/files`, { kind: 'photo', dataUrl: png })).status, 200);
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_asset_files'), /permission denied/);
 
@@ -356,7 +356,7 @@ test('accountability forms: lines follow the masterlist, returns free the unit, 
   assert.equal((await GET(it, '/api/it/assets')).data.find((a) => a.id === assetId).status, 'storage');
 
   const other = await signIn('admin');
-  assert.notEqual((await GET(other, '/api/it/accountability')).status, 200, 'another admin does not get it');
+  assert.equal((await GET(other, '/api/it/accountability')).status, 200, 'another admin may look (db/205)');
   assert.notEqual((await POST(other, '/api/it/accountability', { employee: 'X' })).status, 200);
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select it_acc_all()'), /FORBIDDEN/);
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_accountability'), /permission denied/);
@@ -414,7 +414,7 @@ test('company property: by room and person, moves kept, rooms picked, IT\'s alon
 
   assert.equal((await request(it, 'DELETE', `/api/it/property/${added.data.id}`)).status, 200);
   const other = await signIn('admin');
-  assert.notEqual((await GET(other, '/api/it/property')).status, 200, 'another admin does not get it');
+  assert.equal((await GET(other, '/api/it/property')).status, 200, 'another admin may look (db/205)');
   assert.notEqual((await POST(other, '/api/it/property-locations', { name: 'X' })).status, 200);
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select it_property_all()'), /FORBIDDEN/);
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_property'), /permission denied/);
@@ -441,7 +441,7 @@ test('office supplies are company property; both registers show what each employ
   const people = await GET(it, '/api/it/people-branches');
   assert.equal(people.status, 200);
   assert.ok(Array.isArray(people.data));
-  assert.notEqual((await GET(await signIn('admin'), '/api/it/people-branches')).status, 200, 'IT\'s alone');
+  assert.equal((await GET(await signIn('admin'), '/api/it/people-branches')).status, 200, 'any admin may look (db/205)');
   assert.match(app, /🏬 \$\{esc\(b\)\}/);
 });
 
@@ -475,7 +475,7 @@ test("a room's photos: attached, of an item or the room, served, removed — IT'
   assert.equal(got.status, 200);
   assert.equal(got.headers.get('content-type'), 'image/jpeg');
   const other = await signIn('admin');
-  assert.notEqual((await fetch(`${base}/api/it/property-files/${up.data.id}`, { headers: { Cookie: other } })).status, 200);
+  assert.equal((await fetch(`${base}/api/it/property-files/${up.data.id}`, { headers: { Cookie: other } })).status, 200, 'viewable (db/205)');
   assert.notEqual((await POST(other, `/api/it/property-locations/${pantry}/files`, { dataUrl: png })).status, 200);
   await assert.rejects(asRole('admin', 'not-it-anybody', 'select * from it_property_files'), /permission denied/);
   // Every photo has a name (db/199): typed, or the item's own; renamed later.
