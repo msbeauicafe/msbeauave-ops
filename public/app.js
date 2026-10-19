@@ -17675,7 +17675,7 @@ const IT_DEPARTMENTS = ['Marketing', 'Sales', 'Ecommerce', 'Accounting', 'Admin'
 const IT_KINDS = {
   laptop: ['Laptop', 'LAP'], desktop: ['Desktop', 'DESK'], imac: ['iMac', 'IMAC'],
   smartphone: ['Smartphone', 'PHN'], iphone: ['iPhone', 'IPH'],
-  monitor: ['Monitor', 'MON'], peripheral: ['Peripherals', 'PER'],
+  monitor: ['Monitor', 'MON'], printer: ['Printer', 'PRN'], peripheral: ['Peripherals', 'PER'],
 };
 const IT_ASSET_STATUS = {
   storage: ['In storage (unboxed)', 'grey'], assigned: ['Assigned to employee', 'green'],
@@ -17969,7 +17969,7 @@ SCREENS.itsupport = async (page) => {
   // One employee's card: everything they hold — masterlist units and company
   // property — one compact line each, so a full desk fits. The rows of the
   // tab it is drawn on open their own editor; the others are shown only.
-  const IT_UNIT_ICON = { laptop: '💻', desktop: '🖥️', imac: '🖥️', smartphone: '📱', iphone: '📱', monitor: '🖵', peripheral: '⌨️' };
+  const IT_UNIT_ICON = { laptop: '💻', desktop: '🖥️', imac: '🖥️', smartphone: '📱', iphone: '📱', monitor: '🖵', printer: '🖨️', peripheral: '⌨️' };
   const heldUnits = (list) => list.filter((a) => a.assigned_to && a.status !== 'retired' && a.status !== 'storage');
   const heldProps = (list) => list.filter((x) => x.assigned_to && x.condition !== 'disposed');
   const holdCard = (name, units, items, opens) => {

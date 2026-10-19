@@ -666,3 +666,10 @@ test("Company property's Desktops and Laptops count the masterlist's computers i
 test("the masterlist's units show an icon and Asset inventory under their category, like property rows", () => {
   assert.match(app, /\$\{IT_UNIT_ICON\[a\.kind\] \|\| '🖥️'\} \$\{esc\(\(IT_KINDS\[a\.kind\] \|\| \[a\.kind\]\)\[0\]\)\}\n\s*<div class="dim">🗂️ Asset inventory<\/div>/);
 });
+
+test('the masterlist takes a printer as its own type (db/207)', async () => {
+  const it = await signInIT();
+  const r = await POST(it, '/api/it/assets', { kind: 'printer', tag: `MSBA-PRN-${process.pid}${seq++}`, brand: 'Epson' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.match(app, /printer: \['Printer', 'PRN'\]/);
+});
