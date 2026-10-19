@@ -557,3 +557,12 @@ test('the accountability form downloads as one page', () => {
   assert.match(app, /const cy = 777240;/);
   assert.match(app, /w:top="600" w:right="1000" w:bottom="500" w:left="1000"/);
 });
+
+test('company property takes desktops and laptops as kinds of their own (db/202)', async () => {
+  const it = await signInIT();
+  for (const [category, pre] of [['desktop', 'DSK'], ['laptop', 'LPT']]) {
+    const r = await POST(it, '/api/it/property', { category, tag: `MSBA-${pre}-${process.pid}${seq++}`, item: 'PC' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+  }
+  assert.match(app, /desktop: \['Desktop', 'DSK', '🖥️'\], laptop: \['Laptop', 'LPT', '💻'\]/);
+});

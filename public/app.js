@@ -17902,7 +17902,8 @@ const IT_ACC_EQUIPMENT = ['Laptop', 'AIO PC', 'Desktop PC', 'Monitor', 'Keyboard
 // IT's company property register (db/196): devices, appliances and furniture
 // by room and person. The tag prefix follows the masterlist's convention.
 const IT_PROP_CATS = { device: ['Device', 'DEV', '🖨️'], appliance: ['Appliance', 'APP', '🧊'],
-  furniture: ['Furniture', 'FUR', '🪑'], supplies: ['Office supplies', 'SUP', '✂️'] };
+  furniture: ['Furniture', 'FUR', '🪑'], supplies: ['Office supplies', 'SUP', '✂️'],
+  desktop: ['Desktop', 'DSK', '🖥️'], laptop: ['Laptop', 'LPT', '💻'] };
 const IT_PROP_COND = { good: ['Good', 'green'], fair: ['Fair', 'grey'], repair: ['Needs repair', 'amber'],
   broken: ['Broken', 'red'], disposed: ['Disposed', 'grey'] };
 // What each kind usually is; the item can still be named anything.
@@ -17912,6 +17913,8 @@ const IT_PROP_ITEMS = {
     'Electric kettle', 'Rice cooker', 'Paper shredder', 'Laminator'],
   furniture: ['Office chair', 'Office table', 'Drawer', 'Cabinet', 'Printer cabinet', 'Filing cabinet', 'Shelf', 'Sofa',
     'Monoblock chair'],
+  desktop: ['Desktop PC', 'AIO PC', 'iMac', 'Mini PC'],
+  laptop: ['Laptop', 'MacBook', 'Chromebook'],
   supplies: ['Stapler', 'Scissors', 'Puncher', 'Tape dispenser', 'Paper cutter', 'Calculator', 'Stamp pad',
     'Staple remover', 'Ruler', 'Pen holder'],
 };
