@@ -18226,7 +18226,9 @@ SCREENS.itsupport = async (page) => {
           <div class="tools">
             <input type="search" id="as_q" placeholder="Search tag, serial, brand, model, person…">
             <select id="as_fkind"><option value="">Every type</option>${Object.entries(IT_KINDS)
-              .map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select>
+              .map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}
+              <optgroup label="🏢 Company property">${Object.entries(IT_PROP_CATS)
+              .map(([k, [l, , i]]) => `<option value="p:${k}">${i} ${l}</option>`).join('')}</optgroup></select>
             <select id="as_fbrand"><option value="">Every brand</option></select>
             <select id="as_fhealth"><option value="">Every health</option>${Object.entries(IT_HEALTH)
               .map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select>
@@ -18319,33 +18321,52 @@ SCREENS.itsupport = async (page) => {
     ]);
 
     const q = af.q.trim().toLowerCase();
-    const rows = assets.filter((a) => (!af.kind || a.kind === af.kind)
+    // Company property is on the masterlist too (marked so), unless a
+    // masterlist type, a status or a health is picked — property has none of
+    // those. Each opens on Company property, where it is kept.
+    const propRows = af.status || af.health || (af.kind && !af.kind.startsWith('p:')) ? []
+      : props.filter((x) => x.condition !== 'disposed' && (!af.kind || `p:${x.category}` === af.kind)
+        && (!af.brand || x.brand === af.brand)
+        && (!q || [x.tag, x.item, x.brand, x.model, x.serial_no, x.assigned_to, x.location, x.notes]
+          .some((v) => String(v || '').toLowerCase().includes(q))))
+        .map((x) => ({ ...x, _prop: true }));
+    const rows = (af.kind && af.kind.startsWith('p:') ? [] : assets).filter((a) => (!af.kind || a.kind === af.kind)
       && (!af.brand || a.brand === af.brand) && (!af.status || a.status === af.status)
       && (!af.health || (a.health || 'good') === af.health)
       && (!q || [a.tag, a.serial_no, a.brand, a.model, a.assigned_to, a.supplier, a.specs]
         .some((v) => String(v || '').toLowerCase().includes(q))));
-    $('#as_list', body).innerHTML = table(rows, [
-      { head: 'Asset tag', cell: (a) => `<button class="nameopen" data-asopen="${a.id}"><b>${esc(a.tag)}</b></button>` },
-      { head: 'Category', cell: (a) => esc((IT_KINDS[a.kind] || [a.kind])[0]) },
-      { head: 'Item description', cell: (a) => `${esc(described(a))}${(a.condition || []).includes('missing_items')
+    $('#as_list', body).innerHTML = table([...rows, ...propRows], [
+      { head: 'Asset tag', cell: (a) => (a._prop ? `<button class="nameopen" data-asprop="${a.id}"><b>${esc(a.tag)}</b></button>`
+          : `<button class="nameopen" data-asopen="${a.id}"><b>${esc(a.tag)}</b></button>`) },
+      { head: 'Category', cell: (a) => (a._prop ? `${IT_PROP_CATS[a.category]?.[2] || ''} ${esc(IT_PROP_CATS[a.category]?.[0] || a.category)}
+          <div class="dim">🏢 Company property</div>` : esc((IT_KINDS[a.kind] || [a.kind])[0])) },
+      { head: 'Item description', cell: (a) => (a._prop ? `${esc(a.item)}${a.qty > 1 ? ` ×${count(a.qty)}` : ''}${
+          [a.brand, a.model].filter(Boolean).length ? `<div class="dim">${esc([a.brand, a.model].filter(Boolean).join(' '))}</div>` : ''}` : `${esc(described(a))}${(a.condition || []).includes('missing_items')
           ? ' ' + tag('missing items', 'red') : ''}${(a.files || []).length
           ? ` <span class="dim" title="Attachments">📎 ${(a.files || []).length}</span>` : ''}${
-          a.specs ? `<div class="dim asspecs">${esc(a.specs)}</div>` : ''}` },
+          a.specs ? `<div class="dim asspecs">${esc(a.specs)}</div>` : ''}`) },
       { head: 'Serial no.', cell: (a) => (a.serial_no ? `<code>${esc(a.serial_no)}</code>` : '<span class="dim">—</span>') },
       // When IT last looked at it — a check, or any update — logged date under it.
-      { head: 'Last checked', cell: (a) => `${onDay(a.last_checked_at || a.updated_at || a.logged_at)}${
+      { head: 'Last checked', cell: (a) => (a._prop ? `${onDay(a.updated_at || a.logged_at)}<div class="dim">last updated</div>
+          <div class="dim">logged ${onDay(a.logged_at)}</div>` : `${onDay(a.last_checked_at || a.updated_at || a.logged_at)}${
           a.last_checked_at ? `<div class="dim">by ${esc(a.checked_by || '')}</div>` : '<div class="dim">not checked yet</div>'}
-          <div class="dim">logged ${onDay(a.logged_at)}</div>` },
+          <div class="dim">logged ${onDay(a.logged_at)}</div>`) },
       { head: 'Health', cell: (a) => {
+          if (a._prop) return `<span class="hl-prop"></span>${tag(...(IT_PROP_COND[a.condition] || [a.condition, 'grey']))}`;
           const h = a.health || 'good';
           const [l, k] = IT_HEALTH[h] || [h, 'grey'];
           // The marker colours the whole row (#as_list tr:has(.hl-…)).
           return `<span class="hl-${h}"></span>${tag(l, k)}`; } },
       { head: 'Status', cell: (a) => {
+          if (a._prop) {
+            return `${a.assigned_to ? tag('Used by an employee', 'green') : tag('Shared', 'grey')}${a.assigned_to
+              ? `<div class="dim">${esc(a.assigned_to)}</div>` : ''}${a.location ? `<div class="dim">📍 ${esc(a.location)}</div>` : ''}`;
+          }
           const [l, k] = IT_ASSET_STATUS[a.status] || [a.status, 'grey'];
           return `${tag(l, k)}${a.assigned_to ? `<div class="dim">${esc(a.assigned_to)}${
             a.department ? ' · ' + esc(a.department) : ''}</div>` : ''}${a.location ? `<div class="dim">📍 ${esc(a.location)}</div>` : ''}`; } },
-      { head: '', cell: (a) => `<button class="btn line sm" data-asopen="${a.id}">Assign / update</button>` },
+      { head: '', cell: (a) => (a._prop ? `<button class="btn line sm" data-asprop="${a.id}">Open</button>`
+          : `<button class="btn line sm" data-asopen="${a.id}">Assign / update</button>`) },
     ], assets.length ? (af.status ? `Nothing matches that — a unit not yet given to anybody is In storage; set the last filter to Every status to see it.`
       : 'Nothing matches that.') : 'Nothing logged yet — add the first unit above.');
     // By employee: who holds what — assigned units, and units in for repair
@@ -18354,6 +18375,12 @@ SCREENS.itsupport = async (page) => {
       || '<div class="dim">No unit is assigned to an employee yet — Assign / update on a unit gives it to somebody.</div>';
     $$('[data-asopen]', body).forEach((b) => b.addEventListener('click',
       () => assetDrawer(assets.find((a) => String(a.id) === b.dataset.asopen))));
+    // A company property row opens on Company property, in its own editor.
+    $$('[data-asprop]', $('#as_list', body)).forEach((b) => b.addEventListener('click', async () => {
+      const id = b.dataset.asprop;
+      itKeep('itAssetsView', 'prop');
+      try { await drawProp(); propEdit(props.find((x) => String(x.id) === id)); } catch (err) { whoops(err); }
+    }));
   };
 
   // Give a unit to an employee straight from Assigned to employees: pick the
