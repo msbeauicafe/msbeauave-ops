@@ -662,3 +662,7 @@ test('the Asset inventory masterlist also lists Company property, marked so', ()
 test("Company property's Desktops and Laptops count the masterlist's computers in their number", () => {
   assert.match(app, /count\(qtyOf\(live\.filter\(\(x\) => x\.category === k\)\) \+ more\)/);
 });
+
+test("the masterlist's units show an icon and Asset inventory under their category, like property rows", () => {
+  assert.match(app, /\$\{IT_UNIT_ICON\[a\.kind\] \|\| '🖥️'\} \$\{esc\(\(IT_KINDS\[a\.kind\] \|\| \[a\.kind\]\)\[0\]\)\}\n\s*<div class="dim">🗂️ Asset inventory<\/div>/);
+});
