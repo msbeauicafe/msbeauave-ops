@@ -17952,8 +17952,8 @@ SCREENS.itsupport = async (page) => {
   document.body.classList.toggle('it-viewonly', itViewer);
   // IT works the queue and files concerns for others; everybody else files
   // their own and follows them. Two views either way, one switch.
-  const views = isIT ? [['dash', 'IT Dashboard'], ['file', 'File Concern'], ['assets', 'Hardware assets']]
-    : itViewer ? [['dash', 'IT Dashboard'], ['assets', 'Hardware assets'], ['file', 'File Concern'], ['mine', 'My requests']]
+  const views = isIT ? [['dash', 'IT Dashboard'], ['file', 'File Concern'], ['assets', 'Asset inventory masterlist']]
+    : itViewer ? [['dash', 'IT Dashboard'], ['assets', 'Asset inventory masterlist'], ['file', 'File Concern'], ['mine', 'My requests']]
     : [['file', 'File Concern'], ['mine', 'My requests']];
   // The tab IT support was on, and Hardware assets' own tab, kept across a
   // refresh the way other screens keep their panel. IT support's own keys.
@@ -18326,7 +18326,7 @@ SCREENS.itsupport = async (page) => {
       `<option value="${esc(b)}"${b === af.brand ? ' selected' : ''}>${esc(b)}</option>`).join('');
 
     const n = (st) => assets.filter((a) => a.status === st).length;
-    $('#as_counts', body).innerHTML = itOv('HARDWARE OVERVIEW', IT_OV_ICON.box, [
+    $('#as_counts', body).innerHTML = itOv('ASSET INVENTORY MASTERLIST OVERVIEW', IT_OV_ICON.box, [
       ['On the masterlist', count(assets.length), 'Every unit logged'],
       ['In storage', count(n('storage')), 'Ready to assign', 'info'],
       ['Assigned', count(n('assigned')), `To ${count(new Set(assets.filter((a) => a.status === 'assigned').map((a) => a.assigned_to)).size)} employees`],
@@ -18563,7 +18563,7 @@ SCREENS.itsupport = async (page) => {
   // Hardware assets' two halves: the masterlist, and the employee
   // accountability forms — who signed for which laptop, AIO PC, keyboard…
   const asSwitch = (on) => `<div class="acc-switch" role="tablist">
-    <button type="button" data-asview="list" class="${on === 'list' ? 'on' : ''}">🗂️ Asset inventory masterlist</button>
+    <button type="button" data-asview="list" class="${on === 'list' ? 'on' : ''}">🗂️ Hardware assets</button>
     <button type="button" data-asview="prop" class="${on === 'prop' ? 'on' : ''}">🏢 Company property</button>
     <button type="button" data-asview="acc" class="${on === 'acc' ? 'on' : ''}">📝 Accountability forms</button></div>`;
   body.addEventListener('click', (e) => {
