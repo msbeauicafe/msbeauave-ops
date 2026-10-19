@@ -2749,3 +2749,5 @@ input.n { text-align: right; }
 .pr-place { background: var(--rose-blush); border-radius: 12px; padding: 10px 12px; }
 .pr-place select { flex: 1; min-width: 0; }
 .it-viewonly .pr-place { display: none !important; }
+
+.pr-gallery figure.pr-mlphoto { border-color: var(--rose-primary); }
