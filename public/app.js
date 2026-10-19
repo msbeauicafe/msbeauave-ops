@@ -18864,19 +18864,21 @@ SCREENS.itsupport = async (page) => {
         && (!pf.who || (pf.who === '-' ? !x.assigned_to : x.assigned_to === pf.who))
         && (!q || [x.tag, x.item, x.brand, x.model, x.serial_no, x.assigned_to, x.location, x.notes]
           .join(' ').toLowerCase().includes(q)));
-      // A hardware kind picked — Desktop, Laptop, Printer …: the masterlist's
-      // own units of that type are listed too, in the room they sit in
-      // (db/206), so every one can be found here — opened on the masterlist.
+      // The masterlist's own units are listed too, in the room they sit in
+      // (db/206), so the register holds everything the masterlist does —
+      // opened on the masterlist. Every kind lists them all; a hardware kind
+      // (Desktop, Printer …) lists its own type; Furniture and the like none.
       // Not when a condition is picked: a masterlist unit has health, not condition.
       const PR_ML_KINDS = IT_PROP_ML;
-      const ml = PR_ML_KINDS[pf.cat] && !pf.cond ? assets.filter((a) => PR_ML_KINDS[pf.cat].includes(a.kind)
+      const mlCat = (a) => Object.keys(PR_ML_KINDS).find((k) => PR_ML_KINDS[k].includes(a.kind));
+      const ml = (!pf.cat || PR_ML_KINDS[pf.cat]) && !pf.cond ? assets.filter((a) => (pf.cat ? mlCat(a) === pf.cat : mlCat(a))
         && a.status !== 'retired' && (!pf.loc || String(a.location_id) === pf.loc)
         && (!pf.who || (pf.who === '-' ? !a.assigned_to : a.assigned_to === pf.who))
         && (!q || [a.tag, a.brand, a.model, a.serial_no, a.assigned_to, a.specs].join(' ').toLowerCase().includes(q))) : [];
       const mlRows = ml.map((a) => `<tr class="pr-mlrow">
           <td><b>${esc(a.tag)}</b></td>
           <td>${esc((IT_KINDS[a.kind] || [a.kind])[0])}<div class="dim">${esc([a.brand, a.model].filter(Boolean).join(' '))}</div></td>
-          <td>${IT_PROP_CATS[pf.cat][2]} ${esc(IT_PROP_CATS[pf.cat][0])}</td>
+          <td>${IT_PROP_CATS[mlCat(a)][2]} ${esc(IT_PROP_CATS[mlCat(a)][0])}</td>
           <td>${a.location ? esc(a.location) : '<span class="dim">No room yet</span>'}<div class="dim">🗂️ from the masterlist</div></td>
           <td>${a.assigned_to ? `${esc(a.assigned_to)}${a.department ? `<div class="dim">${esc(a.department)}</div>` : ''}` : '<span class="dim">Nobody yet</span>'}</td>
           <td>1</td>

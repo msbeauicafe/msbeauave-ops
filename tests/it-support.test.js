@@ -638,6 +638,9 @@ test('an HR sign-in marked as a viewer reads IT support too; an unmarked one doe
 test("Company property's Desktop and Laptop also list the masterlist's computers", () => {
   assert.match(app, /const IT_PROP_ML = \{ desktop: \['desktop', 'imac'\], laptop: \['laptop'\],/);
   assert.match(app, /const PR_ML_KINDS = IT_PROP_ML;/);
+  // Every kind lists the masterlist's units too, each under its own kind.
+  assert.match(app, /const ml = \(!pf\.cat \|\| PR_ML_KINDS\[pf\.cat\]\) && !pf\.cond/);
+  assert.match(app, /<td>\$\{IT_PROP_CATS\[mlCat\(a\)\]\[2\]\}/);
   assert.match(app, /data-mlopen="\$\{a\.id\}"/);
 });
 
