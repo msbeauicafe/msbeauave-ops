@@ -169,7 +169,7 @@ test('the form\'s dropdowns: departments for everybody, the team for IT only', a
 
 test('the Department dropdown is the company\'s own departments, Sales among them', () => {
   assert.match(app,
-    /const IT_DEPARTMENTS = \['Marketing', 'Sales', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'Other'\];/);
+    /const IT_DEPARTMENTS = \['Marketing', 'Sales', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'IT', 'Other'\];/);
   assert.doesNotMatch(app, /IT_DEPARTMENTS = \[[^\]]*'Shop'/, 'there is no Shop department');
 });
 
