@@ -17676,6 +17676,9 @@ const IT_KINDS = {
   laptop: ['Laptop', 'LAP'], desktop: ['Desktop', 'DESK'], imac: ['iMac', 'IMAC'],
   smartphone: ['Smartphone', 'PHN'], iphone: ['iPhone', 'IPH'],
   monitor: ['Monitor', 'MON'], printer: ['Printer', 'PRN'], peripheral: ['Peripherals', 'PER'],
+  // Company property's kinds too (db/209): the two are one register.
+  device: ['Device', 'DVC'], appliance: ['Appliance', 'APL'], furniture: ['Furniture', 'FRN'],
+  supplies: ['Office supplies', 'OFS'],
 };
 const IT_ASSET_STATUS = {
   storage: ['In storage (unboxed)', 'grey'], assigned: ['Assigned to employee', 'green'],
@@ -17912,7 +17915,8 @@ const IT_PROP_CATS = { device: ['Device', 'DEV', '📡'], appliance: ['Appliance
 // The masterlist's hardware types each kind above mirrors: picking Printer
 // also lists, and counts, the masterlist's printers in their rooms.
 const IT_PROP_ML = { desktop: ['desktop', 'imac'], laptop: ['laptop'], printer: ['printer'],
-  monitor: ['monitor'], smartphone: ['smartphone'], iphone: ['iphone'], peripheral: ['peripheral'] };
+  monitor: ['monitor'], smartphone: ['smartphone'], iphone: ['iphone'], peripheral: ['peripheral'],
+  device: ['device'], appliance: ['appliance'], furniture: ['furniture'], supplies: ['supplies'] };
 const IT_PROP_COND = { good: ['Good', 'green'], fair: ['Fair', 'grey'], repair: ['Needs repair', 'amber'],
   broken: ['Broken', 'red'], disposed: ['Disposed', 'grey'] };
 // What each kind usually is; the item can still be named anything.
@@ -17980,7 +17984,8 @@ SCREENS.itsupport = async (page) => {
   // One employee's card: everything they hold — masterlist units and company
   // property — one compact line each, so a full desk fits. The rows of the
   // tab it is drawn on open their own editor; the others are shown only.
-  const IT_UNIT_ICON = { laptop: '💻', desktop: '🖥️', imac: '🖥️', smartphone: '📱', iphone: '📱', monitor: '🖵', printer: '🖨️', peripheral: '⌨️' };
+  const IT_UNIT_ICON = { laptop: '💻', desktop: '🖥️', imac: '🖥️', smartphone: '📱', iphone: '📱', monitor: '🖵', printer: '🖨️', peripheral: '⌨️',
+    device: '📡', appliance: '🧊', furniture: '🪑', supplies: '✂️' };
   const heldUnits = (list) => list.filter((a) => a.assigned_to && a.status !== 'retired' && a.status !== 'storage');
   const heldProps = (list) => list.filter((x) => x.assigned_to && x.condition !== 'disposed');
   const holdCard = (name, units, items, opens) => {
@@ -18866,8 +18871,8 @@ SCREENS.itsupport = async (page) => {
           .join(' ').toLowerCase().includes(q)));
       // The masterlist's own units are listed too, in the room they sit in
       // (db/206), so the register holds everything the masterlist does —
-      // opened on the masterlist. Every kind lists them all; a hardware kind
-      // (Desktop, Printer …) lists its own type; Furniture and the like none.
+      // opened on the masterlist. Every kind lists them all; a kind (Desktop,
+      // Printer, Furniture …) lists the masterlist's units of that kind.
       // Not when a condition is picked: a masterlist unit has health, not condition.
       const PR_ML_KINDS = IT_PROP_ML;
       const mlCat = (a) => Object.keys(PR_ML_KINDS).find((k) => PR_ML_KINDS[k].includes(a.kind));
