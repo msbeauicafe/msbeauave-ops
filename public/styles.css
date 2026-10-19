@@ -2760,3 +2760,13 @@ input.n { text-align: right; }
 
 /* Asset inventory masterlist: a company property row, set apart. */
 #as_list tr:has(.hl-prop) td { background: #fbf6f8; }
+
+/* Receiving form's own three tabs and its monitor's figures. */
+.rvf-switch { display: inline-flex; flex-wrap: wrap; background: var(--rose-blush); border-radius: 999px; padding: 4px; margin-bottom: 12px; }
+.rvf-switch button { border: none; background: none; font: inherit; font-size: .9rem; padding: 7px 16px;
+  border-radius: 999px; cursor: pointer; color: var(--rose-deep); }
+.rvf-switch button.on { background: #fff; font-weight: 600; box-shadow: 0 1px 4px rgba(160, 80, 110, .15); }
+.rvf-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.rvf-tiles > div { background: var(--rose-blush); border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
+.rvf-tiles span { font-size: .8rem; color: var(--rose-deep); }
+.rvf-tiles b { font-size: 1.35rem; }
