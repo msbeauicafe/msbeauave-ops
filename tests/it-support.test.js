@@ -167,9 +167,9 @@ test('the form\'s dropdowns: departments for everybody, the team for IT only', a
   assert.notEqual(bad.status, 200, 'a category that is not on the list is refused');
 });
 
-test('the Department dropdown is the company\'s own six departments', () => {
+test('the Department dropdown is the company\'s own departments, Sales among them', () => {
   assert.match(app,
-    /const IT_DEPARTMENTS = \['Marketing', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'Other'\];/);
+    /const IT_DEPARTMENTS = \['Marketing', 'Sales', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'Other'\];/);
   assert.doesNotMatch(app, /IT_DEPARTMENTS = \[[^\]]*'Shop'/, 'there is no Shop department');
 });
 
