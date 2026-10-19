@@ -567,6 +567,16 @@ test('company property takes desktops and laptops as kinds of their own (db/202)
   assert.match(app, /desktop: \['Desktop', 'DSK', '🖥️'\], laptop: \['Laptop', 'LPT', '💻'\]/);
 });
 
+test('company property takes the masterlist hardware types, printers first (db/208)', async () => {
+  const it = await signInIT();
+  for (const [category, pre] of [['printer', 'PRT'], ['monitor', 'MNT'], ['smartphone', 'SPH'], ['iphone', 'IPN'], ['peripheral', 'PRP']]) {
+    const r = await POST(it, '/api/it/property', { category, tag: `MSBA-${pre}-${process.pid}${seq++}`, item: 'Unit' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+  }
+  assert.match(app, /printer: \['Printer', 'PRT', '🖨️'\]/);
+  assert.match(app, /const IT_PROP_ML = \{ desktop: \['desktop', 'imac'\], laptop: \['laptop'\], printer: \['printer'\],/);
+});
+
 // IT viewers (db/203): an admin the owner names may look at IT support — the
 // queue, the masterlist, company property, accountability forms, photos —
 // and may change none of it; IT itself is unchanged.
@@ -626,7 +636,8 @@ test('an HR sign-in marked as a viewer reads IT support too; an unmarked one doe
 });
 
 test("Company property's Desktop and Laptop also list the masterlist's computers", () => {
-  assert.match(app, /const PR_ML_KINDS = \{ desktop: \['desktop', 'imac'\], laptop: \['laptop'\] \};/);
+  assert.match(app, /const IT_PROP_ML = \{ desktop: \['desktop', 'imac'\], laptop: \['laptop'\],/);
+  assert.match(app, /const PR_ML_KINDS = IT_PROP_ML;/);
   assert.match(app, /data-mlopen="\$\{a\.id\}"/);
 });
 
@@ -660,7 +671,7 @@ test('the Asset inventory masterlist also lists Company property, marked so', ()
 });
 
 test("Company property's Desktops and Laptops count the masterlist's computers in their number", () => {
-  assert.match(app, /count\(qtyOf\(live\.filter\(\(x\) => x\.category === k\)\) \+ more\)/);
+  assert.match(app, /const total = qtyOf\(live\.filter\(\(x\) => x\.category === k\)\) \+ more;/);
 });
 
 test("the masterlist's units show an icon and Asset inventory under their category, like property rows", () => {

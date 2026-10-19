@@ -17904,9 +17904,15 @@ const IT_ACC_EQUIPMENT = ['Laptop', 'AIO PC', 'Desktop PC', 'Monitor', 'Keyboard
 
 // IT's company property register (db/196): devices, appliances and furniture
 // by room and person. The tag prefix follows the masterlist's convention.
-const IT_PROP_CATS = { device: ['Device', 'DEV', '🖨️'], appliance: ['Appliance', 'APP', '🧊'],
+const IT_PROP_CATS = { device: ['Device', 'DEV', '📡'], appliance: ['Appliance', 'APP', '🧊'],
   furniture: ['Furniture', 'FUR', '🪑'], supplies: ['Office supplies', 'SUP', '✂️'],
-  desktop: ['Desktop', 'DSK', '🖥️'], laptop: ['Laptop', 'LPT', '💻'] };
+  desktop: ['Desktop', 'DSK', '🖥️'], laptop: ['Laptop', 'LPT', '💻'], printer: ['Printer', 'PRT', '🖨️'],
+  monitor: ['Monitor', 'MNT', '🖵'], smartphone: ['Smartphone', 'SPH', '📱'], iphone: ['iPhone', 'IPN', '📱'],
+  peripheral: ['Peripherals', 'PRP', '⌨️'] };
+// The masterlist's hardware types each kind above mirrors: picking Printer
+// also lists, and counts, the masterlist's printers in their rooms.
+const IT_PROP_ML = { desktop: ['desktop', 'imac'], laptop: ['laptop'], printer: ['printer'],
+  monitor: ['monitor'], smartphone: ['smartphone'], iphone: ['iphone'], peripheral: ['peripheral'] };
 const IT_PROP_COND = { good: ['Good', 'green'], fair: ['Fair', 'grey'], repair: ['Needs repair', 'amber'],
   broken: ['Broken', 'red'], disposed: ['Disposed', 'grey'] };
 // What each kind usually is; the item can still be named anything.
@@ -17918,6 +17924,11 @@ const IT_PROP_ITEMS = {
     'Monoblock chair'],
   desktop: ['Desktop PC', 'AIO PC', 'iMac', 'Mini PC'],
   laptop: ['Laptop', 'MacBook', 'Chromebook'],
+  printer: ['Printer', 'Inkjet printer', 'Laser printer', 'Label printer', 'Receipt printer', 'Scanner'],
+  monitor: ['Monitor', 'Second monitor', 'TV display'],
+  smartphone: ['Smartphone', 'Android phone'],
+  iphone: ['iPhone'],
+  peripheral: ['Keyboard', 'Mouse', 'Headset', 'Webcam', 'Speaker', 'Charger', 'Docking station'],
   supplies: ['Stapler', 'Scissors', 'Puncher', 'Tape dispenser', 'Paper cutter', 'Calculator', 'Stamp pad',
     'Staple remover', 'Ruler', 'Pen holder'],
 };
@@ -18793,14 +18804,16 @@ SCREENS.itsupport = async (page) => {
       ${itOv('COMPANY PROPERTY OVERVIEW', IT_OV_ICON.building, [
         ['Items in use', count(qtyOf(live)), `In ${count(propLocs.length)} locations`],
         ...Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => {
-          // Desktops and laptops count every one in use: those logged here and
-          // the masterlist's own desktops, iMacs and laptops.
-          const n = { desktop: ['desktop', 'imac'], laptop: ['laptop'] }[k];
+          // A hardware kind counts every one in use: those logged here and the
+          // masterlist's own units of that type (IT_PROP_ML).
+          const n = IT_PROP_ML[k];
           const more = n ? assets.filter((a) => n.includes(a.kind) && a.status !== 'retired').length : 0;
-          return [`${i} ${['Furniture', 'Office supplies'].includes(l) ? l : `${l}s`}`,
-            count(qtyOf(live.filter((x) => x.category === k)) + more),
-            more ? `In use · ${count(more)} from the masterlist` : 'In use', 'info'];
-        }),
+          const total = qtyOf(live.filter((x) => x.category === k)) + more;
+          // The newer hardware kinds get a box only once there is one to count.
+          if (!total && !['device', 'appliance', 'furniture', 'supplies', 'desktop', 'laptop'].includes(k)) return null;
+          return [`${i} ${['Furniture', 'Office supplies', 'Peripherals'].includes(l) ? l : `${l}s`}`,
+            count(total), more ? `In use · ${count(more)} from the masterlist` : 'In use', 'info'];
+        }).filter(Boolean),
         ['Needs attention', count(qtyOf(live.filter((x) => ['repair', 'broken'].includes(x.condition)))), 'Needs repair or broken', 'bad'],
       ])}
       <div class="panel">
@@ -18851,11 +18864,11 @@ SCREENS.itsupport = async (page) => {
         && (!pf.who || (pf.who === '-' ? !x.assigned_to : x.assigned_to === pf.who))
         && (!q || [x.tag, x.item, x.brand, x.model, x.serial_no, x.assigned_to, x.location, x.notes]
           .join(' ').toLowerCase().includes(q)));
-      // Desktop or Laptop picked: the masterlist's own desktops, iMacs and
-      // laptops are listed too, in the room they sit in (db/206), so every
-      // computer can be found here — opened on the masterlist. Not when a
-      // condition is picked: a masterlist unit has health, not condition.
-      const PR_ML_KINDS = { desktop: ['desktop', 'imac'], laptop: ['laptop'] };
+      // A hardware kind picked — Desktop, Laptop, Printer …: the masterlist's
+      // own units of that type are listed too, in the room they sit in
+      // (db/206), so every one can be found here — opened on the masterlist.
+      // Not when a condition is picked: a masterlist unit has health, not condition.
+      const PR_ML_KINDS = IT_PROP_ML;
       const ml = PR_ML_KINDS[pf.cat] && !pf.cond ? assets.filter((a) => PR_ML_KINDS[pf.cat].includes(a.kind)
         && a.status !== 'retired' && (!pf.loc || String(a.location_id) === pf.loc)
         && (!pf.who || (pf.who === '-' ? !a.assigned_to : a.assigned_to === pf.who))
