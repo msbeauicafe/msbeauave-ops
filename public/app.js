@@ -18958,11 +18958,13 @@ SCREENS.itsupport = async (page) => {
           return `${count(n)} photo${n === 1 ? '' : 's'}`;
         })()}</div>
       <h4 class="mt">What is here</h4>
-      ${here.length ? `<div class="pr-roomitems">${here.map((x) => `<button type="button" class="hold-row" data-roomitem="${x.id}">
+      ${here.length ? `<div class="pr-roomitems">${here.map((x) => `${itViewer
+        // A viewer reads the room's items; only IT opens one to change it.
+        ? '<div class="hold-row">' : `<button type="button" class="hold-row" data-roomitem="${x.id}">`}
         <span>${IT_PROP_CATS[x.category]?.[2] || ''} ${esc(x.item)}${x.qty > 1 ? ` ×${count(x.qty)}` : ''}</span>
         <span class="dim">${esc(x.tag)} · ${x.assigned_to ? esc(x.assigned_to) : 'Shared'}${
           [x.brand, x.model].filter(Boolean).length ? ` · ${esc([x.brand, x.model].filter(Boolean).join(' '))}` : ''}</span>
-        ${x.condition !== 'good' ? tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey'])) : ''}</button>`).join('')}</div>`
+        ${x.condition !== 'good' ? tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey'])) : ''}${itViewer ? '</div>' : '</button>'}`).join('')}</div>`
         : (unitsHere.length ? '' : '<div class="dim">Nothing is logged in this room yet.</div>')}
       ${unitsHere.length ? `<div class="pr-roomitems mt">${unitsHere.map((a) => `<div class="hold-row">
         <span>${IT_UNIT_ICON[a.kind] || '🖥️'} ${esc((IT_KINDS[a.kind] || [a.kind])[0])} · ${esc(described(a))}</span>

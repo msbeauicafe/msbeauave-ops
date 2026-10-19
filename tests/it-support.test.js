@@ -587,6 +587,10 @@ test("the masterlist takes every one of Company property's kinds (db/209)", asyn
   assert.match(app, /device: \['device'\], appliance: \['appliance'\], furniture: \['furniture'\], supplies: \['supplies'\] \};/);
 });
 
+test("a viewer reads a room's items without opening them", () => {
+  assert.match(app, /\$\{itViewer\n\s*\/\/ A viewer reads the room's items; only IT opens one to change it\.\n\s*\? '<div class="hold-row">' : `<button type="button" class="hold-row" data-roomitem="\$\{x\.id\}">`\}/);
+});
+
 // IT viewers (db/203): an admin the owner names may look at IT support — the
 // queue, the masterlist, company property, accountability forms, photos —
 // and may change none of it; IT itself is unchanged.
