@@ -566,3 +566,48 @@ test('company property takes desktops and laptops as kinds of their own (db/202)
   }
   assert.match(app, /desktop: \['Desktop', 'DSK', '🖥️'\], laptop: \['Laptop', 'LPT', '💻'\]/);
 });
+
+// IT viewers (db/203): an admin the owner names may look at IT support — the
+// queue, the masterlist, company property, accountability forms, photos —
+// and may change none of it; IT itself is unchanged.
+test('an IT viewer reads everything IT sees and can write nothing', async () => {
+  const it = await signInIT();
+  const viewer = await signIn('admin');
+  const who = Buffer.from(viewer.split('=')[1].split('.')[0], 'base64url').toString();
+  const viewerName = JSON.parse(who).username;
+  await db.query('update app_users set it_view = true where username = $1', [viewerName]);
+
+  const { id: assetId } = (await POST(it, '/api/it/assets', { kind: 'laptop', tag: `MSBA-LAP-${process.pid}${seq++}`, brand: 'Dell' })).data;
+  assert.deepEqual((await GET(viewer, '/api/it/whoami')).data, { it: false, view: true });
+  assert.deepEqual((await GET(it, '/api/it/whoami')).data, { it: true, view: true });
+  for (const p of ['/api/it/queue', '/api/it/assets', '/api/it/property', '/api/it/accountability', '/api/it/people-branches']) {
+    assert.equal((await GET(viewer, p)).status, 200, p);
+  }
+  assert.ok((await GET(viewer, '/api/it/assets')).data.some((a) => a.id === assetId));
+
+  // Nothing a viewer sends writes.
+  assert.notEqual((await POST(viewer, '/api/it/assets', { kind: 'laptop', tag: `MSBA-LAP-V${seq++}`, brand: 'X' })).status, 200);
+  assert.notEqual((await PUT(viewer, `/api/it/assets/${assetId}`, { status: 'retired' })).status, 200);
+  assert.notEqual((await POST(viewer, `/api/it/assets/${assetId}/check`, { health: 'defective' })).status, 200);
+  assert.notEqual((await POST(viewer, '/api/it/property', { category: 'device', tag: `MSBA-DEV-V${seq++}`, item: 'X' })).status, 200);
+  assert.notEqual((await POST(viewer, '/api/it/accountability', { employee: 'X' })).status, 200);
+  assert.notEqual((await POST(viewer, '/api/it/property-locations', { name: 'X' })).status, 200);
+  assert.equal((await GET(it, '/api/it/assets')).data.find((a) => a.id === assetId).status, 'storage', 'untouched');
+
+  // Past the router: a viewer outside a read-only transaction is refused,
+  // inside one may read.
+  await assert.rejects(asRole('admin', viewerName, 'select it_assets_all()'), /FORBIDDEN/);
+  await assert.rejects(asRole('admin', viewerName, "select it_asset_check($1, '{}'::jsonb)", [assetId]), /FORBIDDEN/);
+  const client = await db.connect();
+  try {
+    await client.query('begin');
+    await client.query("select set_config('app.role','admin',true), set_config('app.actor',$1,true)", [viewerName]);
+    await client.query('set local role app_client');
+    await client.query('set transaction read only');
+    assert.ok((await client.query('select it_assets_all() as a')).rows[0].a);
+  } finally {
+    await client.query('rollback').catch(() => {});
+    client.release();
+  }
+  assert.match(app, /const itViewer = !isIT && user\.itView === true;/);
+});

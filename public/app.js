@@ -667,7 +667,10 @@ const roleName = (r) => ({
 // menu can put IT support on top for them and draw the dashboard.
 async function markIt() {
   if (user && user.role === 'admin') {
-    user.it = (await GET('/api/it/whoami').catch(() => ({ it: false }))).it === true;
+    const who = await GET('/api/it/whoami').catch(() => ({ it: false, view: false }));
+    user.it = who.it === true;
+    // Allowed to look at IT support without changing it (db/203).
+    user.itView = !user.it && who.view === true;
   }
 }
 
@@ -17927,9 +17930,15 @@ const itReplyBox = (t, label) => `
 
 SCREENS.itsupport = async (page) => {
   const isIT = user.it === true;
+  // An admin the owner lets look at IT support: the same dashboard and
+  // hardware assets, and nothing that writes (db/203). Every button that
+  // would change something is hidden; the database refuses it regardless.
+  const itViewer = !isIT && user.itView === true;
+  document.body.classList.toggle('it-viewonly', itViewer);
   // IT works the queue and files concerns for others; everybody else files
   // their own and follows them. Two views either way, one switch.
   const views = isIT ? [['dash', 'IT Dashboard'], ['file', 'File Concern'], ['assets', 'Hardware assets']]
+    : itViewer ? [['dash', 'IT Dashboard'], ['assets', 'Hardware assets'], ['file', 'File Concern'], ['mine', 'My requests']]
     : [['file', 'File Concern'], ['mine', 'My requests']];
   // The tab IT support was on, and Hardware assets' own tab, kept across a
   // refresh the way other screens keep their panel. IT support's own keys.
@@ -17943,7 +17952,7 @@ SCREENS.itsupport = async (page) => {
   // each person under their branch, as their Team record has it (db/197).
   let itBranchOf = null;
   const loadBranches = async () => {
-    if (itBranchOf || !isIT) return;
+    if (itBranchOf || !(isIT || itViewer)) return;
     const rows = await GET('/api/it/people-branches').catch(() => []);
     itBranchOf = new Map((rows || []).map((r) => [r.name, r.branch]));
   };
@@ -18013,7 +18022,8 @@ SCREENS.itsupport = async (page) => {
       <div class="itswitch" role="tablist">${views.map(([k, l]) => `
         <button data-itview="${k}" role="tab">${l}</button>`).join('')}</div>
     </div>
-    <div id="it_stats">${itOv(isIT ? 'IT SUPPORT OVERVIEW' : 'MY IT REQUESTS', IT_OV_ICON.desk, [
+    ${itViewer ? '<div class="it-viewbar">👀 View only — you can look at everything here; only IT makes changes.</div>' : ''}
+    <div id="it_stats">${itOv(isIT || itViewer ? 'IT SUPPORT OVERVIEW' : 'MY IT REQUESTS', IT_OV_ICON.desk, [
       ['Total logs', '0', 'Every ticket filed', '', 'it_total'],
       ['Active backlog', '0', 'Pending or in progress', 'warn', 'it_active'],
       ['Critical tasks', '0', 'High urgency, still open', 'bad', 'it_critical'],
@@ -18045,7 +18055,7 @@ SCREENS.itsupport = async (page) => {
           <button class="btn sm ${t.status === k ? '' : 'quiet'}" data-itstatus="${t.id}"
             data-to="${k}" ${t.status === k ? 'disabled' : ''}>${l}</button>`).join('')}</div>` : ''}
         ${itThread(t)}
-        ${itReplyBox(t, isIT ? 'Quick reply to the employee…' : 'Add a message for IT…')}
+        ${itViewer && view === 'dash' ? '' : itReplyBox(t, isIT ? 'Quick reply to the employee…' : 'Add a message for IT…')}
       </div>`;
   };
 
@@ -18098,7 +18108,7 @@ SCREENS.itsupport = async (page) => {
     const drafts = old ? Object.fromEntries($$('[data-itdraft]', old).map((el) => [el.dataset.itdraft, el.value])) : {};
     const focused = document.activeElement?.dataset?.itdraft;
     if (!old) {
-      body.innerHTML = `${isIT ? `
+      body.innerHTML = `${isIT || (itViewer && view === 'dash') ? `
         <div class="panel row">
           <div><label>Status</label><select id="it_fs">
             <option value="">All</option>${Object.entries(IT_STATUS).map(([k, [l]]) =>
@@ -18110,7 +18120,7 @@ SCREENS.itsupport = async (page) => {
             <input id="it_fq" type="search" value="${esc(filters.q)}"
               placeholder="Name, department or problem"></div>
         </div>` : ''}<div id="it_list"></div>`;
-      if (isIT) {
+      if ($('#it_fs')) {
         $('#it_fs').addEventListener('change', (e) => { filters.status = e.target.value; drawList(); });
         $('#it_fu').addEventListener('change', (e) => { filters.urgency = e.target.value; drawList(); });
         $('#it_fq').addEventListener('input', (e) => { filters.q = e.target.value; drawList(); });
@@ -19028,11 +19038,15 @@ SCREENS.itsupport = async (page) => {
     $('#it_stats', page).style.display = v === 'assets' ? 'none' : '';
     if (v === 'file') drawForm();
     else if (v === 'assets') { body.innerHTML = ''; openAsView(['acc', 'prop'].includes(itKept('itAssetsView')) ? itKept('itAssetsView') : 'list'); }
-    else { body.innerHTML = ''; drawList(); }
+    else {
+      body.innerHTML = ''; drawList();
+      // A viewer's IT Dashboard and My requests are two different lists.
+      if (itViewer) load().catch(whoops);
+    }
   };
 
   const load = async () => {
-    tickets = (await GET(isIT ? '/api/it/queue' : '/api/it/mine')) || [];
+    tickets = (await GET(isIT || (itViewer && view !== 'mine') ? '/api/it/queue' : '/api/it/mine')) || [];
     stats();
     if (view === 'dash' || view === 'mine') drawList();
   };

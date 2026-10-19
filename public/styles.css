@@ -2728,3 +2728,16 @@ input.n { text-align: right; }
 .ascheck-box .row select { flex: 0 0 auto; }
 .ascheck-box .row input { flex: 1; min-width: 0; }
 .ascheck-hist { display: flex; flex-direction: column; gap: 6px; font-size: .82rem; max-height: 160px; overflow-y: auto; }
+
+/* IT support for a viewer (db/203): everything to look at, nothing that
+   writes. The buttons that would change something are hidden here; the
+   database refuses them anyway. IT support's own controls only. */
+.it-viewbar { background: var(--rose-blush); color: var(--rose-deep); border-radius: 12px; padding: 8px 14px;
+  font-size: .88rem; font-weight: 600; margin-bottom: 12px; }
+.it-viewonly .panel:has(#as_form),
+.it-viewonly #as_assign, .it-viewonly #asd_save, .it-viewonly #asd_check, .it-viewonly [data-asdrop],
+.it-viewonly .asdrawer .row:has(#asd_receipt),
+.it-viewonly #acc_new, .it-viewonly #acf_save, .it-viewonly #acf_del, .it-viewonly #acf_add, .it-viewonly [data-acldrop],
+.it-viewonly #pr_new, .it-viewonly #pr_loc, .it-viewonly #prf_save, .it-viewonly #prf_del,
+.it-viewonly .pr-upload, .it-viewonly [data-prdrop], .it-viewonly [data-prname], .it-viewonly [data-prtrack],
+.it-viewonly .itstatus { display: none !important; }
