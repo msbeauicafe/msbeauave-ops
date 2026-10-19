@@ -3009,10 +3009,55 @@ SCREENS.receive = async (page) => {
 SCREENS.receivingform = async (page) => {
   const shops = await branches();
   let suppliers = [];
+  // Three tabs, this screen's own: what is still to arrive, the forms
+  // themselves, and a monitor of what has come in. The tab is kept across
+  // a refresh.
+  const RVF_TABS = [['pending', '⏳ Pending receiving'], ['forms', '📦 Receiving form'], ['monitor', '📊 Received monitor']];
+  let tab = 'forms';
+  try { const t = localStorage.getItem('rvfTab'); if (RVF_TABS.some(([k]) => k === t)) tab = t; } catch { /* no storage */ }
   page.innerHTML = `
     <div class="head"><h2>Receiving form</h2></div>
+    <div class="rvf-switch" role="tablist">${RVF_TABS.map(([k, l]) =>
+      `<button type="button" data-rvftab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div id="rvf_body"></div>`;
+  const body = $('#rvf_body', page);
 
-    <div class="panel"><h3 class="sr">Receiving forms</h3>
+  const openForm = async (id) => {
+    try { showReceivingForm(await GET(`/api/receiving-forms/${id}`)); } catch (e) { whoops(e); }
+  };
+
+  // Pending receiving: every purchase order still open or part-received —
+  // what is still to come off a van, and a Receive button that opens the
+  // receiving form already filled with the order's outstanding lines.
+  const drawPending = async () => {
+    const [open, part] = await Promise.all([
+      GET('/api/purchase-orders?status=open').catch(() => []),
+      GET('/api/purchase-orders?status=part').catch(() => [])]);
+    const rows = [...open, ...part].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+    body.innerHTML = `<div class="panel"><h3>Pending receiving</h3>
+      <div class="dim">Purchase orders still waiting on a delivery, oldest first. Receive opens the
+        receiving form with what is still to arrive on that order.</div>
+      <div id="rvf_pending" class="mt"></div></div>`;
+    $('#rvf_pending', body).innerHTML = table(rows, [
+      { head: 'PO no.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
+      { head: 'Ordered', cell: (o) => onDay(o.at) },
+      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
+      { head: 'Ordered qty', n: true, cell: (o) => count(o.quantity) },
+      { head: 'Still to arrive', n: true, cell: (o) => `<b>${count(o.still_short)}</b>` },
+      { head: 'Status', cell: (o) => (o.status === 'part' ? tag('part received', 'amber') : tag('waiting', 'grey')) },
+      { head: '', cell: (o) => `<button class="btn sm" data-rvfrecv="${o.id}">Receive</button>` },
+    ], 'Nothing is waiting — every purchase order has been received.');
+    $$('[data-rvfrecv]', body).forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const [po, catalogue] = await Promise.all([GET(`/api/purchase-orders/${b.dataset.rvfrecv}`),
+          GET('/api/products?q=').catch(() => [])]);
+        receiveDelivery({ po, catalogue, shops, suppliers, done: () => drawPending().catch(whoops) });
+      } catch (e) { whoops(e); }
+    }));
+  };
+
+  const drawForms = async () => {
+    body.innerHTML = `<div class="panel"><h3 class="sr">Receiving forms</h3>
       <div class="dim">The paper the stockroom fills in while the delivery is
         still on the floor — counted in boxes, with the courier, the shipping
         and the guard on it. It receives the stock as it records itself, and
@@ -3021,10 +3066,8 @@ SCREENS.receivingform = async (page) => {
         <div style="flex:0 0 auto"><button class="btn" id="rvf_new">＋ Record a delivery</button></div>
       </div>
       <div id="rvf_list" class="mt"></div></div>`;
-
-  const drawRFs = async () => {
     const rows = await GET('/api/receiving-forms').catch(() => []);
-    $('#rvf_list', page).innerHTML = table(rows, [
+    $('#rvf_list', body).innerHTML = table(rows, [
       { head: 'No.', cell: (f) => `<b>${esc(f.rf_no)}</b>` },
       { head: 'Received', cell: (f) => onDay(f.received_on) },
       { head: 'Supplier', cell: (f) => `${esc(f.supplier)}${
@@ -3033,20 +3076,76 @@ SCREENS.receivingform = async (page) => {
       { head: 'Boxes', n: true, cell: (f) => count(f.total_boxes) },
       { head: '', cell: (f) => `<button class="btn sm quiet" data-rvf="${f.id}">Open</button>` },
     ], 'No receiving forms yet.');
-    $$('[data-rvf]', page).forEach((b) => b.addEventListener('click', async () => {
-      try { showReceivingForm(await GET(`/api/receiving-forms/${b.dataset.rvf}`)); }
-      catch (e) { whoops(e); }
-    }));
+    $$('[data-rvf]', body).forEach((b) => b.addEventListener('click', () => openForm(b.dataset.rvf)));
+    $('#rvf_new', body).addEventListener('click', async () => {
+      if (!suppliers.length) return notice('Add a supplier first, on Purchase order.', 'bad');
+      const catalogue = await GET('/api/products?q=').catch(() => []);
+      receiveDelivery({ po: null, catalogue, shops, suppliers, done: () => drawForms().catch(whoops) });
+    });
   };
 
-  $('#rvf_new', page).addEventListener('click', async () => {
-    if (!suppliers.length) return notice('Add a supplier first, on Purchase order.', 'bad');
-    const catalogue = await GET('/api/products?q=').catch(() => []);
-    receiveDelivery({ po: null, catalogue, shops, suppliers, done: () => drawRFs() });
-  });
+  // Received monitor: what has come in, month by month — forms, boxes,
+  // products and units, by supplier, and every delivery in the month.
+  let rvfMonth = localDay().slice(0, 7);
+  const drawMonitor = async () => {
+    const all = await GET('/api/receiving-forms').catch(() => []);
+    const months = [...new Set([rvfMonth, ...all.map((f) => String(f.received_on).slice(0, 7))])].sort().reverse();
+    const rows = all.filter((f) => String(f.received_on).slice(0, 7) === rvfMonth);
+    const sum = (k) => rows.reduce((t, f) => t + Number(f[k] || 0), 0);
+    const bySupplier = Object.values(rows.reduce((m, f) => {
+      const x = m[f.supplier] ||= { supplier: f.supplier, forms: 0, boxes: 0, units: 0 };
+      x.forms += 1; x.boxes += Number(f.total_boxes || 0); x.units += Number(f.units || 0);
+      return m;
+    }, {})).sort((a, b) => b.units - a.units);
+    const monthName = (m) => new Date(`${m}-15T12:00:00+08:00`).toLocaleDateString('en-PH', { month: 'long', year: 'numeric', timeZone: TZ });
+    body.innerHTML = `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center">
+        <h3>Received monitor</h3>
+        <select id="rvf_month" style="flex:0 0 auto;width:auto">${months.map((m) =>
+          `<option value="${m}"${m === rvfMonth ? ' selected' : ''}>${esc(monthName(m))}</option>`).join('')}</select></div>
+      <div class="rvf-tiles mt">
+        <div><span>Deliveries</span><b>${count(rows.length)}</b></div>
+        <div><span>Boxes</span><b>${count(sum('total_boxes'))}</b></div>
+        <div><span>Products</span><b>${count(sum('products'))}</b></div>
+        <div><span>Units received</span><b>${count(sum('units'))}</b></div>
+        <div><span>Against a PO</span><b>${count(rows.filter((f) => f.po_no).length)}</b></div>
+        <div><span>No order</span><b>${count(rows.filter((f) => !f.po_no).length)}</b></div>
+      </div>
+      <h4 class="mt">By supplier</h4>
+      <div id="rvf_bysup"></div>
+      <h4 class="mt">Every delivery this month</h4>
+      <div id="rvf_month_list"></div></div>`;
+    $('#rvf_bysup', body).innerHTML = table(bySupplier, [
+      { head: 'Supplier', cell: (x) => esc(x.supplier) },
+      { head: 'Deliveries', n: true, cell: (x) => count(x.forms) },
+      { head: 'Boxes', n: true, cell: (x) => count(x.boxes) },
+      { head: 'Units', n: true, cell: (x) => count(x.units) },
+    ], 'Nothing received this month.');
+    $('#rvf_month_list', body).innerHTML = table(rows, [
+      { head: 'No.', cell: (f) => `<b>${esc(f.rf_no)}</b>` },
+      { head: 'Received', cell: (f) => `${onDay(f.received_on)}${f.received_at ? `<div class="dim">${esc(f.received_at)}</div>` : ''}` },
+      { head: 'Supplier', cell: (f) => esc(f.supplier) },
+      { head: 'Against', cell: (f) => f.po_no ? esc(f.po_no) : tag('no order', 'grey') },
+      { head: 'Products', n: true, cell: (f) => count(f.products) },
+      { head: 'Units', n: true, cell: (f) => count(f.units) },
+      { head: 'Boxes', n: true, cell: (f) => count(f.total_boxes) },
+      { head: 'Checked by', cell: (f) => esc(f.checked_by || '—') },
+      { head: '', cell: (f) => `<button class="btn sm quiet" data-rvf="${f.id}">Open</button>` },
+    ], 'Nothing received this month.');
+    $$('[data-rvf]', body).forEach((b) => b.addEventListener('click', () => openForm(b.dataset.rvf)));
+    $('#rvf_month', body).addEventListener('change', (e) => { rvfMonth = e.target.value; drawMonitor().catch(whoops); });
+  };
+
+  const show = (t) => {
+    tab = t;
+    try { localStorage.setItem('rvfTab', t); } catch { /* no storage */ }
+    $$('[data-rvftab]', page).forEach((b) => b.classList.toggle('on', b.dataset.rvftab === t));
+    body.innerHTML = '';
+    ({ pending: drawPending, forms: drawForms, monitor: drawMonitor })[t]().catch(whoops);
+  };
+  $$('[data-rvftab]', page).forEach((b) => b.addEventListener('click', () => show(b.dataset.rvftab)));
 
   suppliers = await GET('/api/suppliers').catch(() => []);
-  await drawRFs();
+  show(tab);
 };
 
 // ===========================================================================

@@ -184,9 +184,9 @@ test('Receiving form is its own screen reading the same receiving forms Warehous
 
   assert.match(fn, /GET\('\/api\/receiving-forms'\)/,
     'the same backend list Warehouse receiving already reads — no new table for this');
-  assert.match(fn, /showReceivingForm\(await GET\(`\/api\/receiving-forms\/\$\{b\.dataset\.rvf\}`\)\)/,
+  assert.match(fn, /showReceivingForm\(await GET\(`\/api\/receiving-forms\/\$\{id\}`\)\)/,
     'opened with the existing document renderer, reused not redrawn');
-  assert.match(fn, /receiveDelivery\(\{ po: null, catalogue, shops, suppliers, done: \(\) => drawRFs\(\) \}\)/,
+  assert.match(fn, /receiveDelivery\(\{ po: null, catalogue, shops, suppliers, done: \(\) => drawForms\(\)\.catch\(whoops\) \}\)/,
     'the same "record a delivery" dialog, already shared across screens');
 
   // Its own element ids, distinct from Warehouse receiving's rf_ ones, so a
@@ -294,4 +294,17 @@ test('a release is logged, read back with the product and branch names, and touc
   assert.ok(row.branch, "the branch's own name, joined in — not just its id");
   assert.ok(row.released_by);
   assert.ok(row.released_at);
+});
+
+test('Receiving form has three tabs of its own: Pending receiving, Receiving form, Received monitor', () => {
+  const at = app.indexOf('SCREENS.receivingform = async');
+  const fn = app.slice(at, app.indexOf('\n};', at));
+  assert.match(fn, /\[\['pending', '⏳ Pending receiving'\], \['forms', '📦 Receiving form'\], \['monitor', '📊 Received monitor'\]\]/);
+  // Pending: open and part-received orders, received from right there.
+  assert.match(fn, /GET\('\/api\/purchase-orders\?status=open'\)/);
+  assert.match(fn, /GET\('\/api\/purchase-orders\?status=part'\)/);
+  assert.match(fn, /receiveDelivery\(\{ po, catalogue, shops, suppliers, done: \(\) => drawPending\(\)\.catch\(whoops\) \}\)/);
+  // Its own tab bar, not IT support's.
+  assert.match(fn, /class="rvf-switch"/);
+  assert.doesNotMatch(fn, /acc-switch/);
 });
