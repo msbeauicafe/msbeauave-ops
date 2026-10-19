@@ -3027,34 +3027,197 @@ SCREENS.receivingform = async (page) => {
     try { showReceivingForm(await GET(`/api/receiving-forms/${id}`)); } catch (e) { whoops(e); }
   };
 
-  // Pending receiving: every purchase order still open or part-received —
-  // what is still to come off a van, and a Receive button that opens the
-  // receiving form already filled with the order's outstanding lines.
-  const drawPending = async () => {
-    const [open, part] = await Promise.all([
-      GET('/api/purchase-orders?status=open').catch(() => []),
-      GET('/api/purchase-orders?status=part').catch(() => [])]);
-    const rows = [...open, ...part].sort((a, b) => String(a.at).localeCompare(String(b.at)));
-    body.innerHTML = `<div class="panel"><h3>Expected deliveries monitoring</h3>
-      <div class="dim">Purchase orders still waiting on a delivery, oldest first. Receive opens the
-        receiving form with what is still to arrive on that order.</div>
-      <div id="rvf_pending" class="mt"></div></div>`;
-    $('#rvf_pending', body).innerHTML = table(rows, [
-      { head: 'PO no.', cell: (o) => `<b>${esc(o.po_no)}</b>` },
-      { head: 'Ordered', cell: (o) => onDay(o.at) },
-      { head: 'Supplier', cell: (o) => `${esc(o.supplier)}${o.brand_name ? `<div class="dim">${esc(o.brand_name)}</div>` : ''}` },
-      { head: 'Ordered qty', n: true, cell: (o) => count(o.quantity) },
-      { head: 'Still to arrive', n: true, cell: (o) => `<b>${count(o.still_short)}</b>` },
-      { head: 'Status', cell: (o) => (o.status === 'part' ? tag('part received', 'amber') : tag('waiting', 'grey')) },
-      { head: '', cell: (o) => `<button class="btn sm" data-rvfrecv="${o.id}">Receive</button>` },
-    ], 'Nothing is waiting — every purchase order has been received.');
-    $$('[data-rvfrecv]', body).forEach((b) => b.addEventListener('click', async () => {
+  // Expected deliveries monitoring (db/210): every purchase order that is not
+  // cancelled — ordered, received, still to come — with its expected delivery
+  // date and the supplier follow-up, kept in this screen's own table. Search,
+  // status and date filters, a CSV export and ten to a page; View reads the
+  // order line by line, ⋮ sets the date and follow-up or receives it.
+  const ED = { q: '', status: '', from: '', to: '', page: 1, sel: new Set() };
+  const edDate = (d) => (d ? `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}` : '—');
+  const ED_STATUS = { expected: ['Expected', 'ed-blue', '📅'], overdue: ['Overdue', 'ed-red', '⛔'],
+    partial: ['Partially Received', 'ed-amber', '📦'], full: ['Fully Received', 'ed-green', '✅'] };
+  const ED_FOLLOW = { pending: ['Pending', 'ed-amber', '⏳'], contacted: ['Contacted', 'ed-green', '✔️'],
+    completed: ['Completed', 'ed-green', '✔️'] };
+  const edState = (o) => {
+    const bal = o.qty_ordered - o.qty_received;
+    if (o.status === 'closed' || bal <= 0) return 'full';
+    if (o.expected_on && o.expected_on < localDay()) return 'overdue';
+    return o.qty_received > 0 ? 'partial' : 'expected';
+  };
+  const edPill = ([l, c, i]) => `<span class="ed-pill ${c}">${i} ${esc(l)}</span>`;
+  const edProduct = (o) => `${esc(o.brand_name || o.supplier)}<div class="dim">${
+    o.lines > 1 ? '(Various Items)' : esc(o.first_product || '')}</div>`;
+
+  const edSet = async (o, list) => {
+    const v = dialog(`<h3>${o ? `Expected delivery · ${esc(o.po_no)}` : 'Create pending receiving'}</h3>
+      <div class="ed-form">
+        ${o ? '' : `<div><label for="ed_po">Purchase order</label><select id="ed_po">${list
+          .filter((x) => edState(x) !== 'full' && !x.expected_on)
+          .map((x) => `<option value="${x.id}">${esc(`${x.po_no} · ${x.supplier}`)}</option>`).join('')
+          || '<option value="">Every open order already has a date</option>'}</select></div>`}
+        <div><label for="ed_on">Expected delivery</label><input id="ed_on" type="date" value="${esc(o?.expected_on || '')}"></div>
+        <div><label for="ed_follow">Follow-up</label><select id="ed_follow">${Object.entries(ED_FOLLOW).map(([k, [l]]) =>
+          `<option value="${k}"${(o?.follow_up || 'pending') === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="ed-wide"><label for="ed_note">Note</label><input id="ed_note" type="text" value="${esc(o?.note || '')}"
+          placeholder="Supplier said Thursday, called the courier…"></div>
+      </div>
+      <div class="row mt"><button class="btn" id="ed_save">Save</button></div>`);
+    $('#ed_save', v).addEventListener('click', async () => {
+      const id = o ? o.id : $('#ed_po', v).value;
+      if (!id) return notice('Pick a purchase order first.', 'bad');
+      if (!$('#ed_on', v).value) return notice('Give the expected delivery date.', 'bad');
       try {
-        const [po, catalogue] = await Promise.all([GET(`/api/purchase-orders/${b.dataset.rvfrecv}`),
-          GET('/api/products?q=').catch(() => [])]);
-        receiveDelivery({ po, catalogue, shops, suppliers, done: () => drawPending().catch(whoops) });
+        await PUT(`/api/expected-deliveries/${id}`, { expected_on: $('#ed_on', v).value,
+          follow_up: $('#ed_follow', v).value, note: $('#ed_note', v).value });
+        notice('Saved 🌸', 'good'); closeDialog(); await drawPending();
       } catch (e) { whoops(e); }
-    }));
+    });
+  };
+
+  const edView = async (o) => {
+    const po = await GET(`/api/purchase-orders/${o.id}`);
+    dialog(`<h3>${esc(o.po_no)} · ${esc(o.supplier)}</h3>
+      <div class="ed-facts">
+        <div><span>PO date</span><b>${edDate(o.ordered_on)}</b></div>
+        <div><span>Expected delivery</span><b>${edDate(o.expected_on)}</b></div>
+        <div><span>Status</span>${edPill(ED_STATUS[edState(o)])}</div>
+        <div><span>Follow-up</span>${edPill(ED_FOLLOW[o.follow_up] || ED_FOLLOW.pending)}</div>
+      </div>
+      ${o.note ? `<div class="dim mt">📝 ${esc(o.note)}</div>` : ''}
+      <div class="mt">${table(po.lines || [], [
+        { head: 'Product', cell: (l) => `${esc(l.name)}<div class="dim">${esc(l.sku)}</div>` },
+        { head: 'Qty ordered', n: true, cell: (l) => count(l.qty) },
+        { head: 'Qty received', n: true, cell: (l) => count(Math.min(l.received, l.qty)) },
+        { head: 'Balance qty', n: true, cell: (l) => `<b>${count(Math.max(l.qty - l.received, 0))}</b>` },
+      ], 'This order has no lines.')}</div>`, 'wide');
+  };
+
+  const edReceive = async (o) => {
+    const [po, catalogue] = await Promise.all([GET(`/api/purchase-orders/${o.id}`),
+      GET('/api/products?q=').catch(() => [])]);
+    receiveDelivery({ po, catalogue, shops, suppliers, done: () => drawPending().catch(whoops) });
+  };
+
+  const drawPending = async () => {
+    // Ids come back as text (bigint); the ticks and lookups below use numbers.
+    const all = (await GET('/api/expected-deliveries').catch(() => [])).map((o) => ({ ...o, id: Number(o.id) }))
+      .sort((a, b) => String(a.po_no).localeCompare(String(b.po_no)));
+    const today = localDay();
+    const open = all.filter((o) => edState(o) !== 'full');
+    const due = open.filter((o) => o.expected_on === today).length;
+    const late = open.filter((o) => edState(o) === 'overdue').length;
+    body.innerHTML = `
+      <div class="ed-hero">
+        <div class="ed-heroicon">🚚</div>
+        <div class="ed-herotext"><h3>Pending Receivings</h3><div>Expected Deliveries · Purchase Order Monitoring</div></div>
+        <div class="ed-herohint">Track approved purchase orders with expected deliveries that have not yet been fully
+          received. Monitor deadlines, quantities and supplier follow-ups.</div>
+        <button class="btn ed-create" id="ed_new">＋ Create Pending Receiving</button>
+      </div>
+      <div class="ed-tiles">
+        <div class="ed-tile ed-t-blue"><span class="ed-ticon">📅</span><div><span>Pending Deliveries</span>
+          <b>${count(open.length)}</b><small>Open POs</small></div></div>
+        <div class="ed-tile ed-t-green"><span class="ed-ticon">🗓️</span><div><span>Expected Today</span>
+          <b>${count(due)}</b><small>Due for arrival today</small></div></div>
+        <div class="ed-tile ed-t-red"><span class="ed-ticon">⚠️</span><div><span>Overdue Deliveries</span>
+          <b>${count(late)}</b><small>Past expected date</small></div></div>
+      </div>
+      <div class="panel ed-panel">
+        <div class="ed-tools">
+          <input type="search" id="ed_q" placeholder="🔍 Search PO No., Supplier, Product, Brand…" value="${esc(ED.q)}">
+          <select id="ed_status"><option value="">All Statuses</option>${Object.entries(ED_STATUS).map(([k, [l]]) =>
+            `<option value="${k}"${ED.status === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          <div class="ed-dates"><span>📅 Expected Delivery Date</span>
+            <input type="date" id="ed_from" value="${esc(ED.from)}" aria-label="From"><span>→</span>
+            <input type="date" id="ed_to" value="${esc(ED.to)}" aria-label="To"></div>
+          <button class="btn quiet" id="ed_export">⬇ Export</button>
+        </div>
+        <div id="ed_table" class="mt"></div>
+      </div>`;
+
+    const drawTable = () => {
+      const q = ED.q.trim().toLowerCase();
+      const rows = all.filter((o) => (!ED.status || edState(o) === ED.status)
+        && (!ED.from || (o.expected_on && o.expected_on >= ED.from))
+        && (!ED.to || (o.expected_on && o.expected_on <= ED.to))
+        && (!q || [o.po_no, o.supplier, o.brand_name, o.first_product].join(' ').toLowerCase().includes(q)));
+      const pages = Math.max(1, Math.ceil(rows.length / 10));
+      ED.page = Math.min(ED.page, pages);
+      const shown = rows.slice((ED.page - 1) * 10, ED.page * 10);
+      $('#ed_table', body).innerHTML = `<div class="ed-scroll"><table class="ed-table">
+        <thead><tr><th><input type="checkbox" id="ed_all" aria-label="Select all"${shown.length && shown.every((o) => ED.sel.has(o.id)) ? ' checked' : ''}></th>
+          <th>PO No.</th><th>Supplier</th><th>PO Date</th><th>Expected Delivery</th><th>Product / Brand</th>
+          <th class="n">Qty Ordered</th><th class="n">Qty Received</th><th class="n">Balance Qty</th>
+          <th>Status</th><th>Follow-up</th><th>Action</th></tr></thead>
+        <tbody>${shown.map((o) => `<tr>
+          <td><input type="checkbox" data-edsel="${o.id}"${ED.sel.has(o.id) ? ' checked' : ''} aria-label="Select ${esc(o.po_no)}"></td>
+          <td class="ed-nw">${esc(o.po_no)}</td><td>${esc(o.supplier)}</td><td class="ed-nw">${edDate(o.ordered_on)}</td><td class="ed-nw">${edDate(o.expected_on)}</td>
+          <td>${edProduct(o)}</td>
+          <td class="n">${count(o.qty_ordered)}</td><td class="n">${count(o.qty_received)}</td>
+          <td class="n">${count(Math.max(o.qty_ordered - o.qty_received, 0))}</td>
+          <td>${edPill(ED_STATUS[edState(o)])}</td><td>${edPill(ED_FOLLOW[o.follow_up] || ED_FOLLOW.pending)}</td>
+          <td class="ed-acts"><button class="btn sm ed-view" data-edview="${o.id}">View</button>
+            <button class="btn sm quiet ed-more" data-edmore="${o.id}" aria-label="More">⋮</button></td></tr>`).join('')
+          || '<tr><td colspan="12" class="dim ed-empty">No pending receivings match.</td></tr>'}</tbody></table></div>
+        <div class="ed-foot"><span class="dim">Showing ${rows.length ? `${(ED.page - 1) * 10 + 1}–${(ED.page - 1) * 10 + shown.length}` : 0}
+          of ${count(rows.length)} pending receivings</span>
+          <span class="ed-pages"><button class="btn sm quiet" data-edpage="${ED.page - 1}"${ED.page === 1 ? ' disabled' : ''}>←</button>
+            ${Array.from({ length: pages }, (_, i) => `<button class="btn sm ${i + 1 === ED.page ? 'ed-on' : 'quiet'}" data-edpage="${i + 1}">${i + 1}</button>`).join('')}
+            <button class="btn sm quiet" data-edpage="${ED.page + 1}"${ED.page === pages ? ' disabled' : ''}>→</button></span></div>`;
+      const byId = (id) => all.find((o) => String(o.id) === String(id));
+      $$('[data-edpage]', body).forEach((b) => b.addEventListener('click', () => { ED.page = Number(b.dataset.edpage); drawTable(); }));
+      $$('[data-edsel]', body).forEach((b) => b.addEventListener('change', () => {
+        const id = Number(b.dataset.edsel);
+        if (b.checked) ED.sel.add(id); else ED.sel.delete(id);
+      }));
+      $('#ed_all', body).addEventListener('change', (e) => {
+        shown.forEach((o) => (e.target.checked ? ED.sel.add(o.id) : ED.sel.delete(o.id))); drawTable();
+      });
+      $$('[data-edview]', body).forEach((b) => b.addEventListener('click', () => edView(byId(b.dataset.edview)).catch(whoops)));
+      // ⋮ — the row's other moves: set the date and follow-up, or receive it.
+      $$('[data-edmore]', body).forEach((b) => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        $$('.ed-menu', body).forEach((m) => m.remove());
+        const o = byId(b.dataset.edmore);
+        const m = document.createElement('div');
+        m.className = 'ed-menu';
+        m.innerHTML = `<button type="button" data-edm="set">📅 Set expected date / follow-up</button>
+          ${edState(o) === 'full' ? '' : '<button type="button" data-edm="recv">📦 Receive this delivery</button>'}`;
+        b.parentElement.appendChild(m);
+        m.addEventListener('click', (ev) => {
+          const k = ev.target.closest('[data-edm]')?.dataset.edm;
+          m.remove();
+          if (k === 'set') edSet(o, all);
+          if (k === 'recv') edReceive(o).catch(whoops);
+        });
+        document.addEventListener('click', () => m.remove(), { once: true });
+      }));
+      return rows;
+    };
+    drawTable();
+
+    $('#ed_q', body).addEventListener('input', (e) => { ED.q = e.target.value; ED.page = 1; drawTable(); });
+    $('#ed_status', body).addEventListener('change', (e) => { ED.status = e.target.value; ED.page = 1; drawTable(); });
+    $('#ed_from', body).addEventListener('change', (e) => { ED.from = e.target.value; ED.page = 1; drawTable(); });
+    $('#ed_to', body).addEventListener('change', (e) => { ED.to = e.target.value; ED.page = 1; drawTable(); });
+    $('#ed_new', body).addEventListener('click', () => edSet(null, all));
+    // Export: the ticked rows, or every row the filters show.
+    $('#ed_export', body).addEventListener('click', () => {
+      const rows = drawTable();
+      const out = ED.sel.size ? all.filter((o) => ED.sel.has(o.id)) : rows;
+      const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const csv = [['PO No.', 'Supplier', 'PO Date', 'Expected Delivery', 'Product / Brand', 'Qty Ordered', 'Qty Received',
+        'Balance Qty', 'Status', 'Follow-up', 'Note'].map(cell).join(','),
+      ...out.map((o) => [o.po_no, o.supplier, edDate(o.ordered_on), edDate(o.expected_on),
+        `${o.brand_name || o.supplier} ${o.lines > 1 ? '(Various Items)' : o.first_product || ''}`,
+        o.qty_ordered, o.qty_received, Math.max(o.qty_ordered - o.qty_received, 0),
+        ED_STATUS[edState(o)][0], (ED_FOLLOW[o.follow_up] || ED_FOLLOW.pending)[0], o.note].map(cell).join(','))].join('\r\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `pending-receivings-${localDay()}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
   };
 
   const drawForms = async () => {

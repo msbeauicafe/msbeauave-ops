@@ -2770,3 +2770,51 @@ input.n { text-align: right; }
 .rvf-tiles > div { background: var(--rose-blush); border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
 .rvf-tiles span { font-size: .8rem; color: var(--rose-deep); }
 .rvf-tiles b { font-size: 1.35rem; }
+
+/* Warehouse receiving management — Expected deliveries monitoring, its own look. */
+.ed-hero { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; background: #fff; border: 1px solid #e6ebf3;
+  border-radius: 14px; padding: 16px 18px; }
+.ed-heroicon { width: 54px; height: 54px; border-radius: 12px; background: #13305c; color: #fff; display: grid;
+  place-items: center; font-size: 1.6rem; flex: 0 0 auto; }
+.ed-herotext { flex: 1 1 220px; }
+.ed-herotext h3 { margin: 0; font-size: 1.3rem; color: #13305c; }
+.ed-herotext div { color: #4b5b73; font-size: .9rem; }
+.ed-herohint { flex: 1 1 300px; background: #f3f6fb; border-radius: 10px; padding: 10px 14px; font-size: .82rem; color: #4b5b73; }
+.btn.ed-create { background: #13305c; border-color: #13305c; color: #fff; flex: 0 0 auto; }
+.ed-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }
+.ed-tile { display: flex; gap: 12px; align-items: flex-start; border-radius: 12px; padding: 14px 16px; }
+.ed-tile span { font-size: .85rem; font-weight: 600; color: #13305c; }
+.ed-tile b { display: block; font-size: 1.6rem; color: #13305c; }
+.ed-tile small { color: #4b5b73; }
+.ed-ticon { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 1.1rem; flex: 0 0 auto; background: #fff; }
+.ed-t-blue { background: #eaf1fc; } .ed-t-green { background: #e9f6ee; } .ed-t-red { background: #fdecec; }
+.ed-t-red span, .ed-t-red b { color: #b42318; }
+.ed-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.ed-tools input[type=search] { flex: 1 1 240px; }
+.ed-tools select { flex: 0 0 auto; width: auto; }
+.ed-dates { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .85rem; color: #4b5b73; }
+.ed-dates input { width: auto; }
+.ed-scroll { overflow-x: auto; }
+.ed-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+.ed-table th { text-align: left; background: #f3f6fb; color: #13305c; font-weight: 600; padding: 10px 8px; white-space: nowrap; }
+.ed-table td { padding: 9px 8px; border-top: 1px solid #edf0f5; vertical-align: middle; }
+.ed-table .n { text-align: right; }
+.ed-empty { text-align: center; padding: 18px; }
+.ed-pill { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: .76rem; white-space: nowrap; }
+.ed-blue { background: #eaf1fc; color: #1d5bbf; } .ed-red { background: #fdecec; color: #b42318; }
+.ed-amber { background: #fff4e0; color: #b8650a; } .ed-green { background: #e9f6ee; color: #1f7a45; }
+.ed-acts { position: relative; white-space: nowrap; }
+.btn.ed-view { background: #13305c; border-color: #13305c; color: #fff; }
+.ed-menu { position: absolute; right: 0; top: 100%; z-index: 20; background: #fff; border: 1px solid #e6ebf3; border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(19, 48, 92, .15); display: flex; flex-direction: column; min-width: 230px; padding: 4px; }
+.ed-menu button { border: none; background: none; text-align: left; padding: 8px 10px; font: inherit; font-size: .85rem; border-radius: 8px; cursor: pointer; }
+.ed-menu button:hover { background: #f3f6fb; }
+.ed-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: .82rem; }
+.ed-pages { display: flex; gap: 4px; }
+.ed-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.ed-form .ed-wide { grid-column: 1 / -1; }
+.ed-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.ed-facts > div { background: #f3f6fb; border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.ed-facts span { font-size: .78rem; color: #4b5b73; }
+.ed-table .ed-nw { white-space: nowrap; }
+.btn.ed-on { background: #1d5bbf; border-color: #1d5bbf; color: #fff; }
