@@ -482,7 +482,7 @@ const TABS = {
     ['customerorder', '💬', 'Customer order'],
     ['bankreport', '🏦', 'Financial overview'],
     ['warehouseinventory', '📥', 'Warehouse inventory report'],
-    ['receivingform', '📦', 'Receiving form'],
+    ['receivingform', '📦', 'Warehouse receiving management'],
     ['releasingform', '📤', 'Releasing form'],
     ['finance', '💰', 'Finance'],
     ['pricelists', '💵', 'Pricelists'],
@@ -3012,11 +3012,12 @@ SCREENS.receivingform = async (page) => {
   // Three tabs, this screen's own: what is still to arrive, the forms
   // themselves, and a monitor of what has come in. The tab is kept across
   // a refresh.
-  const RVF_TABS = [['pending', '⏳ Pending receiving'], ['forms', '📦 Receiving form'], ['monitor', '📊 Received monitor']];
+  const RVF_TABS = [['pending', '🚚 Expected deliveries monitoring'], ['forms', '📋 Goods receipt & inspection form'],
+    ['monitor', '📊 Receiving transaction monitoring']];
   let tab = 'forms';
   try { const t = localStorage.getItem('rvfTab'); if (RVF_TABS.some(([k]) => k === t)) tab = t; } catch { /* no storage */ }
   page.innerHTML = `
-    <div class="head"><h2>Receiving form</h2></div>
+    <div class="head"><h2>Warehouse receiving management</h2></div>
     <div class="rvf-switch" role="tablist">${RVF_TABS.map(([k, l]) =>
       `<button type="button" data-rvftab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     <div id="rvf_body"></div>`;
@@ -3034,7 +3035,7 @@ SCREENS.receivingform = async (page) => {
       GET('/api/purchase-orders?status=open').catch(() => []),
       GET('/api/purchase-orders?status=part').catch(() => [])]);
     const rows = [...open, ...part].sort((a, b) => String(a.at).localeCompare(String(b.at)));
-    body.innerHTML = `<div class="panel"><h3>Pending receiving</h3>
+    body.innerHTML = `<div class="panel"><h3>Expected deliveries monitoring</h3>
       <div class="dim">Purchase orders still waiting on a delivery, oldest first. Receive opens the
         receiving form with what is still to arrive on that order.</div>
       <div id="rvf_pending" class="mt"></div></div>`;
@@ -3057,7 +3058,7 @@ SCREENS.receivingform = async (page) => {
   };
 
   const drawForms = async () => {
-    body.innerHTML = `<div class="panel"><h3 class="sr">Receiving forms</h3>
+    body.innerHTML = `<div class="panel"><h3>Goods receipt &amp; inspection form</h3>
       <div class="dim">The paper the stockroom fills in while the delivery is
         still on the floor — counted in boxes, with the courier, the shipping
         and the guard on it. It receives the stock as it records itself, and
@@ -3099,7 +3100,7 @@ SCREENS.receivingform = async (page) => {
     }, {})).sort((a, b) => b.units - a.units);
     const monthName = (m) => new Date(`${m}-15T12:00:00+08:00`).toLocaleDateString('en-PH', { month: 'long', year: 'numeric', timeZone: TZ });
     body.innerHTML = `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center">
-        <h3>Received monitor</h3>
+        <h3>Receiving transaction monitoring</h3>
         <select id="rvf_month" style="flex:0 0 auto;width:auto">${months.map((m) =>
           `<option value="${m}"${m === rvfMonth ? ' selected' : ''}>${esc(monthName(m))}</option>`).join('')}</select></div>
       <div class="rvf-tiles mt">

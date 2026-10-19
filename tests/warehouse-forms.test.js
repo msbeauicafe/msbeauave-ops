@@ -296,10 +296,12 @@ test('a release is logged, read back with the product and branch names, and touc
   assert.ok(row.released_at);
 });
 
-test('Receiving form has three tabs of its own: Pending receiving, Receiving form, Received monitor', () => {
+test('Warehouse receiving management has three tabs of its own: expected deliveries, goods receipt & inspection, receiving transactions', () => {
   const at = app.indexOf('SCREENS.receivingform = async');
   const fn = app.slice(at, app.indexOf('\n};', at));
-  assert.match(fn, /\[\['pending', '⏳ Pending receiving'\], \['forms', '📦 Receiving form'\], \['monitor', '📊 Received monitor'\]\]/);
+  assert.match(fn, /\[\['pending', '🚚 Expected deliveries monitoring'\], \['forms', '📋 Goods receipt & inspection form'\],\n\s*\['monitor', '📊 Receiving transaction monitoring'\]\]/);
+  assert.match(fn, /<h2>Warehouse receiving management<\/h2>/);
+  assert.match(app, /\['receivingform', '📦', 'Warehouse receiving management'\]/);
   // Pending: open and part-received orders, received from right there.
   assert.match(fn, /GET\('\/api\/purchase-orders\?status=open'\)/);
   assert.match(fn, /GET\('\/api\/purchase-orders\?status=part'\)/);
