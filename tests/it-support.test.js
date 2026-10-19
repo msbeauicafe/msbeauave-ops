@@ -624,3 +624,21 @@ test('an HR sign-in marked as a viewer reads IT support too; an unmarked one doe
   assert.notEqual((await POST(hr, '/api/it/property', { category: 'device', tag: `MSBA-DEV-H${seq++}`, item: 'X' })).status, 200);
   await assert.rejects(asRole('hr', name, 'select it_assets_all()'), /FORBIDDEN/);
 });
+
+test("Company property's Desktop and Laptop also list the masterlist's computers", () => {
+  assert.match(app, /const PR_ML_KINDS = \{ desktop: \['desktop', 'imac'\], laptop: \['laptop'\] \};/);
+  assert.match(app, /data-mlopen="\$\{a\.id\}"/);
+});
+
+test('a masterlist unit sits on a floor, and Company property finds it there (db/206)', async () => {
+  const it = await signInIT();
+  const hr = (await GET(it, '/api/it/property')).data.locations.find((l) => l.name === 'HR 2nd floor').id;
+  const { id } = (await POST(it, '/api/it/assets', { kind: 'desktop', tag: `MSBA-DESK-${process.pid}${seq++}`, brand: 'Asus' })).data;
+  assert.equal((await PUT(it, `/api/it/assets/${id}/location`, { location_id: hr })).status, 200);
+  const row = (await GET(it, '/api/it/assets')).data.find((a) => a.id === id);
+  assert.equal(row.location, 'HR 2nd floor');
+  assert.notEqual((await PUT(it, `/api/it/assets/${id}/location`, { location_id: 999999999 })).status, 200);
+  assert.notEqual((await PUT(await signIn('admin'), `/api/it/assets/${id}/location`, { location_id: null })).status, 200,
+    'a viewer cannot move it');
+  assert.match(app, /<label for="asd_loc">Location \(floor \/ room\)<\/label>/);
+});

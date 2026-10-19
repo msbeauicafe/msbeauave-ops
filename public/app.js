@@ -18344,7 +18344,7 @@ SCREENS.itsupport = async (page) => {
       { head: 'Status', cell: (a) => {
           const [l, k] = IT_ASSET_STATUS[a.status] || [a.status, 'grey'];
           return `${tag(l, k)}${a.assigned_to ? `<div class="dim">${esc(a.assigned_to)}${
-            a.department ? ' · ' + esc(a.department) : ''}</div>` : ''}`; } },
+            a.department ? ' · ' + esc(a.department) : ''}</div>` : ''}${a.location ? `<div class="dim">📍 ${esc(a.location)}</div>` : ''}`; } },
       { head: '', cell: (a) => `<button class="btn line sm" data-asopen="${a.id}">Assign / update</button>` },
     ], assets.length ? (af.status ? `Nothing matches that — a unit not yet given to anybody is In storage; set the last filter to Every status to see it.`
       : 'Nothing matches that.') : 'Nothing logged yet — add the first unit above.');
@@ -18374,6 +18374,8 @@ SCREENS.itsupport = async (page) => {
         <div><label for="au_dept">Department</label><select id="au_dept"><option value="">—</option>${
           IT_DEPARTMENTS.map((d) => `<option>${esc(d)}</option>`).join('')}</select></div>
         <div><label for="au_on">Deployment date</label><input id="au_on" type="date" value="${localDay()}"></div>
+        <div><label for="au_loc">Location (floor / room)</label><select id="au_loc"><option value="">— No room yet —</option>${(propLocs || []).map((l) =>
+            `<option value="${l.id}"${String(l.id) === String('') ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div>
       </div>
       <div class="row mt"><button class="btn" id="au_go">Assign</button></div>`, 'pr-dialog');
     $('#au_go', v).addEventListener('click', async () => {
@@ -18383,6 +18385,7 @@ SCREENS.itsupport = async (page) => {
       try {
         await PUT(`/api/it/assets/${a.id}`, { status: 'assigned', assigned_to: $('#au_who', v).value,
           department: $('#au_dept', v).value, deployed_on: $('#au_on', v).value, notes: a.notes || '' });
+        if ($('#au_loc', v).value) await PUT(`/api/it/assets/${a.id}/location`, { location_id: $('#au_loc', v).value });
         notice(`${a.tag} assigned to ${$('#au_who', v).value} 🌸`, 'good');
         closeDialog();
         await drawAssets();
@@ -18417,6 +18420,9 @@ SCREENS.itsupport = async (page) => {
         <div class="mt"><label for="asd_dept">Department</label>
           <select id="asd_dept"><option value="">—</option>${IT_DEPARTMENTS.map((d) =>
             `<option${d === a.department ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select></div>
+        <div class="mt"><label for="asd_loc">Location (floor / room)</label>
+          <select id="asd_loc"><option value="">— No room yet —</option>${(propLocs || []).map((l) =>
+            `<option value="${l.id}"${String(l.id) === String(a.location_id) ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div>
         <div class="mt"><label for="asd_on">Deployment date</label>
           <input id="asd_on" type="date" value="${esc(String(a.deployed_on || today).slice(0, 10))}"></div>
         <div class="mt"><label for="asd_notes">IT notes</label>
@@ -18490,6 +18496,10 @@ SCREENS.itsupport = async (page) => {
           department: $('#asd_dept').value, deployed_on: $('#asd_on').value,
           notes: $('#asd_notes').value,
         });
+        // Where it sits, if that changed (db/206).
+        if (String($('#asd_loc').value) !== String(a.location_id || '')) {
+          await PUT(`/api/it/assets/${a.id}/location`, { location_id: $('#asd_loc').value || null });
+        }
         notice(`${a.tag} — ${IT_ASSET_STATUS[$('#asd_status').value][0]}`, 'good');
         close();
         await drawAssets();
@@ -18755,7 +18765,12 @@ SCREENS.itsupport = async (page) => {
       ${itOv('COMPANY PROPERTY OVERVIEW', IT_OV_ICON.building, [
         ['Items in use', count(qtyOf(live)), `In ${count(propLocs.length)} locations`],
         ...Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => [`${i} ${['Furniture', 'Office supplies'].includes(l) ? l : `${l}s`}`,
-          count(qtyOf(live.filter((x) => x.category === k))), 'In use', 'info']),
+          count(qtyOf(live.filter((x) => x.category === k))), (() => {
+            // Desktops and laptops: the masterlist's own are counted beside.
+            const n = { desktop: ['desktop', 'imac'], laptop: ['laptop'] }[k];
+            const more = n ? assets.filter((a) => n.includes(a.kind) && a.status !== 'retired').length : 0;
+            return more ? `In use · ＋${count(more)} on the masterlist` : 'In use';
+          })(), 'info']),
         ['Needs attention', count(qtyOf(live.filter((x) => ['repair', 'broken'].includes(x.condition)))), 'Needs repair or broken', 'bad'],
       ])}
       <div class="panel">
@@ -18765,12 +18780,14 @@ SCREENS.itsupport = async (page) => {
             <button class="btn" id="pr_new">＋ Add item</button></div></div>
         <div class="pr-rooms mt">${propLocs.map((l) => {
           const here = live.filter((x) => x.location_id === l.id);
+          // The masterlist's units that sit in this room count here too.
+          const units = assets.filter((a) => a.location_id === l.id && a.status !== 'retired').length;
           return `<button type="button" class="pr-room ${pf.loc === String(l.id) ? 'on' : ''}" data-prloc="${l.id}">
-            <span class="pr-roomname">${esc(l.name)}</span><b>${count(qtyOf(here))}</b>
-            <span class="dim">${Object.entries(IT_PROP_CATS).map(([k, [, , i]]) => {
+            <span class="pr-roomname">${esc(l.name)}</span><b>${count(qtyOf(here) + units)}</b>
+            <span class="dim">${[...Object.entries(IT_PROP_CATS).map(([k, [, , i]]) => {
               const n = qtyOf(here.filter((x) => x.category === k));
               return n ? `${i} ${count(n)}` : '';
-            }).filter(Boolean).join(' · ') || 'Nothing logged yet'}</span></button>`;
+            }), units ? `🗂️ ${count(units)}` : ''].filter(Boolean).join(' · ') || 'Nothing logged yet'}</span></button>`;
         }).join('')}</div>
         <div class="tools mt">
           <input type="search" id="pr_q" placeholder="Search tag, item, brand, serial, person…" value="${esc(pf.q)}">
@@ -18804,7 +18821,25 @@ SCREENS.itsupport = async (page) => {
         && (!pf.who || (pf.who === '-' ? !x.assigned_to : x.assigned_to === pf.who))
         && (!q || [x.tag, x.item, x.brand, x.model, x.serial_no, x.assigned_to, x.location, x.notes]
           .join(' ').toLowerCase().includes(q)));
-      $('#pr_list', body).innerHTML = rows.length ? `<div class="acc-scroll"><table class="acc-table">
+      // Desktop or Laptop picked: the masterlist's own desktops, iMacs and
+      // laptops are listed too, in the room they sit in (db/206), so every
+      // computer can be found here — opened on the masterlist. Not when a
+      // condition is picked: a masterlist unit has health, not condition.
+      const PR_ML_KINDS = { desktop: ['desktop', 'imac'], laptop: ['laptop'] };
+      const ml = PR_ML_KINDS[pf.cat] && !pf.cond ? assets.filter((a) => PR_ML_KINDS[pf.cat].includes(a.kind)
+        && a.status !== 'retired' && (!pf.loc || String(a.location_id) === pf.loc)
+        && (!pf.who || (pf.who === '-' ? !a.assigned_to : a.assigned_to === pf.who))
+        && (!q || [a.tag, a.brand, a.model, a.serial_no, a.assigned_to, a.specs].join(' ').toLowerCase().includes(q))) : [];
+      const mlRows = ml.map((a) => `<tr class="pr-mlrow">
+          <td><b>${esc(a.tag)}</b></td>
+          <td>${esc((IT_KINDS[a.kind] || [a.kind])[0])}<div class="dim">${esc([a.brand, a.model].filter(Boolean).join(' '))}</div></td>
+          <td>${IT_PROP_CATS[pf.cat][2]} ${esc(IT_PROP_CATS[pf.cat][0])}</td>
+          <td>${a.location ? esc(a.location) : '<span class="dim">No room yet</span>'}<div class="dim">🗂️ from the masterlist</div></td>
+          <td>${a.assigned_to ? `${esc(a.assigned_to)}${a.department ? `<div class="dim">${esc(a.department)}</div>` : ''}` : '<span class="dim">Nobody yet</span>'}</td>
+          <td>1</td>
+          <td>${tag(...(IT_ASSET_STATUS[a.status] || [a.status, 'grey']))}</td>
+          <td class="acc-acts"><button class="btn sm" data-mlopen="${a.id}">Open</button></td></tr>`).join('');
+      $('#pr_list', body).innerHTML = rows.length || ml.length ? `<div class="acc-scroll"><table class="acc-table">
         <thead><tr><th>Tag</th><th>Item</th><th>Kind</th><th>Location</th><th>Used by</th><th>Qty</th><th>Condition</th><th></th></tr></thead>
         <tbody>${rows.map((x) => `<tr>
           <td><b>${esc(x.tag)}</b></td>
@@ -18814,8 +18849,9 @@ SCREENS.itsupport = async (page) => {
           <td>${x.assigned_to ? esc(x.assigned_to) : '<span class="dim">Shared</span>'}</td>
           <td>${count(x.qty || 1)}</td>
           <td>${tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey']))}</td>
-          <td class="acc-acts"><button class="btn sm" data-propen="${x.id}">Open</button></td></tr>`).join('')}</tbody></table></div>
-          <div class="dim mt">${count(rows.length)} item${rows.length === 1 ? '' : 's'} shown${pf.cond ? '' : ' · disposed items are hidden unless you pick Disposed'}</div>`
+          <td class="acc-acts"><button class="btn sm" data-propen="${x.id}">Open</button></td></tr>`).join('')}${mlRows}</tbody></table></div>
+          <div class="dim mt">${count(rows.length)} item${rows.length === 1 ? '' : 's'} shown${ml.length
+            ? ` · ${count(ml.length)} more from the Asset inventory masterlist` : ''}${pf.cond ? '' : ' · disposed items are hidden unless you pick Disposed'}</div>`
         : `<div class="dim">${props.length ? 'Nothing matches those filters.' : 'Nothing on the register yet — ＋ Add item logs the first one.'}</div>`;
     };
     drawList();
@@ -18835,7 +18871,16 @@ SCREENS.itsupport = async (page) => {
       try { await POST('/api/it/property-locations', { name }); notice('Location added 🌸', 'good'); redraw(); }
       catch (err) { whoops(err); }
     });
-    $('#pr_list', body).addEventListener('click', (e) => {
+    $('#pr_list', body).addEventListener('click', async (e) => {
+      // A masterlist unit opens on the masterlist, in its own drawer.
+      const m = e.target.closest('[data-mlopen]');
+      if (m) {
+        const a = assets.find((x) => String(x.id) === m.dataset.mlopen);
+        itKeep('itAssetsView', 'list');
+        body.innerHTML = '';
+        try { await drawAssets(); assetDrawer(assets.find((x) => x.id === a?.id)); } catch (err) { whoops(err); }
+        return;
+      }
       const o = e.target.closest('[data-propen]');
       if (o) propEdit(props.find((x) => String(x.id) === o.dataset.propen));
     });
@@ -18854,9 +18899,10 @@ SCREENS.itsupport = async (page) => {
     if (!loc) return;
     const files = (await GET(`/api/it/property-locations/${loc.id}/files`)) || [];
     const here = props.filter((x) => x.location_id === loc.id && x.condition !== 'disposed');
+    const unitsHere = assets.filter((a) => a.location_id === loc.id && a.status !== 'retired');
     const v = dialog(`
       <h3>🏢 ${esc(loc.name)}</h3>
-      <div class="dim">${count(here.reduce((t, x) => t + Number(x.qty || 1), 0))} item${here.length === 1 ? '' : 's'} here ·
+      <div class="dim">${count(here.reduce((t, x) => t + Number(x.qty || 1), 0) + unitsHere.length)} item${here.length + unitsHere.length === 1 ? '' : 's'} here ·
         ${count(files.length)} photo${files.length === 1 ? '' : 's'}</div>
       <h4 class="mt">What is here</h4>
       ${here.length ? `<div class="pr-roomitems">${here.map((x) => `<button type="button" class="hold-row" data-roomitem="${x.id}">
@@ -18864,7 +18910,10 @@ SCREENS.itsupport = async (page) => {
         <span class="dim">${esc(x.tag)} · ${x.assigned_to ? esc(x.assigned_to) : 'Shared'}${
           [x.brand, x.model].filter(Boolean).length ? ` · ${esc([x.brand, x.model].filter(Boolean).join(' '))}` : ''}</span>
         ${x.condition !== 'good' ? tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey'])) : ''}</button>`).join('')}</div>`
-        : '<div class="dim">Nothing is logged in this room yet.</div>'}
+        : (unitsHere.length ? '' : '<div class="dim">Nothing is logged in this room yet.</div>')}
+      ${unitsHere.length ? `<div class="pr-roomitems mt">${unitsHere.map((a) => `<div class="hold-row">
+        <span>${IT_UNIT_ICON[a.kind] || '🖥️'} ${esc((IT_KINDS[a.kind] || [a.kind])[0])} · ${esc(described(a))}</span>
+        <span class="dim">${esc(a.tag)} · ${a.assigned_to ? esc(a.assigned_to) : 'Nobody yet'} · 🗂️ masterlist</span></div>`).join('')}</div>` : ''}
       <h4 class="mt">Photos</h4>
       <div class="pr-upload">
         <div><label for="prr_files">Add photos</label><input id="prr_files" type="file" accept="image/*" multiple></div>
