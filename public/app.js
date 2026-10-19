@@ -18791,13 +18791,15 @@ SCREENS.itsupport = async (page) => {
     body.innerHTML = `${asSwitch('prop')}
       ${itOv('COMPANY PROPERTY OVERVIEW', IT_OV_ICON.building, [
         ['Items in use', count(qtyOf(live)), `In ${count(propLocs.length)} locations`],
-        ...Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => [`${i} ${['Furniture', 'Office supplies'].includes(l) ? l : `${l}s`}`,
-          count(qtyOf(live.filter((x) => x.category === k))), (() => {
-            // Desktops and laptops: the masterlist's own are counted beside.
-            const n = { desktop: ['desktop', 'imac'], laptop: ['laptop'] }[k];
-            const more = n ? assets.filter((a) => n.includes(a.kind) && a.status !== 'retired').length : 0;
-            return more ? `In use · ＋${count(more)} on the masterlist` : 'In use';
-          })(), 'info']),
+        ...Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => {
+          // Desktops and laptops count every one in use: those logged here and
+          // the masterlist's own desktops, iMacs and laptops.
+          const n = { desktop: ['desktop', 'imac'], laptop: ['laptop'] }[k];
+          const more = n ? assets.filter((a) => n.includes(a.kind) && a.status !== 'retired').length : 0;
+          return [`${i} ${['Furniture', 'Office supplies'].includes(l) ? l : `${l}s`}`,
+            count(qtyOf(live.filter((x) => x.category === k)) + more),
+            more ? `In use · ${count(more)} from the masterlist` : 'In use', 'info'];
+        }),
         ['Needs attention', count(qtyOf(live.filter((x) => ['repair', 'broken'].includes(x.condition)))), 'Needs repair or broken', 'bad'],
       ])}
       <div class="panel">
