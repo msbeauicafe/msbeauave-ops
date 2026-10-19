@@ -658,3 +658,7 @@ test('the Asset inventory masterlist also lists Company property, marked so', ()
   assert.match(app, /\.map\(\(x\) => \(\{ \.\.\.x, _prop: true \}\)\);/);
   assert.match(app, /data-asprop="\$\{a\.id\}">Open<\/button>/);
 });
+
+test("Company property's Desktops and Laptops count the masterlist's computers in their number", () => {
+  assert.match(app, /count\(qtyOf\(live\.filter\(\(x\) => x\.category === k\)\) \+ more\)/);
+});
