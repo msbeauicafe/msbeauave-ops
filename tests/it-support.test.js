@@ -248,7 +248,7 @@ test("IT's hardware masterlist: intake, no duplicate tags or serials, assigning,
 });
 
 test('Hardware assets is a third view for IT only', () => {
-  assert.match(app, /const views = isIT \? \[\['dash', 'IT Dashboard'\], \['file', 'File Concern'\], \['assets', 'Hardware assets'\]\]/);
+  assert.match(app, /const views = isIT \? \[\['dash', 'IT Dashboard'\], \['file', 'File Concern'\], \['assets', 'Asset inventory masterlist'\]\]/);
   assert.match(app, /: \[\['file', 'File Concern'\], \['mine', 'My requests'\]\]/, 'everybody else is unchanged');
 });
 
@@ -364,10 +364,10 @@ test('accountability forms: lines follow the masterlist, returns free the unit, 
 
 test('Hardware assets has its Accountability forms, downloaded as a Word file', () => {
   assert.match(app, /data-asview="acc"[^>]*>📝 Accountability forms<\/button>/);
-  // Asset inventory masterlist, then Company property, then Accountability forms.
-  assert.match(app, /🗂️ Asset inventory masterlist<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
-  // Asset inventory masterlist, then Company property, then Accountability forms.
-  assert.match(app, /🗂️ Asset inventory masterlist<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
+  // Hardware assets, then Company property, then Accountability forms.
+  assert.match(app, /🗂️ Hardware assets<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
+  // Hardware assets, then Company property, then Accountability forms.
+  assert.match(app, /🗂️ Hardware assets<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
   assert.match(app, /function itAccDocx\(f, logo\)/);
   assert.match(app, /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
   assert.match(app, /a\.download = `Accountability form - /);
@@ -446,7 +446,7 @@ test('office supplies are company property; both registers show what each employ
 });
 
 test('every IT support tab opens on its own rose overview card', () => {
-  for (const t of ["'IT SUPPORT OVERVIEW'", "'HARDWARE OVERVIEW'", "'ACCOUNTABILITY OVERVIEW'", "'COMPANY PROPERTY OVERVIEW'"]) {
+  for (const t of ["'IT SUPPORT OVERVIEW'", "'ASSET INVENTORY MASTERLIST OVERVIEW'", "'ACCOUNTABILITY OVERVIEW'", "'COMPANY PROPERTY OVERVIEW'"]) {
     assert.ok(app.includes(t), t);
   }
   const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
