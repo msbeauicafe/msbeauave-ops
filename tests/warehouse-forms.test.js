@@ -302,11 +302,41 @@ test('Warehouse receiving management has three tabs of its own: expected deliver
   assert.match(fn, /\[\['pending', '🚚 Expected deliveries monitoring'\], \['forms', '📋 Goods receipt & inspection form'\],\n\s*\['monitor', '📊 Receiving transaction monitoring'\]\]/);
   assert.match(fn, /<h2>Warehouse receiving management<\/h2>/);
   assert.match(app, /\['receivingform', '📦', 'Warehouse receiving management'\]/);
-  // Pending: open and part-received orders, received from right there.
-  assert.match(fn, /GET\('\/api\/purchase-orders\?status=open'\)/);
-  assert.match(fn, /GET\('\/api\/purchase-orders\?status=part'\)/);
+  // Expected deliveries: its own list, received from right there.
+  assert.match(fn, /GET\('\/api\/expected-deliveries'\)/);
   assert.match(fn, /receiveDelivery\(\{ po, catalogue, shops, suppliers, done: \(\) => drawPending\(\)\.catch\(whoops\) \}\)/);
   // Its own tab bar, not IT support's.
   assert.match(fn, /class="rvf-switch"/);
   assert.doesNotMatch(fn, /acc-switch/);
+});
+
+test('Expected deliveries monitoring keeps a date and follow-up per order in its own table (db/210)', async () => {
+  const at = app.indexOf('SCREENS.receivingform = async');
+  const fn = app.slice(at, app.indexOf('\n};', at));
+  for (const h of ['PO No.', 'Supplier', 'PO Date', 'Expected Delivery', 'Product / Brand', 'Qty Ordered', 'Qty Received',
+    'Balance Qty', 'Status', 'Follow-up', 'Action']) assert.ok(fn.includes(`<th${h.startsWith('Qty') || h === 'Balance Qty' ? ' class="n"' : ''}>${h}</th>`), h);
+  for (const t of ['Pending Deliveries', 'Expected Today', 'Overdue Deliveries', '＋ Create Pending Receiving']) assert.ok(fn.includes(t), t);
+
+  // The real thing: a warehouse sign-in sets an order's expected date and
+  // follow-up and reads it back; an office sign-in reads but cannot set,
+  // refused past the router too.
+  const admin = await signIn('admin');
+  const sku = await newProduct(admin);
+  const sup = await POST(admin, '/api/suppliers', { name: unique('Supplier') });
+  const po = await POST(admin, '/api/purchase-orders', { supplier_id: sup.data.id, lines: [{ sku, qty: 12, price: 10 }] });
+  assert.equal(po.status, 200, JSON.stringify(po.data));
+  const wh = await signIn('warehouse');
+  const put = await request(wh, 'PUT', `/api/expected-deliveries/${po.data.id}`,
+    { expected_on: '2026-10-25', follow_up: 'contacted', note: 'Thursday' });
+  assert.equal(put.status, 200, JSON.stringify(put.data));
+  const office = await signIn('office');
+  const got = await GET(office, '/api/expected-deliveries');
+  const row = got.data.find((o) => Number(o.id) === po.data.id);
+  assert.equal(row.expected_on, '2026-10-25');
+  assert.equal(row.follow_up, 'contacted');
+  assert.equal(row.qty_ordered, 12);
+  assert.equal(row.qty_received, 0);
+  assert.notEqual((await request(office, 'PUT', `/api/expected-deliveries/${po.data.id}`, { expected_on: '2026-10-26' })).status, 200);
+  assert.notEqual((await request(wh, 'PUT', `/api/expected-deliveries/${po.data.id}`,
+    { expected_on: '2026-10-26', follow_up: 'nonsense' })).status, 200, 'a follow-up off the list is refused');
 });
