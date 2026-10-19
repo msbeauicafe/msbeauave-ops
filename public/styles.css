@@ -2744,3 +2744,8 @@ input.n { text-align: right; }
 
 /* Company property: a masterlist computer shown under Desktop / Laptop. */
 #pr_list tr.pr-mlrow td { background: #fbf4f7; }
+
+/* Company property: a room's own way to place a masterlist unit in it. */
+.pr-place { background: var(--rose-blush); border-radius: 12px; padding: 10px 12px; }
+.pr-place select { flex: 1; min-width: 0; }
+.it-viewonly .pr-place { display: none !important; }
