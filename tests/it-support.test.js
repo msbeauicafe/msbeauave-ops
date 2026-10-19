@@ -652,3 +652,9 @@ test("a room's gallery shows its masterlist computers' photos, and takes new one
   assert.match(app, /<figure class="pr-mlphoto"><img src="\/api\/it\/asset-files\/\$\{f\.id\}"/);
   assert.match(app, /await POST\(`\/api\/it\/assets\/\$\{track\.slice\(3\)\}\/files`, \{ kind: 'photo'/);
 });
+
+test('the Asset inventory masterlist also lists Company property, marked so', () => {
+  assert.match(app, /<optgroup label="🏢 Company property">/);
+  assert.match(app, /\.map\(\(x\) => \(\{ \.\.\.x, _prop: true \}\)\);/);
+  assert.match(app, /data-asprop="\$\{a\.id\}">Open<\/button>/);
+});

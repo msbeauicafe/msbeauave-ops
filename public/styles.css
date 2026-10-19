@@ -2751,3 +2751,6 @@ input.n { text-align: right; }
 .it-viewonly .pr-place { display: none !important; }
 
 .pr-gallery figure.pr-mlphoto { border-color: var(--rose-primary); }
+
+/* Asset inventory masterlist: a company property row, set apart. */
+#as_list tr:has(.hl-prop) td { background: #fbf6f8; }
