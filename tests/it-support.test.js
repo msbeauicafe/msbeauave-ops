@@ -647,3 +647,8 @@ test("a room's window can place a masterlist unit in it", () => {
   assert.match(app, /<button class="btn" type="button" id="prr_place">📍 Place here<\/button>/);
   assert.match(app, /await PUT\(`\/api\/it\/assets\/\$\{id\}\/location`, \{ location_id: loc\.id \}\);/);
 });
+
+test("a room's gallery shows its masterlist computers' photos, and takes new ones for them", () => {
+  assert.match(app, /<figure class="pr-mlphoto"><img src="\/api\/it\/asset-files\/\$\{f\.id\}"/);
+  assert.match(app, /await POST\(`\/api\/it\/assets\/\$\{track\.slice\(3\)\}\/files`, \{ kind: 'photo'/);
+});

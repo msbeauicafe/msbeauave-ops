@@ -18903,7 +18903,10 @@ SCREENS.itsupport = async (page) => {
     const v = dialog(`
       <h3>🏢 ${esc(loc.name)}</h3>
       <div class="dim">${count(here.reduce((t, x) => t + Number(x.qty || 1), 0) + unitsHere.length)} item${here.length + unitsHere.length === 1 ? '' : 's'} here ·
-        ${count(files.length)} photo${files.length === 1 ? '' : 's'}</div>
+        ${(() => {
+          const n = files.length + unitsHere.reduce((t, a) => t + (a.files || []).filter((f) => f.kind === 'photo').length, 0);
+          return `${count(n)} photo${n === 1 ? '' : 's'}`;
+        })()}</div>
       <h4 class="mt">What is here</h4>
       ${here.length ? `<div class="pr-roomitems">${here.map((x) => `<button type="button" class="hold-row" data-roomitem="${x.id}">
         <span>${IT_PROP_CATS[x.category]?.[2] || ''} ${esc(x.item)}${x.qty > 1 ? ` ×${count(x.qty)}` : ''}</span>
@@ -18933,12 +18936,21 @@ SCREENS.itsupport = async (page) => {
         <div><label for="prr_item">Track it as</label><select id="prr_item">
           <option value="new">＋ A new item in this room</option>${here.map((x) =>
           `<option value="${x.id}">${esc(`${x.tag} · ${x.item}`)}</option>`).join('')}
+          ${unitsHere.map((a) => `<option value="ml:${a.id}">🗂️ ${esc(`${a.tag} · ${(IT_KINDS[a.kind] || [a.kind])[0]} · ${described(a)}`)}</option>`).join('')}
           <option value="">Just a photo — not tracked</option></select></div>
         <div id="prr_kindbox"><label for="prr_kind">Kind</label><select id="prr_kind">${Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) =>
           `<option value="${k}">${i} ${l}</option>`).join('')}</select></div>
         <div><label>&nbsp;</label><button class="btn" id="prr_up">⤒ Upload</button></div>
       </div>
-      <div class="pr-gallery mt">${files.map((f) => `
+      <div class="pr-gallery mt">${
+        // The masterlist's own photos of the computers in this room — kept
+        // on the unit, shown here too; renamed or removed on the masterlist.
+        unitsHere.flatMap((a) => (a.files || []).filter((f) => f.kind === 'photo').map((f) => `
+        <figure class="pr-mlphoto"><img src="/api/it/asset-files/${f.id}" alt="" loading="lazy"
+          data-itzoom="/api/it/asset-files/${f.id}" data-itzoom-cap="${esc([`${(IT_KINDS[a.kind] || [a.kind])[0]} · ${described(a)}`, loc.name, a.tag].join(' · '))}">
+          <figcaption><b class="pr-photoname">${esc((IT_KINDS[a.kind] || [a.kind])[0])} · ${esc(described(a))}</b>
+            <span class="dim">${esc(a.tag)}${a.assigned_to ? ` · ${esc(a.assigned_to)}` : ''}</span>
+            <span class="dim">${when(f.uploaded_at)} · 🗂️ masterlist photo</span></figcaption></figure>`)).join('')}${files.map((f) => `
         <figure><img src="/api/it/property-files/${f.id}" alt="" loading="lazy"
           data-itzoom="/api/it/property-files/${f.id}" data-itzoom-cap="${esc([f.caption || f.item || 'Photo', loc.name, f.tag].filter(Boolean).join(' · '))}">
           <figcaption><b class="pr-photoname">${esc(f.caption || f.item || 'Unnamed photo')}</b>${f.tag ? `<span class="dim">${esc(`${f.tag} · ${f.item}`)}</span>` : ''}
@@ -18946,7 +18958,8 @@ SCREENS.itsupport = async (page) => {
             ${f.property_id ? '' : `<button class="btn sm quiet pr-track" data-prtrack="${f.id}">＋ Track as an item</button>`}
             <span class="pr-photoacts"><button class="linkbtn" data-prname="${f.id}">✎ Rename</button>
               <button class="linkbtn" data-prdrop="${f.id}" aria-label="Remove photo">✕ Remove</button></span></figcaption></figure>`).join('')
-        || '<div class="dim">No photos yet — add some above. Click a photo to zoom in.</div>'}</div>`, 'wide pr-dialog');
+        || (unitsHere.some((a) => (a.files || []).some((f) => f.kind === 'photo')) ? ''
+          : '<div class="dim">No photos yet — add some above. Click a photo to zoom in.</div>')}</div>`, 'wide pr-dialog');
     // A masterlist unit placed in this room (db/206), straight from here.
     $('#prr_place', v).addEventListener('click', async () => {
       const id = $('#prr_unit', v).value;
@@ -18967,6 +18980,20 @@ SCREENS.itsupport = async (page) => {
       // register, which names it.
       const track = $('#prr_item', v).value;
       const name = $('#prr_cap', v).value.trim();
+      // A photo of a masterlist computer goes onto that unit, on the masterlist.
+      if (track.startsWith('ml:')) {
+        const btnMl = $('#prr_up', v);
+        btnMl.disabled = true; btnMl.textContent = 'Uploading…';
+        try {
+          for (const f of picked) {
+            await POST(`/api/it/assets/${track.slice(3)}/files`, { kind: 'photo', dataUrl: await shrink(f, 1600) });
+          }
+          notice(`${picked.length} photo${picked.length === 1 ? '' : 's'} added to the masterlist unit 🌸`, 'good');
+          await drawProp();
+          await propRoom(propLocs.find((l) => l.id === loc.id) || loc);
+        } catch (err) { whoops(err); btnMl.disabled = false; btnMl.textContent = '⤒ Upload'; }
+        return;
+      }
       if (!name && (!track || track === 'new')) {
         notice('Name the photo first — e.g. Fire alarm.', 'bad'); $('#prr_cap', v).focus(); return;
       }
