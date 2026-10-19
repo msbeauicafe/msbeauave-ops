@@ -3220,32 +3220,217 @@ SCREENS.receivingform = async (page) => {
     });
   };
 
-  const drawForms = async () => {
-    body.innerHTML = `<div class="panel"><h3>Goods receipt &amp; inspection form</h3>
-      <div class="dim">The paper the stockroom fills in while the delivery is
-        still on the floor — counted in boxes, with the courier, the shipping
-        and the guard on it. It receives the stock as it records itself, and
-        where it answers a purchase order it ticks that order off too.</div>
-      <div class="row mt">
-        <div style="flex:0 0 auto"><button class="btn" id="rvf_new">＋ Record a delivery</button></div>
+  // Goods receipt & inspection form (db/211): every receiving form as a
+  // transaction — its PO, the supplier's DR and invoice numbers, the units
+  // received, and two checks of its own: the inspection and the accounting
+  // document check. Overview, filters, quick filters and actions, recent
+  // activity, a CSV export and ten to a page. View opens the form's own
+  // paper; ⋮ records its DR, invoice and checks.
+  const GR = { q: '', status: '', supplier: '', from: '', to: '', page: 1, sel: new Set() };
+  const grDate = (d) => (d ? `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}` : '—');
+  const GR_INSP = { for_inspection: ['For Inspection', 'gr-amber', '⏳'], approved: ['Approved', 'gr-green', '✅'],
+    discrepancy: ['Discrepancy', 'gr-red', '⛔'] };
+  const GR_ACCT = { pending: ['Pending', 'gr-rose', '🕒'], verified: ['Verified', 'gr-green', '✔️'],
+    on_hold: ['On-Hold', 'gr-amber', '⏸️'] };
+  // Where a form stands as a whole, for the quick filters.
+  // Completed is the same here as on the overview: approved and verified.
+  const GR_STATE = { inspection: ['For Inspection', 'gr-amber'], discrepancy: ['With Discrepancy', 'gr-red'],
+    partial: ['Partially Received', 'gr-rose'], accounting: ['Pending Accounting', 'gr-rose'],
+    completed: ['Completed', 'gr-green'] };
+  const grState = (f) => (f.inspection === 'discrepancy' ? 'discrepancy'
+    : f.inspection === 'for_inspection' ? 'inspection'
+      : f.po_status === 'part' ? 'partial'
+        : f.accounting === 'verified' ? 'completed' : 'accounting');
+  const grPill = ([l, c, i]) => `<span class="gr-pill ${c}">${i ? `${i} ` : ''}${esc(l)}</span>`;
+
+  const grCheck = (f) => {
+    const v = dialog(`<h3>${esc(f.rf_no)} · ${esc(f.supplier)}</h3>
+      <div class="gr-form">
+        <div><label for="gr_dr">DR No.</label><input id="gr_dr" type="text" value="${esc(f.dr_no || '')}" placeholder="Supplier's delivery receipt"></div>
+        <div><label for="gr_inv">Invoice No.</label><input id="gr_inv" type="text" value="${esc(f.invoice_no || '')}"></div>
+        <div><label for="gr_insp">Inspection status</label><select id="gr_insp">${Object.entries(GR_INSP).map(([k, [l]]) =>
+          `<option value="${k}"${f.inspection === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div><label for="gr_acct">Accounting status</label><select id="gr_acct">${Object.entries(GR_ACCT).map(([k, [l]]) =>
+          `<option value="${k}"${f.accounting === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="gr-wide"><label for="gr_note">Note</label><input id="gr_note" type="text" value="${esc(f.note || '')}"
+          placeholder="3 boxes dented, invoice short by 20 pcs…"></div>
       </div>
-      <div id="rvf_list" class="mt"></div></div>`;
-    const rows = await GET('/api/receiving-forms').catch(() => []);
-    $('#rvf_list', body).innerHTML = table(rows, [
-      { head: 'No.', cell: (f) => `<b>${esc(f.rf_no)}</b>` },
-      { head: 'Received', cell: (f) => onDay(f.received_on) },
-      { head: 'Supplier', cell: (f) => `${esc(f.supplier)}${
-          f.brand_name ? `<div class="dim">${esc(f.brand_name)}</div>` : ''}` },
-      { head: 'Against', cell: (f) => f.po_no ? esc(f.po_no) : tag('no order', 'grey') },
-      { head: 'Boxes', n: true, cell: (f) => count(f.total_boxes) },
-      { head: '', cell: (f) => `<button class="btn sm quiet" data-rvf="${f.id}">Open</button>` },
-    ], 'No receiving forms yet.');
-    $$('[data-rvf]', body).forEach((b) => b.addEventListener('click', () => openForm(b.dataset.rvf)));
-    $('#rvf_new', body).addEventListener('click', async () => {
+      <div class="row mt"><button class="btn" id="gr_save">Save</button></div>`);
+    $('#gr_save', v).addEventListener('click', async () => {
+      try {
+        await PUT(`/api/goods-receipts/${f.id}`, { dr_no: $('#gr_dr', v).value, invoice_no: $('#gr_inv', v).value,
+          inspection: $('#gr_insp', v).value, accounting: $('#gr_acct', v).value, note: $('#gr_note', v).value });
+        notice('Saved 🌸', 'good'); closeDialog(); await drawForms();
+      } catch (e) { whoops(e); }
+    });
+  };
+
+  const drawForms = async () => {
+    // Ids come back as text (bigint); the ticks and lookups below use numbers.
+    const all = (await GET('/api/goods-receipts').catch(() => [])).map((f) => ({ ...f, id: Number(f.id) }));
+    const month = localDay().slice(0, 7);
+    const lastMonth = (() => { const [y, m] = month.split('-').map(Number);
+      return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; })();
+    const nThis = all.filter((f) => f.received_on?.startsWith(month)).length;
+    const nLast = all.filter((f) => f.received_on?.startsWith(lastMonth)).length;
+    const delta = nLast ? Math.round(((nThis - nLast) / nLast) * 100) : null;
+    const n = (fn) => all.filter(fn).length;
+    const sups = [...new Set(all.map((f) => f.supplier))].sort();
+    body.innerHTML = `
+      <div class="gr-hero">
+        <div class="gr-heroicon">📋</div>
+        <div class="gr-herotext"><div class="gr-kicker">Warehouse Receiving Management</div>
+          <h3>Receiving Form Transactions</h3><div class="gr-sub">Warehouse Receiving &amp; Inspection Register</div>
+          <div class="gr-desc">Track all receiving forms, record deliveries, verify quantities, and monitor inspection and accounting status.</div></div>
+        <div class="gr-badge">📦 Receiving</div>
+      </div>
+      <div class="gr-tiles">
+        <div class="gr-tile"><span class="gr-ticon">🧾</span><div><span>Total Receiving Forms</span><b>${count(all.length)}</b>
+          <small>${delta === null ? `${count(nThis)} this month` : `${delta >= 0 ? '+' : ''}${delta}% vs. last month ${delta >= 0 ? '↗' : '↘'}`}</small></div></div>
+        <div class="gr-tile gr-t-amber"><span class="gr-ticon">⏳</span><div><span>For Inspection</span>
+          <b>${count(n((f) => f.inspection === 'for_inspection'))}</b><small>Pending verification</small></div></div>
+        <div class="gr-tile gr-t-red"><span class="gr-ticon">⚠️</span><div><span>With Discrepancies</span>
+          <b>${count(n((f) => f.inspection === 'discrepancy'))}</b><small>Requires resolution</small></div></div>
+        <div class="gr-tile gr-t-green"><span class="gr-ticon">✅</span><div><span>Completed Receivings</span>
+          <b>${count(n((f) => f.inspection === 'approved' && f.accounting === 'verified'))}</b><small>Fully received &amp; verified</small></div></div>
+        <div class="gr-tile gr-t-rose"><span class="gr-ticon">📄</span><div><span>Pending Accounting</span>
+          <b>${count(n((f) => f.accounting !== 'verified'))}</b><small>Awaiting document check</small></div></div>
+      </div>
+      <div class="gr-layout">
+        <div class="panel gr-main">
+          <div class="gr-mainhead"><h3>Receiving Form Transactions</h3>
+            <button class="btn" id="rvf_new">＋ Create Receiving Form</button></div>
+          <div class="gr-tools">
+            <input type="search" id="gr_q" placeholder="🔍 Search RF No., PO No., Supplier, DR No., Invoice…" value="${esc(GR.q)}">
+            <select id="gr_status"><option value="">All Status</option>${Object.entries(GR_STATE).map(([k, [l]]) =>
+              `<option value="${k}"${GR.status === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+            <select id="gr_sup"><option value="">All Suppliers</option>${sups.map((x) =>
+              `<option${GR.supplier === x ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>
+            <div class="gr-dates"><span>📅</span><input type="date" id="gr_from" value="${esc(GR.from)}" aria-label="From">
+              <span>→</span><input type="date" id="gr_to" value="${esc(GR.to)}" aria-label="To"></div>
+            <button class="btn quiet" id="gr_export">⬇ Export</button>
+          </div>
+          <div id="rvf_list" class="mt"></div>
+        </div>
+        <aside class="gr-side">
+          <div class="panel"><h4>⚲ Quick Filters</h4>
+            <div class="dim gr-lbl">Receiving Status</div>
+            <div class="gr-qf">${[['', 'All', all.length, 'gr-rose'], ...Object.entries(GR_STATE).map(([k, [l, c]]) =>
+              [k, l, n((f) => grState(f) === k), c])].map(([k, l, c, cls]) =>
+              `<button type="button" class="${GR.status === k ? 'on' : ''}" data-grqf="${k}"><span class="gr-dot ${cls}"></span>${l}<b>${count(c)}</b></button>`).join('')}</div>
+            <div class="dim gr-lbl mt">Supplier</div>
+            <select id="gr_qsup"><option value="">All Suppliers</option>${sups.map((x) =>
+              `<option${GR.supplier === x ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>
+          </div>
+          <div class="panel"><h4>⚡ Quick Actions</h4>
+            <div class="gr-qa"><button class="btn" id="gr_qnew">＋ Create Receiving Form</button>
+              <button class="btn quiet" id="gr_qpend">🚚 View Pending Deliveries</button>
+              <button class="btn quiet" id="gr_qexp">⬇ Export Transactions</button></div>
+          </div>
+          <div class="panel"><h4>🕒 Recent Activity</h4>
+            <div class="gr-recent">${[...all].sort((a, b) => String(b.updated_at || b.at).localeCompare(String(a.updated_at || a.at)))
+              .slice(0, 5).map((f) => `<div><span class="gr-dot ${GR_STATE[grState(f)][1]}"></span><b>${esc(f.rf_no)}</b>
+                ${grPill([f.inspection === 'discrepancy' ? 'Discrepancy Reported' : f.inspection === 'approved'
+                  ? (f.accounting === 'verified' ? 'Completed Receiving' : 'Approved') : 'For Inspection', GR_STATE[grState(f)][1]])}
+                <span class="dim">${when(f.updated_at || f.at)}</span></div>`).join('') || '<div class="dim">Nothing yet.</div>'}</div>
+          </div>
+        </aside>
+      </div>
+      <div class="gr-note">ℹ️ The Receiving Form Transactions page records all actual deliveries received from suppliers. It links to the
+        Purchase Order (PO) and Delivery Receipt (DR), and tracks inspection, approval and accounting status for complete traceability.</div>`;
+
+    const filtered = () => {
+      const q = GR.q.trim().toLowerCase();
+      return all.filter((f) => (!GR.status || grState(f) === GR.status)
+        && (!GR.supplier || f.supplier === GR.supplier)
+        && (!GR.from || f.received_on >= GR.from) && (!GR.to || f.received_on <= GR.to)
+        && (!q || [f.rf_no, f.po_no, f.supplier, f.dr_no, f.invoice_no].join(' ').toLowerCase().includes(q)));
+    };
+    const drawTable = () => {
+      const rows = filtered();
+      const pages = Math.max(1, Math.ceil(rows.length / 10));
+      GR.page = Math.min(GR.page, pages);
+      const shown = rows.slice((GR.page - 1) * 10, GR.page * 10);
+      $('#rvf_list', body).innerHTML = `<div class="gr-scroll"><table class="gr-table">
+        <thead><tr><th><input type="checkbox" id="gr_all" aria-label="Select all"${shown.length && shown.every((f) => GR.sel.has(f.id)) ? ' checked' : ''}></th>
+          <th>RF No.</th><th>Receiving Date</th><th>Supplier</th><th>PO No.</th><th>DR No.</th><th>Invoice No.</th>
+          <th class="n">Qty Received</th><th>Inspection Status</th><th>Accounting Status</th><th>Actions</th></tr></thead>
+        <tbody>${shown.map((f) => `<tr>
+          <td><input type="checkbox" data-grsel="${f.id}"${GR.sel.has(f.id) ? ' checked' : ''} aria-label="Select ${esc(f.rf_no)}"></td>
+          <td class="gr-nw">${esc(f.rf_no)}</td><td class="gr-nw">${grDate(f.received_on)}</td><td>${esc(f.supplier)}</td>
+          <td class="gr-nw">${f.po_no ? esc(f.po_no) : '<span class="dim">No order</span>'}</td>
+          <td class="gr-nw">${esc(f.dr_no || '—')}</td><td class="gr-nw">${esc(f.invoice_no || '—')}</td>
+          <td class="n">${count(f.units)}</td>
+          <td>${grPill(GR_INSP[f.inspection] || GR_INSP.for_inspection)}</td><td>${grPill(GR_ACCT[f.accounting] || GR_ACCT.pending)}</td>
+          <td class="gr-acts"><button class="btn sm" data-rvf="${f.id}">View</button>
+            <button class="btn sm quiet" data-grmore="${f.id}" aria-label="More">⋮</button></td></tr>`).join('')
+          || '<tr><td colspan="11" class="dim gr-empty">No receiving forms match.</td></tr>'}</tbody></table></div>
+        <div class="gr-foot"><span class="dim">Showing ${rows.length ? `${(GR.page - 1) * 10 + 1}–${(GR.page - 1) * 10 + shown.length}` : 0}
+          of ${count(rows.length)} receiving forms</span>
+          <span class="gr-pages"><button class="btn sm quiet" data-grpage="${GR.page - 1}"${GR.page === 1 ? ' disabled' : ''}>←</button>
+            ${Array.from({ length: pages }, (_, i) => `<button class="btn sm ${i + 1 === GR.page ? 'gr-on' : 'quiet'}" data-grpage="${i + 1}">${i + 1}</button>`).join('')}
+            <button class="btn sm quiet" data-grpage="${GR.page + 1}"${GR.page === pages ? ' disabled' : ''}>→</button></span></div>`;
+      $$('[data-grpage]', body).forEach((b) => b.addEventListener('click', () => { GR.page = Number(b.dataset.grpage); drawTable(); }));
+      $$('[data-grsel]', body).forEach((b) => b.addEventListener('change', () => {
+        const id = Number(b.dataset.grsel);
+        if (b.checked) GR.sel.add(id); else GR.sel.delete(id);
+      }));
+      $('#gr_all', body).addEventListener('change', (e) => {
+        shown.forEach((f) => (e.target.checked ? GR.sel.add(f.id) : GR.sel.delete(f.id))); drawTable();
+      });
+      $$('[data-rvf]', body).forEach((b) => b.addEventListener('click', () => openForm(b.dataset.rvf)));
+      // ⋮ — record the form's DR, invoice, inspection and accounting check.
+      $$('[data-grmore]', body).forEach((b) => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        $$('.gr-menu', body).forEach((m) => m.remove());
+        const f = all.find((x) => x.id === Number(b.dataset.grmore));
+        const m = document.createElement('div');
+        m.className = 'gr-menu';
+        m.innerHTML = '<button type="button" data-grm="check">🔍 DR, invoice &amp; inspection / accounting</button>';
+        b.parentElement.appendChild(m);
+        m.addEventListener('click', (ev) => { if (ev.target.closest('[data-grm]')) { m.remove(); grCheck(f); } });
+        document.addEventListener('click', () => m.remove(), { once: true });
+      }));
+    };
+    drawTable();
+
+    const redraw = () => { GR.page = 1; drawTable();
+      $$('[data-grqf]', body).forEach((x) => x.classList.toggle('on', x.dataset.grqf === GR.status)); };
+    $('#gr_q', body).addEventListener('input', (e) => { GR.q = e.target.value; redraw(); });
+    $('#gr_status', body).addEventListener('change', (e) => { GR.status = e.target.value; redraw(); });
+    $$('[data-grqf]', body).forEach((b) => b.addEventListener('click', () => {
+      GR.status = b.dataset.grqf; $('#gr_status', body).value = GR.status; redraw();
+    }));
+    const setSup = (v) => { GR.supplier = v; $('#gr_sup', body).value = v; $('#gr_qsup', body).value = v; redraw(); };
+    $('#gr_sup', body).addEventListener('change', (e) => setSup(e.target.value));
+    $('#gr_qsup', body).addEventListener('change', (e) => setSup(e.target.value));
+    $('#gr_from', body).addEventListener('change', (e) => { GR.from = e.target.value; redraw(); });
+    $('#gr_to', body).addEventListener('change', (e) => { GR.to = e.target.value; redraw(); });
+    const create = async () => {
       if (!suppliers.length) return notice('Add a supplier first, on Purchase order.', 'bad');
       const catalogue = await GET('/api/products?q=').catch(() => []);
       receiveDelivery({ po: null, catalogue, shops, suppliers, done: () => drawForms().catch(whoops) });
-    });
+    };
+    $('#rvf_new', body).addEventListener('click', create);
+    $('#gr_qnew', body).addEventListener('click', create);
+    $('#gr_qpend', body).addEventListener('click', () => show('pending'));
+    // Export: the ticked rows, or every row the filters show.
+    const exportCsv = () => {
+      const out = GR.sel.size ? all.filter((f) => GR.sel.has(f.id)) : filtered();
+      const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const csv = [['RF No.', 'Receiving Date', 'Supplier', 'PO No.', 'DR No.', 'Invoice No.', 'Qty Received', 'Boxes',
+        'Inspection Status', 'Accounting Status', 'Note'].map(cell).join(','),
+      ...out.map((f) => [f.rf_no, grDate(f.received_on), f.supplier, f.po_no, f.dr_no, f.invoice_no, f.units, f.total_boxes,
+        (GR_INSP[f.inspection] || GR_INSP.for_inspection)[0], (GR_ACCT[f.accounting] || GR_ACCT.pending)[0], f.note]
+        .map(cell).join(','))].join('\r\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `receiving-forms-${localDay()}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    $('#gr_export', body).addEventListener('click', exportCsv);
+    $('#gr_qexp', body).addEventListener('click', exportCsv);
   };
 
   // Received monitor: what has come in, month by month — forms, boxes,
