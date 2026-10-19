@@ -611,3 +611,16 @@ test('an IT viewer reads everything IT sees and can write nothing', async () => 
   }
   assert.match(app, /const itViewer = !isIT && user\.itView === true;/);
 });
+
+test('an HR sign-in marked as a viewer reads IT support too; an unmarked one does not (db/204)', async () => {
+  const hr = await signIn('hr');
+  const name = JSON.parse(Buffer.from(hr.split('=')[1].split('.')[0], 'base64url').toString()).username;
+  assert.notEqual((await GET(hr, '/api/it/assets')).status, 200, 'not until marked');
+  await db.query('update app_users set it_view = true where username = $1', [name]);
+  assert.deepEqual((await GET(hr, '/api/it/whoami')).data, { it: false, view: true });
+  for (const p of ['/api/it/queue', '/api/it/assets', '/api/it/property', '/api/it/accountability']) {
+    assert.equal((await GET(hr, p)).status, 200, p);
+  }
+  assert.notEqual((await POST(hr, '/api/it/property', { category: 'device', tag: `MSBA-DEV-H${seq++}`, item: 'X' })).status, 200);
+  await assert.rejects(asRole('hr', name, 'select it_assets_all()'), /FORBIDDEN/);
+});

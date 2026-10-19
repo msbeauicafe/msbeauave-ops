@@ -666,7 +666,7 @@ const roleName = (r) => ({
 // IT is one admin, not every admin (db/182). Asked once per sign-in, so the
 // menu can put IT support on top for them and draw the dashboard.
 async function markIt() {
-  if (user && user.role === 'admin') {
+  if (user && (user.role === 'admin' || user.role === 'hr')) {
     const who = await GET('/api/it/whoami').catch(() => ({ it: false, view: false }));
     user.it = who.it === true;
     // Allowed to look at IT support without changing it (db/203).
