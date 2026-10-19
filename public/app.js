@@ -19139,7 +19139,7 @@ SCREENS.itsupport = async (page) => {
         <div><label for="prf_cond">Condition</label><select id="prf_cond">${Object.entries(IT_PROP_COND).map(([k, [l]]) =>
           `<option value="${k}"${x.condition === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
         <div><label for="prf_acq">Date acquired</label><input id="prf_acq" type="date" value="${esc(String(x.acquired_on || '').slice(0, 10))}"></div>
-        ${item ? `<div><label for="prf_move">Reason for a move or change</label><input id="prf_move" type="text"
+        ${item && !itViewer ? `<div><label for="prf_move">Reason for a move or change</label><input id="prf_move" type="text"
           placeholder="Moved for the new hire, sent for repair…"></div>` : '<div></div>'}
       </div>
       <div class="mt"><label for="prf_notes">Notes</label><textarea id="prf_notes" rows="2">${esc(x.notes || '')}</textarea></div>
@@ -19154,6 +19154,8 @@ SCREENS.itsupport = async (page) => {
         <button class="btn" id="prf_save">${item ? 'Save changes' : 'Add to the register'}</button>
         ${item ? '<button class="btn quiet danger" id="prf_del">Delete (entered in error)</button>' : ''}
       </div>`, 'wide pr-dialog');
+    // A viewer opens an item to read it and its history — every box locked.
+    if (itViewer) $$('input, select, textarea', v).forEach((f) => { f.disabled = true; });
     const fillItems = () => { $('#prf_items', v).innerHTML = (IT_PROP_ITEMS[$('#prf_cat', v).value] || [])
       .map((n) => `<option>${esc(n)}</option>`).join(''); };
     fillItems();

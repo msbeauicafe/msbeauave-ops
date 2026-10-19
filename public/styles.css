@@ -2656,6 +2656,9 @@ input.n { text-align: right; }
   background: none; border: none; border-top: 1px solid var(--rose-blush); padding: 6px 2px; font: inherit;
   font-size: .86rem; color: var(--ink); cursor: pointer; }
 .hold-row:hover { background: var(--rose-blush); }
+/* A viewer's Company property item opens read-only: locked boxes look locked. */
+.it-viewonly .pr-dialog :is(input, select, textarea):disabled { background: var(--rose-blush); color: var(--ink);
+  opacity: 1; cursor: default; }
 /* A viewer's room items are read, not opened: no hover, no hand. */
 .it-viewonly .pr-roomitems div.hold-row:hover { background: none; }
 .it-viewonly .pr-roomitems div.hold-row { cursor: default; }
