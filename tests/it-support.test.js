@@ -577,6 +577,16 @@ test('company property takes the masterlist hardware types, printers first (db/2
   assert.match(app, /const IT_PROP_ML = \{ desktop: \['desktop', 'imac'\], laptop: \['laptop'\], printer: \['printer'\],/);
 });
 
+test("the masterlist takes every one of Company property's kinds (db/209)", async () => {
+  const it = await signInIT();
+  for (const [kind, pre] of [['device', 'DVC'], ['appliance', 'APL'], ['furniture', 'FRN'], ['supplies', 'OFS']]) {
+    const r = await POST(it, '/api/it/assets', { kind, tag: `MSBA-${pre}-${process.pid}${seq++}`, brand: 'Any' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+  }
+  assert.match(app, /device: \['Device', 'DVC'\], appliance: \['Appliance', 'APL'\], furniture: \['Furniture', 'FRN'\],/);
+  assert.match(app, /device: \['device'\], appliance: \['appliance'\], furniture: \['furniture'\], supplies: \['supplies'\] \};/);
+});
+
 // IT viewers (db/203): an admin the owner names may look at IT support — the
 // queue, the masterlist, company property, accountability forms, photos —
 // and may change none of it; IT itself is unchanged.
