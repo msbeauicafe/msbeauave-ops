@@ -18914,6 +18914,18 @@ SCREENS.itsupport = async (page) => {
       ${unitsHere.length ? `<div class="pr-roomitems mt">${unitsHere.map((a) => `<div class="hold-row">
         <span>${IT_UNIT_ICON[a.kind] || '🖥️'} ${esc((IT_KINDS[a.kind] || [a.kind])[0])} · ${esc(described(a))}</span>
         <span class="dim">${esc(a.tag)} · ${a.assigned_to ? esc(a.assigned_to) : 'Nobody yet'} · 🗂️ masterlist</span></div>`).join('')}</div>` : ''}
+      <div class="pr-place mt">
+        <label for="prr_unit">Place a masterlist unit here — desktop, laptop, iMac…</label>
+        <div class="row" style="gap:8px">
+          <select id="prr_unit"><option value="">— Pick a unit —</option>${assets
+            .filter((a) => a.status !== 'retired' && a.location_id !== loc.id)
+            .sort((a, b) => (['desktop', 'imac', 'laptop'].includes(a.kind) ? 0 : 1) - (['desktop', 'imac', 'laptop'].includes(b.kind) ? 0 : 1)
+              || String(a.tag).localeCompare(b.tag))
+            .map((a) => `<option value="${a.id}">${esc([a.tag, (IT_KINDS[a.kind] || [a.kind])[0], described(a)].filter(Boolean).join(' · '))}${
+              a.location ? ` — now in ${esc(a.location)}` : ''}${a.assigned_to ? ` (${esc(a.assigned_to)})` : ''}</option>`).join('')}</select>
+          <button class="btn" type="button" id="prr_place">📍 Place here</button>
+        </div>
+      </div>
       <h4 class="mt">Photos</h4>
       <div class="pr-upload">
         <div><label for="prr_files">Add photos</label><input id="prr_files" type="file" accept="image/*" multiple></div>
@@ -18935,6 +18947,17 @@ SCREENS.itsupport = async (page) => {
             <span class="pr-photoacts"><button class="linkbtn" data-prname="${f.id}">✎ Rename</button>
               <button class="linkbtn" data-prdrop="${f.id}" aria-label="Remove photo">✕ Remove</button></span></figcaption></figure>`).join('')
         || '<div class="dim">No photos yet — add some above. Click a photo to zoom in.</div>'}</div>`, 'wide pr-dialog');
+    // A masterlist unit placed in this room (db/206), straight from here.
+    $('#prr_place', v).addEventListener('click', async () => {
+      const id = $('#prr_unit', v).value;
+      if (!id) { notice('Pick the unit first.', 'bad'); return; }
+      try {
+        await PUT(`/api/it/assets/${id}/location`, { location_id: loc.id });
+        notice(`${assets.find((a) => String(a.id) === id)?.tag || 'Unit'} is now in ${loc.name} 📍`, 'good');
+        await drawProp();
+        await propRoom(propLocs.find((l) => l.id === loc.id) || loc);
+      } catch (err) { whoops(err); }
+    });
     $$('[data-roomitem]', v).forEach((b) => b.addEventListener('click', () =>
       propEdit(props.find((x) => String(x.id) === b.dataset.roomitem))));
     $('#prr_up', v).addEventListener('click', async () => {

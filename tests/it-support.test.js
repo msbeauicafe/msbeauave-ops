@@ -642,3 +642,8 @@ test('a masterlist unit sits on a floor, and Company property finds it there (db
     'a viewer cannot move it');
   assert.match(app, /<label for="asd_loc">Location \(floor \/ room\)<\/label>/);
 });
+
+test("a room's window can place a masterlist unit in it", () => {
+  assert.match(app, /<button class="btn" type="button" id="prr_place">📍 Place here<\/button>/);
+  assert.match(app, /await PUT\(`\/api\/it\/assets\/\$\{id\}\/location`, \{ location_id: loc\.id \}\);/);
+});
