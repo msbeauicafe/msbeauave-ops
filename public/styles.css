@@ -2741,3 +2741,6 @@ input.n { text-align: right; }
 .it-viewonly #pr_new, .it-viewonly #pr_loc, .it-viewonly #prf_save, .it-viewonly #prf_del,
 .it-viewonly .pr-upload, .it-viewonly [data-prdrop], .it-viewonly [data-prname], .it-viewonly [data-prtrack],
 .it-viewonly .itstatus { display: none !important; }
+
+/* Company property: a masterlist computer shown under Desktop / Laptop. */
+#pr_list tr.pr-mlrow td { background: #fbf4f7; }
