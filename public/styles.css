@@ -2656,6 +2656,9 @@ input.n { text-align: right; }
   background: none; border: none; border-top: 1px solid var(--rose-blush); padding: 6px 2px; font: inherit;
   font-size: .86rem; color: var(--ink); cursor: pointer; }
 .hold-row:hover { background: var(--rose-blush); }
+/* A viewer's room items are read, not opened: no hover, no hand. */
+.it-viewonly .pr-roomitems div.hold-row:hover { background: none; }
+.it-viewonly .pr-roomitems div.hold-row { cursor: default; }
 .hold-row .dim { font-size: .78rem; }
 .itstats.pr-stats { grid-template-columns: repeat(6, 1fr); }
 @media (max-width: 700px) { .itstats.pr-stats { grid-template-columns: repeat(2, 1fr); } }
