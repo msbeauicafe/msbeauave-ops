@@ -17668,7 +17668,7 @@ const IT_STATUS = { pending: ['Pending', 'amber'], in_progress: ['In progress', 
 const IT_CATEGORY = { hardware: 'Hardware', software: 'Software', network: 'Network / Internet',
   printer: 'Printer', account: 'Account / Password', other: 'Other' };
 // The company's departments, as the owner named them. Picked, never typed.
-const IT_DEPARTMENTS = ['Marketing', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'Other'];
+const IT_DEPARTMENTS = ['Marketing', 'Sales', 'Ecommerce', 'Accounting', 'Admin', 'Warehouse', 'Other'];
 
 // IT's hardware masterlist (db/184). The tag prefix is the shop's own
 // convention — MSBA-LAP-001, MSBA-DESK-054 — so the next tag can be offered.
