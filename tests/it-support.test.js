@@ -591,6 +591,11 @@ test("a viewer reads a room's items without opening them", () => {
   assert.match(app, /\$\{itViewer\n\s*\/\/ A viewer reads the room's items; only IT opens one to change it\.\n\s*\? '<div class="hold-row">' : `<button type="button" class="hold-row" data-roomitem="\$\{x\.id\}">`\}/);
 });
 
+test("a viewer opens a Company property item read-only", () => {
+  assert.match(app, /if \(itViewer\) \$\$\('input, select, textarea', v\)\.forEach\(\(f\) => \{ f\.disabled = true; \}\);/);
+  assert.match(app, /\$\{item && !itViewer \? `<div><label for="prf_move">/);
+});
+
 // IT viewers (db/203): an admin the owner names may look at IT support — the
 // queue, the masterlist, company property, accountability forms, photos —
 // and may change none of it; IT itself is unchanged.
