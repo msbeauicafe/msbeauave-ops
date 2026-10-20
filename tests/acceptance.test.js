@@ -54,6 +54,24 @@ const POST = (c, p, b) => request(c, 'POST', p, b ?? {});
 const PUT = (c, p, b) => request(c, 'PUT', p, b);
 const DELETE = (c, p) => request(c, 'DELETE', p);
 
+/**
+ * A reseller's portal order, invoiced the way it now is (db/212): it waits on
+ * Pending customer order until the office presses Invoice there. Tests about
+ * what happens once an order has its invoice press it, and get the invoice
+ * back on the order as the portal used to hand it.
+ */
+let invoiceDesk = null;
+async function portalOrder(buyer, body) {
+  const order = await POST(buyer, '/api/portal/orders', body);
+  if (order.status !== 200) return order;
+  invoiceDesk ||= await signIn('admin');
+  const pressed = await POST(invoiceDesk, `/api/orders/${order.data.orderId}/commit`);
+  assert.equal(pressed.status, 200, JSON.stringify(pressed.data));
+  const { rows } = await db.query('select * from invoices where order_id = $1', [order.data.orderId]);
+  order.data.invoice = rows[0] || null;
+  return order;
+}
+
 /** A signed-in user of the given role. */
 async function signIn(role, resellerId = null) {
   const username = unique(role);
@@ -274,7 +292,7 @@ test('a new account cannot have goods dispatched until the invoice is paid', asy
   const buyer = await signIn('reseller',
     await newReseller(admin, { tier: 1, credit_limit: 0, terms_days: 0 }));
 
-  const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 4 }] });
+  const order = await portalOrder(buyer, { lines: [{ sku, qty: 4 }] });
   assert.equal(order.status, 200, JSON.stringify(order.data));
 
   const tooSoon = await POST(store, `/api/orders/${order.data.orderId}/dispatch`);
@@ -298,7 +316,7 @@ test('a past-due account can still order — the debt is shown, not enforced',
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
     const buyer = await signIn('reseller', id);
 
-    const first = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });
+    const first = await portalOrder(buyer, { lines: [{ sku, qty: 10 }] });
     assert.equal(first.status, 200, JSON.stringify(first.data));
 
     // Let that invoice age past its due date, the way the calendar would.
@@ -307,7 +325,7 @@ test('a past-due account can still order — the debt is shown, not enforced',
         where order_id = $1`, [first.data.orderId]);
 
     // The account is a record, not a gate: past due does not stop the next order.
-    const again = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] });
+    const again = await portalOrder(buyer, { lines: [{ sku, qty: 1 }] });
     assert.equal(again.status, 200, JSON.stringify(again.data));
 
     // What is owed is still there to see — we just want to know what she owes.
@@ -337,7 +355,7 @@ test('paying a 30-day invoice within ten days takes 2% off by itself', async () 
 
   const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
   const buyer = await signIn('reseller', id);
-  const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });
+  const order = await portalOrder(buyer, { lines: [{ sku, qty: 10 }] });
   const invoice = order.data.invoice;               // ₱2,500
 
   // 2% is ₱50, so ₱2,450 settles it.
@@ -358,19 +376,19 @@ test('a past-due account orders freely before and after it pays up', async () =>
 
   const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
   const buyer = await signIn('reseller', id);
-  const first = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });
+  const first = await portalOrder(buyer, { lines: [{ sku, qty: 10 }] });
   await db.query(
     `update invoices set issued_on = current_date - 60, due_on = current_date - 30
       where order_id = $1`, [first.data.orderId]);
 
   // Past due, still ordering.
-  assert.equal((await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] })).status, 200);
+  assert.equal((await portalOrder(buyer, { lines: [{ sku, qty: 1 }] })).status, 200);
 
   await POST(admin, `/api/invoices/${first.data.invoice.id}/payment`,
     { amount: first.data.invoice.amount });
 
   // Paid up, still ordering — nothing about the balance ever gates the order.
-  const again = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] });
+  const again = await portalOrder(buyer, { lines: [{ sku, qty: 1 }] });
   assert.equal(again.status, 200);
 });
 
@@ -390,8 +408,8 @@ test('one payment against the account settles what is open, oldest invoice first
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
     const buyer = await signIn('reseller', id);
 
-    const first = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });   // ₱2,500
-    const second = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });  // ₱2,500
+    const first = await portalOrder(buyer, { lines: [{ sku, qty: 10 }] });   // ₱2,500
+    const second = await portalOrder(buyer, { lines: [{ sku, qty: 10 }] });  // ₱2,500
     assert.equal(Number(first.data.invoice.amount), 2500);
     assert.equal(Number(second.data.invoice.amount), 2500);
 
@@ -425,7 +443,7 @@ test('a payment left over once every invoice is closed is credit, not a discrepa
     const r = await receive(store, sku, 24, 10);
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
     const buyer = await signIn('reseller', id);
-    const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });  // ₱2,500
+    const order = await portalOrder(buyer, { lines: [{ sku, qty: 10 }] });  // ₱2,500
 
     const paid = await POST(admin, `/api/resellers/${id}/payment`, { amount: 3000 });
     assert.equal(paid.status, 200, JSON.stringify(paid.data));
@@ -510,7 +528,7 @@ test('confirming a bank payment through chat orders stamps an OR, in the till\'s
     const r = await receive(store, sku, 24, 10);
     const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 45 });
     const buyer = await signIn('reseller', id);
-    const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] }); // ₱2,500
+    const order = await portalOrder(buyer, { lines: [{ sku, qty: 10 }] }); // ₱2,500
 
     const paid = await POST(admin, `/api/resellers/${id}/receipt`, { amount: 3000 });
     assert.equal(paid.status, 200, JSON.stringify(paid.data));
@@ -559,7 +577,7 @@ test('only admin may issue or look up a reseller\'s OR', async () => {
   assert.equal((await GET(buyer, `/api/resellers/${id}/receipts`)).status, 403);
 });
 
-test('credit on the account is drawn down the moment the next invoice exists, unasked',
+test('a portal order\'s invoice, raised when Invoice is pressed, leaves credit on the account alone (db/212)',
   async () => {
     const admin = await signIn('admin');
     const store = await signIn('warehouse');
@@ -572,16 +590,22 @@ test('credit on the account is drawn down the moment the next invoice exists, un
     await POST(admin, `/api/resellers/${id}/payment`, { amount: 500 });
     assert.equal(Number((await GET(admin, `/api/resellers/${id}`)).data.credit), 500);
 
-    // The credit is spent the instant an invoice exists — nobody asks for it,
-    // nobody applies it by hand.
-    const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 4 }] }); // ₱1,000
-    assert.equal(order.status, 200, JSON.stringify(order.data));
+    // A portal order no longer raises its invoice at checkout: it waits on
+    // Pending customer order, and pressing Invoice there raises it — the same
+    // press that never reaches into Funds by itself (db/172). The credit stays
+    // until a payment is recorded against the invoice from Funds.
+    const placed = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 4 }] }); // ₱1,000
+    assert.equal(placed.status, 200, JSON.stringify(placed.data));
+    assert.equal(placed.data.invoice, null, 'no invoice yet — it is a pending order');
+    const { rows: none } = await db.query('select 1 from invoices where order_id = $1', [placed.data.orderId]);
+    assert.equal(none.length, 0);
 
+    const order = await portalOrder(buyer, { lines: [{ sku, qty: 4 }] }); // ₱1,000, Invoice pressed
     const account = await GET(admin, `/api/resellers/${id}`);
-    assert.equal(Number(account.data.credit), 0, 'the credit is gone — it was just spent');
+    assert.equal(Number(account.data.credit), 500, 'the credit is still on file');
     const invoice = account.data.invoices.find((i) => i.id === order.data.invoice.id);
-    assert.equal(Number(invoice.balance), 500, 'half the invoice was already covered');
-    assert.equal(invoice.status, 'open', 'half paid is not the same as settled');
+    assert.equal(Number(invoice.balance), 1000, 'the whole invoice is still open');
+    assert.equal(invoice.status, 'open');
   });
 
 test('an account holding nothing but credit is not invisible to the receivables report',
@@ -767,7 +791,7 @@ test('a warehouse picker sees who an order is for, and whether it is paid, but n
     const r = await receive(store, sku, 24, 20);
     const buyer = await signIn('reseller',
       await newReseller(admin, { tier: 1, credit_limit: 0, terms_days: 0 }));
-    const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 3 }] });
+    const order = await portalOrder(buyer, { lines: [{ sku, qty: 3 }] });
 
     const asPicker = await GET(store, `/api/orders/${order.data.orderId}`);
     assert.equal(asPicker.status, 200);
@@ -1614,7 +1638,7 @@ test('counter takings and wholesale invoices are never added together', async ()
 
   const resellerId = await newReseller(admin);
   const buyer = await signIn('reseller', resellerId);
-  const order = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 10 }] });
+  const order = await portalOrder(buyer, { lines: [{ sku, qty: 10 }] });
   await POST(store, `/api/orders/${order.data.orderId}/dispatch`);
 
   const d = (await GET(admin, `/api/finance?${period()}`)).data;
@@ -2254,4 +2278,28 @@ test("the door screen's sign-in lasts thirty days; a person's keeps its twelve h
   assert.equal(needsRenewing({ role: 'timekeeper', expires: Date.now() + 10 * DAY }), true,
     'past halfway it renews, so a door in use never runs out');
   assert.equal(needsRenewing({ role: 'admin', expires: Date.now() + 5 * 3600e3 }), true);
+});
+
+test('a reseller\'s portal order is pending until the office presses Invoice (db/212)', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+  await receive(store, sku, 24, 20);
+  const buyer = await signIn('reseller', await newReseller(admin));
+
+  const placed = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 2 }] });
+  assert.equal(placed.status, 200, JSON.stringify(placed.data));
+  assert.equal(placed.data.invoice, null, 'no invoice at checkout');
+  let mine = (await GET(buyer, '/api/portal/orders')).data.find((o) => Number(o.id) === placed.data.orderId);
+  assert.equal(mine.invoice_id, null, 'nothing on the Invoice tab yet');
+  assert.equal(mine.status, 'placed', 'it sits on Pending customer order');
+
+  assert.equal((await POST(admin, `/api/orders/${placed.data.orderId}/commit`)).status, 200);
+  mine = (await GET(buyer, '/api/portal/orders')).data.find((o) => Number(o.id) === placed.data.orderId);
+  assert.ok(mine.invoice_id, 'Invoice pressed — now it has its invoice');
+
+  // My orders reads Pending, not Committed, while it waits.
+  const appJs = fs.readFileSync(path.join(here, '..', 'public', 'app.js'), 'utf8');
+  const fn = appJs.slice(appJs.indexOf('SCREENS.myorders = async'), appJs.indexOf('SCREENS.myorders = async') + 2000);
+  assert.match(fn, /o\.status === 'placed' && !o\.invoice_id \? tag\('Pending', 'amber'\) : orderTag\(o\)/);
 });

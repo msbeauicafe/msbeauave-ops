@@ -736,7 +736,7 @@ test('staff pressing Invoice does not draw down the account\'s own Funds', async
   assert.equal(Number(invoice.paid), 0);
 });
 
-test('the reseller\'s own portal still draws down Funds the moment it checks out', async () => {
+test('a reseller\'s portal order waits on Pending customer order, and Invoice there leaves Funds alone (db/212)', async () => {
   const admin = await signIn('admin');
   const store = await signIn('warehouse');
   const sku = await newProduct(admin);
@@ -765,7 +765,14 @@ test('the reseller\'s own portal still draws down Funds the moment it checks out
 
   const order = await POST(reseller, '/api/portal/orders', { lines: [{ sku, qty: 1 }] });
   assert.equal(order.status, 200, JSON.stringify(order.data));
-  assert.equal(order.data.invoice.status, 'paid',
-    'the portal is the whole transaction — it still pays itself off existing Funds on the spot');
-  assert.ok(Number(order.data.invoice.paid) > 0);
+  assert.equal(order.data.invoice, null, 'no invoice at checkout — the order is pending first');
+
+  const pressed = await POST(admin2, `/api/orders/${order.data.orderId}/commit`);
+  assert.equal(pressed.status, 200, JSON.stringify(pressed.data));
+  const acct = await (await fetch(`${base}/api/resellers/${created.id}`,
+    { headers: { Cookie: admin2 } })).json();
+  assert.equal(Number(acct.credit), 5000, 'Funds untouched — Invoice raised the invoice and nothing more');
+  const invoice = acct.invoices.find((i) => String(i.order_id) === String(order.data.orderId));
+  assert.equal(invoice.status, 'open');
+  assert.equal(Number(invoice.paid), 0);
 });
