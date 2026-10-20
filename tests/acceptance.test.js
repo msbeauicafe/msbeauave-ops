@@ -2303,3 +2303,41 @@ test('a reseller\'s portal order is pending until the office presses Invoice (db
   const fn = appJs.slice(appJs.indexOf('SCREENS.myorders = async'), appJs.indexOf('SCREENS.myorders = async') + 2000);
   assert.match(fn, /o\.status === 'placed' && !o\.invoice_id \? tag\('Pending', 'amber'\) : orderTag\(o\)/);
 });
+
+test('db/213 undoes checkout-time invoices: Funds back, invoice gone, real payments left alone', async () => {
+  const admin = await signIn('admin');
+  const store = await signIn('warehouse');
+  const sku = await newProduct(admin);
+  await receive(store, sku, 24, 30);
+  const id = await newReseller(admin, { tier: 2, credit_limit: 1_000_000, terms_days: 30 });
+  const buyer = await signIn('reseller', id);
+  const credit = async () => Number((await GET(admin, `/api/resellers/${id}`)).data.credit);
+
+  await POST(admin, `/api/resellers/${id}/payment`, { amount: 500 });
+  assert.equal(await credit(), 500);
+
+  // The old checkout, as it was before db/212: the invoice raised on the spot
+  // and Funds drawn against it on the spot.
+  const a = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 2 }] });
+  await db.query('select raise_invoice($1)', [a.data.orderId]);
+  assert.equal(await credit(), 0, 'Funds were drawn at checkout');
+
+  // Another checkout-time invoice somebody then recorded a real payment on.
+  const b = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] });
+  await db.query('select raise_invoice($1)', [b.data.orderId]);
+  const { rows: [ib] } = await db.query('select id from invoices where order_id = $1', [b.data.orderId]);
+  await db.query(`insert into payments (invoice_id, amount, recorded_by, method) values ($1, 10, 'office', 'cash')`, [ib.id]);
+
+  const { rows: [{ r }] } = await db.query('select undo_checkout_invoices() as r');
+  assert.ok(r.undone.some((x) => x.co_no), JSON.stringify(r));
+
+  const left = async (orderId) => (await db.query('select 1 from invoices where order_id = $1', [orderId])).rows.length;
+  assert.equal(await left(a.data.orderId), 0, 'the checkout-time invoice is gone');
+  assert.equal(await credit(), 500, 'and the Funds it drew are back');
+  assert.equal(await left(b.data.orderId), 1, 'one with a real payment is left exactly as it is');
+
+  // The order itself is untouched: still placed, still on Pending customer order.
+  const { rows: [o] } = await db.query('select status, committed_at from orders where id = $1', [a.data.orderId]);
+  assert.equal(o.status, 'placed');
+  assert.equal(o.committed_at, null);
+});
