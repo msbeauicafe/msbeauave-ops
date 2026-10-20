@@ -2336,8 +2336,18 @@ test('db/213 undoes checkout-time invoices: Funds back, invoice gone, real payme
   assert.equal(await credit(), 500, 'and the Funds it drew are back');
   assert.equal(await left(b.data.orderId), 1, 'one with a real payment is left exactly as it is');
 
-  // The order itself is untouched: still placed, still on Pending customer order.
-  const { rows: [o] } = await db.query('select status, committed_at from orders where id = $1', [a.data.orderId]);
+  // The order itself is untouched: still placed, still on Pending customer order —
+  // and with no invoice, no packing list number either (db/214).
+  const { rows: [o] } = await db.query('select status, committed_at, pl_no from orders where id = $1', [a.data.orderId]);
   assert.equal(o.status, 'placed');
   assert.equal(o.committed_at, null);
+  assert.equal(o.pl_no, null, 'its packing list number went with its invoice');
+
+  // So the next invoice raised, handed the freed number, is not refused:
+  // pressing Invoice on a new order and on the undone one both work.
+  const c = await POST(buyer, '/api/portal/orders', { lines: [{ sku, qty: 1 }] });
+  for (const id of [c.data.orderId, a.data.orderId]) {
+    const pressed = await POST(admin, `/api/orders/${id}/commit`);
+    assert.equal(pressed.status, 200, JSON.stringify(pressed.data));
+  }
 });
