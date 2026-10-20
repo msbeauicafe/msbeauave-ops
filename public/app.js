@@ -14390,7 +14390,7 @@ SCREENS.catalog = async (page) => {
         closeDialog();
         drawTrackers();
         notice(`Order ${r.orderId} placed — stock is held for you 🌸`
-          + (r.invoice ? ` Invoice due ${onDay(r.invoice.due_on)}.` : ''), 'good');
+          + (r.invoice ? ` Invoice due ${onDay(r.invoice.due_on)}.` : ' It is pending until we send your invoice.'), 'good');
         load();
       } catch (e) { whoops(e); load(); }
     });
@@ -14495,8 +14495,11 @@ SCREENS.myorders = async (page) => {
       { head: 'What', cell: (o) => `<span class="dim">${o.lines.map((l) =>
           `${l.qty}× ${esc(l.sku)}`).join(', ')}</span>` },
       { head: 'Total', n: true, cell: (o) => peso(o.total) },
-      { head: 'Stage', cell: (o) => orderTag(o) },
-      { head: 'Invoice', cell: (o) => !o.invoice_id ? '—'
+      // An order the office has not invoiced yet is still pending (db/212):
+      // it waits on Pending customer order until Invoice is pressed there.
+      { head: 'Stage', cell: (o) => (o.status === 'placed' && !o.invoice_id ? tag('Pending', 'amber') : orderTag(o)) },
+      { head: 'Invoice', cell: (o) => !o.invoice_id
+          ? (o.status === 'placed' ? '<span class="dim">Not invoiced yet</span>' : '—')
           : o.invoice_status === 'open'
             ? tag(`${peso(o.balance)} due ${onDay(o.due_on)}`, 'amber')
             : tag(o.invoice_status, o.invoice_status === 'paid' ? 'green' : 'grey') },
