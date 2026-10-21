@@ -708,6 +708,7 @@ test('the masterlist takes a printer as its own type (db/207)', async () => {
 });
 
 test("a room's photos carry their item's condition, and a masterlist photo its unit's health", () => {
-  assert.match(app, /return x && x\.condition !== 'good' \? `<span>\$\{tag\(\.\.\.\(IT_PROP_COND\[x\.condition\]/);
-  assert.match(app, /\$\{a\.health && a\.health !== 'good' \? `<span>\$\{tag\(\.\.\.\(IT_HEALTH\[a\.health\]/);
+  // Every tracked photo, Good included; every masterlist photo, Working well included.
+  assert.match(app, /return x \? `<span>\$\{tag\(\.\.\.\(IT_PROP_COND\[x\.condition\]/);
+  assert.match(app, /<span>\$\{tag\(\.\.\.\(IT_HEALTH\[a\.health \|\| 'good'\]/);
 });
