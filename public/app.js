@@ -6993,8 +6993,6 @@ async function openPackingListOrder(id, reload) {
     <div class="mt right">
       ${['placed', 'picking'].includes(o.status)
         ? '<button class="btn go" id="a_send">Completed</button>' : ''}
-      ${['placed', 'picking'].includes(o.status)
-        ? '<button class="btn stop" id="a_cancel">Cancel</button>' : ''}
       ${o.status === 'fulfilled' && !o.delivered_at
         ? '<button class="btn go" id="a_delivered">Mark delivered</button>' : ''}
     </div>
@@ -7051,7 +7049,8 @@ async function openPackingListOrder(id, reload) {
     } catch (e) { whoops(e); }
   });
   act('#a_send', 'dispatch');
-  act('#a_cancel', 'cancel');
+  // No Cancel on this tab: a packing list is already being packed —
+  // cancelling an order is done from Pending customer order.
   act('#a_delivered', 'deliver');
 }
 
