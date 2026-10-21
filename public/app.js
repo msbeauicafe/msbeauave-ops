@@ -18850,8 +18850,12 @@ SCREENS.itsupport = async (page) => {
     // A company property row's Assign / update opens its own editor right
     // here — who uses it, where it is, its condition — and comes back to the
     // masterlist once saved.
-    $$('[data-asprop]', $('#as_list', body)).forEach((b) => b.addEventListener('click', () =>
-      propEdit(props.find((x) => String(x.id) === b.dataset.asprop), drawAssets)));
+    // A computer-related one opens the same side drawer a unit does.
+    $$('[data-asprop]', $('#as_list', body)).forEach((b) => b.addEventListener('click', () => {
+      const x = props.find((p) => String(p.id) === b.dataset.asprop);
+      if (x && IT_HW_CATS.includes(x.category)) propDrawer(x, drawAssets).catch(whoops);
+      else propEdit(x, drawAssets);
+    }));
   };
 
   // Give a unit to an employee straight from Assigned to employees: pick the
@@ -19018,6 +19022,103 @@ SCREENS.itsupport = async (page) => {
 
   // Hardware assets' two halves: the masterlist, and the employee
   // accountability forms — who signed for which laptop, AIO PC, keyboard…
+  // A computer-related Company property item opened from the masterlist's
+  // Assign / update: the same side drawer a masterlist unit opens — status,
+  // employee, location, date, notes, its condition, its photos — saving to
+  // the item's own record. The masterlist's own copy; Company property and
+  // Hardware assets keep their editor.
+  const propDrawer = async (x, after) => {
+    if (!x) return;
+    $('#as_drawer')?.remove();
+    const people = choices.people || [];
+    const roomFiles = x.location_id
+      ? ((await GET(`/api/it/property-locations/${x.location_id}/files`).catch(() => [])) || [])
+        .filter((f) => String(f.property_id) === String(x.id)) : [];
+    const wrap = document.createElement('div');
+    wrap.id = 'as_drawer';
+    wrap.className = 'asveil';
+    wrap.innerHTML = `
+      <aside class="asdrawer" role="dialog" aria-label="Assign ${esc(x.tag)}">
+        <div class="row" style="align-items:center">
+          <div><h3 style="margin:0">${esc(x.tag)}</h3>
+            <div class="dim">${esc([x.item, x.brand, x.model].filter(Boolean).join(' '))}${x.serial_no ? ' · S/N ' + esc(x.serial_no) : ''}</div></div>
+          <button class="dialog-x" id="phd_x" aria-label="Close">✕</button>
+        </div>
+        <div class="mt"><label for="phd_status">Status</label>
+          <select id="phd_status"><option value="assigned"${x.assigned_to ? ' selected' : ''}>Assigned to employee</option>
+            <option value="shared"${x.assigned_to ? '' : ' selected'}>Shared — nobody in particular</option></select></div>
+        <div class="mt"><label for="phd_who">Assigned employee</label>
+          <select id="phd_who"><option value="">— pick somebody —</option>${
+            [...new Set([...(x.assigned_to ? [x.assigned_to] : []), ...people])].map((n) =>
+              `<option${n === x.assigned_to ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+        <div class="mt"><label for="phd_loc">Location (floor / room)</label>
+          <select id="phd_loc"><option value="">— No room yet —</option>${(propLocs || []).map((l) =>
+            `<option value="${l.id}"${String(l.id) === String(x.location_id) ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div>
+        <div class="mt"><label for="phd_on">Date acquired</label>
+          <input id="phd_on" type="date" value="${esc(String(x.acquired_on || '').slice(0, 10))}"></div>
+        <div class="mt"><label for="phd_notes">IT notes</label>
+          <textarea id="phd_notes" rows="4" placeholder="e.g. Connected to the accounting PCs over Wi-Fi">${esc(x.notes || '')}</textarea></div>
+        <div class="mt ascheck-box"><label for="phd_cond">Condition</label>
+          <div class="dim">Now ${tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey']))}</div>
+          <div class="row mt" style="gap:8px">
+            <select id="phd_cond">${Object.entries(IT_PROP_COND).map(([k, [l]]) =>
+              `<option value="${k}"${k === x.condition ? ' selected' : ''}>${l}</option>`).join('')}</select>
+            <input id="phd_note" type="text" placeholder="What you found, or why it moved — e.g. no ink, sent for repair">
+          </div>
+          <button class="btn sm mt" id="phd_check" type="button">✓ Checked today</button>
+          ${(x.moves || []).length ? `<div class="ascheck-hist mt">${x.moves.map((m) => `<div>
+            ${m.condition ? tag(...(IT_PROP_COND[m.condition] || [m.condition, 'grey'])) : ''} <span class="dim">${when(m.at)} · ${esc(m.by)}</span>
+            <div>${esc([m.to_location, m.to_person || 'Shared'].filter(Boolean).join(' · '))}${m.note ? ` — ${esc(m.note)}` : ''}</div></div>`).join('')}</div>` : ''}
+        </div>
+        <div class="mt"><label>Photos</label>
+          <div class="asthumbs big">${roomFiles.map((f) => `
+            <figure><img src="/api/it/property-files/${f.id}" alt="" loading="lazy"
+              data-itzoom="/api/it/property-files/${f.id}" data-itzoom-cap="${esc(x.tag)} · ${esc(f.caption || x.item)}">
+              <figcaption>${esc(f.caption || 'Photo')}</figcaption></figure>`).join('')
+            || '<span class="dim">No photos yet.</span>'}</div>
+          ${x.location_id ? `<div class="mt phd-upload"><label for="phd_photos">Add photos</label>
+            <input id="phd_photos" type="file" accept="image/*" multiple></div>`
+            : '<div class="dim mt">Give it a room first — its photos are kept with the room.</div>'}</div>
+        <div class="dim mt">${IT_PROP_CATS[x.category]?.[2] || ''} ${esc(IT_PROP_CATS[x.category]?.[0] || x.category)} · 🏢 Company property${x.qty > 1 ? ` · ×${count(x.qty)}` : ''}</div>
+        <button class="btn itsendbig mt" id="phd_save">Save</button>
+      </aside>`;
+    document.body.append(wrap);
+    const close = () => wrap.remove();
+    const sync = () => { $('#phd_who').disabled = $('#phd_status').value !== 'assigned'; };
+    sync();
+    $('#phd_status').addEventListener('change', sync);
+    $('#phd_x').addEventListener('click', close);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    const save = async () => {
+      if ($('#phd_status').value === 'assigned' && !$('#phd_who').value) {
+        notice('Pick the employee first.', 'bad'); return;
+      }
+      try {
+        await POST('/api/it/property', { id: x.id, category: x.category, tag: x.tag, item: x.item,
+          brand: x.brand || '', model: x.model || '', serial_no: x.serial_no || '', qty: x.qty || 1,
+          location_id: $('#phd_loc').value, assigned_to: $('#phd_status').value === 'assigned' ? $('#phd_who').value : '',
+          condition: $('#phd_cond').value, acquired_on: $('#phd_on').value, notes: $('#phd_notes').value,
+          move_note: $('#phd_note').value });
+        notice(`${x.tag} — saved 🌸`, 'good');
+        close();
+        await after();
+      } catch (err) { whoops(err); }
+    };
+    $('#phd_save').addEventListener('click', save);
+    $('#phd_check').addEventListener('click', save);
+    $('#phd_photos')?.addEventListener('change', async (e) => {
+      try {
+        for (const f of e.target.files) {
+          await POST(`/api/it/property-locations/${x.location_id}/files`, {
+            dataUrl: await shrink(f, 1600), property_id: x.id, caption: x.item });
+        }
+        notice('Photos added 📷', 'good');
+        await after();
+        propDrawer(props.find((p) => p.id === x.id), after);
+      } catch (err) { whoops(err); }
+    });
+  };
+
   // -------------------------------------------------------------------------
   // Hardware assets: the computer gear only — PCs, laptops, iMacs, phones,
   // monitors, peripherals, printers — the masterlist's units and the Company

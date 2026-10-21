@@ -2887,3 +2887,6 @@ input.n { text-align: right; }
 .gr-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
 .gr-form .gr-wide { grid-column: 1 / -1; }
 .gr-note { margin-top: 14px; background: var(--rose-blush); border-radius: 12px; padding: 12px 16px; font-size: .84rem; color: var(--ink); }
+
+/* The masterlist's side drawer for a computer-related property item: a viewer reads it, writes nothing. */
+.it-viewonly #phd_save, .it-viewonly #phd_check, .it-viewonly .phd-upload { display: none !important; }
