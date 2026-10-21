@@ -18368,6 +18368,10 @@ const IT_PROP_CATS = { device: ['Device', 'DEV', '📡'], appliance: ['Appliance
 const IT_PROP_ML = { desktop: ['desktop', 'imac'], laptop: ['laptop'], printer: ['printer'],
   monitor: ['monitor'], smartphone: ['smartphone'], iphone: ['iphone'], peripheral: ['peripheral'],
   device: ['device'], appliance: ['appliance'], furniture: ['furniture'], supplies: ['supplies'] };
+// Computer gear lives on Hardware assets; Company property keeps the rest —
+// furniture, appliances, devices (CCTV, extinguisher, alarm), office supplies.
+const IT_HW_CATS = ['desktop', 'laptop', 'printer', 'monitor', 'smartphone', 'iphone', 'peripheral'];
+const IT_HW_KINDS = ['desktop', 'imac', 'laptop', 'printer', 'monitor', 'smartphone', 'iphone', 'peripheral'];
 const IT_PROP_COND = { good: ['Good', 'green'], fair: ['Fair', 'grey'], repair: ['Needs repair', 'amber'],
   broken: ['Broken', 'red'], disposed: ['Disposed', 'grey'] };
 // What each kind usually is; the item can still be named anything.
@@ -18889,7 +18893,9 @@ SCREENS.itsupport = async (page) => {
   };
 
   // The side drawer: who has this unit now.
-  const assetDrawer = (a) => {
+  // after: the view to redraw once something is saved — the masterlist by
+  // default, Hardware assets when opened from there.
+  const assetDrawer = (a, after = drawAssets) => {
     if (!a) return;
     $('#as_drawer')?.remove();
     const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ });
@@ -18960,8 +18966,8 @@ SCREENS.itsupport = async (page) => {
     // Attachments save the moment they are picked or removed, then the
     // drawer reopens on the same unit with them in it.
     const reopen = async () => {
-      await drawAssets();
-      assetDrawer(assets.find((x) => x.id === a.id));
+      await after();
+      assetDrawer(assets.find((x) => x.id === a.id), after);
     };
     const attach = (input, k) => input.addEventListener('change', async () => {
       try {
@@ -18997,7 +19003,7 @@ SCREENS.itsupport = async (page) => {
         }
         notice(`${a.tag} — ${IT_ASSET_STATUS[$('#asd_status').value][0]}`, 'good');
         close();
-        await drawAssets();
+        await after();
       } catch (err) { whoops(err); }
     });
     $('#asd_check').addEventListener('click', async () => {
@@ -19005,7 +19011,7 @@ SCREENS.itsupport = async (page) => {
         await POST(`/api/it/assets/${a.id}/check`, { health: $('#asd_health').value, note: $('#asd_cnote').value });
         notice(`${a.tag} checked — ${IT_HEALTH[$('#asd_health').value][0]}`, 'good');
         close();
-        await drawAssets();
+        await after();
       } catch (err) { whoops(err); }
     });
     $('#asd_status').focus();
@@ -19013,8 +19019,89 @@ SCREENS.itsupport = async (page) => {
 
   // Hardware assets' two halves: the masterlist, and the employee
   // accountability forms — who signed for which laptop, AIO PC, keyboard…
+  // -------------------------------------------------------------------------
+  // Hardware assets: the computer gear only — PCs, laptops, iMacs, phones,
+  // monitors, peripherals, printers — the masterlist's units and the Company
+  // property items logged as those kinds, in one list. Units are received on
+  // the Asset inventory masterlist; each opens here in the same window it
+  // opens in anywhere else, and comes back here once saved.
+  // -------------------------------------------------------------------------
+  const hf = { q: '', type: '', cond: '', who: '' };
+  const drawHw = async () => {
+    const [gotAssets, gotProps] = await Promise.all([GET('/api/it/assets'), GET('/api/it/property').catch(() => null), loadBranches()]);
+    assets = gotAssets || [];
+    if (gotProps) { props = gotProps.items || []; propLocs = gotProps.locations || []; }
+    const unitCond = (a) => (a.health && a.health !== 'good' ? (IT_HEALTH[a.health] || [a.health, 'grey']) : ['Good', 'green']);
+    const all = [
+      ...assets.filter((a) => IT_HW_KINDS.includes(a.kind) && a.status !== 'retired').map((a) => ({
+        src: 'unit', id: a.id, tag: a.tag, type: a.kind, what: described(a), qty: 1,
+        where: a.location, who: a.assigned_to, dept: a.department, cond: unitCond(a),
+        late: !!a.health && a.health !== 'good' })),
+      ...props.filter((x) => IT_HW_CATS.includes(x.category) && x.condition !== 'disposed').map((x) => ({
+        src: 'prop', id: x.id, tag: x.tag, type: x.category, qty: Number(x.qty || 1),
+        what: [x.item, [x.brand, x.model].filter(Boolean).join(' ')].filter(Boolean).join(' · '),
+        where: x.location, who: x.assigned_to, dept: null, cond: IT_PROP_COND[x.condition] || [x.condition, 'grey'],
+        late: ['repair', 'broken'].includes(x.condition) })),
+    ];
+    const typeName = (t) => (IT_KINDS[t] || [t])[0];
+    const many = (t) => (t === 'peripheral' ? 'Peripherals' : `${typeName(t)}s`);
+    const n = (t) => all.filter((r) => r.type === t).reduce((c, r) => c + r.qty, 0);
+    const kinds = IT_HW_KINDS.filter((t) => n(t) || ['desktop', 'laptop', 'printer'].includes(t));
+    body.innerHTML = `${asSwitch('hw')}
+      ${itOv('HARDWARE ASSETS OVERVIEW', IT_OV_ICON.desk, [
+        ['All hardware', count(all.reduce((c, r) => c + r.qty, 0)), 'PCs, laptops, phones, printers…'],
+        ...kinds.map((t) => [`${IT_UNIT_ICON[t] || '🖥️'} ${many(t)}`, count(n(t)), 'In use', 'info']),
+        ['Needs attention', count(all.filter((r) => r.late).length), 'Repair, replacement or defective', 'bad'],
+      ])}
+      <div class="panel">
+        <div class="acc-head"><div><h3>Hardware assets</h3>
+          <div class="dim">Every computer-related asset — PCs, laptops, iMacs, phones, monitors, peripherals and printers — where it is, who uses it, and its condition. New units are received on the Asset inventory masterlist.</div></div></div>
+        <div class="tools mt">
+          <input type="search" id="hw_q" placeholder="Search tag, item, brand, person, room…" value="${esc(hf.q)}">
+          <select id="hw_type"><option value="">Every type</option>${IT_HW_KINDS.map((t) =>
+            `<option value="${t}"${hf.type === t ? ' selected' : ''}>${IT_UNIT_ICON[t] || ''} ${esc(typeName(t))}</option>`).join('')}</select>
+          <select id="hw_cond"><option value="">Every condition</option>
+            <option value="ok"${hf.cond === 'ok' ? ' selected' : ''}>Good</option>
+            <option value="late"${hf.cond === 'late' ? ' selected' : ''}>Needs attention</option></select>
+          <select id="hw_who"><option value="">Everybody</option><option value="-"${hf.who === '-' ? ' selected' : ''}>Nobody (shared / storage)</option>${
+            [...new Set(all.map((r) => r.who).filter(Boolean))].sort().map((w) =>
+              `<option${hf.who === w ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select>
+        </div>
+        <div id="hw_list" class="mt"></div>
+      </div>`;
+    const drawList = () => {
+      const q = hf.q.toLowerCase();
+      const rows = all.filter((r) => (!hf.type || r.type === hf.type)
+        && (!hf.cond || (hf.cond === 'late' ? r.late : !r.late))
+        && (!hf.who || (hf.who === '-' ? !r.who : r.who === hf.who))
+        && (!q || [r.tag, r.what, r.who, r.dept, r.where, typeName(r.type)].join(' ').toLowerCase().includes(q)));
+      $('#hw_list', body).innerHTML = table(rows, [
+        { head: 'Tag', cell: (r) => `<b>${esc(r.tag)}</b>` },
+        { head: 'Type', cell: (r) => `${IT_UNIT_ICON[r.type] || '🖥️'} ${esc(typeName(r.type))}` },
+        { head: 'Item', cell: (r) => `${esc(r.what || '—')}${r.qty > 1 ? ` ×${count(r.qty)}` : ''}` },
+        { head: 'Location', cell: (r) => (r.where ? esc(r.where) : '<span class="dim">No room yet</span>') },
+        { head: 'Used by', cell: (r) => (r.who ? `${esc(r.who)}${r.dept ? `<div class="dim">${esc(r.dept)}</div>` : ''}` : '<span class="dim">Nobody yet</span>') },
+        { head: 'Condition', cell: (r) => tag(...r.cond) },
+        { head: '', cell: (r) => `<button class="btn sm" data-hwopen="${r.src}:${r.id}">Open</button>` },
+      ], 'No hardware matches those filters.');
+    };
+    drawList();
+    $('#hw_q', body).addEventListener('input', (e) => { hf.q = e.target.value; drawList(); });
+    $('#hw_type', body).addEventListener('change', (e) => { hf.type = e.target.value; drawList(); });
+    $('#hw_cond', body).addEventListener('change', (e) => { hf.cond = e.target.value; drawList(); });
+    $('#hw_who', body).addEventListener('change', (e) => { hf.who = e.target.value; drawList(); });
+    $('#hw_list', body).addEventListener('click', (e) => {
+      const b = e.target.closest('[data-hwopen]');
+      if (!b) return;
+      const [src, id] = b.dataset.hwopen.split(':');
+      if (src === 'unit') assetDrawer(assets.find((a) => String(a.id) === id), drawHw);
+      else propEdit(props.find((x) => String(x.id) === id), drawHw);
+    });
+  };
+
   const asSwitch = (on) => `<div class="acc-switch" role="tablist">
-    <button type="button" data-asview="list" class="${on === 'list' ? 'on' : ''}">🗂️ Hardware assets</button>
+    <button type="button" data-asview="list" class="${on === 'list' ? 'on' : ''}">🗂️ Asset inventory masterlist</button>
+    <button type="button" data-asview="hw" class="${on === 'hw' ? 'on' : ''}">💻 Hardware assets</button>
     <button type="button" data-asview="prop" class="${on === 'prop' ? 'on' : ''}">🏢 Company property</button>
     <button type="button" data-asview="acc" class="${on === 'acc' ? 'on' : ''}">📝 Accountability forms</button></div>`;
   body.addEventListener('click', (e) => {
@@ -19026,6 +19113,7 @@ SCREENS.itsupport = async (page) => {
     itKeep('itAssetsView', k);
     if (k === 'acc') drawAcc().catch(whoops);
     else if (k === 'prop') drawProp().catch(whoops);
+    else if (k === 'hw') drawHw().catch(whoops);
     else { body.innerHTML = ''; drawAssets().catch(whoops); }
   };
 
@@ -19256,21 +19344,24 @@ SCREENS.itsupport = async (page) => {
     props = data.items || []; propLocs = data.locations || [];
     const live = props.filter((x) => x.condition !== 'disposed');
     const qtyOf = (list) => list.reduce((t, x) => t + Number(x.qty || 1), 0);
+    // Company property is the non-computer kinds; computer gear is on
+    // Hardware assets. Rooms below still show everything in them.
+    const cpCats = Object.entries(IT_PROP_CATS).filter(([k]) => !IT_HW_CATS.includes(k));
+    const liveCp = live.filter((x) => !IT_HW_CATS.includes(x.category));
+    if (IT_HW_CATS.includes(pf.cat)) pf.cat = '';
+    const cpUnits = assets.filter((a) => !IT_HW_KINDS.includes(a.kind) && a.status !== 'retired');
     body.innerHTML = `${asSwitch('prop')}
       ${itOv('COMPANY PROPERTY OVERVIEW', IT_OV_ICON.building, [
-        ['Items in use', count(qtyOf(live)), `In ${count(propLocs.length)} locations`],
-        ...Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) => {
-          // A hardware kind counts every one in use: those logged here and the
-          // masterlist's own units of that type (IT_PROP_ML).
-          const n = IT_PROP_ML[k];
-          const more = n ? assets.filter((a) => n.includes(a.kind) && a.status !== 'retired').length : 0;
-          const total = qtyOf(live.filter((x) => x.category === k)) + more;
-          // The newer hardware kinds get a box only once there is one to count.
-          if (!total && !['device', 'appliance', 'furniture', 'supplies', 'desktop', 'laptop'].includes(k)) return null;
-          return [`${i} ${['Furniture', 'Office supplies', 'Peripherals'].includes(l) ? l : `${l}s`}`,
+        ['Items in use', count(qtyOf(liveCp) + cpUnits.length), `In ${count(propLocs.length)} locations`],
+        ...cpCats.map(([k, [l, , i]]) => {
+          // Each kind counts every one in use: those logged here and the
+          // masterlist's own units of that kind (IT_PROP_ML).
+          const more = assets.filter((a) => IT_PROP_ML[k].includes(a.kind) && a.status !== 'retired').length;
+          const total = qtyOf(liveCp.filter((x) => x.category === k)) + more;
+          return [`${i} ${['Furniture', 'Office supplies'].includes(l) ? l : `${l}s`}`,
             count(total), more ? `In use · ${count(more)} from the masterlist` : 'In use', 'info'];
-        }).filter(Boolean),
-        ['Needs attention', count(qtyOf(live.filter((x) => ['repair', 'broken'].includes(x.condition)))), 'Needs repair or broken', 'bad'],
+        }),
+        ['Needs attention', count(qtyOf(liveCp.filter((x) => ['repair', 'broken'].includes(x.condition)))), 'Needs repair or broken', 'bad'],
       ])}
       <div class="panel">
         <div class="acc-head"><div><h3>Company property</h3>
@@ -19292,7 +19383,7 @@ SCREENS.itsupport = async (page) => {
           <input type="search" id="pr_q" placeholder="Search tag, item, brand, serial, person…" value="${esc(pf.q)}">
           <select id="pr_floc"><option value="">Every location</option>${propLocs.map((l) =>
             `<option value="${l.id}"${pf.loc === String(l.id) ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select>
-          <select id="pr_fcat"><option value="">Every kind</option>${Object.entries(IT_PROP_CATS).map(([k, [l]]) =>
+          <select id="pr_fcat"><option value="">Every kind</option>${cpCats.map(([k, [l]]) =>
             `<option value="${k}"${pf.cat === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
           <select id="pr_fcond"><option value="">Every condition</option>${Object.entries(IT_PROP_COND).map(([k, [l]]) =>
             `<option value="${k}"${pf.cond === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
@@ -19315,19 +19406,21 @@ SCREENS.itsupport = async (page) => {
 
     const drawList = () => {
       const q = pf.q.toLowerCase();
-      const rows = props.filter((x) => (!pf.loc || String(x.location_id) === pf.loc) && (!pf.cat || x.category === pf.cat)
+      const rows = props.filter((x) => !IT_HW_CATS.includes(x.category)
+        && (!pf.loc || String(x.location_id) === pf.loc) && (!pf.cat || x.category === pf.cat)
         && (pf.cond ? x.condition === pf.cond : x.condition !== 'disposed')
         && (!pf.who || (pf.who === '-' ? !x.assigned_to : x.assigned_to === pf.who))
         && (!q || [x.tag, x.item, x.brand, x.model, x.serial_no, x.assigned_to, x.location, x.notes]
           .join(' ').toLowerCase().includes(q)));
-      // The masterlist's own units are listed too, in the room they sit in
-      // (db/206), so the register holds everything the masterlist does —
-      // opened on the masterlist. Every kind lists them all; a kind (Desktop,
-      // Printer, Furniture …) lists the masterlist's units of that kind.
+      // The masterlist's own non-computer units are listed too, in the room
+      // they sit in (db/206) — opened on the masterlist. Every kind lists them
+      // all; a kind (Furniture, Appliance …) lists the masterlist's units of it.
+      // Computer gear is on Hardware assets, not here.
       // Not when a condition is picked: a masterlist unit has health, not condition.
       const PR_ML_KINDS = IT_PROP_ML;
       const mlCat = (a) => Object.keys(PR_ML_KINDS).find((k) => PR_ML_KINDS[k].includes(a.kind));
-      const ml = (!pf.cat || PR_ML_KINDS[pf.cat]) && !pf.cond ? assets.filter((a) => (pf.cat ? mlCat(a) === pf.cat : mlCat(a))
+      const ml = (!pf.cat || PR_ML_KINDS[pf.cat]) && !pf.cond ? assets.filter((a) => !IT_HW_KINDS.includes(a.kind)
+        && (pf.cat ? mlCat(a) === pf.cat : mlCat(a))
         && a.status !== 'retired' && (!pf.loc || String(a.location_id) === pf.loc)
         && (!pf.who || (pf.who === '-' ? !a.assigned_to : a.assigned_to === pf.who))
         && (!q || [a.tag, a.brand, a.model, a.serial_no, a.assigned_to, a.specs].join(' ').toLowerCase().includes(q))) : [];
@@ -19573,7 +19666,9 @@ SCREENS.itsupport = async (page) => {
 
   // One item, to add or to change. A new room, person or condition is
   // written to the item's history when it is saved.
-  const propEdit = (item) => {
+  // after: the view to redraw once saved — Company property by default,
+  // Hardware assets when an item is opened from there.
+  const propEdit = (item, after = drawProp) => {
     const x = item ? { ...item } : { category: 'furniture', qty: 1, condition: 'good',
       location_id: pf.loc ? Number(pf.loc) : '', assigned_to: '' };
     if (!item) x.tag = propNextTag(x.category);
@@ -19581,7 +19676,7 @@ SCREENS.itsupport = async (page) => {
     const v = dialog(`
       <h3>${item ? esc(`${x.tag} · ${x.item}`) : 'Add company property'}</h3>
       <div class="acc-form">
-        <div><label for="prf_cat">Kind</label><select id="prf_cat">${Object.entries(IT_PROP_CATS).map(([k, [l, , i]]) =>
+        <div><label for="prf_cat">Kind</label><select id="prf_cat">${Object.entries(IT_PROP_CATS).filter(([k]) => item || !IT_HW_CATS.includes(k)).map(([k, [l, , i]]) =>
           `<option value="${k}"${x.category === k ? ' selected' : ''}>${i} ${l}</option>`).join('')}</select></div>
         <div><label for="prf_tag">Property tag</label><input id="prf_tag" type="text" value="${esc(x.tag || '')}"></div>
         <div><label for="prf_item">Item</label><input id="prf_item" type="text" list="prf_items" value="${esc(x.item || '')}"
@@ -19631,12 +19726,12 @@ SCREENS.itsupport = async (page) => {
           notes: g('#prf_notes'), move_note: item ? g('#prf_move') : '' });
         notice(item ? 'Saved 🌸' : 'Added to the register 🌸', 'good');
         closeDialog();
-        await drawProp();
+        await after();
       } catch (err) { whoops(err); }
     });
     $('#prf_del', v)?.addEventListener('click', async () => {
       if (!confirm(`Delete ${x.tag} (${x.item})? Use this only for an entry made in error. For something the company no longer has, set Condition to Disposed instead.`)) return;
-      try { await DELETE(`/api/it/property/${item.id}`); notice('Deleted', 'good'); closeDialog(); await drawProp(); }
+      try { await DELETE(`/api/it/property/${item.id}`); notice('Deleted', 'good'); closeDialog(); await after(); }
       catch (err) { whoops(err); }
     });
   };
@@ -19648,7 +19743,7 @@ SCREENS.itsupport = async (page) => {
     // The ticket counts belong to the queue, not the hardware.
     $('#it_stats', page).style.display = v === 'assets' ? 'none' : '';
     if (v === 'file') drawForm();
-    else if (v === 'assets') { body.innerHTML = ''; openAsView(['acc', 'prop'].includes(itKept('itAssetsView')) ? itKept('itAssetsView') : 'list'); }
+    else if (v === 'assets') { body.innerHTML = ''; openAsView(['acc', 'prop', 'hw'].includes(itKept('itAssetsView')) ? itKept('itAssetsView') : 'list'); }
     else {
       body.innerHTML = ''; drawList();
       // A viewer's IT Dashboard and My requests are two different lists.

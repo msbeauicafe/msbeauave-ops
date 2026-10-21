@@ -364,10 +364,10 @@ test('accountability forms: lines follow the masterlist, returns free the unit, 
 
 test('Hardware assets has its Accountability forms, downloaded as a Word file', () => {
   assert.match(app, /data-asview="acc"[^>]*>📝 Accountability forms<\/button>/);
-  // Hardware assets, then Company property, then Accountability forms.
-  assert.match(app, /🗂️ Hardware assets<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
-  // Hardware assets, then Company property, then Accountability forms.
-  assert.match(app, /🗂️ Hardware assets<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
+  // Asset inventory masterlist, Hardware assets, Company property, Accountability forms.
+  assert.match(app, /🗂️ Asset inventory masterlist<\/button>\s*<button[^>]*data-asview="hw"[^>]*>💻 Hardware assets<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
+  // Asset inventory masterlist, Hardware assets, Company property, Accountability forms.
+  assert.match(app, /🗂️ Asset inventory masterlist<\/button>\s*<button[^>]*data-asview="hw"[^>]*>💻 Hardware assets<\/button>\s*<button[^>]*data-asview="prop"[^>]*>🏢 Company property<\/button>\s*<button[^>]*data-asview="acc"/);
   assert.match(app, /function itAccDocx\(f, logo\)/);
   assert.match(app, /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
   assert.match(app, /a\.download = `Accountability form - /);
@@ -692,8 +692,25 @@ test('the Asset inventory masterlist also lists Company property, marked so', ()
   assert.match(app, /data-asprop="\$\{a\.id\}">Open<\/button>/);
 });
 
-test("Company property's Desktops and Laptops count the masterlist's computers in their number", () => {
-  assert.match(app, /const total = qtyOf\(live\.filter\(\(x\) => x\.category === k\)\) \+ more;/);
+test("Company property's kinds count the masterlist's own units of that kind in their number", () => {
+  assert.match(app, /const total = qtyOf\(liveCp\.filter\(\(x\) => x\.category === k\)\) \+ more;/);
+});
+
+test('Hardware assets: computer gear on its own tab; Company property keeps the rest', () => {
+  assert.match(app, /const IT_HW_CATS = \['desktop', 'laptop', 'printer', 'monitor', 'smartphone', 'iphone', 'peripheral'\];/);
+  assert.match(app, /else if \(k === 'hw'\) drawHw\(\)\.catch\(whoops\);/);
+  assert.match(app, /openAsView\(\['acc', 'prop', 'hw'\]\.includes\(itKept\('itAssetsView'\)\)/, 'a refresh keeps the new tab');
+  const at = app.indexOf('const drawHw = async () => {');
+  const hw = app.slice(at, app.indexOf('\n  };\n', at));
+  assert.match(hw, /IT_HW_KINDS\.includes\(a\.kind\)/);
+  assert.match(hw, /IT_HW_CATS\.includes\(x\.category\)/);
+  assert.match(hw, /assetDrawer\(assets\.find\(\(a\) => String\(a\.id\) === id\), drawHw\)/, 'a unit opens and comes back here');
+  assert.match(hw, /propEdit\(props\.find\(\(x\) => String\(x\.id\) === id\), drawHw\)/);
+  // Company property: its tiles, kind filter, table and new items skip computer kinds.
+  assert.match(app, /const cpCats = Object\.entries\(IT_PROP_CATS\)\.filter\(\(\[k\]\) => !IT_HW_CATS\.includes\(k\)\);/);
+  assert.match(app, /const rows = props\.filter\(\(x\) => !IT_HW_CATS\.includes\(x\.category\)/);
+  assert.match(app, /assets\.filter\(\(a\) => !IT_HW_KINDS\.includes\(a\.kind\)\n\s*&& \(pf\.cat \? mlCat\(a\) === pf\.cat : mlCat\(a\)\)/);
+  assert.match(app, /<select id="prf_cat">\$\{Object\.entries\(IT_PROP_CATS\)\.filter\(\(\[k\]\) => item \|\| !IT_HW_CATS\.includes\(k\)\)/);
 });
 
 test("the masterlist's units show an icon and Company property under their category, like property rows", () => {
