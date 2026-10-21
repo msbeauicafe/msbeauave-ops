@@ -689,7 +689,10 @@ test("a room's gallery shows its masterlist computers' photos, and takes new one
 test('the Asset inventory masterlist also lists Company property, marked so', () => {
   assert.match(app, /<optgroup label="🏢 Company property">/);
   assert.match(app, /\.map\(\(x\) => \(\{ \.\.\.x, _prop: true \}\)\);/);
-  assert.match(app, /data-asprop="\$\{a\.id\}">Open<\/button>/);
+  // Every row ends in Assign / update; a property row's opens its editor
+  // right on the masterlist and comes back to it.
+  assert.match(app, /data-asprop="\$\{a\.id\}">Assign \/ update<\/button>/);
+  assert.match(app, /propEdit\(props\.find\(\(x\) => String\(x\.id\) === b\.dataset\.asprop\), drawAssets\)/);
 });
 
 test("Company property's kinds count the masterlist's own units of that kind in their number", () => {
