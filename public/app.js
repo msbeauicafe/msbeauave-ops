@@ -11754,9 +11754,9 @@ async function openInvoiceOrder(id, reload) {
  */
 SCREENS.coinvoices = async (page) => {
   // Unpaid and paid w/bal split on whether anything has landed against the
-  // invoice yet, not just whether it is fully settled — but only unpaid
-  // turns red past its due date; paid w/bal already shows money landed, so
-  // it stays amber even once overdue.
+  // invoice yet, not just whether it is fully settled. Unpaid is always red
+  // here, due yet or not, so every unpaid row reads the same; paid w/bal
+  // already shows money landed, so it stays amber.
   // Pulled apart from the tag itself so the Standing filter below can pick
   // against the same plain word the row reads, not scrape it off a tag.
   const standingLabel = (o) => {
@@ -11770,7 +11770,7 @@ SCREENS.coinvoices = async (page) => {
     const label = standingLabel(o);
     if (label === 'paid') return tag('paid', 'green');
     if (label === 'void') return tag('void', 'grey');
-    return tag(label, label === 'unpaid' && o.invoice_overdue ? 'red' : 'amber');
+    return tag(label, label === 'unpaid' ? 'red' : 'amber');
   };
 
   // Every b2b order gets an invoice row the moment it is placed — that is

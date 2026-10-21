@@ -518,8 +518,8 @@ test('Standing reads paid, unpaid, paid w/bal, or void', () => {
   assert.match(screen, /if \(o\.invoice_status === 'void'\) return 'void';/, 'void stays void');
   assert.match(screen, /return balance < amount \? 'paid w\/bal' : 'unpaid';/,
     'paid w/bal once something has landed against it, unpaid while nothing has');
-  assert.match(screen, /tag\(label, label === 'unpaid' && o\.invoice_overdue \? 'red' : 'amber'\)/,
-    'only unpaid reads red past its due date; paid w/bal stays amber');
+  assert.match(screen, /tag\(label, label === 'unpaid' \? 'red' : 'amber'\)/,
+    'unpaid always reads red, due yet or not; paid w/bal stays amber');
 });
 
 // The Standing filter picks against the same plain word standingLabel hands
