@@ -19453,16 +19453,16 @@ SCREENS.itsupport = async (page) => {
           data-itzoom="/api/it/asset-files/${f.id}" data-itzoom-cap="${esc([`${(IT_KINDS[a.kind] || [a.kind])[0]} · ${described(a)}`, loc.name, a.tag].join(' · '))}">
           <figcaption><b class="pr-photoname">${esc((IT_KINDS[a.kind] || [a.kind])[0])} · ${esc(described(a))}</b>
             <span class="dim">${esc(a.tag)}${a.assigned_to ? ` · ${esc(a.assigned_to)}` : ''}</span>
-            ${a.health && a.health !== 'good' ? `<span>${tag(...(IT_HEALTH[a.health] || [a.health, 'grey']))}</span>` : ''}
+            <span>${tag(...(IT_HEALTH[a.health || 'good'] || [a.health, 'grey']))}</span>
             <span class="dim">${when(f.uploaded_at)} · 🗂️ masterlist photo</span></figcaption></figure>`)).join('')}${files.map((f) => `
         <figure><img src="/api/it/property-files/${f.id}" alt="" loading="lazy"
           data-itzoom="/api/it/property-files/${f.id}" data-itzoom-cap="${esc([f.caption || f.item || 'Photo', loc.name, f.tag].filter(Boolean).join(' · '))}">
           <figcaption><b class="pr-photoname">${esc(f.caption || f.item || 'Unnamed photo')}</b>${f.tag ? `<span class="dim">${esc(`${f.tag} · ${f.item}`)}</span>` : ''}
             ${(() => {
-              // The item's condition, the same tag What is here shows for it —
-              // Broken, Fair, Needs repair — read off the item, so it follows it.
+              // The item's condition on every photo of it — Good, Fair, Broken,
+              // Needs repair — read off the item, so it follows any change.
               const x = f.property_id && props.find((p) => String(p.id) === String(f.property_id));
-              return x && x.condition !== 'good' ? `<span>${tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey']))}</span>` : '';
+              return x ? `<span>${tag(...(IT_PROP_COND[x.condition] || [x.condition, 'grey']))}</span>` : '';
             })()}
             <span class="dim">${when(f.uploaded_at)}</span>
             ${f.property_id ? '' : `<button class="btn sm quiet pr-track" data-prtrack="${f.id}">＋ Track as an item</button>`}
