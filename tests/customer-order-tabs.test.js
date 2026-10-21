@@ -1797,6 +1797,7 @@ test('Packing list: the Invoice column reads paid / paid w/bal / unpaid, not ope
   assert.doesNotMatch(fn, /tag\(o\.invoice_status/, 'the bare status word is not shown');
   const own = app.slice(app.indexOf('const packingInvoiceStanding'), at);
   for (const w of ["'paid'", "'void'", "'paid w/bal'", "'unpaid'"]) assert.ok(own.includes(w), w);
+  assert.match(own, /tag\(label, label === 'unpaid' \? 'red' : 'amber'\)/, 'unpaid always red, due yet or not');
   // Invoice tab keeps its own, untouched.
   assert.match(app, /SCREENS\.coinvoices = async[\s\S]*?const standingLabel = \(o\) =>/);
   assert.equal(app.match(/packingInvoiceStanding\(/g).length, 1, 'used on this tab only');
