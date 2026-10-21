@@ -692,7 +692,8 @@ test('the Asset inventory masterlist also lists Company property, marked so', ()
   // Every row ends in Assign / update; a property row's opens its editor
   // right on the masterlist and comes back to it.
   assert.match(app, /data-asprop="\$\{a\.id\}">Assign \/ update<\/button>/);
-  assert.match(app, /propEdit\(props\.find\(\(x\) => String\(x\.id\) === b\.dataset\.asprop\), drawAssets\)/);
+  assert.match(app, /const x = props\.find\(\(p\) => String\(p\.id\) === b\.dataset\.asprop\);/);
+  assert.match(app, /else propEdit\(x, drawAssets\);/, 'a non-computer item opens its editor right on the masterlist');
 });
 
 test("Company property's kinds count the masterlist's own units of that kind in their number", () => {
@@ -740,4 +741,18 @@ test("Company property's masterlist rows: Location is just the room, Condition i
   assert.doesNotMatch(row, /from the masterlist/);
   assert.doesNotMatch(row, /IT_ASSET_STATUS/, 'no Assigned to employee under Condition');
   assert.match(row, /a\.health && a\.health !== 'good' \? \(IT_HEALTH\[a\.health\] \|\| \[a\.health, 'grey'\]\) : \['Good', 'green'\]/);
+});
+
+test("the masterlist's Assign / update on a computer-related property item opens a unit-style side drawer", () => {
+  assert.ok(app.includes("const IT_HW_CATS = ['desktop', 'laptop', 'printer', 'monitor', 'smartphone', 'iphone', 'peripheral'];"), 'peripherals included');
+  assert.match(app, /if \(x && IT_HW_CATS\.includes\(x\.category\)\) propDrawer\(x, drawAssets\)\.catch\(whoops\);\n\s*else propEdit\(x, drawAssets\);/);
+  const at = app.indexOf('const propDrawer = async (x, after) => {');
+  const fn = app.slice(at, app.indexOf('\n  };\n', at));
+  for (const id of ['phd_status', 'phd_who', 'phd_loc', 'phd_on', 'phd_notes', 'phd_cond', 'phd_check', 'phd_save']) {
+    assert.ok(fn.includes(`id="${id}"`), id);
+  }
+  assert.match(fn, /class="asdrawer"/, 'the same drawer a unit opens');
+  assert.match(fn, /await POST\('\/api\/it\/property', \{ id: x\.id/, 'saved to the item itself');
+  const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
+  assert.match(css, /\.it-viewonly #phd_save, \.it-viewonly #phd_check, \.it-viewonly \.phd-upload \{ display: none !important; \}/);
 });
