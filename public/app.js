@@ -18807,7 +18807,7 @@ SCREENS.itsupport = async (page) => {
           : `<button class="nameopen" data-asopen="${a.id}"><b>${esc(a.tag)}</b></button>`) },
       { head: 'Category', cell: (a) => (a._prop ? `${IT_PROP_CATS[a.category]?.[2] || ''} ${esc(IT_PROP_CATS[a.category]?.[0] || a.category)}
           <div class="dim">🏢 Company property</div>` : `${IT_UNIT_ICON[a.kind] || '🖥️'} ${esc((IT_KINDS[a.kind] || [a.kind])[0])}
-          <div class="dim">🗂️ Asset inventory</div>`) },
+          <div class="dim">🏢 Company property</div>`) },
       { head: 'Item description', cell: (a) => (a._prop ? `${esc(a.item)}${a.qty > 1 ? ` ×${count(a.qty)}` : ''}${
           [a.brand, a.model].filter(Boolean).length ? `<div class="dim">${esc([a.brand, a.model].filter(Boolean).join(' '))}</div>` : ''}` : `${esc(described(a))}${(a.condition || []).includes('missing_items')
           ? ' ' + tag('missing items', 'red') : ''}${(a.files || []).length

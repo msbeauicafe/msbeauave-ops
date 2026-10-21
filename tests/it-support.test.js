@@ -696,8 +696,9 @@ test("Company property's Desktops and Laptops count the masterlist's computers i
   assert.match(app, /const total = qtyOf\(live\.filter\(\(x\) => x\.category === k\)\) \+ more;/);
 });
 
-test("the masterlist's units show an icon and Asset inventory under their category, like property rows", () => {
-  assert.match(app, /\$\{IT_UNIT_ICON\[a\.kind\] \|\| '🖥️'\} \$\{esc\(\(IT_KINDS\[a\.kind\] \|\| \[a\.kind\]\)\[0\]\)\}\n\s*<div class="dim">🗂️ Asset inventory<\/div>/);
+test("the masterlist's units show an icon and Company property under their category, like property rows", () => {
+  assert.match(app, /\$\{IT_UNIT_ICON\[a\.kind\] \|\| '🖥️'\} \$\{esc\(\(IT_KINDS\[a\.kind\] \|\| \[a\.kind\]\)\[0\]\)\}\n\s*<div class="dim">🏢 Company property<\/div>/);
+  assert.doesNotMatch(app, /<div class="dim">🗂️ Asset inventory<\/div>/, 'every row reads Company property under its category');
 });
 
 test('the masterlist takes a printer as its own type (db/207)', async () => {
