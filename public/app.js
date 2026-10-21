@@ -5936,14 +5936,15 @@ const packingStageTag = (o) => {
 // This tab's own copy of Invoice tab's Standing words, so the Invoice column
 // reads what that tab's Standing does — paid, paid w/bal, unpaid, void —
 // never the database's bare "open". Copied rather than shared: Invoice tab's
-// own standing stays exactly as it is.
+// own standing stays exactly as it is. Unpaid is always red here, due yet
+// or not, the same as Invoice tab now reads it.
 const packingInvoiceStanding = (o) => {
   if (o.invoice_status === 'paid') return tag('paid', 'green');
   if (o.invoice_status === 'void') return tag('void', 'grey');
   const amount = Number(o.invoice_amount ?? o.total ?? 0);
   const balance = Number(o.balance ?? amount);
   const label = balance < amount ? 'paid w/bal' : 'unpaid';
-  return tag(label, label === 'unpaid' && o.invoice_overdue ? 'red' : 'amber');
+  return tag(label, label === 'unpaid' ? 'red' : 'amber');
 };
 
 SCREENS.copacking = async (page) => {
