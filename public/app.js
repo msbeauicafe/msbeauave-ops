@@ -19335,10 +19335,10 @@ SCREENS.itsupport = async (page) => {
           <td><b>${esc(a.tag)}</b></td>
           <td>${esc((IT_KINDS[a.kind] || [a.kind])[0])}<div class="dim">${esc([a.brand, a.model].filter(Boolean).join(' '))}</div></td>
           <td>${IT_PROP_CATS[mlCat(a)][2]} ${esc(IT_PROP_CATS[mlCat(a)][0])}</td>
-          <td>${a.location ? esc(a.location) : '<span class="dim">No room yet</span>'}<div class="dim">🗂️ from the masterlist</div></td>
+          <td>${a.location ? esc(a.location) : '<span class="dim">No room yet</span>'}</td>
           <td>${a.assigned_to ? `${esc(a.assigned_to)}${a.department ? `<div class="dim">${esc(a.department)}</div>` : ''}` : '<span class="dim">Nobody yet</span>'}</td>
           <td>1</td>
-          <td>${tag(...(IT_ASSET_STATUS[a.status] || [a.status, 'grey']))}</td>
+          <td>${tag(...(a.health && a.health !== 'good' ? (IT_HEALTH[a.health] || [a.health, 'grey']) : ['Good', 'green']))}</td>
           <td class="acc-acts"><button class="btn sm" data-mlopen="${a.id}">Open</button></td></tr>`).join('');
       $('#pr_list', body).innerHTML = rows.length || ml.length ? `<div class="acc-scroll"><table class="acc-table">
         <thead><tr><th>Tag</th><th>Item</th><th>Kind</th><th>Location</th><th>Used by</th><th>Qty</th><th>Condition</th><th></th></tr></thead>

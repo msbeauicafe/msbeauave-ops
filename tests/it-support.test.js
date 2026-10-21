@@ -713,3 +713,11 @@ test("a room's photos carry their item's condition, and a masterlist photo its u
   assert.match(app, /return x \? `<span>\$\{tag\(\.\.\.\(IT_PROP_COND\[x\.condition\]/);
   assert.match(app, /<span>\$\{tag\(\.\.\.\(IT_HEALTH\[a\.health \|\| 'good'\]/);
 });
+
+test("Company property's masterlist rows: Location is just the room, Condition is the unit's condition", () => {
+  const at = app.indexOf('const mlRows = ml.map((a) => `<tr class="pr-mlrow">');
+  const row = app.slice(at, app.indexOf(".join('');", at));
+  assert.doesNotMatch(row, /from the masterlist/);
+  assert.doesNotMatch(row, /IT_ASSET_STATUS/, 'no Assigned to employee under Condition');
+  assert.match(row, /a\.health && a\.health !== 'good' \? \(IT_HEALTH\[a\.health\] \|\| \[a\.health, 'grey'\]\) : \['Good', 'green'\]/);
+});
