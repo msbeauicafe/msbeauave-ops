@@ -756,3 +756,8 @@ test("the masterlist's Assign / update on a computer-related property item opens
   const css = fs.readFileSync(path.join(here, '..', 'public/styles.css'), 'utf8');
   assert.match(css, /\.it-viewonly #phd_save, \.it-viewonly #phd_check, \.it-viewonly \.phd-upload \{ display: none !important; \}/);
 });
+
+test("the masterlist's Status: a computer, phone or printer from Company property is Assigned to employee; peripherals are Used by an employee", () => {
+  assert.match(app, /const issued = IT_HW_CATS\.includes\(a\.category\) && a\.category !== 'peripheral';/);
+  assert.match(app, /tag\(issued \? 'Assigned to employee' : 'Used by an employee', 'green'\)/);
+});
