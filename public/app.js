@@ -18837,7 +18837,7 @@ SCREENS.itsupport = async (page) => {
           const [l, k] = IT_ASSET_STATUS[a.status] || [a.status, 'grey'];
           return `${tag(l, k)}${a.assigned_to ? `<div class="dim">${esc(a.assigned_to)}${
             a.department ? ' · ' + esc(a.department) : ''}</div>` : ''}${a.location ? `<div class="dim">📍 ${esc(a.location)}</div>` : ''}`; } },
-      { head: '', cell: (a) => (a._prop ? `<button class="btn line sm" data-asprop="${a.id}">Open</button>`
+      { head: '', cell: (a) => (a._prop ? `<button class="btn line sm" data-asprop="${a.id}">Assign / update</button>`
           : `<button class="btn line sm" data-asopen="${a.id}">Assign / update</button>`) },
     ], assets.length ? (af.status ? `Nothing matches that — a unit not yet given to anybody is In storage; set the last filter to Every status to see it.`
       : 'Nothing matches that.') : 'Nothing logged yet — add the first unit above.');
@@ -18847,12 +18847,11 @@ SCREENS.itsupport = async (page) => {
       || '<div class="dim">No unit is assigned to an employee yet — Assign / update on a unit gives it to somebody.</div>';
     $$('[data-asopen]', body).forEach((b) => b.addEventListener('click',
       () => assetDrawer(assets.find((a) => String(a.id) === b.dataset.asopen))));
-    // A company property row opens on Company property, in its own editor.
-    $$('[data-asprop]', $('#as_list', body)).forEach((b) => b.addEventListener('click', async () => {
-      const id = b.dataset.asprop;
-      itKeep('itAssetsView', 'prop');
-      try { await drawProp(); propEdit(props.find((x) => String(x.id) === id)); } catch (err) { whoops(err); }
-    }));
+    // A company property row's Assign / update opens its own editor right
+    // here — who uses it, where it is, its condition — and comes back to the
+    // masterlist once saved.
+    $$('[data-asprop]', $('#as_list', body)).forEach((b) => b.addEventListener('click', () =>
+      propEdit(props.find((x) => String(x.id) === b.dataset.asprop), drawAssets)));
   };
 
   // Give a unit to an employee straight from Assigned to employees: pick the
