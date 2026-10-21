@@ -1888,3 +1888,14 @@ test('Customers: the sign-in link uses the public address, never 127.0.0.1', () 
   assert.match(fn, /const local = \/\^\(localhost\|127\\\.\|10\\\.\|192\\\.168\\\./);
   assert.match(fn, /`\$\{local \? 'https:\/\/msbeauave-ops\.vercel\.app' : location\.origin\}\$\{out\.link\}`/);
 });
+
+test("Packing list tab's own dialog has no Cancel — Completed and Mark delivered only", () => {
+  const at = app.indexOf('async function openPackingListOrder(id, reload) {');
+  const fn = app.slice(at, app.indexOf('\n}\n', at));
+  assert.doesNotMatch(fn, /id="a_cancel"/);
+  assert.doesNotMatch(fn, /act\('#a_cancel'/);
+  assert.match(fn, /id="a_send">Completed</);
+  assert.match(fn, /id="a_delivered">Mark delivered</);
+  // The shared order dialog (Pick & send) keeps its Cancel.
+  assert.match(app, /'<button class="btn stop" id="a_cancel">Cancel<\/button>'/);
+});
