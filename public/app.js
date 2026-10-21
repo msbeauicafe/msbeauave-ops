@@ -18831,7 +18831,10 @@ SCREENS.itsupport = async (page) => {
           return `<span class="hl-${h}"></span>${tag(l, k)}`; } },
       { head: 'Status', cell: (a) => {
           if (a._prop) {
-            return `${a.assigned_to ? tag('Used by an employee', 'green') : tag('Shared', 'grey')}${a.assigned_to
+            // A computer, phone or printer is assigned to somebody, the same
+            // word a unit uses; peripherals, furniture and the like are used.
+            const issued = IT_HW_CATS.includes(a.category) && a.category !== 'peripheral';
+            return `${a.assigned_to ? tag(issued ? 'Assigned to employee' : 'Used by an employee', 'green') : tag('Shared', 'grey')}${a.assigned_to
               ? `<div class="dim">${esc(a.assigned_to)}</div>` : ''}${a.location ? `<div class="dim">📍 ${esc(a.location)}</div>` : ''}`;
           }
           const [l, k] = IT_ASSET_STATUS[a.status] || [a.status, 'grey'];
