@@ -833,3 +833,26 @@ test('HR saving a person on Team keeps the sign-in they already have', async () 
   // The Team form does not even offer HR the box.
   assert.match(app, /\$\{user\?\.role === 'admin' \? `<div><label>Signs in as<\/label>/);
 });
+
+// HR's Attendance logs tab: a day or a week of the time clock, read off the
+// same day sheets the Attendance screen reads, and taken away as a
+// spreadsheet. HR can read those sheets for any day it asks for.
+test('HR has an Attendance logs tab that extracts a day or a week', async () => {
+  assert.match(app, /const PANELS = \[\['overview', 'Overview'\], \['file201', '201 file'\], \['attlogs', 'Attendance logs'\]\];/);
+  assert.match(app, /if \(hrPanel === 'attlogs'\) return drawAttLogs\(\);/);
+  const at = app.indexOf('const drawAttLogs = async () => {');
+  const fn = app.slice(at, app.indexOf('\n  };\n', at));
+  assert.match(fn, /GET\(`\/api\/hr\/attendance\?on=\$\{d\}/, 'a day at a time, the same sheets Attendance reads');
+  assert.match(fn, /id="att_csv">⬇ Extract attendance</);
+  assert.match(fn, /id="att_csv2">⬇ Extract every press</);
+  assert.match(fn, /'\\ufeff'/, 'Excel reads ñ right');
+  assert.match(app, /const weekOf = \(d\) =>/);
+
+  const hr = await signIn('hr');
+  for (const on of ['2026-10-19', '2026-10-20']) {
+    const r = await GET(hr, `/api/hr/attendance?on=${on}`);
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.on, on);
+    assert.ok(Array.isArray(r.data.people) && Array.isArray(r.data.stretches));
+  }
+});
