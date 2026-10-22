@@ -19967,6 +19967,108 @@ SCREENS.attendance = async (page) => {
   let day = localDay();
   let shop = '';
   const canEditShifts = user.role === 'admin' || user.role === 'hr';
+  // Two tabs: the day as it stands, and the logs to take away. Kept across a
+  // refresh.
+  let attView = 'day';
+  try { if (localStorage.getItem('attView') === 'logs') attView = 'logs'; } catch { /* no storage */ }
+  const attTabs = () => `<div class="subtabs">${[['day', 'Daily sheet'], ['logs', 'Attendance logs']].map(([k, l]) =>
+    `<button data-atttab="${k}" class="${k === attView ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const wireAttTabs = () => $$('[data-atttab]', page).forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.atttab === attView) return;
+    attView = b.dataset.atttab;
+    try { localStorage.setItem('attView', attView); } catch { /* no storage */ }
+    (attView === 'logs' ? drawAttLogs() : load()).catch(whoops);
+  }));
+
+  // -------------------------------------------------------------------------
+  // Attendance logs — a day or a week of the time clock, read here and taken
+  // away as a spreadsheet: one row per person per day (in, out, hours,
+  // present or not), or every press in order. Read off the same day sheets
+  // the Daily sheet tab shows, a day at a time; nothing is changed.
+  // -------------------------------------------------------------------------
+  const att = { mode: 'day', on: localDay(), from: localDay(6), to: localDay(), branch: '' };
+  const addDays = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+  const weekOf = (d) => { const wd = (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7; return [addDays(d, -wd), addDays(d, 6 - wd)]; };
+  const attRange = () => {
+    if (att.mode === 'day') return [att.on, att.on];
+    if (att.mode === 'week') return weekOf(att.on);
+    return att.from <= att.to ? [att.from, att.to] : [att.to, att.from];
+  };
+  const hrsNum = (iv) => (iv ? ((iv.days || 0) * 24 + (iv.hours || 0) + (iv.minutes || 0) / 60 + (iv.seconds || 0) / 3600) : 0);
+  let attDays = [];
+  const drawAttLogs = async () => {
+    const [from, toRaw] = attRange();
+    const to = toRaw > localDay() ? localDay() : toRaw;
+    const days = [];
+    for (let d = from; d <= to && days.length < 62; d = addDays(d, 1)) days.push(d);
+    page.innerHTML = `
+      <div class="head"><h2>Attendance</h2>
+        <span class="hint">The time clock, a day or a week at a time</span></div>
+      ${attTabs()}
+      <div class="panel">
+        <div class="tools">
+          <select id="att_mode">
+            <option value="day"${att.mode === 'day' ? ' selected' : ''}>One day</option>
+            <option value="week"${att.mode === 'week' ? ' selected' : ''}>One week (Mon–Sun)</option>
+            <option value="range"${att.mode === 'range' ? ' selected' : ''}>From – to</option></select>
+          ${att.mode === 'range'
+            ? `<input type="date" id="att_from" value="${esc(att.from)}" aria-label="From">
+               <input type="date" id="att_to" value="${esc(att.to)}" aria-label="To">`
+            : `<input type="date" id="att_on" value="${esc(att.on)}" aria-label="${att.mode === 'week' ? 'Any day in the week' : 'Day'}">`}
+          <select id="att_branch"><option value="">Every shop</option></select>
+          <button class="btn" id="att_csv">⬇ Extract attendance</button>
+          <button class="btn quiet" id="att_csv2">⬇ Extract every press</button>
+        </div>
+        <div class="dim mt">${onDay(from)}${from === to ? '' : ` – ${onDay(to)}`}${toRaw > to ? ' (up to today)' : ''} · loading…</div>
+      </div>`;
+    wireAttTabs();
+    attDays = await Promise.all(days.map((d) => GET(`/api/hr/attendance?on=${d}${att.branch ? `&branch=${att.branch}` : ''}`)));
+    const shops = attDays[0]?.branches || [];
+    $('#att_branch', page).innerHTML = '<option value="">Every shop</option>' + shops.map((b) =>
+      `<option value="${b.id}"${String(b.id) === att.branch ? ' selected' : ''}>${esc(b.name)}</option>`).join('');
+    const rows = attDays.flatMap((d) => d.people.map((p) => ({ ...p, day: d.on })));
+    const presses = attDays.flatMap((d) => d.stretches.map((x) => ({ ...x, day: d.on })));
+    const came = rows.filter((r) => r.first_in);
+    $('.panel .dim.mt', page).innerHTML = `${onDay(from)}${from === to ? '' : ` – ${onDay(to)}`}${toRaw > to ? ' (up to today)' : ''}
+      · ${count(days.length)} day${days.length === 1 ? '' : 's'} · ${count(came.length)} present · ${count(rows.length - came.length)} did not clock on
+      · ${count(presses.length)} presses · ${came.reduce((t, r) => t + hrsNum(r.worked), 0).toFixed(1)} hours worked`;
+    page.insertAdjacentHTML('beforeend', `<div class="panel" id="att_table">${table(rows, [
+      { head: 'Date', cell: (r) => onDay(r.day) },
+      { head: 'Name', cell: (r) => `<b>${esc(r.name)}</b><div class="dim">${esc(r.position || '')}</div>` },
+      { head: 'Shop', cell: (r) => esc(r.branch || '—') },
+      { head: 'In', cell: (r) => esc(clockAt(r.first_in)) },
+      { head: 'Out', cell: (r) => (r.still_on ? tag('still on', 'green') : esc(clockAt(r.last_out))) },
+      { head: 'Hours', n: true, cell: (r) => (r.first_in ? hoursOf(r.worked) : '—') },
+      { head: '', cell: (r) => (r.first_in ? tag('Present', 'green') : tag('Did not clock on', 'grey')) },
+    ], 'Nobody on the books for those days.')}</div>`);
+
+    const save = (name, head, lines) => {
+      const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      // A byte-order mark first, so Excel reads ñ and the peso sign right.
+      const csv = '\ufeff' + [head, ...lines].map((r) => r.map(cell).join(',')).join('\r\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    const span = from === to ? from : `${from}_to_${to}`;
+    $('#att_csv', page).addEventListener('click', () => save(`attendance-${span}.csv`,
+      ['Date', 'Name', 'Position', 'Shop', 'In', 'Out', 'Hours', 'Stretches', 'Status'],
+      rows.map((r) => [r.day, r.name, r.position, r.branch, r.first_in ? clockAt(r.first_in) : '',
+        r.still_on ? 'still on' : (r.last_out ? clockAt(r.last_out) : ''), r.first_in ? hrsNum(r.worked).toFixed(2) : '',
+        r.stretches || 0, r.first_in ? 'Present' : 'Did not clock on'])));
+    $('#att_csv2', page).addEventListener('click', () => save(`attendance-presses-${span}.csv`,
+      ['Date', 'Name', 'Shop', 'In', 'Out', 'Hours', 'In by', 'Out by'],
+      presses.map((x) => [x.day, x.name, x.branch, clockAt(x.started_at), x.ended_at ? clockAt(x.ended_at) : 'open',
+        hrsNum(x.worked).toFixed(2), (HOW[x.started_how] || ['—'])[0], x.ended_how ? (HOW[x.ended_how] || ['—'])[0] : ''])));
+    const redraw = () => drawAttLogs().catch(whoops);
+    $('#att_mode', page).addEventListener('change', (e) => { att.mode = e.target.value; redraw(); });
+    $('#att_on', page)?.addEventListener('change', (e) => { if (e.target.value) { att.on = e.target.value; redraw(); } });
+    $('#att_from', page)?.addEventListener('change', (e) => { if (e.target.value) { att.from = e.target.value; redraw(); } });
+    $('#att_to', page)?.addEventListener('change', (e) => { if (e.target.value) { att.to = e.target.value; redraw(); } });
+    $('#att_branch', page).addEventListener('change', (e) => { att.branch = e.target.value; redraw(); });
+  };
 
   const load = async () => {
     const d = await GET(`/api/hr/attendance?on=${encodeURIComponent(day)}${
@@ -19983,6 +20085,7 @@ SCREENS.attendance = async (page) => {
     page.innerHTML = `
       <div class="head"><h2>Attendance</h2>
         <span class="hint">${isToday ? 'Today, updating on its own' : onDay(day)}</span></div>
+      ${attTabs()}
 
       <div class="row">
         <div><label>Day</label><input id="a_day" type="date" value="${esc(day)}"
@@ -20068,6 +20171,7 @@ SCREENS.attendance = async (page) => {
               ? `<button class="btn sm quiet" data-editshift="${s.id}">Edit</button>` : '') },
         ], 'Nothing recorded on this day.')}</div>`;
 
+    wireAttTabs();
     const go = (d2) => { day = d2; load().catch(whoops); };
     $('#a_day', page).addEventListener('change', (e) => go(e.target.value || localDay()));
     $('#a_shop', page).addEventListener('change', (e) => { shop = e.target.value; load().catch(whoops); });
@@ -20089,10 +20193,10 @@ SCREENS.attendance = async (page) => {
     }
   };
 
-  await load();
-  // Only today moves. Refreshing a day that has already finished would be
-  // redrawing the same rows over somebody trying to read them.
-  repeat(() => (day === localDay() ? load() : Promise.resolve()), 30000);
+  await (attView === 'logs' ? drawAttLogs() : load());
+  // Only today's daily sheet moves. Refreshing a finished day, or the logs,
+  // would be redrawing the same rows over somebody trying to read them.
+  repeat(() => (attView === 'day' && day === localDay() ? load() : Promise.resolve()), 30000);
 };
 
 start();

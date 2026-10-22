@@ -833,3 +833,30 @@ test('HR saving a person on Team keeps the sign-in they already have', async () 
   // The Team form does not even offer HR the box.
   assert.match(app, /\$\{user\?\.role === 'admin' \? `<div><label>Signs in as<\/label>/);
 });
+
+// Attendance's Attendance logs tab: a day or a week of the time clock, read
+// off the same day sheets the Daily sheet reads, and taken away as a
+// spreadsheet. HR can read those sheets for any day it asks for; HR's own
+// screen is left as it was.
+test('Attendance has an Attendance logs tab that extracts a day or a week', async () => {
+  const at = app.indexOf('SCREENS.attendance = async');
+  const screen = app.slice(at, app.indexOf('\n};\n', at));
+  assert.match(screen, /\[\['day', 'Daily sheet'\], \['logs', 'Attendance logs'\]\]/);
+  assert.match(screen, /attView === 'day' && day === localDay\(\) \? load\(\)/, 'only the daily sheet refreshes itself');
+  const fn = screen.slice(screen.indexOf('const drawAttLogs = async () => {'));
+  assert.match(fn, /GET\(`\/api\/hr\/attendance\?on=\$\{d\}/, 'a day at a time, the same sheets the Daily sheet reads');
+  assert.match(fn, /id="att_csv">⬇ Extract attendance</);
+  assert.match(fn, /id="att_csv2">⬇ Extract every press</);
+  assert.match(fn, /'\\ufeff'/, 'Excel reads ñ right');
+  const hr = app.slice(app.indexOf('SCREENS.hr = async'), app.indexOf('SCREENS.me = async'));
+  assert.match(hr, /const PANELS = \[\['overview', 'Overview'\], \['file201', '201 file'\]\];/, 'HR left as it was');
+  assert.doesNotMatch(hr, /drawAttLogs/);
+
+  const hrUser = await signIn('hr');
+  for (const on of ['2026-10-19', '2026-10-20']) {
+    const r = await GET(hrUser, `/api/hr/attendance?on=${on}`);
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.on, on);
+    assert.ok(Array.isArray(r.data.people) && Array.isArray(r.data.stretches));
+  }
+});
